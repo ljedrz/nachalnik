@@ -338,6 +338,29 @@ impl Kernel {
         *self.0.max_requests.read()
     }
 
+    /// Sets how large a picture in a tool's output may be and still be kept whole, beside text
+    /// cut to the tool's output limit, returning what it was; `None`, the default, measures a
+    /// picture with the rest of the output, so that one over the limit is named instead.
+    ///
+    /// note: an output limit is a number of bytes the model reads, and a picture is not read by
+    /// the byte - a screenshot from an MCP server is a few megabytes of base64, over any limit a
+    /// tool's text is held to, and without this the model was shown its name and never the picture.
+    /// Set it to the most the APIs in use take in one picture. See
+    /// [`Content::truncate_around_pictures`](crate::Content::truncate_around_pictures) for what is
+    /// kept and what is cut.
+    ///
+    /// note: a setting rather than a field of [`Config`](crate::Config), as
+    /// [`Kernel::set_call_ceiling`] is, and for the same reasons.
+    pub fn set_picture_limit(&self, bytes: Option<usize>) -> Option<usize> {
+        std::mem::replace(&mut *self.0.picture_limit.write(), bytes)
+    }
+
+    /// Returns how large a picture in a tool's output may be and still be kept whole, where one
+    /// may.
+    pub fn picture_limit(&self) -> Option<usize> {
+        *self.0.picture_limit.read()
+    }
+
     /// Returns what is put into the context as it becomes full, if anything is.
     pub fn full_notice(&self) -> Option<ContextItem> {
         self.0.full_notice.read().clone()

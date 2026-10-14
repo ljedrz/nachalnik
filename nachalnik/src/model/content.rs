@@ -334,40 +334,118 @@ impl Content {
         if whole <= limit {
             return None;
         }
-        let text = self.to_text();
-
-        // the note's own length depends on the number it reports, so settle on a cut that fits
-        // before committing to one.
-        //
-        // note: the limit is a measure of `byte_len` and the cut is an index into `to_text`, and
-        // for a blob or a turn of blocks those are two different strings - a 4 MB picture is over
-        // any limit and names itself in nineteen characters. Starting at the limit would walk
-        // down a character boundary at a time from a number the text never reaches
-        let mut cut = limit.min(text.len());
-        let (truncated, dropped) = loop {
-            while cut > 0 && !text.is_char_boundary(cut) {
-                cut -= 1;
-            }
-            let dropped = whole - cut;
-            let note = format!("\n[... {dropped} bytes truncated by an output limit ...]");
-
-            if cut + note.len() <= limit {
-                break (format!("{}{note}", &text[..cut]), dropped);
-            }
-            if cut == 0 {
-                // there is no room for the note at all, so spend the budget on content instead
-                let mut cut = limit.min(text.len());
-                while cut > 0 && !text.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                break (text[..cut].to_owned(), whole - cut);
-            }
-            cut -= 1;
-        };
-
+        let (truncated, dropped) = cut(&self.to_text(), limit, whole);
         *self = Self::Text(truncated.into());
 
         Some(dropped)
+    }
+
+    /// Truncates as [`Content::truncate_to`] does, except that a picture of at most `pictures`
+    /// bytes is kept whole and not measured against `limit`: only the text around it is cut.
+    ///
+    /// note: for a tool that returns a picture beside some text, as an MCP server's screenshot
+    /// tool does. Measured with the rest, a picture is over any limit a tool's text is held to, and
+    /// [`Content::truncate_to`] turns the whole of it into a sentence naming it - so the model is
+    /// never shown the one thing it asked for. A picture is not text the model reads by the byte,
+    /// and [`TokenCounter`] does not price it by its length either; what bounds it is `pictures`,
+    /// which a caller sets to what the APIs it talks to take. One over that is named, as before.
+    ///
+    /// note: only a picture that is the content, or a text block of a [`Content::Blocks`], is kept,
+    /// which is how a tool result carries one. Where something other than plain text would have to
+    /// be cut to fit, the whole is truncated as [`Content::truncate_to`] does it, because cutting a
+    /// turn's calls or its reasoning is not cutting text.
+    pub fn truncate_around_pictures(&mut self, limit: usize, pictures: usize) -> Option<usize> {
+        let kept = |block: &Block| match block {
+            Block::Text(part) => {
+                matches!(&part.content, Self::Blob(blob) if blob.wire_len() <= pictures)
+            }
+            _ => false,
+        };
+        let blocks = match self {
+            Self::Blob(blob) if blob.wire_len() <= pictures => return None,
+            Self::Blocks(blocks) if blocks.iter().any(kept) => blocks.clone(),
+            _ => return self.truncate_to(limit),
+        };
+
+        let measured: usize = blocks
+            .iter()
+            .filter(|it| !kept(it))
+            .map(Block::byte_len)
+            .sum();
+        if measured <= limit {
+            return None;
+        }
+        let plain = |block: &Block| match block {
+            Block::Text(part) => matches!(part.content, Self::Text(_) | Self::Json(_)),
+            _ => false,
+        };
+        if !blocks.iter().all(|it| kept(it) || plain(it)) {
+            return self.truncate_to(limit);
+        }
+
+        // the text before the first block that does not fit goes as it is; that block is cut, with
+        // the note counting everything that went, and the text after it goes with it. The
+        // pictures stay where they were
+        let mut shown = Vec::with_capacity(blocks.len());
+        let (mut room, mut dropped) = (limit, None);
+        for (at, block) in blocks.iter().enumerate() {
+            if kept(block) {
+                shown.push(block.clone());
+            } else if dropped.is_none() && block.byte_len() <= room {
+                room -= block.byte_len();
+                shown.push(block.clone());
+            } else if dropped.is_none() {
+                let after: usize = blocks[at + 1..]
+                    .iter()
+                    .filter(|it| !kept(it))
+                    .map(Block::byte_len)
+                    .sum();
+                let Block::Text(part) = block else {
+                    unreachable!("only plain text blocks are left")
+                };
+                let (truncated, went) =
+                    cut(&part.content.to_text(), room, block.byte_len() + after);
+                if !truncated.is_empty() {
+                    shown.push(Block::text(truncated));
+                }
+                dropped = Some(went);
+            }
+        }
+        *self = Self::Blocks(shown.into());
+
+        dropped
+    }
+}
+
+/// Cuts `text` to at most `limit` bytes with a note saying how much went, where `whole` is what it
+/// stood for - so what went is `whole` less what is kept, which counts what was never in `text`.
+///
+/// note: the note's own length depends on the number it reports, so a cut that fits is settled
+/// before committing to one. The limit is a measure of `byte_len` and the cut is an index into
+/// `to_text`, and for a blob or a turn of blocks those are two different strings - a 4 MB picture
+/// is over any limit and names itself in nineteen characters. Starting at the limit would walk down
+/// a character boundary at a time from a number the text never reaches.
+fn cut(text: &str, limit: usize, whole: usize) -> (String, usize) {
+    let mut cut = limit.min(text.len());
+    loop {
+        while cut > 0 && !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let dropped = whole - cut;
+        let note = format!("\n[... {dropped} bytes truncated by an output limit ...]");
+
+        if cut + note.len() <= limit {
+            return (format!("{}{note}", &text[..cut]), dropped);
+        }
+        if cut == 0 {
+            // there is no room for the note at all, so spend the budget on content instead
+            let mut cut = limit.min(text.len());
+            while cut > 0 && !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            return (text[..cut].to_owned(), whole - cut);
+        }
+        cut -= 1;
     }
 }
 
