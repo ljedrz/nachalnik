@@ -103,6 +103,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`--connect` to something that closes the connection without a word is refused at once.** A
+  first connection closed before the session said anything was taken for a session that dropped,
+  so a port held by something that is not a session was attached to again for a minute, and the
+  run ended saying the session had 0 records when this client last saw it, which it never did.
 - **A picture from an MCP server reaches the model.** A tool's output limit measured it with the
   text beside it, and at megabytes of base64 a screenshot was over any limit text is held to, so
   the model was shown `[image/png, …]` and a note that bytes were cut in its place. A picture up to

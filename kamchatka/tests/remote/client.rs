@@ -672,20 +672,43 @@ async fn a_client_does_not_wait_for_an_answer_the_dead_socket_took_with_it() {
             nth += 1;
             let _ = connected.send(nth);
             let (down_r, mut down_w) = down.into_split();
-            let (mut up_r, mut up_w) = up.into_split();
+            let (up_r, mut up_w) = up.into_split();
             let (die, dying) = tokio::sync::oneshot::channel::<()>();
+            // the projection has reached the client, so this is a session it has heard from: one
+            // that never said a word would be no session at all, and refused rather than retried
+            let (projected, arrived) = tokio::sync::oneshot::channel::<()>();
             tokio::spawn(async move {
+                let mut projected = Some(projected);
+                let mut lines = BufReader::new(up_r).lines();
+                let forward = async {
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        if down_w
+                            .write_all(format!("{line}\n").as_bytes())
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                        if let Some(projected) = projected.take() {
+                            let _ = projected.send(());
+                        }
+                    }
+                };
                 tokio::select! {
-                    _ = tokio::io::copy(&mut up_r, &mut down_w) => {}
+                    () = forward => {}
                     _ = dying => {}
                 }
             });
             tokio::spawn(async move {
+                let mut arrived = Some(arrived);
                 let mut lines = BufReader::new(down_r).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     // an attach goes through; on the first connection the line somebody typed is
                     // taken off the wire and the connection dies holding it
                     if nth == 1 && !line.contains("\"do\":\"attach\"") {
+                        if let Some(arrived) = arrived.take() {
+                            let _ = arrived.await;
+                        }
                         let _ = die.send(());
 
                         return;
@@ -969,6 +992,50 @@ async fn a_question_decided_before_the_socket_went_is_not_asked_again() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// Something that takes the connection and closes it before a word is said is refused at once,
+/// rather than taken for a session that dropped and retried for a minute.
+///
+/// note: the client counted any connection that closed as a drop, so a port held by something
+/// that is not a session - or a session that will not have this client - was attached to again
+/// for `GIVE_UP`, and the run ended saying the session had 0 records when it was last seen, which
+/// it never was. Closed at once, the attach is the write that fails; closed after reading it, the
+/// first read finds the end.
+#[tokio::test]
+async fn a_listener_that_closes_without_a_word_is_not_a_session_that_dropped() {
+    for reads_first in [false, true] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = format!("tcp:{}", listener.local_addr().expect("its own address"));
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                if reads_first {
+                    let mut line = String::new();
+                    let _ = BufReader::new(stream).read_line(&mut line).await;
+                }
+            }
+        });
+
+        let (_feed, input) = tokio::io::duplex(256);
+        let (mut records, mut prose) = (Vec::new(), Vec::new());
+        let left = tokio::time::timeout(
+            PATIENCE,
+            kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+                .run(&at, BufReader::new(input)),
+        )
+        .await
+        .expect("the client went on trying to reattach");
+        let refused = left.expect_err("there was no session to attach to");
+        assert!(
+            refused.contains("closed the connection before it said anything"),
+            "{refused}"
+        );
+        assert!(!refused.contains("record(s)"), "{refused}");
+        let prose = String::from_utf8(prose).expect("the prose is text");
+        assert!(!prose.contains("attaching again"), "{prose}");
+    }
+}
+
 /// A session that has gone is waited for longer each time, rather than every quarter of a second.
 ///
 /// note: what the waits growing stands for is `GIVE_UP`, which is a minute and too long to wait
@@ -1064,9 +1131,15 @@ async fn a_session_that_stays_gone_is_given_up_on() {
     let at = format!("unix:{}", socket.display());
     let (arrived, mut attempts) = tokio::sync::mpsc::unbounded_channel::<()>();
     tokio::spawn(async move {
-        while let Ok((connection, _)) = listener.accept().await {
+        let mut first = true;
+        while let Ok((mut connection, _)) = listener.accept().await {
             let _ = arrived.send(());
-            // nothing is said and the connection is hung up on, which is a session that has gone
+            // the first connection is answered, so that what follows is a session that was there
+            // and went: one that never said a word is no session at all, and refused at once
+            if std::mem::replace(&mut first, false) {
+                let _ = protocol::write(&mut connection, &Message::Busy { busy: false }).await;
+            }
+            // and then the connection is hung up on, which is a session that has gone
             drop(connection);
         }
     });

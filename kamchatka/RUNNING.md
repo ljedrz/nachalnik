@@ -172,7 +172,9 @@ other$ ssh -N -L 7878:127.0.0.1:7878 host &
 other$ kamchatka --connect tcp:127.0.0.1:7878
 ```
 
-A dropped TCP connection is retried for a minute, with increasing delays.
+A dropped TCP connection is retried for a minute, with increasing delays. A first connection that
+is closed before the session says anything is refused at once instead: whatever is at that address
+is not a session that will answer.
 
 **A session serves one client at a time, and the newest one wins.** A client that attaches takes
 over the session, and the previous one is told it was replaced and disconnected: `--connect` exits

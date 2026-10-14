@@ -289,8 +289,21 @@ impl<'a> Client<'a> {
 
         loop {
             let left = self.attend(address, &mut typed, first).await;
-            first = false;
+            let was_first = std::mem::replace(&mut first, false);
             match left {
+                // note: a first connection that closed before the session said a word is not a
+                // session that dropped. Whatever is there took the connection and has nothing to
+                // say to this client - something that is not a session, or one that will not have
+                // it - and attaching again for `GIVE_UP` would end a minute later saying the
+                // session had records "when this client last saw it", which it never did. Asked of
+                // `reached` rather than of where it closed, because the attach failing to go and
+                // the first read finding the end are the same answer from the other side
+                Left::Dropped if was_first && !self.reached => {
+                    return Err(format!(
+                        "`{address}` closed the connection before it said anything; it is not a \
+                         session this program serves, or it is one that would not take this client"
+                    ));
+                }
                 // the reason is not repeated, for headless's reason: it went by as the session said
                 // it, and what is left to say is the exit status
                 Left::Done if self.failed => return Err("the last turn failed".to_owned()),
