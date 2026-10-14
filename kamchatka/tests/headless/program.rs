@@ -1729,7 +1729,7 @@ async fn a_run_whose_record_was_not_written_says_so_in_its_status() {
 /// ceiling of nothing is a turn refused before its first request.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_request_ceiling_stops_the_program_itself() {
-    let run = async |requests: &str, answers: Vec<String>, lines: &str| {
+    let run = async |requests: &str, answers: Vec<String>, lines: &str, on_ask: &str| {
         use std::io::Write as _;
 
         let base = common::endpoint(answers).await;
@@ -1739,6 +1739,8 @@ async fn the_request_ceiling_stops_the_program_itself() {
                 "--no-record",
                 "-m",
                 "nothing",
+                "--on-ask",
+                on_ask,
                 "--max-requests-per-turn",
             ])
             .args([requests, "go"])
@@ -1773,6 +1775,7 @@ async fn the_request_ceiling_stops_the_program_itself() {
         "1",
         vec![calling.clone(), common::answer("asked again")],
         "",
+        "deny",
     )
     .await;
     assert!(said.contains("paused after 1 request;"), "{said}");
@@ -1783,7 +1786,9 @@ async fn the_request_ceiling_stops_the_program_itself() {
 
     // a call somebody is asked about is no way round it: answered by `--on-ask`, the turn carried
     // on with a budget of its own, made its second request and exited `0` - which is what a live
-    // model reading two files one call at a time did under `--max-requests-per-turn 1`
+    // model reading two files one call at a time did under `--max-requests-per-turn 1`. `allow`,
+    // because under `deny` the policy refuses such a call without asking, and nothing is answered
+    // to carry on from
     let asking = format!(
         "data: {}",
         json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
@@ -1791,9 +1796,15 @@ async fn the_request_ceiling_stops_the_program_itself() {
             "function": {"name": "fs", "arguments": "{\"call\": {\"action\": \"read\", \"path\": \"a.txt\"}}"}}]},
             "finish_reason": "tool_calls"}]})
     );
-    let (code, said) = run("1", vec![asking, common::answer("asked again")], "").await;
+    let (code, said) = run(
+        "1",
+        vec![asking, common::answer("asked again")],
+        "",
+        "allow",
+    )
+    .await;
     assert!(
-        said.contains("fs: deny"),
+        said.contains("fs: allow"),
         "the call was asked about: {said}"
     );
     assert!(said.contains("paused after 1 request;"), "{said}");
@@ -1805,12 +1816,13 @@ async fn the_request_ceiling_stops_the_program_itself() {
         "1",
         vec![calling, common::answer("asked again")],
         "/continue\n",
+        "deny",
     )
     .await;
     assert!(said.contains("asked again"), "{said}");
     assert_eq!(code, Some(0), "{said}");
 
-    let (code, said) = run("0", vec![common::answer("an answer")], "").await;
+    let (code, said) = run("0", vec![common::answer("an answer")], "", "deny").await;
     assert!(said.contains("an answer"), "{said}");
     assert!(!said.contains("paused after"), "{said}");
     assert_eq!(code, Some(0), "{said}");

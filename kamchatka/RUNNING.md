@@ -41,8 +41,9 @@ for a name a broader rule still asks about or refuses: `--auto-allow .env` besid
 `.env*` would change nothing, so it's refused, naming `.env*` as the rule to allow instead.
 
 `--on-ask deny` is the default because an unattended run shouldn't be able to do anything nobody
-allowed. The model is told the refusal was for *this call* rather than a standing rule, so it tries
-another way rather than retrying.
+allowed. The model is told the refusal is a standing rule, and which rule would have asked, since
+the run will refuse that call, and every other the same rule asks about, for as long as it lasts: so
+it neither retries the call nor tries another the rule also covers.
 
 MCP servers are allowed the same way, and which server a tool came from is a separate permission.
 `--mcp files=… --auto-allow-server files` is all it takes to allow one server: the same rule the

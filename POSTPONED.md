@@ -65,13 +65,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Nothing tested so far needed it; a model that does, with a live test showing the difference,
   would show whether the OpenAI client should support it.
 
-- **Under `--no-sandbox`, a refusal by name-matching is presented as a person's decision.** Without
-  the sandbox, `net:reach` is judged from the command's name. A command refused that way under
-  `--on-ask deny` is reported as if someone had been asked, and the model is told another approach
-  might be allowed, even though the rule will keep refusing for the rest of the session. Saying
-  which rule applied means letting a policy name it in `PermissionPolicy::why`, a change to
-  `nachalnik`.
-
 - **The `/dev/shm` test has not been seen to run.** `a_confined_command_cannot_write_shared_memory`
   skips wherever `/dev/shm` can't be written outside the sandbox, which includes a session run
   under `kamchatka`'s own confinement, so its assertions, and whether it fails once `/dev/shm` is

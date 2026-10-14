@@ -805,16 +805,31 @@ impl PermissionPolicy for Careful {
         Careful::why(self, &request.call)
     }
 
+    /// note: a question nobody is here to answer, in a run whose `--on-ask` answers every one
+    /// `deny`, is refused here rather than asked. Asked, it was answered by the run and reached the
+    /// model as one person's answer to one call, with a different approach maybe allowed - when the
+    /// same call, and every call the same rule asks about, would be refused for the rest of the
+    /// session. Refused here, it is the standing rule it is, and says which rule would have asked:
+    /// under `--no-sandbox`, `net:reach` judged from the command's name. `--on-ask allow` is still
+    /// asked and answered, because granting a command the network is more than a verdict.
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
-        let verdict = self.verdict(request);
+        let mut verdict = self.verdict(request);
+        let unasked = verdict == Verdict::Ask && *self.unanswered.lock() == Some(Verdict::Deny);
+        if unasked {
+            verdict = Verdict::Deny;
+        }
 
         if verdict == Verdict::Deny {
             // which subject did it, so that a refused `shell` in a session where `shell` is
             // allowed can say what actually refused it
+            let deciding = match unasked {
+                true => Verdict::Ask,
+                false => Verdict::Deny,
+            };
             let blamed: Vec<String> = self
                 .judges(request)
                 .iter()
-                .filter(|subject| self.stance(subject) == Verdict::Deny)
+                .filter(|subject| self.stance(subject) == deciding)
                 .map(|subject| match subject {
                     Subject::Capability(capability) if *capability == Capability::net("reach") => {
                         "`net:reach`, which this command reaches for".to_owned()
@@ -825,9 +840,16 @@ impl PermissionPolicy for Careful {
                 })
                 .collect();
 
-            let why = match blamed.is_empty() {
-                true => "the policy refused it".to_owned(),
-                false => format!("refused by {}", blamed.join(" and ")),
+            let why = match (blamed.is_empty(), unasked) {
+                (true, false) => "the policy refused it".to_owned(),
+                (false, false) => format!("refused by {}", blamed.join(" and ")),
+                (true, true) => "it would be asked about, and nobody is here to answer, so this \
+                                 run refuses it"
+                    .to_owned(),
+                (false, true) => format!(
+                    "it is asked about by {}, and nobody is here to answer, so this run refuses it",
+                    blamed.join(" and ")
+                ),
             };
             // the arguments first, where they are why the rule applied at all
             let widened = self
