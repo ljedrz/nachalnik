@@ -224,6 +224,78 @@ async fn an_unknown_tool_is_an_error_result_not_a_crash() {
     assert!(said.contains("`echo`"), "{said}");
 }
 
+/// A call whose arguments are not a JSON object is answered by the kernel: which call, that they
+/// did not parse, what the parser said and where, what arrived there, and what the tool adds. The
+/// policy is not asked and the tool is not run, and the call goes back to the model with no
+/// arguments rather than in a wrapper it would copy.
+#[tokio::test]
+async fn a_call_whose_arguments_did_not_parse_is_answered_by_the_kernel() {
+    /// A tool that would ask about every call, and says how its arguments go.
+    struct Advising;
+
+    #[async_trait::async_trait]
+    impl nachalnik::Tool for Advising {
+        fn spec(&self) -> nachalnik::ToolSpec {
+            nachalnik::ToolSpec::new("grep", "searches").with_capabilities([Capability::fs("read")])
+        }
+
+        fn unparsed(&self, written: &str) -> Option<String> {
+            written
+                .contains("\\(")
+                .then(|| "Write every backslash in a pattern twice.".to_owned())
+        }
+
+        async fn invoke(
+            &self,
+            _call: &nachalnik::ToolCall,
+            _output: OutputSink,
+        ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+            panic!("a call that did not parse was run")
+        }
+    }
+
+    // the default policy asks about everything, so a question would leave the turn deciding
+    let kernel = Kernel::new(Config::default());
+    let written = "{\"pattern\": \"f\\(x\", \"path\": ";
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![nachalnik::ToolCall::unparsed("c1", "grep", written)]),
+        ModelResponse::text("ok"),
+    ])));
+    kernel.add_tool(Arc::new(Advising));
+    kernel.push(ContextItem::user("look"));
+
+    let mut events = kernel.subscribe();
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Finished { .. }
+    ));
+    let said = names(&mut events);
+    assert!(said.contains(&"tool.unparsed".to_owned()), "{said:?}");
+    assert!(
+        !said.contains(&"permission.requested".to_owned()),
+        "{said:?}"
+    );
+    assert!(!said.contains(&"tool.started".to_owned()), "{said:?}");
+
+    let results = tool_results(&kernel);
+    assert_eq!(results.len(), 1);
+    let answer = results[0].content.to_text();
+    for part in [
+        "call to `grep` (`c1`)",
+        "not a JSON object",
+        "invalid escape at line 1 column",
+        "f\\(x",
+        "Write every backslash in a pattern twice.",
+    ] {
+        assert!(answer.contains(part), "{part} is not in: {answer}");
+    }
+
+    // and the model is sent back its call with nothing in it, never the text in a wrapper
+    let request = kernel.preview_request().unwrap();
+    let sent = serde_json::to_string(&request.messages).unwrap();
+    assert!(!sent.contains("_unparsed"), "{sent}");
+}
+
 #[tokio::test]
 async fn a_failing_tool_is_reported_to_the_model() {
     let (kernel, _) = permissive([

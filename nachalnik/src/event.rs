@@ -406,6 +406,24 @@ pub enum Event {
         /// The name the model used.
         tool: String,
     },
+    /// The model's arguments for a call were not a JSON object, so the kernel answered it without
+    /// asking about it or running it; see [`ToolCall::unparsed`](crate::ToolCall::unparsed).
+    ///
+    /// note: what the model wrote is here as well as on the call, because it is what
+    /// [`Event::ToolRequested`] carries for any other call - its arguments - and those are empty
+    /// for this one. A log read without the snapshot beside it would otherwise not say what the
+    /// model wrote at all.
+    #[serde(rename = "tool.unparsed")]
+    ToolUnparsed {
+        /// The call's identifier.
+        call: ToolCallId,
+        /// The tool's identifier.
+        tool: String,
+        /// What the model wrote for the arguments.
+        written: String,
+        /// What the parser said was wrong, with where.
+        error: String,
+    },
     /// The kernel had to give one of the model's tool calls a usable identifier.
     ///
     /// note: Nothing else in the loop can work if a call cannot be told apart from its
@@ -603,6 +621,7 @@ impl Event {
             Self::PolicyRuled { .. } => "policy.ruled",
             Self::ToolRequested { .. } => "tool.requested",
             Self::ToolUnknown { .. } => "tool.unknown",
+            Self::ToolUnparsed { .. } => "tool.unparsed",
             Self::ToolCallRepaired { .. } => "tool.repaired",
             Self::ToolCallsReserved { .. } => "tool.reserved",
             Self::ToolStarted { .. } => "tool.started",

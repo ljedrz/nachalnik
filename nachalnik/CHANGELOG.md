@@ -7,8 +7,21 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`ToolCall` has a field more, `unparsed`**, so a struct literal of one needs it; `ToolCall::new`
+  builds one as before, and `ToolCall::unparsed` builds one whose arguments did not parse. A call
+  recorded with `_unparsed` under its arguments, as providers kept one before, reads back with the
+  text in the field.
+
 ### added
 
+- **The kernel answers a call whose arguments are not a JSON object.** A provider keeps what the
+  model wrote on `ToolCall::unparsed` and leaves the arguments empty; the kernel asks neither the
+  policy nor the tool about it, announces `tool.unparsed`, and answers it naming the tool and the
+  call, saying what the parser said and where, and quoting the text around the fault.
+  `Tool::unparsed`, defaulted to nothing, is what a tool adds to that answer: how its arguments are
+  written, where the fault is one a model makes without seeing it.
 - **`Kernel::set_call_ceiling`** sets how many of one answer's tool calls are run. The calls past
   it are answered with an error saying how many ran and to ask for the rest in the next answer, so
   every call still has its result, and none of them is asked about or run. `None`, the default,
