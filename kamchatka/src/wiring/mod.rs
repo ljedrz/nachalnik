@@ -687,15 +687,15 @@ impl Setup {
         let events = kernel.subscribe();
 
         let policy = Arc::new(Careful::new());
+        // recorded once the tools are in; see below
+        let mut ruled = Vec::new();
         for (subjects, verdict) in [
             (self.allow, nachalnik::Verdict::Allow),
             (self.deny, nachalnik::Verdict::Deny),
         ] {
             for subject in subjects {
                 policy.set(&subject, verdict);
-                // at the start of the record, so that a call allowed by one of these later says
-                // where its permission came from, whether a flag or a settings file set it
-                kernel.record_rule(subject.to_string(), verdict, None, false);
+                ruled.push((subject.to_string(), verdict));
             }
         }
         // note: only where the provider names a model, because a session started without `-m` has
@@ -819,6 +819,17 @@ impl Setup {
             .then(|| introspect::install(&kernel, policy.clone(), limits.clone(), self.layout));
         for spec in kernel.tool_specs() {
             policy.offers(spec);
+        }
+        // before anything is in the context, so that a call allowed by one of these later says
+        // where its permission came from, whether a flag or a settings file set it
+        //
+        // note: after the tools rather than where the rules are set, because the trace is read top
+        // down and a rule about `fs:write` read before there is an `fs` is a rule about nothing
+        // yet. Where they are set does not matter to what is decided - a stance is about a
+        // capability, not a tool, and `Setup::check` held the names to the tools already. The
+        // servers' tools still come after, because they are connected once this is done
+        for (subject, verdict) in ruled {
+            kernel.record_rule(subject, verdict, None, false);
         }
 
         if let Some(system) = self.system {
