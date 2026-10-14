@@ -643,6 +643,82 @@ else:
     assert!(said.contains("refused"), "{said}");
 }
 
+/// An IPv6 socket and an `AF_RDS` one are refused by a shut gate, as an IPv4 one is.
+///
+/// note: through a command, since the filter's own tests run the program against the call's
+/// numbers and not a process under it. `EACCES` is the gate's answer, where a kernel without the
+/// family says `EAFNOSUPPORT`; and each family is opened unconfined first, so one this machine
+/// cannot open at all is skipped rather than passing for the wrong reason.
+#[test]
+fn an_ipv6_or_rds_socket_is_refused_by_a_shut_gate() {
+    if !enforced() || !gated() {
+        return;
+    }
+    let opening = |family: i32, kind: i32| {
+        format!(
+            "python3 -c \"
+import socket
+try:
+    socket.socket({family}, {kind}, 0)
+    print('opened')
+except OSError as e:
+    print('refused', e.errno)
+\" 2>&1"
+        )
+    };
+    for (name, family, kind) in [
+        ("IPv6", libc::AF_INET6, libc::SOCK_DGRAM),
+        ("RDS", libc::AF_RDS, libc::SOCK_SEQPACKET),
+    ] {
+        let cmd = opening(family, kind);
+        let here = Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .output()
+            .expect("sh is here");
+        if !String::from_utf8_lossy(&here.stdout).contains("opened") {
+            eprintln!("skipped {name}: no such socket here, confined or not");
+            continue;
+        }
+
+        let (_, said) = run(
+            &sandbox(common::workdir("gate-families"), true, Network::Shut),
+            &cmd,
+        );
+        assert!(
+            said.contains(&format!("refused {}", libc::EACCES)),
+            "{name}: a shut gate let the socket open: {said}"
+        );
+    }
+}
+
+/// A confined command cannot write `/dev/shm`, which every process of the person's shares.
+///
+/// note: `/dev` is reached through [`DEVICES`](kamchatka::sandbox::DEVICES) and nothing else, so
+/// a file in the shared memory of the person's other processes is out of reach. The control is the
+/// same write unconfined, or a machine where `/dev/shm` is not writable at all would pass this.
+#[test]
+fn a_confined_command_cannot_write_shared_memory() {
+    if !enforced() {
+        return;
+    }
+    let made = PathBuf::from(format!("/dev/shm/kamchatka-test-{}", std::process::id()));
+    if std::fs::write(&made, "mine").is_err() {
+        eprintln!("skipped: /dev/shm is not writable here, confined or not");
+        return;
+    }
+    std::fs::remove_file(&made).expect("the control is taken away again");
+
+    let (ok, said) = run(
+        &sandbox(common::workdir("shm"), true, Network::NoTcp),
+        &format!("echo theirs > {}", made.display()),
+    );
+    let written = made.exists();
+    let _ = std::fs::remove_file(&made);
+    assert!(!ok, "{said}");
+    assert!(!written, "a confined command wrote into /dev/shm: {said}");
+}
+
 /// A datagram to a port this test holds, sent from a confined command; what arrived, if anything.
 ///
 /// note: loopback rather than a DNS query, so what it checks is the confinement rather than
