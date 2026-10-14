@@ -647,6 +647,27 @@ impl Careful {
             .map(|(_, why)| why.clone())
     }
 
+    /// The rule that keeps an `allow` for the file name `name` from ever deciding, where one does:
+    /// another path rule, not itself an allow, that matches the name.
+    ///
+    /// note: every path rule that matches a call is consulted and the strictest wins, so beside
+    /// `.env*: ask` an allow for `.env` changes nothing, and taken without a word it reads as
+    /// given. Only a name is judged - no `*` and no `/` - because only for a name does matching it
+    /// mean covering every path the allow could decide; `*.txt` and `vendor/` reach further than
+    /// any one rule they meet.
+    pub fn overruled(&self, name: &str) -> Option<(String, Verdict)> {
+        if name.contains(['*', '/']) {
+            return None;
+        }
+        self.paths
+            .lock()
+            .iter()
+            .find(|(other, verdict)| {
+                other != name && *verdict != Verdict::Allow && path_matches(other, name)
+            })
+            .cloned()
+    }
+
     /// The path rules, in the order they are read out.
     pub fn paths(&self) -> Vec<(String, Verdict)> {
         self.paths.lock().clone()

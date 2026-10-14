@@ -36,7 +36,9 @@ A path rule is a file name where `*` matches any characters, a name starting wit
 It's matched against the *last* name in a path, so a rule about a file is just that file's name:
 `--deny 'b.txt*'` is a rule about `b.txt`, but `--deny b.txt` isn't, because a bare name is read as
 a domain. It isn't the glob syntax `fs`'s `glob` argument uses, and a pattern that looks like one
-(`src/**`) stops the session with an explanation of how to write the rule.
+(`src/**`) stops the session with an explanation of how to write the rule. So does an allow for a
+name a broader rule still asks about or refuses: `--allow .env` beside the default `.env*` would
+change nothing, so it's refused, naming `.env*` as the rule to allow instead.
 
 `--on-ask deny` is the default because an unattended run shouldn't be able to do anything nobody
 allowed. The model is told the refusal was for *this call* rather than a standing rule, so it tries

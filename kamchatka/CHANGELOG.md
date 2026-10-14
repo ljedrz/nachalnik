@@ -31,6 +31,10 @@ minor bump may break you.
 
 ### changed
 
+- **An allow for a file name a broader rule still asks about or refuses stops the session.**
+  Every path rule that matches a call is consulted and the strictest wins, so `--allow .env` beside
+  the default `.env*: ask` changed nothing and was taken without a word. It is refused now, naming
+  the rule that decides, which is the one to allow instead.
 - **`/spend` says the figure is this session's since it was started or resumed.** It said "this
   run", and `/restart` starts a fresh session in the same process with its own count, so a run
   piping `/restart` was told one run's total and held to each session's. The ceiling stays a

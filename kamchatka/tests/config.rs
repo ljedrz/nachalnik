@@ -641,6 +641,47 @@ fn a_file_name_read_as_a_domain_says_how_to_write_the_rule() {
     assert_eq!(objection_to("main.rs*"), None);
 }
 
+/// An allow for a file name that a broader rule still asks about or refuses is refused, naming
+/// that rule.
+///
+/// note: every path rule that matches a call is consulted and the strictest wins, so `--allow
+/// .env` beside the default `.env*: ask` changed nothing and was taken without a word. Allowing
+/// the broader rule itself is what changes it, and is still taken.
+#[test]
+fn an_allow_a_broader_rule_overrules_is_refused_naming_it() {
+    use kamchatka::{tools::Subject, wiring::Setup};
+
+    let checked = |allow: &[&str], deny: &[&str]| {
+        Setup {
+            allow: allow.iter().map(|rule| Subject::parse(rule)).collect(),
+            deny: deny.iter().map(|rule| Subject::parse(rule)).collect(),
+            ..Setup::default()
+        }
+        .check()
+        .map_err(|refused| refused.to_string())
+    };
+
+    let refusal = checked(&[".env"], &[]).expect_err("an allow that changes nothing");
+    assert!(
+        refusal.contains("`.env`") && refusal.contains("`.env*`") && refusal.contains("asks"),
+        "{refusal}"
+    );
+    let refusal = checked(&[".env.local"], &[]).expect_err("a longer name under the same default");
+    assert!(refusal.contains("`.env*`"), "{refusal}");
+    // a rule the person wrote overrules it as a default does, and is named as refusing
+    let refusal = checked(&[".npmrc"], &[".npm*"]).expect_err("under a broader deny");
+    assert!(
+        refusal.contains("`.npm*`") && refusal.contains("refuses"),
+        "{refusal}"
+    );
+
+    // the broader rule itself, a name nothing broader matches, and a pattern are all taken
+    checked(&[".env*"], &[]).expect("allowing the rule that asks changes it");
+    checked(&[".env*", ".env"], &[]).expect("and with it allowed, the name is no longer overruled");
+    checked(&[".npmrc"], &[]).expect("a name no rule asks about");
+    checked(&["*.key"], &[]).expect("a pattern reaches further than the rule it meets");
+}
+
 /// A path rule nothing can match stops the program, whichever door it came in by.
 ///
 /// note: `src/**` reads like the glob `fs` takes and is not one: a path rule is a file name or one
