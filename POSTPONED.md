@@ -96,13 +96,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   message type must declare the version it was added in. Meanwhile, `Message::Unknown` lets clients
   survive messages they don't know, and `Attached::version` tells them what the server speaks.
 
-- **`undo` after the token counter changes.** `set_counter`, `recalibrate` and `recount` re-price
-  the context without creating a checkpoint. An `undo` after one that changed a figure restores the
-  old counter's figures, with no `context.recounted` event saying so, and reports every re-priced
-  item as changed even though nothing in it changed; a recount that changes nothing copies nothing,
-  and `undo` doesn't notice it. The open question is whether a recount should be an undoable
-  operation (with a checkpoint and the undo history it uses) or something `undo` re-applies.
-
 - **`compaction::Removed` is the type of every item a compaction report names.** The elided items,
   the ones the kernel refused to touch and the summary that was added are each a `Removed`, so a
   report's type says the opposite of three of its four fields, against the rule of one word per
