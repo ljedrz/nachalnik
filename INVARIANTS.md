@@ -34,8 +34,8 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
 - **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove or elide a pinned
   item and reports it in `CompactionReport::refused`. The same goes for removing the tool call or
   result that a pinned item is paired with, because the two are always sent together or not at all.
-- **One operation is one undo step.** `push_all`, `set_state` over eight ids, `supersede`, a
-  recorded turn: one checkpoint each. An operation that changes nothing creates no checkpoint, and
+- **One operation is one undo step.** `push_all`, `set_state` over eight ids, `set_states`
+  moving them into several, `supersede`, a recorded turn: one checkpoint each. An operation that changes nothing creates no checkpoint, and
   neither does one that is about to fail. `annotate` is the one exception: it takes no checkpoint
   of its own, so an undo takes an annotation back with the operation before it.
 - **A failing `Tool` is not a kernel error.** It becomes an error result that the model sees.

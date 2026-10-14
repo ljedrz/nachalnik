@@ -23,7 +23,8 @@ kernel.redo()?;
 ```
 
 `set_state` reports what it did to each identifier (`changed`, `unchanged`, `unknown`), because
-"there is no item 12" and "item 12 was already excluded" are different answers.
+"there is no item 12" and "item 12 was already excluded" are different answers. `set_states` is the
+same with a state and a note for each item, for one move that doesn't land everything in one place.
 
 `annotate` is the exception: it doesn't create its own undo step. Metadata belongs to the operation
 it describes, so `undo` removes an annotation together with the operation before it. It still

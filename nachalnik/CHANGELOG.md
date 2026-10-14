@@ -20,6 +20,10 @@ minor bump may break you.
   `Config::max_requests_per_turn`, which was the only place it could be set, so changing it meant
   building the kernel again. A change holds from the next request, the running turn's included.
 
+- **`Kernel::set_states`** moves each item to a state and note of its own, as one undo step, and
+  `set_state` is it with one state for all of them. A client putting back a change that moved items
+  from several states needed one `set_state` per state, and so one undo per state for the person.
+
 - **`Kernel::set_default_tool_output_limit`** changes what a tool that sets no limit of its own is
   cut at while the session runs, and `Kernel::default_tool_output_limit` says what it is now. It
   starts at `Config::default_tool_output_limit`, which was the only place it could be set, so a

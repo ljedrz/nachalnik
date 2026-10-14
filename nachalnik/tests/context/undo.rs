@@ -45,6 +45,55 @@ fn undo_reverts_a_whole_operation() {
     assert_eq!(kernel.items().len(), 2);
 }
 
+/// Moving items into several states at once is one operation, and one undo puts every one back.
+#[test]
+fn a_move_into_several_states_is_one_undo() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b"));
+    let c = kernel.push(ContextItem::file("src/c.rs", "c"));
+    kernel.set_state([c], ContextState::Excluded, None);
+    let missing = ContextId(99);
+
+    let change = kernel.set_states([
+        (a, ContextState::Excluded, Some("not needed".to_owned())),
+        (b, ContextState::Pinned, None),
+        (c, ContextState::Excluded, None),
+        (missing, ContextState::Active, None),
+    ]);
+    assert_eq!(change.changed, [a, b]);
+    assert_eq!(change.unchanged, [c], "already where it was asked to go");
+    assert_eq!(change.unknown, [missing]);
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Excluded);
+    assert_eq!(
+        kernel.item(a).unwrap().note.as_deref(),
+        Some("not needed"),
+        "each item with its own note"
+    );
+    assert_eq!(kernel.item(b).unwrap().state, ContextState::Pinned);
+
+    assert!(kernel.undo().unwrap());
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
+    assert_eq!(kernel.item(b).unwrap().state, ContextState::Active);
+    assert_eq!(
+        kernel.item(c).unwrap().state,
+        ContextState::Excluded,
+        "the one undo took back the move and nothing before it"
+    );
+
+    // and a move that changes nothing spends nothing
+    assert!(
+        kernel
+            .set_states([(c, ContextState::Excluded, None)])
+            .is_empty()
+    );
+    assert!(
+        kernel.undo().unwrap(),
+        "the exclusion of `c` is still the next undo"
+    );
+    assert_eq!(kernel.item(c).unwrap().state, ContextState::Active);
+}
+
 #[test]
 fn undo_depth_is_configurable() {
     let kernel = Kernel::new(Config {
