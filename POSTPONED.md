@@ -73,13 +73,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   order the snapshot order; what is missing is a test that can order the two forks, since the kernel
   runs parallel calls on a `JoinSet`.
 
-- **A client that falls behind on the program's own lines can be left with the wrong state.** The
-  session says `Busy`, `Model` and `Reaching` only when they change, and a client more than 256 of
-  these lines behind is told only how many it missed. If one of the lost lines was one of those
-  three, nothing says it again: a piped `--connect` can wait for a `busy: false` that never comes,
-  or miss a network question. A resume already sends the standing state, and a lag could do the
-  same, from the server or by the client resuming. Unblocked by choosing which, and by a client
-  that falls that far behind.
+- **No test makes a connection fall behind the session's own lines.** What a connection more than
+  256 of them behind does - say how many it missed, ask the session where it stands and say that -
+  has no test through a connection. Making one lag needs the session to say that many lines between
+  two looks of the connection, which nothing a client can ask for does. Unblocked by a way to make
+  it.
 
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the

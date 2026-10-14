@@ -259,9 +259,23 @@ where
                     protocol::write(write, &*message).await?;
                 }
                 // the program's own lines are in no log either, and the same rule applies to them
+                //
+                // note: and among them is the state that is said only when it changes - whether
+                // the session is busy, the model, a network question - so what it stands at is
+                // asked for and said again, after the records, as `busy` always is
                 Err(broadcast::error::RecvError::Lagged(frames)) => {
                     flush(kernel, &mut last, write).await?;
                     protocol::write(write, &Message::Missed { frames }).await?;
+                    let (answer, answered) = oneshot::channel();
+                    if asks.send(FromClient::Standing { answer }).is_ok()
+                        && let Ok(standing) = answered.await
+                    {
+                        caught_up(&mut events, kernel, &mut last, write, progress_recorded)
+                            .await?;
+                        for message in &standing {
+                            protocol::write(write, message).await?;
+                        }
+                    }
                 }
                 // note: the session has ended, and this is the last thing this connection does:
                 // write out whatever the log grew while it was being written to. Which branch sees

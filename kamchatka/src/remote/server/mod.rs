@@ -154,6 +154,16 @@ enum FromClient {
         /// Which connection.
         client: u64,
     },
+    /// It fell behind the session's own lines, and wants the state they carry said again.
+    ///
+    /// note: `Busy`, `Model` and `Reaching` are said only when they change, so a client that
+    /// missed one of them is told how many lines it missed and nothing would say it again - a piped
+    /// `--connect` waiting for a `busy: false` that went past, or a network question it never saw.
+    /// What a resume is given, the connection is given again; see `connection::serve`.
+    Standing {
+        /// Where the state goes.
+        answer: oneshot::Sender<Vec<Message>>,
+    },
 }
 
 impl Server {
@@ -834,6 +844,14 @@ impl Serving {
     /// listen backlog, an outcome in an unbounded channel, a `ctrl+c` in its own stream.
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
+            // nothing to seat and nothing to change, so asked of whoever asks
+            FromClient::Standing { answer } => {
+                let mut said = standing(app);
+                said.push(Message::Busy {
+                    busy: app.working(),
+                });
+                let _ = answer.send(said);
+            }
             FromClient::Left { client } => {
                 self.replaced.remove(&client);
                 if self.seated == Some(client) {
@@ -1558,6 +1576,32 @@ mod tests {
         // and client 3 finds a session that has an owner
         attach(&mut serving, &mut app, 3).await;
         assert_eq!(serving.seated, Some(3));
+    }
+
+    /// A connection that fell behind is given the state said only when it changes - the model,
+    /// a network question, and whether the session is busy - as a resume is.
+    #[tokio::test]
+    async fn a_client_that_fell_behind_is_told_where_the_session_stands() {
+        let Wired { mut app, .. } = session();
+        let mut serving = Serving::new(&app);
+
+        let (answer, answered) = oneshot::channel();
+        serving
+            .asks
+            .send(FromClient::Standing { answer })
+            .expect("the session is listening");
+        let asked = serving.asked().await.expect("something to answer");
+        serving.answer(&mut app, asked).await;
+
+        let said = answered.await.expect("it was answered");
+        assert!(
+            said.iter().any(|it| matches!(it, Message::Model { .. }))
+                && said.iter().any(|it| matches!(it, Message::Reaching { .. }))
+                && said
+                    .iter()
+                    .any(|it| matches!(it, Message::Busy { busy: false })),
+            "{said:?}"
+        );
     }
 
     /// A command from a client that has been replaced is refused, rather than done.

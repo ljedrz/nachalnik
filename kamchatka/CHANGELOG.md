@@ -65,6 +65,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A client that falls behind the session's own lines is told where the session stands.** `Busy`,
+  `Model` and `Reaching` are said only when they change, and a client more than 256 lines behind was
+  told only how many it missed, so a piped `--connect` could wait for a `busy: false` that went
+  past, or miss a network question. It is sent all three again after the lag, as a resume is.
 - **An attach refused for a projection too long to send leaves the attached client attached.** The
   newcomer was seated before the size was checked, so the client there before was let go, the
   newcomer was then refused, and nobody had the session. The newcomer is seated only with a
