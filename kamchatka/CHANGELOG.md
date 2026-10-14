@@ -127,6 +127,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`/undo` in a fresh session leaves its setup alone.** `--system-prompt` and each `-f` file were
+  an undo step each, so the first `/undo` before anybody had typed anything took the system
+  instruction away, and the second the file. A fresh session is built with them now, so there is
+  nothing to undo until something happens; a resumed one still adds them as it always did.
 - **The model walking back one of its changes is one undo for the person.** A change whose items
   came from several states was put back with one move per state, and each was an undo of its own.
 - **Two forks of one turn under `--parallel-tool-calls` compare their copies in the order they took

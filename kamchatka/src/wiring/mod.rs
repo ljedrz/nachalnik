@@ -666,9 +666,36 @@ impl Setup {
             default_tool_output_limit: Some(tools::CEILING),
             ..Default::default()
         };
+        // what the session is set up with, read before the kernel is built: a fresh session is
+        // built with it, so it is where the undo history starts rather than the first thing an
+        // `undo` takes away, and a file that cannot be read is refused before a session exists
+        let mut setup = Vec::new();
+        if let Some(system) = &self.system {
+            setup.push(ContextItem::system(system.clone()).pinned());
+        }
+        for path in &self.files {
+            setup.push(
+                // note: `{e:#}` for the whole chain, as `/attach` prints it and for the reason its
+                // note gives: what could not be done, and then the operating system's own account
+                // of why. Without the `#` the cause is dropped and the refusal reads as
+                // `missing.png: could not read missing.png` - the file named twice and no word
+                // about why - or as `fifo: fifo is not a file`, with `os error` nowhere
+                attach::attached(path)
+                    .map_err(|e| format!("{e:#}"))?
+                    .because("named on the command line")
+                    .pinned(),
+            );
+        }
         let kernel = match self.resume {
-            Some(snapshot) => Kernel::resume(config, snapshot),
-            None => Kernel::new(config),
+            // added to a session that already has a history, as anything else would be
+            Some(snapshot) => {
+                let kernel = Kernel::resume(config, snapshot);
+                for item in setup {
+                    kernel.push(item);
+                }
+                kernel
+            }
+            None => Kernel::with_items(config, setup),
         };
         // note: a model caught repeating itself can answer with thousands of calls; past this
         // many in one answer the rest are answered and not run. Far more than an answer that
@@ -830,23 +857,6 @@ impl Setup {
         // servers' tools still come after, because they are connected once this is done
         for (subject, verdict) in ruled {
             kernel.record_rule(subject, verdict, None, false);
-        }
-
-        if let Some(system) = self.system {
-            kernel.push(ContextItem::system(system).pinned());
-        }
-        for path in &self.files {
-            kernel.push(
-                // note: `{e:#}` for the whole chain, as `/attach` prints it and for the reason its
-                // note gives: what could not be done, and then the operating system's own account
-                // of why. Without the `#` the cause is dropped and the refusal reads as
-                // `missing.png: could not read missing.png` - the file named twice and no word
-                // about why - or as `fifo: fifo is not a file`, with `os error` nowhere
-                attach::attached(path)
-                    .map_err(|e| format!("{e:#}"))?
-                    .because("named on the command line")
-                    .pinned(),
-            );
         }
 
         let (outcomes, finished) = mpsc::unbounded_channel();
@@ -1081,6 +1091,34 @@ mod tests {
         app.kernel
             .push(ContextItem::user("something said before the restart"));
         app.kernel.snapshot()
+    }
+
+    /// What a session is set up with is not the first thing an undo takes away.
+    ///
+    /// note: `--system-prompt` and `-f` were pushed onto a fresh kernel, each an operation of its
+    /// own, so `/undo` in a session nobody had typed in yet took the system instruction away, and
+    /// a second took the file.
+    #[test]
+    fn a_fresh_sessions_setup_is_not_undone() {
+        let file = std::env::temp_dir().join(format!("kamchatka-setup-{}.txt", std::process::id()));
+        std::fs::write(&file, "notes").expect("written");
+        let app = wired(Setup {
+            system: Some("be brief".to_owned()),
+            files: vec![file.display().to_string()],
+            record: false,
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        })
+        .app;
+        let _ = std::fs::remove_file(&file);
+
+        assert_eq!(app.kernel.items().len(), 2, "the instruction and the file");
+        assert!(
+            !app.kernel.undo().expect("nothing holds calls"),
+            "an undo took the setup away"
+        );
+        assert_eq!(app.kernel.items().len(), 2);
     }
 
     /// A restart starts a session of its own rather than carrying the old one on a second time.

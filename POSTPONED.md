@@ -58,14 +58,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   added to `sandbox::DEVICES`, are unchecked. Unblocked by a run on a machine where `/dev/shm` is
   writable.
 
-- **The first undo in a fresh session removes its setup.** `--system-prompt` and `-f` add items to
-  the context like anything else, so each is an undo step: `/undo` in a session nobody has typed in
-  yet removes the system instruction, and a second removes the attached file, each only reported as
-  `undone`. A resumed session says there's nothing to undo, because `Kernel::resume` restores its
-  items without a checkpoint. A host can't do the same for its own setup (the undo history can't be
-  read from outside, and an undo followed by a redo leaves two pointless records), so this needs a
-  kernel operation that clears the undo history, a core addition only for a client's benefit.
-
 - **`/params` showing a parameter's type and range.** It shows the default and maximum where the
   model listing publishes them, and nothing else, because no endpoint publishes more. A table kept
   in this workspace would just be someone's documentation as of the day it was copied. Unblocked by
