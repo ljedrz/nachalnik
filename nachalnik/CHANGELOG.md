@@ -20,6 +20,11 @@ minor bump may break you.
   `Config::max_requests_per_turn`, which was the only place it could be set, so changing it meant
   building the kernel again. A change holds from the next request, the running turn's included.
 
+- **`Kernel::with_items`** builds a kernel with items already in its context, announced as pushes
+  would be and before the first checkpoint, as a resumed kernel's items are. A client that pushed
+  its setup after `Kernel::new` - a system instruction, files it was started with - had each one as
+  an operation of its own, and the first `undo` took it away.
+
 - **`Kernel::set_states`** moves each item to a state and note of its own, as one undo step, and
   `set_state` is it with one state for all of them. A client putting back a change that moved items
   from several states needed one `set_state` per state, and so one undo per state for the person.

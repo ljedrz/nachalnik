@@ -94,6 +94,47 @@ fn a_move_into_several_states_is_one_undo() {
     assert_eq!(kernel.item(c).unwrap().state, ContextState::Active);
 }
 
+/// What a kernel is built with is where its undo history starts, and is announced all the same.
+#[test]
+fn a_kernel_built_with_items_has_nothing_to_undo() {
+    let kernel = Kernel::with_items(
+        Config::default(),
+        [
+            ContextItem::system("be brief").pinned(),
+            ContextItem::file("src/a.rs", "a"),
+        ],
+    );
+
+    assert_eq!(kernel.items().len(), 2);
+    assert_eq!(kernel.items()[0].state, ContextState::Pinned);
+    assert!(
+        !kernel.undo().unwrap(),
+        "the setup is not an operation to take back"
+    );
+    assert_eq!(kernel.items().len(), 2);
+
+    let said: Vec<&str> = kernel
+        .history()
+        .iter()
+        .map(|record| record.event.name())
+        .collect();
+    assert_eq!(
+        said,
+        [
+            "session.started",
+            "context.added",
+            "context.changed",
+            "context.added"
+        ],
+        "announced as pushes would be, the pin included"
+    );
+
+    // and what comes after is undone as ever
+    kernel.push(ContextItem::user("hello"));
+    assert!(kernel.undo().unwrap());
+    assert!(!kernel.undo().unwrap());
+}
+
 #[test]
 fn undo_depth_is_configurable() {
     let kernel = Kernel::new(Config {

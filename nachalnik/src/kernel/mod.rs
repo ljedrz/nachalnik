@@ -301,10 +301,28 @@ impl Kernel {
     ///
     /// [`Calibrating<BytesPerToken>`]: Calibrating
     pub fn new(config: Config) -> Self {
+        Self::with_items(config, [])
+    }
+
+    /// Creates a kernel as [`Kernel::new`] does, with `items` already in its context, in order.
+    ///
+    /// note: for what a client sets a session up with - a system instruction, files named on a
+    /// command line. Pushed after `new`, each is an operation like any other, so the first
+    /// [`Kernel::undo`] in a session nobody has said anything in yet takes the setup away. Placed
+    /// here, they are where the undo history starts, as the items of a resumed session are. Each
+    /// is still announced as it would be pushed, after [`Event::SessionStarted`].
+    pub fn with_items(config: Config, items: impl IntoIterator<Item = ContextItem>) -> Self {
         let kernel = Self::build(config);
         kernel.emit(Event::SessionStarted {
             session: kernel.session_name(),
         });
+        {
+            let held = kernel.0.counter.read();
+            let mut context = kernel.0.context.write();
+            for item in items {
+                kernel.added(&mut context, item, &**held);
+            }
+        }
 
         kernel
     }
