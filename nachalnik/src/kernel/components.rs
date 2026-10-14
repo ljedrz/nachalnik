@@ -306,9 +306,9 @@ impl Kernel {
     /// model may mean a repetition - a read after a write - and a loop of distinct calls is still a
     /// loop.
     ///
-    /// note: a setter rather than a field of [`Config`], which a caller builds by its fields and
-    /// which would break every one of them; like a field of it, a setting and not part of the
-    /// session's state, so a snapshot does not carry it.
+    /// note: a setter rather than a field of [`Config`](crate::Config), which a caller builds by
+    /// its fields and which would break every one of them; like a field of it, a setting and not
+    /// part of the session's state, so a snapshot does not carry it.
     pub fn set_call_ceiling(&self, ceiling: Option<usize>) -> Option<usize> {
         std::mem::replace(&mut *self.0.call_ceiling.write(), ceiling)
     }
