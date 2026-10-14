@@ -372,6 +372,12 @@ fn a_session_on_the_web_writes_every_session_out() {
             "a request from somewhere else was taken: {line} {extra}{host}\n{answer}"
         );
     }
+    // and one opened without the key is told what to open instead
+    let answer = foreign("GET /", "", page.as_str());
+    assert!(
+        answer.contains("missing the page's key") && answer.contains(&format!("http://{page}/")),
+        "{answer}"
+    );
 
     post("first", "/restart");
     // the restart lets go of every client, which is this stream ending. The page comes back into

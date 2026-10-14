@@ -197,7 +197,9 @@ cause harm, what stops them, and what doesn't.
   means running commands as the person who started it. `--serve` binds to loopback only and makes
   its socket `0600`, and there is no other authentication. `--web` serves a page for the session,
   whose only credential is a random key in its address, printed at startup; whoever has the address
-  controls the session like the person at the keyboard. It listens on loopback, or on an IP address
+  controls the session like the person at the keyboard. The key is 32 bits, so that it can be
+  typed on a phone, and after 100 wrong keys the page refuses everything for a minute, which puts
+  guessing it at about 40 years for even odds. It listens on loopback, or on an IP address
   in a private range, in which case every device on that network can read the session's traffic, and
   any that learns the address can control it, and `kamchatka` warns about this at startup and in
   each session. A host name is taken only where it resolves to this machine, as `localhost` does;
@@ -206,7 +208,7 @@ cause harm, what stops them, and what doesn't.
   page only accepts same-origin JSON requests addressed to an IP address or `localhost`. That rests
   on the browser saying where a request came from, with `Origin` or `Sec-Fetch-Site`, and where one
   is too old to send either, on the key: every route is beneath it, and a page that was never shown
-  the address can't guess it. Clients can answer permission questions, so the session's own commands
+  the address can't guess it in time. Clients can answer permission questions, so the session's own commands
   are kept out too: ports the session or its page are served on are closed to every command
   sandboxed while they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel
   the ruleset is `Partial` and a port is closed only where the network is shut or asked about, which
