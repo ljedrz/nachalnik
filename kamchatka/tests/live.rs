@@ -1126,7 +1126,7 @@ async fn agent(
             confiner: None,
             limits: limits.clone(),
             stragglers: Default::default(),
-            layout: Default::default(),
+            layout: kamchatka::tools::Layout::Wrapped,
         },
         reach,
         limits.clone(),

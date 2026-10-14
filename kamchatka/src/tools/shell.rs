@@ -1348,7 +1348,7 @@ mod tests {
             confiner: None,
             limits: Limits::default(),
             stragglers: Default::default(),
-            layout: Default::default(),
+            layout: Layout::Wrapped,
         }
     }
 
@@ -1616,7 +1616,7 @@ mod tests {
                 confiner: Some(std::env::temp_dir().join("kamchatka-is-not-run-here")),
                 limits: Limits::default(),
                 stragglers: Default::default(),
-                layout: Default::default(),
+                layout: Layout::Wrapped,
             }
             .spec()
             .description

@@ -353,11 +353,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   `SIGCONT` is untested. It matters less now that failed turns are retried in place; unblocked by
   deciding it is worth the code.
 
-- **Tests spell the default tool layout as `Default::default()`.** The tests that build a `Shell`
-  or a `wiring::Setup`, or call `introspect::install`, pass `layout: Default::default()` (a few
-  dozen places). `Layout::Wrapped` would say which layout they test. Worth doing with the next
-  change that touches those tests.
-
 - **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
   `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
   dossiers, the templates and the fork's preamble but not that sentence. Changing it would change
