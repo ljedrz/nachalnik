@@ -23,17 +23,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   repeats `invoke`'s refuse-or-start sequence. Each is a refactor with no change in behaviour, and
   waits for the next change that touches the loop, which would review it.
 
-- **An MCP tool's picture never reaches the model in `kamchatka`.** The bridge carries a picture a
-  tool returns as a `Content::Blob`, up to 5 MB of base64, and declares no output limit, so
-  `kamchatka`'s floor for tools without one - 32,000 bytes, there so that somebody else's server
-  cannot fill the context - applies. `Content::truncate_to` measures a blob by its base64 and
-  turns a result over the limit into text, which names the picture: any screenshot is replaced by
-  `[image/png, …]` and a note that bytes were cut, which asking for less cannot help. Each half is
-  deliberate, and together they undo what both changelogs say the bridge does. The bridge's own
-  bound as its limit raises the ceiling for all of an MCP tool's text as well; a ceiling of its own
-  for pictures, or a truncation that keeps blobs whole and cuts only the text around them, changes
-  what a tool's limit means. Unblocked by choosing which.
-
 - **`--connect` to a listener that accepts and then closes retries for a minute.** A first attempt
   that cannot connect fails at once, and one that connects and cannot send `attach`, or reads the
   connection closing before anything came back, is taken for a dropped session: the client retries

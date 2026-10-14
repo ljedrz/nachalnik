@@ -224,6 +224,50 @@ async fn an_answer_given_in_advance_covers_a_tool_that_did_not_exist_yet() {
     );
 }
 
+/// A server's picture reaches the model whole, and only the text beside it is cut.
+///
+/// note: a screenshot is megabytes of base64, and measured with its text against the 32,000 bytes
+/// a server's tool is cut at, it was replaced by a sentence naming it: the model never saw the
+/// picture it asked for.
+#[tokio::test]
+async fn a_servers_picture_reaches_the_model_whole() {
+    let spec = spec!();
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "py__screenshot", json!({}))]),
+        ModelResponse::text("a picture"),
+    ];
+    let (wired, _servers) = session(format!("{spec} --pictures"), &["py"], script).await;
+    let run = driven(wired, "take a screenshot\n").await;
+
+    let results: Vec<_> = run
+        .app
+        .kernel
+        .items()
+        .into_iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .collect();
+    let shown = results
+        .iter()
+        .find(|item| item.is_projected())
+        .expect("a result the model is shown");
+    let pictures = shown.content.blobs();
+    assert_eq!(pictures.len(), 1, "{}", shown.content.to_text());
+    assert_eq!(pictures[0].byte_len(), 100_011, "the picture, whole");
+    assert!(
+        shown
+            .content
+            .to_text()
+            .contains("bytes truncated by an output limit"),
+        "the text beside it is cut: {}",
+        shown.content.to_text()
+    );
+    // and the whole of it is kept, as for any output that was cut
+    assert!(
+        results.iter().any(|item| !item.is_projected()),
+        "the whole output is not kept"
+    );
+}
+
 /// `setup tools` says what cuts a server's tool short, which is the kernel's own ceiling.
 ///
 /// note: the limits table is keyed by subject and a tool from a server declares none of those

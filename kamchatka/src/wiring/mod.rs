@@ -674,6 +674,11 @@ impl Setup {
         // many in one answer the rest are answered and not run. Far more than an answer that
         // means its calls asks for, and few enough that a loop costs a turn rather than a context
         kernel.set_call_ceiling(Some(CALLS));
+        // note: a screenshot from an MCP server is megabytes of base64, over any limit a tool's
+        // text is held to, so a picture is kept whole up to what the bridge carries and only the
+        // text around it is cut; see `Kernel::set_picture_limit`. Only a server's tools return one
+        #[cfg(feature = "mcp")]
+        kernel.set_picture_limit(Some(nachalnik_mcp::LARGEST_IMAGE));
 
         // note: subscribed before anything is plugged in, so that the wiring is on the trace like
         // everything else. Setting the provider, the policy, the compactor and each tool are all
