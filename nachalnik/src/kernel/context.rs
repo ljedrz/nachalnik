@@ -154,9 +154,26 @@ impl Kernel {
         state: ContextState,
         note: Option<String>,
     ) -> StateChange {
-        let ids: Vec<_> = ids.into_iter().collect();
+        self.set_states(ids.into_iter().map(|id| (id, state, note.clone())))
+    }
+
+    /// Moves each given item to a state of its own, with a note of its own, as one undoable
+    /// operation, and returns the ones that actually changed.
+    ///
+    /// note: [`Kernel::set_state`] with a state per item, for a move that is one thing somebody
+    /// did but does not land everything in one place - putting back a change that excluded some
+    /// items and pinned others, say. Made of one `set_state` per state, it was an undo step per
+    /// state, and one `undo` took back part of it.
+    ///
+    /// note: an item named twice is moved twice, in the order given, and the second move is the
+    /// one it ends in.
+    pub fn set_states(
+        &self,
+        changes: impl IntoIterator<Item = (ContextId, ContextState, Option<String>)>,
+    ) -> StateChange {
+        let changes: Vec<_> = changes.into_iter().collect();
         let mut outcome = StateChange::default();
-        if ids.is_empty() {
+        if changes.is_empty() {
             return outcome;
         }
 
@@ -166,10 +183,12 @@ impl Kernel {
             // snapshot of the context the changes are actually applied to
             let mut context = self.0.context.write();
             let mut targets = Vec::new();
-            for id in ids {
+            for (id, state, note) in changes {
                 match context.item(id) {
                     None => outcome.unknown.push(id),
-                    Some(_) if context.would_change(id, state, &note) => targets.push(id),
+                    Some(_) if context.would_change(id, state, &note) => {
+                        targets.push((id, state, note))
+                    }
                     Some(_) => outcome.unchanged.push(id),
                 }
             }
@@ -182,7 +201,7 @@ impl Kernel {
             }
             context.checkpoint();
 
-            for id in targets {
+            for (id, state, note) in targets {
                 let Some(from) = context.set_state(id, state, note.clone()) else {
                     continue;
                 };
@@ -190,7 +209,7 @@ impl Kernel {
                     id,
                     from,
                     to: state,
-                    note: note.clone(),
+                    note,
                 });
                 outcome.changed.push(id);
             }
