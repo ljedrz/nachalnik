@@ -469,7 +469,7 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
         ),
         (
             "servers",
-            r#"{ "allow-server": ["nope"] }"#,
+            r#"{ "deny-server": ["nope"] }"#,
             "is not a server this run starts",
         ),
         (
@@ -1710,11 +1710,13 @@ fn a_rule_nothing_is_judged_under_is_refused() {
     }
 }
 
-/// A server rule naming no server this run starts is refused where it is given, and says which
-/// servers there are.
+/// A deny naming no server this run starts is refused where it is given, and says which servers
+/// there are; an allow naming one is said and taken.
 ///
 /// note: `--deny-server filess` beside `--mcp files=...` refused nothing, and a headless run given
-/// `--on-ask allow` ran every call to `files` unasked, under a rule that read as given.
+/// `--on-ask allow` ran every call to `files` unasked, under a rule that read as given. An allow of
+/// a server that is not there grants nothing, and a settings file allowing somebody's usual
+/// servers was refused whenever `--mcp` left one of them out.
 #[cfg(feature = "mcp")]
 #[test]
 fn a_server_rule_naming_no_server_is_refused() {
@@ -1727,8 +1729,15 @@ fn a_server_rule_naming_no_server_is_refused() {
         "{said}"
     );
     let (ok, said) = run(&["--allow-server", "files"], "");
-    assert!(!ok, "{said}");
-    assert!(said.contains("it starts none"), "{said}");
+    assert!(
+        ok,
+        "an allow of a server not started grants nothing, and is taken: {said}"
+    );
+    assert!(
+        said.contains("`--allow-server` names `files`, which this run does not start")
+            && said.contains("it starts none"),
+        "and said: {said}"
+    );
 
     // and one typed is not blamed on a file that carried the other list, as the shipped one does
     let path = settings(

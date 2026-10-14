@@ -48,7 +48,9 @@ MCP servers are allowed the same way, and which server a tool came from is a sep
 `--mcp files=… --allow-server files` is all it takes to allow one server: the same rule the
 permissions tab records when someone answers **always** at the prompt. Without it, the tools are
 offered but every call is refused, because naming a server on the command line doesn't mean
-trusting it to run.
+trusting it to run. An allow for a server this run doesn't start is taken and said at startup, so a
+settings file can allow your usual servers; a deny for one stops the run instead, since it is most
+likely a misspelling that leaves the server it meant unrefused.
 
 An unattended run needs to know when to stop. `--deadline 300` interrupts whatever is running and
 exits normally: what arrived is kept and the session is saved, which wouldn't happen if the process
