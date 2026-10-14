@@ -1354,8 +1354,12 @@ function named(model) {
   document.getElementById("model").textContent = model ? model.model : "no model";
 }
 
+// note: the session's own figure, which is the terminal's status line's - anchored on what the
+// provider charged for the last request. Adding up the budget here showed the counter's raw estimate
+// instead, and the two drifted apart as the session grew. The sum is only for a session that does
+// not send the figure
 function budget(m) {
-  const used = m.budget.context_tokens + m.budget.tool_tokens;
+  const used = m.expected ?? m.budget.context_tokens + m.budget.tool_tokens;
   const of = m.budget.limit ? ` of ${m.budget.limit.toLocaleString()}` : "";
   const spent = m.spend ? `, ${m.spent.toLocaleString()}/${m.spend.toLocaleString()} spent` : "";
   document.getElementById("budget").textContent = `~${used.toLocaleString()}${of}${spent}`;

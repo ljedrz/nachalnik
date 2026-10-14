@@ -495,6 +495,16 @@ pub struct Attached {
     pub model: Option<ModelInfo>,
     /// What the next request comes to, and how much room there is.
     pub budget: Budget,
+    /// What the next request is expected to cost, as the terminal's status line says it; see
+    /// `App::expected`.
+    ///
+    /// note: beside [`Attached::budget`] rather than in place of it, because the budget is the
+    /// counter's own estimate and this is anchored on what the provider charged for the last
+    /// request, where it said. A client that showed the budget's figure showed a different number
+    /// from the terminal's. `None` from a session that predates the field, where the budget's
+    /// figure is all there is.
+    #[serde(default)]
+    pub expected: Option<usize>,
     /// What the provider has charged for this session so far.
     pub spent: u64,
     /// What it may charge before the session stops, if anything says.

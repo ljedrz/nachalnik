@@ -569,9 +569,10 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     // last one really cost wherever there is one to take it from. The `~` stays either way -
     // both are predictions - but an anchored one is out by a few percent of what has changed
     // since the last request rather than of the whole context, and a draft moving the figure is
-    // only worth showing at that accuracy. See `App::anchored`
+    // only worth showing at that accuracy. See `App::anchored`, and `App::expected` for why every
+    // other view shows the same figure
     let draft = app.drafted();
-    let next = app.anchored(going, budget).unwrap_or_else(|| budget.used()) + draft;
+    let next = app.expected(going, budget) + draft;
     let used = thousands(next);
     let fraction = budget
         .limit

@@ -75,6 +75,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The web page and `--connect` show the same token figure as the terminal.** The status line
+  shows what the next request is expected to cost anchored on what the provider charged for the
+  last one, while the page added up the counter's raw estimate for itself, and `--connect` printed
+  that estimate too. On a context the counter is wrong about, the two drifted apart by its whole
+  error. A projection carries the status line's figure now as `Attached::expected`, which a
+  session from before it leaves out and a client then reads as the estimate.
 - **The model can undo after a resume what it changed before one.** The history the `context`
   tool's `undo` walks was kept in memory alone, so a resumed session had nothing for the model to
   undo, and an exclusion it had made came back only by `restore`. A snapshot now carries it,

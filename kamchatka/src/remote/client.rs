@@ -727,7 +727,7 @@ impl<'a> Client<'a> {
             attached.session,
             attached.seq,
             attached.items.len(),
-            attached.budget.used(),
+            attached.expected.unwrap_or_else(|| attached.budget.used()),
             match &attached.model {
                 Some(model) => format!(", {}", model.model),
                 None => String::new(),
