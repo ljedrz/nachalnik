@@ -130,4 +130,4 @@ reqwest = { version = "0.13.2", default-features = false, features = ["http2", "
 # note: code that builds a client must install this provider, since `no-provider` gives no
 # fallback. It must use the same rustls major version as reqwest, or the provider ends up in a
 # different rustls than the one making requests.
-rustls = { version = "0.23.27", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }

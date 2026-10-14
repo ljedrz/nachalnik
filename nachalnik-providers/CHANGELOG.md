@@ -60,6 +60,13 @@ minor bump may break you.
   wait of nothing, so the request went again at once to a server that had asked to be left alone.
   It is held to the four digits an HTTP date has, and anything else gets the doubling.
 
+### security
+
+- **`rustls` is required at 0.23.46 or later**, the first whose stored TLS sessions keep their
+  secrets out of `Debug` output (RUSTSEC-2026-0346). Only a custom session store that logs what it
+  stores was exposed, and the clients here use the built-in one, but the floor of 0.23.27 let a
+  build resolve to an affected version and `cargo deny` refuse it.
+
 ## [0.9.1] - 2026-10-08
 
 ### added
