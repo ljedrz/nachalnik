@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A stream that breaks before a byte of its answer arrives is sent again.** A reset HTTP/2
+  stream, or a body that would not decode from its first byte, ended the turn, though nothing had
+  been handed on and nothing of an answer was known to be made. It is waited out now as a busy
+  server is, up to the same number of tries. One that breaks after its first byte is still not
+  sent again, since that answer may already be billed.
 - **A Gemini stream that carries no candidate is refused.** One that reported a cost and nothing
   else was read as a finished turn with nothing said and `EndTurn`, where a Chat Completions
   stream with no choice in it is refused, so a fault at the endpoint read as a model with nothing to

@@ -991,6 +991,84 @@ async fn a_refusal_as_the_first_event_of_a_stream_is_waited_out() {
     }
 }
 
+/// Answers each request with the next of `bodies` as a 200 stream - the last one for ever after -
+/// where a body promised longer than it is breaks off after what it holds; and counts the requests.
+async fn broken_in_turn(bodies: Vec<(&'static str, bool)>, requests: Arc<AtomicUsize>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let n = requests.fetch_add(1, Ordering::SeqCst);
+            let (body, broken) = bodies[n.min(bodies.len() - 1)];
+            let promised = body.len() + if broken { 64 } else { 0 };
+            let mut discard = [0u8; 16384];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                         Content-Length: {promised}\r\n\r\n{body}"
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A stream that breaks before a byte of its answer arrived is sent again; one that breaks after
+/// is not.
+///
+/// note: a reset stream, or a body that would not decode from its first byte, ended the turn,
+/// though nothing had been handed on and nothing of an answer was known to be made. After its first
+/// byte an answer may be billed, and a second attempt could pay for it twice.
+#[tokio::test(start_paused = true)]
+async fn a_stream_broken_before_its_first_byte_is_sent_again() {
+    const ANSWER: &str =
+        "data: {\"choices\":[{\"delta\":{\"content\":\"here\"},\"finish_reason\":\"stop\"}]}\n\n";
+    let openai = |url: &str| {
+        dialects(url)
+            .into_iter()
+            .find(|(dialect, _)| *dialect == "openai")
+            .map(|(_, provider)| provider)
+    };
+
+    let requests = Arc::new(AtomicUsize::new(0));
+    let url = broken_in_turn(vec![("", true), (ANSWER, false)], requests.clone()).await;
+    let Some(provider) = openai(&url) else {
+        return;
+    };
+    let response = asked(provider)
+        .await
+        .expect("the second attempt is answered");
+    assert_eq!(said(&response), "here");
+    assert_eq!(requests.load(Ordering::SeqCst), 2);
+
+    // broken after the first byte: once, and the break is the answer
+    let requests = Arc::new(AtomicUsize::new(0));
+    let url = broken_in_turn(
+        vec![("data: {\"cho", true), (ANSWER, false)],
+        requests.clone(),
+    )
+    .await;
+    let provider = openai(&url).expect("built above");
+    asked(provider)
+        .await
+        .expect_err("a stream broken mid-line is not an answer");
+    assert_eq!(requests.load(Ordering::SeqCst), 1, "sent once");
+
+    // and one that breaks every time is given up on with what the transport said
+    let requests = Arc::new(AtomicUsize::new(0));
+    let url = broken_in_turn(vec![("", true)], requests.clone()).await;
+    let provider = openai(&url).expect("built above");
+    asked(provider).await.expect_err("broken every time");
+    assert!(requests.load(Ordering::SeqCst) > 1, "it was sent again");
+}
+
 /// Answers every request with a `429` that names no wait, and notes when each arrived.
 async fn busy(arrived: Arc<std::sync::Mutex<Vec<tokio::time::Instant>>>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");

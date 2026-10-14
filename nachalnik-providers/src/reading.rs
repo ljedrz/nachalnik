@@ -112,6 +112,19 @@ pub(crate) enum Read {
     },
 }
 
+/// A stream that broke before a single byte of its body arrived: what the transport said, causes
+/// and all. See [`read`].
+#[derive(Debug)]
+pub(crate) struct BrokeOff(pub(crate) String);
+
+impl std::fmt::Display for BrokeOff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for BrokeOff {}
+
 /// Reads a stream to its end, handing each event to `events` as it arrives.
 ///
 /// note: what stops this is the server, an interrupt, or the stall watch - and once anything has
@@ -178,8 +191,16 @@ pub(crate) async fn read(
             // ends early. Not retried: every attempt is billed, and an answer that reliably
             // outruns an upstream's patience would be paid for four times and fail anyway
             Ok(Err(e)) => {
-                // nothing arrived at all, so there is nothing to keep and the transport's own
-                // account, with its causes, is the most useful thing there is
+                // note: not a byte of the body, so nothing was handed to anybody and nothing of an
+                // answer is known to have been made - a reset stream, a body that would not decode
+                // from its first byte. That is the one break worth sending again, and `sent` does,
+                // as it would for a busy server. One that broke after its first byte may already be
+                // billed, and is not
+                if unstreamed.is_empty() && seen.is_empty() {
+                    return Err(BrokeOff(crate::with_causes(&e)).into());
+                }
+                // nothing arrived that was an event, so there is nothing to keep and the
+                // transport's own account, with its causes, is the most useful thing there is
                 if seen.is_empty() {
                     return Err(crate::with_causes(&e).into());
                 }
