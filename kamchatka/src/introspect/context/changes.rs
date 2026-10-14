@@ -205,9 +205,11 @@ impl Undoing {
     /// that went straight to `set_state` would take the pin off again, silently - the one thing
     /// the word pin promises will not happen.
     ///
-    /// note: grouped by the state they land in, rather than an item at a time. One operation is
-    /// one undo, and an item at a time, walking back a move of three items would leave three
-    /// checkpoints on the person's stack - three undos for what the model called one change.
+    /// note: one [`Kernel::set_states`] for the whole of it, rather than a `set_state` an item or a
+    /// state at a time. One operation is one undo, and walking back a move of three items into two
+    /// states would otherwise leave two checkpoints on the person's stack - two undos for what the
+    /// model called one change. Grouped by the state they land in all the same, for saying what
+    /// was done.
     ///
     /// note: `own_turn` is `None` because a change recorded earlier cannot be about the turn this
     /// call is speaking in: that item did not exist when the change was made, and identifiers are
@@ -250,9 +252,9 @@ impl Undoing {
                         .collect::<Vec<_>>()
                         .join(", ")
                 });
-                for (state, note, ids) in groups {
-                    kernel.set_state(ids, state, note);
-                }
+                kernel.set_states(groups.into_iter().flat_map(|(state, note, ids)| {
+                    ids.into_iter().map(move |id| (id, state, note.clone()))
+                }));
 
                 Applied {
                     inverse: (!back.is_empty()).then_some(Self::States(back)),
