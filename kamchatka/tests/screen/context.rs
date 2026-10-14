@@ -1702,7 +1702,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
             confiner: None,
             limits: limits.clone(),
             stragglers: Default::default(),
-            layout: Default::default(),
+            layout: kamchatka::tools::Layout::Wrapped,
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),

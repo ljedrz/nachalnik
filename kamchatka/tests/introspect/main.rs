@@ -102,7 +102,12 @@ fn agent(
         policy.set(&Subject::parse(domain), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
-    let anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
+    let anchor = introspect::install(
+        &kernel,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
 
     (kernel, provider, anchor)
 }

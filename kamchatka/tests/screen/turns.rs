@@ -826,7 +826,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             confiner: Some(std::path::PathBuf::from("/self")),
             limits: Limits::default(),
             stragglers: Default::default(),
-            layout: Default::default(),
+            layout: kamchatka::tools::Layout::Wrapped,
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),

@@ -98,7 +98,7 @@ pub fn builtin_under(
             confiner: None,
             limits: Limits::default(),
             stragglers: Default::default(),
-            layout: Default::default(),
+            layout: kamchatka::tools::Layout::Wrapped,
         },
         Reach {
             workdir: dir.to_path_buf(),
