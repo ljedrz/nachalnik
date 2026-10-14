@@ -109,6 +109,60 @@ async fn session(
     (wired, servers)
 }
 
+/// A call to a server's tool that never answers is given up on at `--mcp-timeout`, naming the
+/// server.
+///
+/// note: `hang` sleeps for ten minutes, and the call held the turn until somebody interrupted it -
+/// a headless run until its `--deadline`, if it had one.
+#[tokio::test]
+async fn a_call_a_server_never_answers_is_given_up_on_at_its_limit() {
+    let spec = spec!();
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "py__hang", json!({}))]),
+        ModelResponse::text("it did not answer"),
+    ];
+    let wired = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        allow: vec![Subject::Server("py".to_owned())],
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    wired
+        .app
+        .kernel
+        .set_provider(Arc::new(ScriptedProvider::new(script)));
+    let _servers = kamchatka::mcp::attach_within(
+        &wired.app.kernel,
+        &wired.app.policy,
+        &[spec],
+        Some(std::time::Duration::from_secs(1)),
+    )
+    .await
+    .expect("the server did not start");
+
+    let run = tokio::time::timeout(std::time::Duration::from_secs(20), driven(wired, "wait\n"))
+        .await
+        .expect("a call nobody answers held the turn past its limit");
+    let told = run.app.kernel.items().iter().any(|item| {
+        matches!(item.kind, ContextKind::ToolResult { is_error: true, .. })
+            && item
+                .content
+                .to_text()
+                .contains("`py` did not answer within 1s")
+    });
+    assert!(
+        told,
+        "the call failed without naming the server and the limit: {}",
+        run.prose
+    );
+}
+
 /// Drives one with a line typed into it, and hands back what came out of both ends.
 async fn driven(wired: Wired, line: &str) -> Run {
     let Wired {

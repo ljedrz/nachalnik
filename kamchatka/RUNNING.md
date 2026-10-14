@@ -80,7 +80,10 @@ can never be reached, since someone who set a limit expects the run to be limite
 
 `--deadline` counts from program start, so it also covers an endpoint that never answers and an MCP
 server that never finishes starting, and `/restart` doesn't reset it. It can't interrupt a `/model`
-or `/endpoint` switch, which always finishes first.
+or `/endpoint` switch, which always finishes first. A call to an MCP server's tool is given up on
+after ten minutes without an answer, saying which server; `--mcp-timeout SECONDS` changes that, and
+`--mcp-timeout 0` waits as long as the server takes. Starting a server has no such limit, since the
+first `npx -y` can take minutes to download its package.
 
 A busy endpoint (a `429`, a `503`, a connection that timed out) is asked again after waits that double
 from two seconds. A session with a screen gives up after four tries, because someone watching would
