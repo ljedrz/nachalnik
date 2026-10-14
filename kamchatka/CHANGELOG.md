@@ -50,6 +50,10 @@ minor bump may break you.
 
 ### added
 
+- **A QR code of the `--web` address.** It is printed under the address at startup where stdout
+  is a terminal, shown in a panel as the session starts where the page is on the network and a
+  screen covers what was printed, and shown again by the new `/web`. The encoder is the
+  program's own, and the code is drawn white on black whatever the terminal's colours.
 - **`/requests`** shows how many requests one turn sends before it pauses, and `/requests N`
   changes it while the session runs, from the next request on; `0` is no limit, as for
   `--max-requests-per-turn`. It could only be set at startup, so raising it meant a restart.

@@ -627,7 +627,17 @@ fn panel(
     if strip > 0 {
         frame.render_widget(Paragraph::new(Line::from(tabs(pages, page))), above);
     }
-    frame.render_widget(Paragraph::new(in_view(lines, at, inner).join("\n")), inner);
+    // note: a QR code's lines in colours of their own, white on black whatever the terminal's
+    // are, because a code drawn the wrong way round on a light background is one some cameras will
+    // not read; see `qr::Code::lines`
+    let shown: Vec<Line> = in_view(lines, at, inner)
+        .into_iter()
+        .map(|line| match crate::qr::Code::is_line(&line) {
+            true => Line::styled(line, Style::default().fg(Color::White).bg(Color::Black)),
+            false => Line::from(line),
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(shown), inner);
 
     scrollbar(
         frame,

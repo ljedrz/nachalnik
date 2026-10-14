@@ -312,6 +312,8 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /requests [N]       how many requests a turn sends before it pauses, or
                         change it from the next request on; 0 is no limit
     /seams              what is plugged into each of the runtime's six parts
+    /web                the address of the page `--web` serves, and a QR code of
+                        it for a phone's camera
     /tools              what the model is offered, and what is turned off
     /tools toggle ID    stop offering one of them, or offer it again.
                         `context`, which reads and changes this session's

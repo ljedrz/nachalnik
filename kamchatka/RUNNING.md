@@ -225,8 +225,10 @@ address on a private network (10/8, 172.16/12, 192.168/16, fc00::/7):
 $ kamchatka --web 192.168.1.5:8080 -m qwen/qwen3-coder
 ```
 
-A phone on the same network can then open the printed address, `http://192.168.1.5:8080/<key>/`, but
-so can every other device on it that learns the address, which any of them can read from the
+A phone on the same network can then open the printed address, `http://192.168.1.5:8080/<key>/`,
+or scan the QR code of it printed below it. The screen covers both as it opens, so with a screen
+the code is shown in a panel when the session starts, and `/web` shows it again. But every other
+device on the network that learns the address can open it too, and any of them can read it from the
 traffic: whoever has it can control the session, including running shell commands as you. kamchatka
 warns about this at startup and in each session. Host names, `0.0.0.0` and public addresses are
 refused. On a network you don't trust, tunnel over SSH instead and open the page at `localhost`:
