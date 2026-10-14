@@ -15,6 +15,9 @@ minor bump may break you.
   response `rmcp` drops because it carries neither a result nor an error, held the turn until it
   was interrupted.
 
+- **`LARGEST_IMAGE`**, the most an image is carried into the context at, is public, for a host to
+  hand to `Kernel::set_picture_limit`.
+
 ### fixed
 
 - **Arguments a provider could not parse are not sent to the server as the arguments.** A provider

@@ -59,7 +59,7 @@ mod tool;
 
 pub use crate::{
     server::{Installed, Server},
-    tool::Trust,
+    tool::{LARGEST_IMAGE, Trust},
 };
 
 /// The MCP SDK this bridge is built on, re-exported.
