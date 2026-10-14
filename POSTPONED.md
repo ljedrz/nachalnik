@@ -88,12 +88,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   same, from the server or by the client resuming. Unblocked by choosing which, and by a client
   that falls that far behind.
 
-- **A Gemini stream that carries no candidate is a turn that said nothing.** A 200 stream of
-  `usageMetadata` alone is read as a finished, empty turn with `EndTurn`, where Chat Completions
-  refuses a stream that never answered. The unstreamed path counts `usageMetadata` as an answer on
-  purpose, and Google is not known to send this shape. Unblocked by deciding what counts
-  as an answer from this dialect, or by a response that shows the shape.
-
 - **A reset HTTP/2 stream is not retried.** `worth_waiting_out` retries a request that never got
   an answer only when it timed out, on the reasoning that every other transport failure is a
   decision or a bug. A server resetting the stream - `http2 error: stream error received:

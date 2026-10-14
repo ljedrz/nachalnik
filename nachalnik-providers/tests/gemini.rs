@@ -165,6 +165,32 @@ async fn a_blocked_prompt_is_a_refusal() {
     assert_eq!(response.stop, StopReason::Refusal);
 }
 
+/// A stream that carried a cost and no candidate has not answered, and is refused rather than read
+/// as a turn that said nothing.
+///
+/// note: read as an answer it finished with nothing said and `EndTurn`, where a Chat Completions
+/// stream with no choice in it is refused - so a fault at the endpoint looked like a model with
+/// nothing to say.
+#[tokio::test]
+async fn a_stream_with_no_candidate_is_refused() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Gemini::new(
+        "gemini-test",
+        server("data: {\"usageMetadata\":{\"promptTokenCount\":12}}\n\n").await,
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("go"));
+
+    let refused = kernel
+        .step()
+        .await
+        .expect_err("a stream that never answered");
+    assert!(
+        refused.to_string().contains("carried no answer"),
+        "{refused}"
+    );
+}
+
 /// An answer the API stopped partway for its own reasons is a refusal too.
 ///
 /// note: here the reason is a `finishReason` on a candidate rather than `promptFeedback`, and

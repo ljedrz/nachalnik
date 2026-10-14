@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A Gemini stream that carries no candidate is refused.** One that reported a cost and nothing
+  else was read as a finished turn with nothing said and `EndTurn`, where a Chat Completions
+  stream with no choice in it is refused, so a fault at the endpoint read as a model with nothing to
+  say. It fails now, quoting what the stream carried. A prompt Google blocked is still a refusal,
+  and a body that came whole is read as before.
 - **A Chat Completions stream that ends on `[DONE]` after saying nothing is cut off.** A marker
   with no `finish_reason` was always read as the end of the turn, so an upstream that failed
   mid-answer and closed the stream with `[DONE]` after the reasoning alone left a turn recorded as
