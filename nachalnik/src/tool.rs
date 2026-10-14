@@ -128,6 +128,10 @@ pub trait Tool: Send + Sync {
     ///
     /// note: called with the kernel's tool registry locked, so it must not call back into the
     /// [`Kernel`] it is registered with. [`Tool::invoke`] runs with no lock held and may.
+    ///
+    /// note: and it must not panic. A panic in [`Tool::invoke`], [`Tool::needs`] or [`Tool::limit`]
+    /// - the three that read a model's arguments - is caught and answers the call; this one reads
+    /// nothing the model wrote, and is asked wherever a tool is described, outside any catch.
     fn spec(&self) -> ToolSpec;
 
     /// What *this* call needs, which is at most what the spec declares.

@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A tool that panics saying what a call needs, or how much of it to keep, fails that call.**
+  `Tool::needs` and `Tool::limit` are called with the model's arguments, outside the catch around
+  `invoke`, and a panic in either unwound `step` with the model's calls answered by nothing. One in
+  `needs` now answers the call with an error before anything is asked or run; one in `limit` keeps
+  the result under `Config::default_tool_output_limit`; both are `tool.panicked`. The docs on
+  `Tool::spec` say it must not panic, since it reads nothing a model wrote.
 - **A `Kernel::turn` carried on from a `step` counts from nothing.** `turn` carries the count on
   from `Deciding` and `Ready`, and a request `step` sent left the count of the turn before it in
   place, so a turn finished at its `max_requests_per_turn`, then a `step`, then a `turn` paused at
