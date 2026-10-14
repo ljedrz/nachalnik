@@ -16,6 +16,14 @@ minor bump may break you.
   unusable. A client handed over with a whole-request timeout of its own cuts off a long queue
   followed by a long answer first, and the docs say to give it the patience plus the answer's time.
 
+### changed
+
+- **Arguments that are not a JSON object are kept on `ToolCall::unparsed`, with the arguments
+  empty,** rather than as the text under `_unparsed`. Sent back that way, the call showed the model
+  a wrapper it then wrote its calls in. Text that parses to something other than an object - a list,
+  a number - is kept the same way, where it was handed over as the arguments. The Anthropic dialect
+  sends arguments that are not an object, from a call recorded before, as `{}`.
+
 ### fixed
 
 - **A stream that breaks before a byte of its answer arrives is sent again.** A reset HTTP/2

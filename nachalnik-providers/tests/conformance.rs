@@ -150,7 +150,8 @@ async fn a_provider_that_drops_its_thinking_is_told_none_of_it_arrived() {
 /// carries some.
 ///
 /// note: the name and the identifier survive, so these cases fail on the arguments or not at
-/// all. A call that kept its name and lost its arguments is one a tool would run on nothing.
+/// all. A call that kept its name and lost its arguments is one a tool would run on nothing, and
+/// one that lost what the model wrote where it did not parse is one nobody can say anything about.
 #[cfg(feature = "openai")]
 #[tokio::test]
 async fn a_provider_that_empties_a_calls_arguments_does_not_conform() {
@@ -158,6 +159,7 @@ async fn a_provider_that_empties_a_calls_arguments_does_not_conform() {
         let mut response = answer?;
         for call in &mut response.tool_calls {
             call.args = Arc::new(serde_json::json!({}));
+            call.unparsed = None;
         }
         Ok(response)
     }))

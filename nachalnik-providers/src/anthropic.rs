@@ -376,12 +376,12 @@ impl Anthropic {
 
     /// One tool call, as a `tool_use` block.
     fn asking(call: &ToolCall) -> Value {
+        // this API takes an object and nothing else. Arguments that never were one - a call
+        // recorded before `ToolCall::unparsed`, which answered it - go as none, rather than inside
+        // a wrapper of ours that a model reads as a shape to write its calls in
         let input = match &*call.args {
             Value::Object(_) => (*call.args).clone(),
-            // this API takes an object and nothing else; arguments that never were one are handed
-            // over inside one, as the dialect that received them would have recorded them
-            Value::Null => json!({}),
-            other => json!({ "_unparsed": other }),
+            _ => json!({}),
         };
         let block = json!({
             "type": "tool_use",
@@ -963,13 +963,11 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
                 // the fragments are the arguments where any came, and what the block opened with
                 // where none did; fragments that are not JSON are handed over as written, so the
                 // model is shown what it wrote rather than a call run on nothing
-                let args = match json.trim() {
-                    "" if input.is_object() => input,
-                    "" => json!({}),
-                    written => serde_json::from_str::<Value>(written)
-                        .unwrap_or_else(|_| json!({ "_unparsed": written })),
+                let call = match json.trim() {
+                    "" if input.is_object() => ToolCall::new(id, name, input),
+                    _ => crate::called(id, name, &json),
                 };
-                Block::Call(ToolCall::new(id, name, args).with_extra(Value::Object(extra)))
+                Block::Call(call.with_extra(Value::Object(extra)))
             }
         })
         .collect();

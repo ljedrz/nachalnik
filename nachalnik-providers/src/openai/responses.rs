@@ -27,10 +27,7 @@ use nachalnik::{
 };
 use serde_json::{Map, Value, json};
 
-use super::{
-    OpenAiCompatible,
-    wire::{arguments_of, filename},
-};
+use super::{OpenAiCompatible, wire::filename};
 use crate::{
     Keyed,
     reading::{Events, Read, Stopped, not_a_stream},
@@ -655,11 +652,7 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
                 call_id,
                 name,
                 arguments,
-            } => Some(Block::Call(ToolCall::new(
-                call_id,
-                name,
-                arguments_of(&arguments),
-            ))),
+            } => Some(Block::Call(crate::called(call_id, name, &arguments))),
         })
         .collect();
     let asked = blocks.iter().any(|block| block.call().is_some());
