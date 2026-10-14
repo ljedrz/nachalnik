@@ -178,15 +178,19 @@ impl App {
                 // refused. It is a legitimate thing to want - one way to stop a session is to tell
                 // it that it has spent enough - so it is answered rather than argued with
                 Some(limit) if self.overspent() => format!(
-                    "the ceiling is {} and this run has spent {spent}, so nothing more will be \
-                     sent",
+                    "the ceiling is {} and this session has spent {spent} since it was started or \
+                     resumed, so nothing more will be sent",
                     plural(limit as usize, "token")
                 ),
                 Some(limit) => format!(
-                    "the ceiling is {}; this run has spent {spent}",
+                    "the ceiling is {}; this session has spent {spent} since it was started or \
+                     resumed",
                     plural(limit as usize, "token")
                 ),
-                None => format!("no ceiling; this run has spent {spent} tokens"),
+                None => format!(
+                    "no ceiling; this session has spent {spent} tokens since it was started or \
+                     resumed"
+                ),
             };
             self.say(Speaker::Note, said);
             self.say_advice_spent();
@@ -196,13 +200,15 @@ impl App {
 
         let said = match self.spend() {
             Some(limit) => format!(
-                "this run has spent {spent} tokens of {}, as the provider has reported them. \
-                 `/spend N` changes the ceiling and `/spend 0` takes it away",
+                "this session has spent {spent} tokens of {} since it was started or resumed, as \
+                 the provider has reported them. `/spend N` changes the ceiling and `/spend 0` \
+                 takes it away",
                 thousands(limit as usize)
             ),
             None => format!(
-                "this run has spent {spent} tokens, as the provider has reported them. There is \
-                 no ceiling; `/spend N` sets one, and the session stops when it is reached"
+                "this session has spent {spent} tokens since it was started or resumed, as the \
+                 provider has reported them. There is no ceiling; `/spend N` sets one, and the \
+                 session stops when it is reached"
             ),
         };
         self.say(Speaker::Note, said);

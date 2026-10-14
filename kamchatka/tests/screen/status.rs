@@ -2091,7 +2091,7 @@ async fn spend_does_not_mention_an_advisor_nothing_was_spent_on() {
     harness.send("/spend").await;
 
     let said = harness.flat();
-    assert!(said.contains("this run has spent"), "{said}");
+    assert!(said.contains("this session has spent"), "{said}");
     assert!(
         !said.contains("the advisor's"),
         "there is no split to report: {said}"

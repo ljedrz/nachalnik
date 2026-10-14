@@ -341,7 +341,8 @@ complete.
 
 `/budget` is about the next request; `/spend` is about the session. It adds up what the provider
 charged for every response (measured, never estimated) and compares it with the limit, if one was
-set with `--spend` or `/spend N`. The session stops at that limit; see
+set with `--spend` or `/spend N`. The total starts at nothing whenever a session starts: one carried
+on with `-r`, and a fresh one after `/restart`, each count from zero. The session stops at that limit; see
 [running without a screen](#-the-same-program-without-a-screen). The `--advise` advisor's reported
 costs are included too, whichever key pays for them, and `/spend` shows how much of the total was
 the advisor's.

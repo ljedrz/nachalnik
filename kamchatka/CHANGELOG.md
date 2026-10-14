@@ -29,6 +29,13 @@ minor bump may break you.
   only in their descriptions. A refusal tells a model offered flat to write its arguments at the
   top level, never inside `call`.
 
+### changed
+
+- **`/spend` says the figure is this session's since it was started or resumed.** It said "this
+  run", and `/restart` starts a fresh session in the same process with its own count, so a run
+  piping `/restart` was told one run's total and held to each session's. The ceiling stays a
+  session's, and the sentence now says so, along with the resume that starts the count over.
+
 ### fixed
 
 - **A confined command is told its `$TMPDIR` is writable.** Every command has a temporary
