@@ -10,15 +10,13 @@
 use std::{
     borrow::Cow,
     collections::BTreeMap,
-    fs::File,
-    io::{BufRead as _, BufReader},
     path::Path,
     sync::Arc,
     time::{Instant, SystemTime},
 };
 
 use nachalnik::{
-    Block, ContextId, ContextItem, ContextKind, ContextState, Event, Overrun, Record, ToolCallId,
+    Block, ContextId, ContextItem, ContextKind, ContextState, Event, Overrun, ToolCallId,
 };
 
 use super::{
@@ -582,69 +580,31 @@ impl App {
         }
     }
 
-    /// Fills in what the resumed items used to say, out of the record saved beside the snapshot.
+    /// Reads the record saved beside the snapshot this session resumed from, and fills in what the
+    /// resumed items used to say out of it; returns how many earlier versions it found.
     ///
     /// note: a [`nachalnik::Snapshot`] carries items and not events, so the text a rewrite
     /// replaced is in the session's log and nowhere else - [`Event::ContextReplaced`] is the one
-    /// event that carries content. `/save` writes that log
-    /// beside the snapshot under the same name, so this looks for it there: `<name>.json` is
-    /// what `-r` was handed, `<name>.jsonl` is what this reads. What it finds goes through the
-    /// same `App::remember` the live path uses, in the order it was recorded, so a resumed
-    /// `v1` is the `v1` the session had - eight deep, and an undone rewrite deduped by the same
-    /// line that dedupes it live.
+    /// event that carries content. `/save` writes that log beside the snapshot under the same
+    /// name: `<name>.json` is what `-r` was handed, `<name>.jsonl` is what this reads, into
+    /// [`App::earlier`], which the record this session writes and its `log` tool read as well.
+    /// What it finds goes through the same `App::remember` the live path uses, in the order it was
+    /// recorded, so a resumed `v1` is the `v1` the session had - eight deep, and an undone rewrite
+    /// deduped by the same line that dedupes it live.
     ///
-    /// note: best effort, and deliberately not an error. The session has resumed by the time
-    /// this runs, and a record that is absent, unreadable or half-written costs a page under
-    /// `enter` rather than a session. A line that will not parse is skipped rather than ending
-    /// the walk: the last line of a log from a run that was killed is the one most likely to be
-    /// half a record, and the ones before it are fine.
+    /// note: before the record of this session is started, which copies these into it.
     ///
     /// note: only for items that came back. A rewrite of something an `undo` took away before
     /// the snapshot was written is history for an item this session does not have, and a resumed
     /// kernel has no undo stack for it to come back on.
     ///
-    /// note: what this does *not* do is carry forward. The resumed session's own log starts at
-    /// `session.resumed`, so a `/save` of it writes a record with none of these rewrites in it
-    /// and a resume of *that* file reads nothing. Two hops back is the earlier `.jsonl`, which is
-    /// why an append-only log is worth keeping rather than overwriting.
+    /// note: and only up to the record the snapshot was taken at; see [`Earlier::read`]. That a
+    /// log runs past it is said, because it is a turn's worth of work the session carried on
+    /// without.
     ///
-    /// note: and only up to the record the snapshot was taken at. A run killed in the middle of a
-    /// turn leaves a log that runs past its snapshot, and what those records did is not in this
-    /// session - a rewrite among them is of an item it does not hold. That they are there is
-    /// said, because it is a turn's worth of work the session carried on without.
+    /// [`Earlier::read`]: crate::wiring::Earlier::read
     pub fn recall(&mut self, state: &Path) -> usize {
-        /// The one field of the snapshot this needs, read without the rest of it.
-        #[derive(Deserialize)]
-        struct Taken {
-            #[serde(default)]
-            last_seq: u64,
-        }
-
-        let Ok(log) = File::open(state.with_extension("jsonl")) else {
-            return 0;
-        };
-        let taken = File::open(state)
-            .ok()
-            .and_then(|file| serde_json::from_reader::<_, Taken>(BufReader::new(file)).ok())
-            .map_or(u64::MAX, |taken| taken.last_seq);
-
-        let (mut recalled, mut past) = (0, 0);
-        for line in BufReader::new(log).lines().map_while(Result::ok) {
-            let Ok(record) = serde_json::from_str::<Record>(&line) else {
-                continue;
-            };
-            if record.seq > taken {
-                past += 1;
-                continue;
-            }
-            let Event::ContextReplaced { id, was, .. } = record.event else {
-                continue;
-            };
-            if self.kernel.item(id).is_some() {
-                self.remember(id, was);
-                recalled += 1;
-            }
-        }
+        let past = self.earlier.read(state);
         if past > 0 {
             self.say(
                 Speaker::Note,
@@ -655,6 +615,17 @@ impl App {
                     plural(past, "record")
                 ),
             );
+        }
+
+        let mut recalled = 0;
+        for record in self.earlier.records().iter() {
+            let Event::ContextReplaced { id, was, .. } = &record.event else {
+                continue;
+            };
+            if self.kernel.item(*id).is_some() {
+                self.remember(*id, was.clone());
+                recalled += 1;
+            }
         }
 
         recalled

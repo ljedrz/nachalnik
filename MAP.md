@@ -75,8 +75,9 @@ a command's internet sockets until the program answers; it's the only module in 
 
 **`wiring/`** is `Setup`, which assembles a session (subscribing to events comes before wiring, and
 `introspect::install` returns a handle the caller keeps), plus `Setup::relaunch` (`/restart`) and,
-in `record.rs`, saving a finished session. New setup goes in a field on `Setup`, not in
-`main.rs`.
+in `record.rs`, writing a session down as it goes and when it ends, and `Earlier`, the record a
+resumed session carries forward from the one before it. New setup goes in a field on `Setup`, not
+in `main.rs`.
 
 **The loops.** `main.rs` picks one and draws the screen; `headless.rs` reads stdin and writes the
 log; `remote/` serves a session over a socket (`protocol/` the wire, `server/` the session's side,

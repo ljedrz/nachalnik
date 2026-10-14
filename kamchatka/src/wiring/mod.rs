@@ -39,7 +39,7 @@ use crate::{
 mod record;
 
 pub(crate) use record::unclaimed;
-pub use record::{Recorded, Recorder, record};
+pub use record::{Earlier, Recorded, Recorder, record};
 
 /// How many of one answer's tool calls a session runs; see `Kernel::set_call_ceiling`.
 pub const CALLS: usize = 64;
@@ -868,6 +868,9 @@ impl Setup {
         app.confinement = confinement;
         app.stragglers = stragglers;
         app.unconfined_because = unconfined_because;
+        if let Some(installed) = &introspect {
+            app.earlier = installed.earlier();
+        }
         app.introspect = introspect;
         app.set_spend(self.spend);
         app.compact_target = compact_target;
@@ -1091,6 +1094,64 @@ mod tests {
         app.kernel
             .push(ContextItem::user("something said before the restart"));
         app.kernel.snapshot()
+    }
+
+    /// A resumed session's record, written as it goes, begins with the record of the session it
+    /// carries on from.
+    #[test]
+    fn a_resumed_sessions_record_begins_with_the_one_before_it() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = std::env::temp_dir().join(format!("kamchatka-carried-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a directory");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("private");
+        let first = wired(Setup {
+            record: false,
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        })
+        .app;
+        first.kernel.push(ContextItem::user("before the restart"));
+        let state = dir.join("first.json");
+        first
+            .write_session(&state.with_extension("jsonl"), &state)
+            .expect("saved");
+
+        let mut resumed = wired(Setup {
+            resume: Some(first.kernel.snapshot()),
+            record: false,
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        })
+        .app;
+        resumed.recall(&state);
+        let recorder = Recorder::start_under(&resumed, &dir).expect("a record");
+        let recorded = recorder.finish(&resumed.kernel).expect("written");
+        let log = std::fs::read_to_string(&recorded.log).expect("written");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let records: Vec<nachalnik::Record> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a record"))
+            .collect();
+        assert_eq!(records[0].seq, 1, "{log}");
+        assert_eq!(
+            records.len(),
+            recorded.records,
+            "the count is of the whole file"
+        );
+        let resumed_at = records
+            .iter()
+            .position(|record| matches!(record.event, Event::SessionResumed { .. }))
+            .expect("the resume is recorded");
+        assert!(
+            records[..resumed_at]
+                .iter()
+                .any(|record| matches!(record.event, Event::ContextAdded { .. })),
+            "the item added before the restart is in the record ahead of the resume: {log}"
+        );
     }
 
     /// What a session is set up with is not the first thing an undo takes away.

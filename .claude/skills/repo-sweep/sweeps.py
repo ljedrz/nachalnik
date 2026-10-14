@@ -83,8 +83,10 @@ def session(name):
 
     note: a resumed session's first record is `session.resumed`, naming the session it carried
     on from, and its own log is that name with a suffix (`-2`, `-3`). Which one is the log whose
-    first line is the same as the copy's. Without it a resumed sweep had no snapshot of its own,
-    and a second resume started from the first one's, losing what came between."""
+    last `session.resumed` is the same line as the copy's first: a log begins with the one it was
+    resumed from, carried forward, so a later one holds this resume as well, ahead of its own.
+    Without it a resumed sweep had no snapshot of its own, and a second resume started from the
+    first one's, losing what came between."""
     kept = path(name, ".session")
     try:
         return open(kept).read().strip() or None
@@ -102,10 +104,9 @@ def session(name):
     if event.get("event") == "session.resumed":
         found = None
         for candidate in glob.glob(os.path.join(LOGS, glob.escape(event["session"]) + "*.jsonl")):
-            with open(candidate, "rb") as f:
-                if f.readline() == first:
-                    found = os.path.basename(candidate)[: -len(".jsonl")]
-                    break
+            if last_resume(candidate) == first:
+                found = os.path.basename(candidate)[: -len(".jsonl")]
+                break
     elif event.get("event") != "session.started":
         return None
     if not found:
@@ -113,6 +114,20 @@ def session(name):
     with open(kept, "w") as f:
         f.write(found + "\n")
     return found
+
+
+def last_resume(log):
+    """The last `session.resumed` line of a log, as it was written; `None` where there is none."""
+    last = None
+    with open(log, "rb") as f:
+        for line in f:
+            if b'"session.resumed"' in line:
+                try:
+                    if json.loads(line)["event"]["event"] == "session.resumed":
+                        last = line
+                except (ValueError, KeyError, TypeError):
+                    pass
+    return last
 
 
 def log(name):

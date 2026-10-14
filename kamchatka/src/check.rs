@@ -149,15 +149,29 @@ fn numbering(records: &[(usize, Record)], findings: &mut Vec<String>) {
                     _ => "",
                 }
             )),
-            Some(2) => findings.push(format!(
-                "record {} is missing, between line {was} and line {line}",
-                before.seq + 1
-            )),
-            Some(skipped) => findings.push(format!(
-                "records {} to {} are missing, between line {was} and line {line}",
-                before.seq + 1,
-                before.seq + skipped - 1
-            )),
+            Some(skipped) => {
+                let missing = match skipped {
+                    2 => format!("record {} is missing", before.seq + 1),
+                    _ => format!(
+                        "records {} to {} are missing",
+                        before.seq + 1,
+                        before.seq + skipped - 1
+                    ),
+                };
+                findings.push(format!(
+                    "{missing}, between line {was} and line {line}{}",
+                    match after.event {
+                        // what a run killed after its snapshot was taken leaves: the resume numbers
+                        // on from past what it wrote, and carries forward only what the snapshot
+                        // reflects
+                        Event::SessionResumed { .. } => {
+                            ", before a resume from a snapshot the log it came from had run past; \
+                             that log holds them"
+                        }
+                        _ => "",
+                    }
+                ));
+            }
         }
     }
 }

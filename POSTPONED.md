@@ -41,12 +41,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   message type must declare the version it was added in. Meanwhile, `Message::Unknown` lets clients
   survive messages they don't know, and `Attached::version` tells them what the server speaks.
 
-- **`log` stops at the resume.** A resumed session's log starts at `session.resumed`, so `log read`
-  can't show anything before the restart, even though the record saved next to the snapshot has all
-  of it. `App::recall` reads that file for `context.replaced`, and `-r` for the session's model, but
-  nothing else uses it. Going further means the tool reading a file the kernel doesn't hold, with
-  every answer saying which records came from it.
-
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning only appears there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it.
   Nothing tested so far needed it; a model that does, with a live test showing the difference,

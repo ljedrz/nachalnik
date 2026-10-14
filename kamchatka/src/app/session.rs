@@ -66,9 +66,16 @@ impl App {
     ) -> Result<usize, String> {
         let snapshot = self.kernel.snapshot();
         let history = self.kernel.history();
-        let records = history
+        // what came before a resume first, so that a saved record is the whole session; see
+        // `wiring::Earlier`
+        let earlier = self.earlier.records();
+        let records = earlier
             .iter()
-            .filter(|record| record.seq <= snapshot.last_seq)
+            .chain(
+                history
+                    .iter()
+                    .filter(|record| record.seq <= snapshot.last_seq),
+            )
             .map(|record| {
                 serde_json::to_string(record)
                     .map_err(|e| format!("could not render record {}: {e}", record.seq))

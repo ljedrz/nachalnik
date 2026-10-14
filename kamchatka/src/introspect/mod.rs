@@ -40,7 +40,10 @@ use nachalnik::{
 };
 use serde_json::{Value, json};
 
-use crate::tools::{Careful, Layout, Limits};
+use crate::{
+    tools::{Careful, Layout, Limits},
+    wiring::Earlier,
+};
 
 mod context;
 mod fork;
@@ -72,6 +75,7 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: La
     let reach = Reach(Arc::downgrade(&anchor), policy.clone());
     let forked = Arc::new(AtomicU64::new(0));
     let history = History::default();
+    let earlier = Earlier::default();
 
     kernel.add_tool(Arc::new(Context::new(
         reach.clone(),
@@ -85,13 +89,19 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: La
         forked.clone(),
         layout,
     )));
-    kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone(), layout)));
+    kernel.add_tool(Arc::new(Log::new(
+        reach.clone(),
+        limits.clone(),
+        earlier.clone(),
+        layout,
+    )));
     kernel.add_tool(Arc::new(Setup::new(reach, policy, limits, layout)));
 
     Installed {
         _anchor: anchor,
         forked,
         history,
+        earlier,
     }
 }
 
@@ -105,6 +115,7 @@ pub struct Installed {
     _anchor: Arc<Kernel>,
     forked: Arc<AtomicU64>,
     history: History,
+    earlier: Earlier,
 }
 
 impl Installed {
@@ -118,6 +129,11 @@ impl Installed {
     /// The `context` tool's own undo history; see [`History`].
     pub fn history(&self) -> History {
         self.history.clone()
+    }
+
+    /// What the `log` tool reads before the kernel's own records; see [`Earlier`].
+    pub fn earlier(&self) -> Earlier {
+        self.earlier.clone()
     }
 }
 

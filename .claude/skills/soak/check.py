@@ -6,7 +6,9 @@ usage: check.py [--kamchatka BIN] STEM...
 
 Each STEM names one segment's pair, `STEM.jsonl` (the log) and `STEM.json` (the snapshot it left),
 in the order the segments ran; segment k+1 must have been resumed from segment k's snapshot. The
-segment's log is its own records, not the stdout of a later process.
+segment's log is the record its process wrote, not the stdout of a later process: a resumed one
+begins with the log it was resumed from, carried forward up to that log's snapshot, and its own
+records start at its `session.resumed`. What is carried has to be exactly that.
 
 `kamchatka --check` is run on each pair first: it knows one record. What this adds is what only the
 chain can say - a resume that picked up where the snapshot says, identifiers never issued twice
@@ -70,8 +72,11 @@ def run_check(binary, stem, report, name):
     if out.returncode != 0:
         for line in lines:
             # a call a killed or interrupted run left open is what --check is told to say, and
-            # which segments ended that way is the soak's business, not a fault in the record
-            kind = report.note if "never finished" in line else report.violation
+            # which segments ended that way is the soak's business, not a fault in the record; so
+            # are the records such a run wrote past its snapshot, which the resume after it leaves
+            # out of what it carries forward
+            noted = "never finished" in line or "before a resume from a snapshot" in line
+            kind = report.note if noted else report.violation
             kind(name, f"--check: {line}")
 
 
@@ -327,6 +332,7 @@ def main():
     lineage = Lineage()
     previous = None
     last_tail = 0  # the last record the previous segment's log holds
+    last_records = []  # and every record it holds, what it carried forward included
     for number, stem in enumerate(args):
         stem = stem.removesuffix(".jsonl").removesuffix(".json")
         name = f"{number}:{os.path.basename(stem)}"
@@ -337,7 +343,27 @@ def main():
         if os.path.exists(stem + ".json"):
             with open(stem + ".json") as f:
                 snapshot = json.load(f)
+        whole = records
         if previous is not None:
+            # the log it was resumed from, carried forward up to that log's snapshot, and then its
+            # own records from its `session.resumed` on
+            own = next(
+                (at for at, r in enumerate(records)
+                 if r["event"]["event"] == "session.resumed" and r["seq"] > previous["last_seq"]),
+                None,
+            )
+            if own is None:
+                report.violation(name, "no `session.resumed` past the snapshot it was resumed from")
+                own = 0
+            carried, records = records[:own], records[own:]
+            expected = [r for r in last_records if r["seq"] <= previous["last_seq"]]
+            if carried != expected:
+                report.violation(
+                    name,
+                    f"carries {len(carried)} records forward, and the log it was resumed from held "
+                    f"{len(expected)} up to its snapshot" if len(carried) != len(expected) else
+                    "carries records forward that differ from the log it was resumed from",
+                )
             # what a resume carries on from is the snapshot, not the whole of the last log
             lineage.items, lineage.content = {}, {}
             lineage.last_seq = previous["last_seq"]
@@ -359,6 +385,7 @@ def main():
         print(f"{name}: {len(records)} records; " + ", ".join(f"{k} {kinds.get(k, 0)}" for k in interesting))
         previous = snapshot
         last_tail = records[-1]["seq"] if records else 0
+        last_records = whole
     for text in report.notes:
         print("NOTE", text)
     for text in report.violations:
