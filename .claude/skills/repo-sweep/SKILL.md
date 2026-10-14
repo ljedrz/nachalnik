@@ -126,8 +126,9 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
   and the last one answered with a turn that ended (stop `end_turn`). One that is not, but was
   answered at least once, is **resumed** from the session it saved: `/continue` where its last
   turn did not end in an answer, then the messages it never got. The part before goes to
-  `old/parts/` and is not a try, up to eight parts. Only a sweep with nothing to resume is run
-  again from the start, up to `--tries` times; what is still not done is listed as given up.
+  `old/parts/` and is not a try. One still not done after eight parts is given up with its parts
+  kept, never run again from nothing. Only a sweep with nothing to resume is run again from the
+  start, up to `--tries` times; what is still not done is listed as given up.
 - **As many at once as the endpoint takes, with no ceiling.** kamchatka is not the limit: a
   session takes tens of megabytes, and hundreds can run at once. The runner starts at `--width`
   (8) and climbs by the answers a minute the endpoint gives: it adds a quarter again, keeps the

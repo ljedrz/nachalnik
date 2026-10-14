@@ -35,7 +35,9 @@ What it decides on its own:
 - **Resuming rather than starting again.** An incomplete sweep the endpoint answered at least once
   is carried on from the session it saved, not run again from nothing: `/continue` if its last
   turn did not end in an answer, then the messages it never got. The part before is kept in
-  $SWEEPS/old/parts/ and is not a try; a resume is, once it ends, like any other run.
+  $SWEEPS/old/parts/ and is not a try; a resume is, once it ends, like any other run. One resumed
+  `PARTS` times and still not done is given up with its parts kept, for a person to look at,
+  rather than run again from nothing.
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
   running from before rather than starting them twice.
 """
@@ -65,7 +67,7 @@ TICK = 30
 SETTLE, WINDOW, GAIN, HOLD, LONGEST = 180, 600, 1.1, 1800, 2 * 3600
 # how many failed turns, inside how many seconds, step the width back
 BURST, BURST_WINDOW = 3, 600
-# how many times one sweep is resumed before it counts as a try: each resume was answered, so this
+# how many times one sweep is resumed before it is given up: each resume was answered, so this
 # only stops a turn that fails the same way every time from being carried on for ever
 PARTS = 8
 
@@ -203,6 +205,16 @@ def aside(name, under="old"):
     return len(glob.glob(os.path.join(old, f"{name}.*.in")))
 
 
+def exhausted(name):
+    """Whether an incomplete sweep has been resumed as often as it may be.
+
+    note: given up rather than run again from its first message, which would throw away every
+    part - the one thing the runner otherwise never does. A long outage gets here as well as a turn
+    that fails the same way each time, and either way the parts are what a person reads to decide."""
+    s = sweeps.state(name)
+    return s["status"] == "incomplete" and s["parts"] >= PARTS
+
+
 def resumable(name):
     """How to carry an incomplete sweep on from the session it saved, as the environment
     `sweep.sh` reads, or None where it has to start again.
@@ -309,7 +321,8 @@ def main():
         if s["status"] == "running":
             running[name] = time.time()
             log(f"adopted {name}, still running from before")
-        elif s["status"] != "queued" and earlier(name) >= tries and not resumable(name):
+        elif exhausted(name) or \
+                s["status"] != "queued" and earlier(name) >= tries and not resumable(name):
             given_up.append(name)
         else:
             queue.append(name)
@@ -380,7 +393,10 @@ def main():
             if not s.get("requests") and not os.path.exists(sweeps.path(name, ".resume")):
                 aside(name, os.path.join("old", "void"))
                 log(f"{name}: nothing was answered, so the try is not counted")
-            if earlier(name) < tries or resumable(name):
+            if exhausted(name):
+                given_up.append(name)
+                log(f"{name}: given up after {PARTS} resumes; its parts are kept in old/parts/")
+            elif earlier(name) < tries or resumable(name):
                 queue.append(name)
             else:
                 given_up.append(name)
