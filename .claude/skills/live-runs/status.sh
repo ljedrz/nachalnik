@@ -8,6 +8,6 @@ for f in "${@:-*}"; do
     n=${err%.err}
     [ -f "$n.jsonl" ] || continue
     printf '%-22s lines=%-5s calls=%-4s unparsed=%-3s code=%s\n' "$n" "$(wc -l < "$err")" \
-      "$(grep -c '"tool.started"' "$n.jsonl")" "$(grep -c '_unparsed' "$err")" "$(cat "$n.code" 2>/dev/null)"
+      "$(grep -c '"tool.started"' "$n.jsonl")" "$(grep -c '"tool.unparsed"' "$n.jsonl")" "$(cat "$n.code" 2>/dev/null)"
   done
 done

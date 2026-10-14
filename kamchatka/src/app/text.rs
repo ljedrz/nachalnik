@@ -203,6 +203,11 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
         Event::ToolUnknown { tool, .. } => {
             format!("`{tool}` was asked for and is not registered")
         }
+        // the parser's sentence and not what was written, which can be as long as a file; the
+        // model was answered with the part of it around the fault
+        Event::ToolUnparsed { tool, error, .. } => {
+            format!("`{tool}` was asked for with arguments that did not parse: {error}")
+        }
         // a provider that does this is worth knowing about, which is why the kernel announces it
         Event::ToolCallRepaired { call, was, reason } => match was.is_empty() {
             true => format!("gave a call the identifier `{call}`: {reason}"),
@@ -1143,6 +1148,20 @@ mod tests {
                 tool: "dig".to_owned(),
             }),
             "`dig` was asked for and is not registered"
+        );
+    }
+
+    #[test]
+    fn a_call_that_did_not_parse_says_what_the_parser_said() {
+        assert_eq!(
+            said(&Event::ToolUnparsed {
+                call: nachalnik::ToolCallId("c1".to_owned()),
+                tool: "fs".to_owned(),
+                written: "{\"path\": ".to_owned(),
+                error: "EOF while parsing a value at line 1 column 9".to_owned(),
+            }),
+            "`fs` was asked for with arguments that did not parse: EOF while parsing a value at \
+             line 1 column 9"
         );
     }
 

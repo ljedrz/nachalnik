@@ -148,13 +148,12 @@ impl Tool for McpTool {
             ));
         }
 
-        // note: a provider keeps arguments it could not parse as text under `_unparsed`, and that
-        // object sent on as the arguments was a server answering about a missing parameter in a
-        // call whose text holds it. Said here as what it is, and nothing is sent; text there that
-        // parses to one object, and stands alone, is a model copying the wrapper around a whole
-        // call, and that call is read. Anything else under it - a list, which a provider keeps
-        // this way when the arguments arrived as one, or the wrapper beside other keys - is not
-        // a call either, and is said to be one rather than sent
+        // note: providers once kept arguments they could not parse as text under `_unparsed`, and
+        // a model that saw calls in that shape writes its own in it. Sent on as the arguments, it
+        // was a server answering about a missing parameter in a call whose text holds it. Text
+        // there that parses to one object, and stands alone, is the model's wrapper round a whole
+        // call, and that call is read; anything else is said to be what it is rather than sent.
+        // What a provider cannot parse now is answered by the kernel and never reaches here
         let unwrapped;
         let args = match call.args.get(UNPARSED).and_then(Value::as_str) {
             Some(written) => match serde_json::from_str::<Value>(written) {
@@ -476,7 +475,8 @@ fn led(id: String) -> String {
     }
 }
 
-/// The key a provider puts a call's arguments under when they would not parse as JSON.
+/// The key providers once put a call's arguments under when they would not parse as JSON, which a
+/// model that saw calls in that shape writes its own in.
 const UNPARSED: &str = "_unparsed";
 
 /// How much of the text that did not parse is quoted back.

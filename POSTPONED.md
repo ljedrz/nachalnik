@@ -51,15 +51,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   in this workspace would just be someone's documentation as of the day it was copied. Unblocked by
   an endpoint that publishes them, read the way `Published` reads the rest.
 
-- **A tool call with unparseable arguments goes back to the model as `{"_unparsed": "..."}`.**
-  That's how `nachalnik-providers` stores such a call, and `to_wire` sends it back that way. A model
-  can copy it and wrap every later call the same way; `kamchatka` accepts a wrapper whose text parses
-  as the call inside it, which stops that without changing what's sent. Sending back exactly what the
-  model wrote would be more accurate, but some endpoints reject it, so one broken call would make
-  every later request fail; sending `{}` works everywhere and leaves it to the tool result, which
-  already quotes what arrived. Unblocked by a decision on what the history should say the model
-  sent, and a live test of that choice on the strict endpoints.
-
 - **The Anthropic client and signed thinking after an edited history.** Described in the
   `nachalnik_providers::anthropic` docs, with the models it affects, and handled by neither the
   code nor the tests: some models reject a signed thinking block sent back after anything before

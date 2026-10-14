@@ -544,6 +544,10 @@ impl Tool for Shell {
         self.limits.for_call(&self.needs(call))
     }
 
+    fn unparsed(&self, written: &str) -> Option<String> {
+        crate::tools::ops::advice(written, self.layout)
+    }
+
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         // note: named rather than assumed, for the reason `fs` refuses one it does not have: a
         // call that meant something else and was answered as `run` is a command nobody asked for.
