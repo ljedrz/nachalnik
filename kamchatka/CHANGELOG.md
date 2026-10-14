@@ -82,6 +82,14 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.10, `nachalnik-mcp` 0.10 and `nachalnik-providers` 0.10. The runtime's
+  `Kernel::with_items` is how a session's setup goes in, `set_states` how the model's walking back
+  a change is one undo, `set_call_ceiling` the 64 calls, `set_max_requests_per_turn` `/requests`,
+  `set_default_tool_output_limit` the limits held to a small model's window, and `Tool::unparsed`
+  with `tool.unparsed` how a call that did not parse is answered and shown; the bridge's
+  `Server::answering_within` is `--mcp-timeout-seconds` and its `LARGEST_IMAGE` the picture limit;
+  the providers' `Dialect::set_patience` is `--max-silence-seconds`.
+
 - **A call whose arguments did not parse is answered before anything is asked about it.** The
   kernel answers it, naming the tool and the call and saying where the JSON broke, and each tool
   here adds how to write it where that was measured to help: a line break in a string, the action
