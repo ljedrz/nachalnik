@@ -9,12 +9,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
-- **No test makes a connection fall behind the session's own lines.** What a connection more than
-  256 of them behind does - say how many it missed, ask the session where it stands and say that -
-  has no test through a connection. Making one lag needs the session to say that many lines between
-  two looks of the connection, which nothing a client can ask for does. Unblocked by a way to make
-  it.
-
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the
   picture to where its API takes one - a user message after the tool messages - without changing
