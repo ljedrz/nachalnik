@@ -18,6 +18,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.10, whose `ToolCall::unparsed` is where arguments that did not parse are
+  kept now. Every provider names runtime types throughout its public interface, so this release
+  cannot be mixed with a 0.9-series runtime.
 - **Arguments that are not a JSON object are kept on `ToolCall::unparsed`, with the arguments
   empty,** rather than as the text under `_unparsed`. Sent back that way, the call showed the model
   a wrapper it then wrote its calls in. Text that parses to something other than an object - a list,
