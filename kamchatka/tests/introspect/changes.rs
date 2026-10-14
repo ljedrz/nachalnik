@@ -804,8 +804,8 @@ async fn an_undo_does_not_walk_back_over_a_decision_made_since() {
 ///
 /// note: `Undoing::apply` called `set_state` an item at a time, so undoing what this tool reported
 /// as one change left three checkpoints on the person's stack - and one operation is one undo.
-/// They are grouped by the state they land in now, which is also what the report names: it used to
-/// say every item was in the state of the first of them.
+/// It is one `Kernel::set_states` now, grouped by the state they land in only for the report: it
+/// used to say every item was in the state of the first of them.
 ///
 /// note: counted against the same session moving one item rather than against a number, because
 /// what is being claimed is that the size of a move does not reach the person's stack - and a
@@ -889,6 +889,54 @@ async fn walking_back_says_where_each_item_ended_up() {
     // first one's state
     assert_eq!(kernel.item(excluded).unwrap().state, ContextState::Excluded);
     assert_eq!(kernel.item(active).unwrap().state, ContextState::Active);
+}
+
+/// Walking back a move that puts items into different states is one undo for the person too.
+///
+/// note: grouped by the state they land in, a walk back called `set_state` once a group, and a
+/// change whose items came from two states left two checkpoints on the person's stack. One
+/// `Kernel::set_states` takes one. Counted against the same walk back into one state, because the
+/// person's own exclusion before it is an undo of its own.
+#[tokio::test]
+async fn walking_back_into_several_states_is_one_undo_for_the_person() {
+    async fn depth(one_was_excluded: bool) -> usize {
+        let (kernel, _provider, _anchor) = agent(vec![
+            ModelResponse::tool_calls(vec![call(
+                "c1",
+                "context",
+                json!({ "action": "elide", "ids": [1, 2], "reason": "both" }),
+            )]),
+            ModelResponse::text("done"),
+            ModelResponse::tool_calls(vec![call(
+                "c2",
+                "context",
+                json!({ "action": "undo", "reason": "back" }),
+            )]),
+            ModelResponse::text("done"),
+        ]);
+
+        let first = kernel.push(ContextItem::file("a.rs", "0".repeat(400)));
+        kernel.push(ContextItem::file("b.rs", "1".repeat(400)));
+        kernel.push(ContextItem::user("tidy up"));
+        if one_was_excluded {
+            kernel.set_state([first], ContextState::Excluded, None);
+        }
+        kernel.turn().await.expect("the first turn failed");
+        kernel.turn().await.expect("the second turn failed");
+
+        let mut depth = 0;
+        while kernel.undo().unwrap() {
+            depth += 1;
+        }
+
+        depth
+    }
+
+    assert_eq!(
+        depth(true).await,
+        depth(false).await + 1,
+        "walking back into two states cost the person more than walking back into one"
+    );
 }
 
 /// A walk of several steps knows a pin it put back itself is its own, for the steps after it.

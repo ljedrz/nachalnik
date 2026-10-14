@@ -41,12 +41,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   message type must declare the version it was added in. Meanwhile, `Message::Unknown` lets clients
   survive messages they don't know, and `Attached::version` tells them what the server speaks.
 
-- **The model's `undo` in the person's undo history.** When the `context` tool undoes a change that
-  moved items into several states, it creates one kernel checkpoint per state and note, because
-  `set_state` moves items into one state at a time and the kernel has no operation that moves them
-  into several at once. So undoing one change by the model can take the person several undos.
-  Unblocked by a core operation that moves items into several states at once.
-
 - **`log` stops at the resume.** A resumed session's log starts at `session.resumed`, so `log read`
   can't show anything before the restart, even though the record saved next to the snapshot has all
   of it. `App::recall` reads that file for `context.replaced`, and `-r` for the session's model, but
