@@ -233,13 +233,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   which rule applied means letting a policy name it in `PermissionPolicy::why`, a change to
   `nachalnik`.
 
-- **A confined command isn't told its `$TMPDIR` is writable.** Every command is handed a scratch
-  directory of its own as `TMPDIR`, writable even where the working directory is read-only, as
-  SECURITY.md says. The `shell` tool's description and the permissions tab's sandbox line name the
-  working directory and the extra paths and not it, so a model in a read-only session doesn't know
-  it has anywhere to write. Saying so is a sentence in a description every request carries, so it
-  waits for a decision on whether that's worth its tokens.
-
 - **A command's scratch directory is granted by name.** `make_scratch` makes it, and the ruleset
   opens it again by its path when the rules are built, following whatever is there by then. Where
   the session's own `TMPDIR` is inside what its commands may write, a job an earlier command left

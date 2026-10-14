@@ -179,6 +179,9 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
         refused.contains(&format!("{} read-only", opened.display())),
         "{refused}"
     );
+    // and the one place it may still write is named, which a read-only session has no other way
+    // to know of
+    assert!(refused.contains("`$TMPDIR`"), "{refused}");
 }
 
 /// A path the ruleset cannot open is left out of it, and the confinement still holds.
@@ -789,11 +792,10 @@ fn a_shut_gate_refuses_a_datagram_as_well_as_a_connection() {
     assert!(!ok, "{said}");
     assert!(said.contains("Permission denied"), "{said}");
     assert_eq!(arrived, None, "a datagram got out past a shut gate");
-    assert!(
-        sandbox(PathBuf::from("/w"), true, Network::Shut)
-            .to_string()
-            .ends_with("no network")
-    );
+    let said = sandbox(PathBuf::from("/w"), true, Network::Shut).to_string();
+    assert!(said.ends_with("no network"), "{said}");
+    // and the one directory a command may write wherever the working directory is read-only
+    assert!(said.contains("its own `$TMPDIR` read-write"), "{said}");
 }
 
 /// Where Landlock confines and the kernel can hold a call, the probe finds the gate.

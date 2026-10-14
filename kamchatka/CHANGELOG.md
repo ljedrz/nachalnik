@@ -31,6 +31,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A confined command is told its `$TMPDIR` is writable.** Every command has a temporary
+  directory of its own that it may write in even where the working directory is read-only, and
+  neither the `shell` tool's description nor the sandbox line said so, so a model in a read-only
+  session knew of nowhere it could write. Both name it now.
 - **A command's temporary directory is private from the moment it is made.** It was made under
   the umask and narrowed to `0700` after, so another account could open it in between and list
   what the command put there through that handle.
