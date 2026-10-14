@@ -5,7 +5,7 @@
 #          line, 20,000 lines, names with spaces and brackets, links out, in, to nothing and in loops
 #   media  a real PNG, a minimal PDF, and a text file named .png
 #   empty  nothing, for a task that builds from scratch
-#   scratch-allowed  a directory to hand to --sandbox-allow
+#   scratch-allowed  a directory to hand to --sandbox-write
 set -eu
 LIVE=${LIVE:?set LIVE}
 F=$LIVE/fix

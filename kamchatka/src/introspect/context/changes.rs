@@ -296,8 +296,8 @@ impl Changes {
     /// model called, it holds the list of twelve, and it is what says so when a call names none of
     /// them. What is in here is what changing a context *is*.
     ///
-    /// note: one at a time, because under `--parallel` two calls run on two threads, and an
-    /// operation is a change to the kernel and then an entry describing it. A walk back that ran
+    /// note: one at a time, because under `--parallel-tool-calls` two calls run on two threads, and
+    /// an operation is a change to the kernel and then an entry describing it. A walk back that ran
     /// between the two would take the entry before the one it is about, and an entry made after
     /// another call's change describes the items as that call left them rather than as this one
     /// did. Which of two calls asked for together goes first is still not said; that each is whole

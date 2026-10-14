@@ -159,13 +159,16 @@ jobs:
           locked: true
           checksum: sha256
           # in addition to the defaults, because users of a downloaded binary can't add features
-          # later, and without it the `--advise` flag documented in the README wouldn't exist.
+          # later, and without it the `--rate-shell-commands` flag documented in the README
+          # wouldn't exist.
           #
-          # note: this only makes the feature available; nothing is sent anywhere unless `--advise`
-          # is given. The feature exists to keep the dependency out of builds that don't want it.
+          # note: this only makes the feature available; nothing is sent anywhere unless
+          # `--rate-shell-commands` is given. The feature exists to keep the dependency out of
+          # builds that don't want it.
           #
-          # note: in this binary, `--advise` therefore enables everything `shell-advisor` sends:
-          # a rating for every command the model writes, not only for calls the rules would allow.
+          # note: in this binary, `--rate-shell-commands` therefore enables everything
+          # `shell-advisor` sends: a rating for every command the model writes, not only for calls
+          # the rules would allow.
           # The flag's `--help` says so; see `tools::advice`.
           features: shell-advisor
           # the settings file with every setting at its default, to copy and edit:

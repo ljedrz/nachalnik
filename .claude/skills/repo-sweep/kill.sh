@@ -35,7 +35,7 @@ cd "$wt"
 # in the same worktree; see drive.py
 TMPDIR=$out/tmp CARGO_TARGET_DIR=$wt/target GIT_CONFIG_GLOBAL=/dev/null DRIVE_OUT=$out \
     DRIVE_RESUMES=6 python3 "$here/drive.py" "$name" "$out/$name.in" \
-    "$BIN" --headless --config-file "$SWEEPS/mt.json" --deadline "$DEADLINE"
+    "$BIN" --headless --config-file "$SWEEPS/mt.json" --max-run-seconds "$DEADLINE"
 echo "exit $?" >> "$out/$name.err"
 git -C "$wt" add -N . 2> /dev/null
 # the crates' sources and tests and nothing else: a session leaves scripts, `.orig` files and

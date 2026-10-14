@@ -335,7 +335,7 @@ pub struct App {
     /// advisor's own memory of what it said about a command, which nothing else has a way to ask
     /// it for.
     ///
-    /// note: `None` in a session started without `--advise`, which is the default.
+    /// note: `None` in a session started without `--rate-shell-commands`, which is the default.
     #[cfg(feature = "shell-advisor")]
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.

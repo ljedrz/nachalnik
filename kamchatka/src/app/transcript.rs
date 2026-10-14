@@ -95,9 +95,9 @@ pub struct Entry {
     pub arriving: bool,
     /// The call whose output this is, where it is a tool's streamed output.
     ///
-    /// note: what keeps two calls running at once, under `--parallel`, on two lines. Appended to
-    /// whichever line was open, their output interleaved fragment by fragment on one, and the
-    /// first call to finish took the other's line away with its own.
+    /// note: what keeps two calls running at once, under `--parallel-tool-calls`, on two lines.
+    /// Appended to whichever line was open, their output interleaved fragment by fragment on one,
+    /// and the first call to finish took the other's line away with its own.
     pub call: Option<ToolCallId>,
 }
 
@@ -490,9 +490,10 @@ impl App {
 
     /// Appends to the line still arriving from this call's output, starting one if there is none.
     ///
-    /// note: by call rather than by whichever line is open last, because under `--parallel` two
-    /// calls stream at once and each is a line of its own. A line is looked for anywhere still
-    /// open, since the other call's fragment may have been the last thing to arrive.
+    /// note: by call rather than by whichever line is open last, because under
+    /// `--parallel-tool-calls` two calls stream at once and each is a line of its own. A line is
+    /// looked for anywhere still open, since the other call's fragment may have been the last thing
+    /// to arrive.
     pub(super) fn append_output(&mut self, call: &ToolCallId, fragment: &str) {
         let open = self
             .loose
@@ -898,7 +899,7 @@ impl App {
             // a turn recorded as ordered blocks reads in its own order: thinking, a sentence, a
             // call, thinking again. Stacked as thoughts, then sentences, then calls, an interleaved
             // turn read on the chat as something that did not happen - the one place most people
-            // read it, and the order `--gemini` exists to keep
+            // read it, and the order `--api gemini` exists to keep
             ContextKind::AssistantMessage { .. } if item.content.as_blocks().is_some() => {
                 for block in item.content.as_blocks().into_iter().flatten() {
                     match block {

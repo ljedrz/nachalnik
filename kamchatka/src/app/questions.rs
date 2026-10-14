@@ -229,7 +229,7 @@ fn rememberable(grant: Grant, remember: bool) -> Result<(), String> {
     match remember && grant != Grant::Allow {
         true => Err(
             "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
-             or `--deny`"
+             or `--auto-deny`"
                 .to_owned(),
         ),
         false => Ok(()),

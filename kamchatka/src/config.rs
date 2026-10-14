@@ -39,36 +39,32 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     /// The model to talk to.
     pub model: Option<String>,
-    /// Whether to speak Google's own dialect rather than an OpenAI-compatible one.
-    pub gemini: Option<bool>,
-    /// Whether to speak Anthropic's own dialect rather than an OpenAI-compatible one.
-    pub anthropic: Option<bool>,
-    /// Whether to ask OpenAI's Responses API rather than chat completions.
-    pub responses: Option<bool>,
+    /// Which API the requests speak.
+    pub api: Option<Api>,
     /// Whether to ask a second model to rate the shell commands a question is about.
     ///
     /// note: not behind the `shell-advisor` feature, for the reason `mcp` is not: one file works
     /// for every build of this program, and a build without it refuses the key rather than
     /// ignoring it - see `Args::under`.
-    pub advise: Option<bool>,
-    /// A system instruction, pinned, for a session that is starting - a resumed one already has
-    /// the one it started with.
-    pub system: Option<String>,
+    pub rate_shell_commands: Option<bool>,
+    /// A system prompt, pinned, for a session that is starting - a resumed one already has the
+    /// one it started with.
+    pub system_prompt: Option<String>,
     /// MCP servers to run, as `[name=]command`.
     ///
     /// note: not behind the `mcp` feature, so that one file works for every build of this program.
     /// A build without it refuses the key rather than ignoring it - see `Args::under`.
     pub mcp: Option<Vec<String>>,
     /// How many requests one turn may make before it stops; `0` is no limit.
-    pub requests: Option<usize>,
+    pub max_requests_per_turn: Option<usize>,
     /// How full the context may get before its oldest exchanges are excluded, and how far down it
     /// is taken once they are: `0.8`, or `[0.8, 0.6]`; `1` never compacts.
-    pub compact: Option<Compact>,
+    pub compact_context_at: Option<Compact>,
     /// Whether tool calls may run at the same time rather than in the order they were asked for.
-    pub parallel: Option<bool>,
+    pub parallel_tool_calls: Option<bool>,
     /// Whether this program's own tools are offered with every argument at the top level of a
-    /// call, as `--flat-calls` does, rather than inside one `call` object.
-    pub flat_calls: Option<bool>,
+    /// call, as `--flat-tool-arguments` does, rather than inside one `call` object.
+    pub flat_tool_arguments: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.
     ///
     /// note: a key with no argument behind it, for the reason `border-color` is one: which tools a
@@ -89,33 +85,33 @@ pub struct Settings {
     /// and `fs` no longer held to the working directory.
     pub no_sandbox: Option<bool>,
     /// Paths outside the working directory the tools may also read and write.
-    pub sandbox_allow: Option<Vec<PathBuf>>,
+    pub sandbox_write: Option<Vec<PathBuf>>,
     /// Paths outside the working directory the tools may read but not change.
     pub sandbox_read: Option<Vec<PathBuf>>,
     /// The devices under `/dev` the shell may read and write, replacing the usual list.
     pub sandbox_device: Option<Vec<PathBuf>>,
-    /// Capabilities and path rules to allow before anything runs.
-    pub allow: Option<Vec<String>>,
-    /// The same, refused.
-    pub deny: Option<Vec<String>>,
-    /// MCP servers whose tools may run, by the name each was given.
-    pub allow_server: Option<Vec<String>>,
-    /// The same, refused.
-    pub deny_server: Option<Vec<String>>,
+    /// Capabilities and path rules allowed without asking.
+    pub auto_allow: Option<Vec<String>>,
+    /// The same, refused without asking.
+    pub auto_deny: Option<Vec<String>>,
+    /// MCP servers whose tools run without asking, by the name each was given.
+    pub auto_allow_server: Option<Vec<String>>,
+    /// The same, refused without asking.
+    pub auto_deny_server: Option<Vec<String>>,
     /// What a question nobody is there to answer gets: `deny` or `allow`.
     pub on_ask: Option<String>,
     /// Seconds after which a headless run stops, however far it has got; `0` never does.
-    pub deadline: Option<u64>,
+    pub max_run_seconds: Option<u64>,
     /// Seconds a model's answer may say nothing before the request is given up on.
-    pub patience: Option<u64>,
+    pub max_silence_seconds: Option<u64>,
     /// Seconds a call to an MCP server's tool may wait for its answer; `0` waits for ever.
-    pub mcp_timeout: Option<u64>,
+    pub mcp_timeout_seconds: Option<u64>,
     /// Tokens the provider may charge for the session before it stops.
-    pub spend: Option<u64>,
+    pub max_spend_tokens: Option<u64>,
     /// Whether to drop the whole of a tool's output once it has been shortened.
-    pub forget_truncated: Option<bool>,
+    pub discard_cut_off_output: Option<bool>,
     /// Whether to send a request that looks too long for the model rather than refusing it here.
-    pub send_oversized: Option<bool>,
+    pub send_oversized_requests: Option<bool>,
     /// Whether to leave the session unwritten when it ends.
     pub no_record: Option<bool>,
     /// The colour the window's frame is drawn in, as `#rrggbb`: left out, [`BORDER_COLOR`]; `null`,
@@ -139,18 +135,38 @@ pub struct Settings {
     pub border_color: Option<Option<String>>,
 }
 
+/// Which API a session's requests speak: `--api`, and `api` in a settings file.
+///
+/// note: one setting with four values rather than a switch per dialect. A session speaks exactly
+/// one, and three switches could say two at once, which had to be refused after the fact.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Api {
+    /// OpenAI's chat completions, which OpenRouter and most local servers speak.
+    #[default]
+    ChatCompletions,
+    /// OpenAI's Responses API.
+    Responses,
+    /// Anthropic's Messages API.
+    Anthropic,
+    /// Google's own `generateContent`.
+    Gemini,
+}
+
 /// The colour a window's frame is drawn in when nothing says otherwise.
 pub const BORDER_COLOR: &str = "#1A936F";
 
 /// How full the context may get before its oldest exchanges go, and how far down it is taken once
-/// they start going: `--compact 0.8` or `--compact 0.8,0.6`, and `0.8` or `[0.8, 0.6]` in a file.
+/// they start going: `--compact-context-at 0.8` or `--compact-context-at 0.8,0.6`, and `0.8` or
+/// `[0.8, 0.6]` in a file.
 ///
 /// note: one setting and not two, because the second number is about the first. As two keys, a
 /// settings file that named both - the shipped one does, to say what the target is - held a
-/// `--compact` typed beside it to a target written for another threshold: `--compact 0.5` was
-/// refused for a target above it, and `--compact 0.9` aimed at the file's `0.6` rather than the
-/// `0.7` it derives on its own. One value is replaced whole, as a list on the command line replaces
-/// a file's, so a file that says what the program does unasked changes nothing.
+/// `--compact-context-at` typed beside it to a target written for another threshold:
+/// `--compact-context-at 0.5` was refused for a target above it, and `--compact-context-at 0.9`
+/// aimed at the file's `0.6` rather than the `0.7` it derives on its own. One value is replaced
+/// whole, as a list on the command line replaces a file's, so a file that says what the program
+/// does unasked changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Compact {
     /// How full the context may get, as a fraction of the limit.
@@ -220,8 +236,8 @@ impl<'de> Deserialize<'de> for Compact {
         }
         match Written::deserialize(deserializer).map_err(|_| {
             serde::de::Error::custom(
-                "`compact` is a fraction, or two of them: `0.8`, or `[0.8, 0.6]` for where \
-                 compaction starts and how far down it takes the context",
+                "`compact-context-at` is a fraction, or two of them: `0.8`, or `[0.8, 0.6]` for \
+                 where compaction starts and how far down it takes the context",
             )
         })? {
             Written::One(threshold) => Ok(Self::at(threshold)),
@@ -310,7 +326,7 @@ impl Settings {
         // makes the expansion itself a function of a home rather than of the environment - see
         // below. Nothing to expand against leaves every path exactly as it was written.
         if let Some(home) = home() {
-            for paths in [&mut settings.sandbox_allow, &mut settings.sandbox_read]
+            for paths in [&mut settings.sandbox_write, &mut settings.sandbox_read]
                 .into_iter()
                 .flatten()
             {
@@ -391,15 +407,16 @@ pub fn underfoot(path: &Path) -> bool {
 /// The keys a settings file may set that start a program or grant something, by the name the file
 /// spells them with.
 ///
-/// note: the list SECURITY.md gives for a file found underfoot. `deny` and `deny-server` are not
-/// on it, because a file that only refuses is a file that can only take something away.
+/// note: the list SECURITY.md gives for a file found underfoot. `auto-deny` and
+/// `auto-deny-server` are not on it, because a file that only refuses is a file that can only take
+/// something away.
 pub const GRANTING: [&str; 8] = [
     "mcp",
     "no-sandbox",
-    "allow",
-    "allow-server",
+    "auto-allow",
+    "auto-allow-server",
     "on-ask",
-    "sandbox-allow",
+    "sandbox-write",
     "sandbox-read",
     "sandbox-device",
 ];
@@ -594,10 +611,26 @@ mod tests {
 
         let hostile: Settings = serde_json::from_str(
             r#"{ "model": "m", "mcp": ["x=y"], "no-sandbox": true, "on-ask": "allow",
-                 "deny": ["exec"] }"#,
+                 "auto-allow": ["exec"], "auto-allow-server": ["x"], "auto-deny": ["fs"] }"#,
         )
         .expect("a settings file");
-        assert_eq!(granting(&hostile), ["mcp", "no-sandbox", "on-ask"]);
+        assert_eq!(
+            granting(&hostile),
+            [
+                "mcp",
+                "no-sandbox",
+                "auto-allow",
+                "auto-allow-server",
+                "on-ask"
+            ]
+        );
+
+        // every name on the list is a key a file can have: one renamed without it would be a key
+        // that grants and is never asked about
+        let keys = serde_json::to_value(Settings::default()).expect("it writes");
+        for key in GRANTING {
+            assert!(keys.get(key).is_some(), "`{key}` is not a settings key");
+        }
     }
 
     /// Only a yes reads it, and the question says what it is asking about.
@@ -607,7 +640,7 @@ mod tests {
             let mut said = Vec::new();
             let yes = trusted(
                 Path::new(FILE),
-                &["mcp", "allow"],
+                &["mcp", "auto-allow"],
                 &mut typed.as_bytes(),
                 &mut said,
             )
@@ -619,7 +652,7 @@ mod tests {
             let (yes, said) = ask(typed);
             assert!(yes, "{typed:?}: {said}");
             assert!(said.contains("kamchatka.json"), "{said}");
-            assert!(said.contains("sets mcp, allow"), "{said}");
+            assert!(said.contains("sets mcp, auto-allow"), "{said}");
             assert!(!said.contains("not read"), "{said}");
         }
         for typed in ["\n", "n\n", "yep\n", ""] {

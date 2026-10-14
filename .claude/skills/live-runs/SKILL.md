@@ -49,23 +49,23 @@ as evidence. About twenty at once runs without rate-limit trouble on a free mode
 ```sh
 S="$(cat $SKILL/system.txt)"; F=$SKILL/feeds
 r() { n=$1 f=$2; shift 2; nohup $SKILL/run.sh $n $F/$f -s "$S" "$@" > /dev/null 2>&1 & }
-FIX=edge r fs-edge fs-edge.txt --allow fs
-r sandbox sandbox.txt --allow exec:run,fs
-r network network.txt --allow exec:run                    # the gate, answered no
-r jobs jobs.txt --allow exec:run,fs                         # then ps for what outlived the session
-r output output.txt --allow exec:run
-DEADLINE=600 r commands commands.txt                        # every command, bad arguments included
-r context context.txt --allow fs,context
-FIX=edge LIMIT=14000 r wall wall.txt --allow fs,context,log # compaction to the limit
-FIX=edge LIMIT=14000 r wall-noctx wall.txt --allow fs
-r malformed malformed.txt --allow fs,context,exec:run,log,setup,fork
-r ctx-adversarial ctx-adversarial.txt --allow context,fs
-r rules rules.txt --allow fs,exec:run --deny '.env*,secrets/'
-r spend spend.txt --spend 6000 --allow fs                  # exit statuses: 3, 4, 124, 130, 143, 129
-r requests requests.txt --requests 2 --allow fs
-SIG="INT 2" r sigint coding.txt --allow fs,exec:run
-r mcp mcp.txt --mcp "arith=python3 <repo>/kamchatka/tests/mcp_server.py" --allow-server arith
-FIX=empty LIMIT=40000 DEADLINE=2400 r build build.txt --allow fs,exec:run,context --requests 30
+FIX=edge r fs-edge fs-edge.txt --auto-allow fs
+r sandbox sandbox.txt --auto-allow exec:run,fs
+r network network.txt --auto-allow exec:run                      # the gate, answered no
+r jobs jobs.txt --auto-allow exec:run,fs                         # then ps for what outlived the session
+r output output.txt --auto-allow exec:run
+DEADLINE=600 r commands commands.txt                             # every command, bad arguments included
+r context context.txt --auto-allow fs,context
+FIX=edge LIMIT=14000 r wall wall.txt --auto-allow fs,context,log # compaction to the limit
+FIX=edge LIMIT=14000 r wall-noctx wall.txt --auto-allow fs
+r malformed malformed.txt --auto-allow fs,context,exec:run,log,setup,fork
+r ctx-adversarial ctx-adversarial.txt --auto-allow context,fs
+r rules rules.txt --auto-allow fs,exec:run --auto-deny '.env*,secrets/'
+r spend spend.txt --max-spend-tokens 6000 --auto-allow fs        # exit statuses: 3, 4, 124, 130, 143, 129
+r requests requests.txt --max-requests-per-turn 2 --auto-allow fs
+SIG="INT 2" r sigint coding.txt --auto-allow fs,exec:run
+r mcp mcp.txt --mcp "arith=python3 <repo>/kamchatka/tests/mcp_server.py" --auto-allow-server arith
+FIX=empty LIMIT=40000 DEADLINE=2400 r build build.txt --auto-allow fs,exec:run,context --max-requests-per-turn 30
 ```
 
 The feeds cover more than that list: `ls $SKILL/feeds`. The other drivers:
@@ -73,8 +73,8 @@ The feeds cover more than that list: `ls $SKILL/feeds`. The other drivers:
 - `chain.sh` - one session across a SIGTERM, a SIGKILL, a resume past a killed log, `/load`, two
   forks and `reconcile`.
 - `serve.sh unix:$LIVE/s.sock $F/servers.txt -s "$S"` - a served session: a client that pipes a
-  script and leaves its questions, one that answers them, one that quits. `tcp:127.0.0.1:PORT`
-  with `$F/selfport.txt` and `--allow exec:run,net:reach` checks that a command cannot reach the
+  script and leaves its questions, one that answers them, one that quits. `tcp:127.0.0.1:PORT` with
+  `$F/selfport.txt` and `--auto-allow exec:run,net:reach` checks that a command cannot reach the
   port its own session is served on.
 - `fake.sh [MODE...]` - one session per misbehaviour of `fakeapi.py`, an OpenAI-compatible endpoint
   whose model id picks it: 429 with `Retry-After`, 500, a stream cut mid-JSON, a non-JSON event,
@@ -147,8 +147,8 @@ person's words.
 - `pkill -f PATTERN` matches the shell running it, and so does any pattern that appears in the same
   command line - a `sed` mentioning `sleep 900` killed the shell that ran it. Kill by pid, in a
   command of its own.
-- `--serve` refuses `--headless` and `--deadline`: with no terminal a served session is headless
-  already, and it belongs to the program rather than to a run.
+- `--serve` refuses `--headless` and `--max-run-seconds`: with no terminal a served session is
+  headless already, and it belongs to the program rather than to a run.
 - A resumed session writes its record beside the one it carried on from, so a run's `.stem` is
   only its own while each run has its own `TMPDIR` - which `run.sh` gives it.
 - `run.sh` changes into the workspace: a relative path in its arguments is relative to that.

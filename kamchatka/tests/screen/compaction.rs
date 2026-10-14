@@ -899,9 +899,9 @@ async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
 
 /// A share of the limit that rounds to nothing is said as under one percent, not as `0%`.
 ///
-/// note: found live, with `--compact 0.01` against a million tokens: the marker the model read in
-/// place of what it had been shown said the context had reached 0% of the limit, which reads as a
-/// pass that ran on an empty context.
+/// note: found live, with `--compact-context-at 0.01` against a million tokens: the marker the
+/// model read in place of what it had been shown said the context had reached 0% of the limit,
+/// which reads as a pass that ran on an empty context.
 #[tokio::test]
 async fn a_share_that_rounds_to_nothing_is_said_as_under_one_percent() {
     use nachalnik::{Budget, Compactor, Content, ToolCall};
@@ -1738,12 +1738,12 @@ async fn compact_without_a_compactor_says_there_is_none() {
 
 /// A compactor aims below the fullness it starts at, whatever fullness that is.
 ///
-/// note: the two fields do not say they are ordered, and for two years one spelling of the pair
-/// put them the wrong way round below a third. `--compact 0.15` meant "start at fifteen percent
-/// of the limit" and aimed at ten, so a context between the two was already under the target: the
-/// pass fired before every request, found nothing it could take that would help, said so, and
-/// left the context exactly where it was. Nothing was broken and nothing happened, which is the
-/// worst way for a setting to be wrong.
+/// note: the two fields do not say they are ordered, and for two years one spelling of the pair put
+/// them the wrong way round below a third. `--compact-context-at 0.15` meant "start at fifteen
+/// percent of the limit" and aimed at ten, so a context between the two was already under the
+/// target: the pass fired before every request, found nothing it could take that would help, said
+/// so, and left the context exactly where it was. Nothing was broken and nothing happened, which is
+/// the worst way for a setting to be wrong.
 #[test]
 fn a_compactor_aims_lower_than_the_point_it_starts_at() {
     for threshold in [0.99, 0.8, 0.5, 0.3, 0.2, 0.15, 0.05, 0.01] {

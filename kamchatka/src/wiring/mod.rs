@@ -146,8 +146,8 @@ pub struct Setup {
     /// The devices under `/dev` a confined command may read and write, and no others;
     /// [`sandbox::DEVICES`] unless somebody says otherwise.
     pub devices: Vec<std::path::PathBuf>,
-    /// How this program's own tools lay out their arguments for the model; `--flat-calls` is
-    /// [`tools::Layout::Flat`].
+    /// How this program's own tools lay out their arguments for the model; `--flat-tool-arguments`
+    /// is [`tools::Layout::Flat`].
     ///
     /// note: for this run only, and nothing about it is recorded. A resumed session's history may
     /// hold calls in the other layout, and the tools read either; what changes is the schema the
@@ -312,7 +312,7 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
 
 /// What is wrong with a rule about a capability or a domain no tool here has, where something is.
 ///
-/// note: the path rules' objection, for the other two kinds. `--deny shell` parsed as a domain
+/// note: the path rules' objection, for the other two kinds. `--auto-deny shell` parsed as a domain
 /// called `shell`, and the shell is judged as `exec:run` - so it refused nothing, and a headless
 /// run given `--on-ask allow` ran every command unasked under a rule that read as given. So did a
 /// typo like `fs:writ`. The domains a call here can be judged under are the ones this program's
@@ -449,9 +449,9 @@ impl Flagged {
 
 /// Why [`Setup::check`] refused a setup, and which setting said what it refused.
 ///
-/// note: the setting as a settings file spells its key - `sandbox-device`, `allow-server` - since
-/// that is the one spelling every setting has, and a flag has it too with `--` in front. It is
-/// `None` for a refusal no setting said, like a working directory that cannot be found.
+/// note: the setting as a settings file spells its key - `sandbox-device`, `auto-allow-server` -
+/// since that is the one spelling every setting has, and a flag has it too with `--` in front. It
+/// is `None` for a refusal no setting said, like a working directory that cannot be found.
 ///
 /// note: it exists for the caller holding a settings file, which names the file beside a value the
 /// file said and says nothing about one somebody typed. Without it that caller had one string and
@@ -489,11 +489,11 @@ impl Setup {
             setting: Some(setting),
             said,
         };
-        for (list, subjects) in [("allow", &self.allow), ("deny", &self.deny)] {
+        for (list, subjects) in [("auto-allow", &self.allow), ("auto-deny", &self.deny)] {
             for subject in subjects {
                 // a path rule that cannot match stops the session rather than being drawn on the
-                // permissions tab like any other: a `--deny` that refuses nothing is worse than no
-                // rule, because it reads as given
+                // permissions tab like any other: a `--auto-deny` that refuses nothing is worse
+                // than no rule, because it reads as given
                 if let tools::Subject::Path(pattern) = subject
                     && let Some(objection) = tools::objection_to(pattern)
                 {
@@ -524,24 +524,24 @@ impl Setup {
                     _ => "asks about",
                 };
                 return Err(refused(
-                    "allow",
+                    "auto-allow",
                     format!(
                         "`{name}` is also matched by the rule `{rule}`, which {does} it, and the \
-                         strictest rule that matches decides - so this allow would change \
+                         strictest rule that matches decides - so allowing `{name}` would change \
                          nothing. Allow `{rule}` to change what that rule says"
                     ),
                 ));
             }
         }
 
-        for (list, subjects) in [("allow", &self.allow), ("deny", &self.deny)] {
+        for (list, subjects) in [("auto-allow", &self.allow), ("auto-deny", &self.deny)] {
             for subject in subjects {
                 if let Some(objection) = unreached(subject) {
-                    // a server's rule came in as `allow-server` or `deny-server`, which is where it
-                    // was written; every other one is the list's own
+                    // a server's rule came in as `auto-allow-server` or `auto-deny-server`, which
+                    // is where it was written; every other one is the list's own
                     let setting = match (subject, list) {
-                        (tools::Subject::Server(_), "allow") => "allow-server",
-                        (tools::Subject::Server(_), _) => "deny-server",
+                        (tools::Subject::Server(_), "auto-allow") => "auto-allow-server",
+                        (tools::Subject::Server(_), _) => "auto-deny-server",
                         _ => list,
                     };
                     return Err(refused(setting, objection));
@@ -616,7 +616,7 @@ impl Setup {
         }
 
         // note: a device is granted reading and writing whatever is beneath it, which is what
-        // `--sandbox-allow` is for anywhere else. Named here, it would be a writable path the
+        // `--sandbox-write` is for anywhere else. Named here, it would be a writable path the
         // screens never mention - and `/dev/../home` is one, so the path is resolved first.
         //
         // note: asked of the list whether or not a confinement is being built, since a path that
@@ -633,7 +633,7 @@ impl Setup {
                 "sandbox-device",
                 format!(
                     "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
-                     `--sandbox-allow`",
+                     `--sandbox-write`",
                     stray.display()
                 ),
             ));

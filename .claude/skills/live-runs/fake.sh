@@ -15,7 +15,7 @@ printf 'hello\nsecond message\n/budget\n' > "$LIVE/out/fake.feed"
 runs=()
 for m in "${modes[@]}"; do
   BASE=http://127.0.0.1:$PORT/v1 DEADLINE=60 nohup "$SKILL/run.sh" "fake-$m" "$LIVE/out/fake.feed" \
-    -m "$m" --allow fs > /dev/null 2>&1 &
+    -m "$m" --auto-allow fs > /dev/null 2>&1 &
   runs+=($!)
 done
 wait "${runs[@]}"

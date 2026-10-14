@@ -207,7 +207,7 @@ impl Sandbox {
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
         let writable = writes(policy);
-        // note: and it reaches the paths `--sandbox-allow` opened, which stay readable. `fs` is
+        // note: and it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is
         // refused a write there under the same refusal, so a shell that could still write in them
         // was two tools disagreeing about one path - and the one that could write was the one
         // whose writes nothing checks
@@ -334,7 +334,7 @@ impl Sandbox {
         }
         // note: a device named was reached, so a refusal of it is its own permissions. Anything
         // else under `/dev` is the boundary unless a root the person named covers it:
-        // `--sandbox-allow` and `--sandbox-read` are granted under `/dev` as anywhere else, so
+        // `--sandbox-write` and `--sandbox-read` are granted under `/dev` as anywhere else, so
         // answering `false` for all of `/dev` blamed the confinement for a file's own permissions
         if self.names_device(&resolved) {
             return true;
@@ -459,7 +459,7 @@ impl Sandbox {
                     _ => "are sockets",
                 },
             )),
-            // reached, and refused a write the person could have made: under `--deny fs:write`
+            // reached, and refused a write the person could have made: under `--auto-deny fs:write`
             // the working directory itself, or a path opened up with `--sandbox-read`. Only a
             // write, since such a path is held for reading and running as well - so a script
             // without its execute bit is refused by its own mode there, and the error does not
@@ -521,10 +521,10 @@ impl Sandbox {
     ///
     /// note: a path this session reaches is otherwise called the file's own permissions, which is
     /// right for `cat /etc/shadow` and wrong for a write into a directory the session holds
-    /// read-only - under `--deny fs:write`, the working directory itself. Asked of the person's
-    /// permissions with `access(2)` from this process, which is not confined, on the path or the
-    /// nearest part of it that is there, since what a write is refused is often a file it was
-    /// going to make.
+    /// read-only - under `--auto-deny fs:write`, the working directory itself. Asked of the
+    /// person's permissions with `access(2)` from this process, which is not confined, on the path
+    /// or the nearest part of it that is there, since what a write is refused is often a file it
+    /// was going to make.
     fn reads_only(&self, path: &Path, scratch: Option<&Path>) -> bool {
         let Some(resolved) = resolve(path) else {
             return false;

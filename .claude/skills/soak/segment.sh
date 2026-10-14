@@ -30,7 +30,7 @@ before=$(ls "$TMPDIR"/kamchatka/*.jsonl 2>/dev/null | sort)
 [ -r "$feed" ] || { echo "no feed at $2" >&2; exit 2; }
 cd "$SOAK/wt"
 # process substitution rather than a pipe, so that $! is kamchatka and a signal reaches it
-"$BIN" --headless --config-file "$SOAK/soak.json" --deadline "$DEADLINE" "${resume[@]}" \
+"$BIN" --headless --config-file "$SOAK/soak.json" --max-run-seconds "$DEADLINE" "${resume[@]}" \
     < <(sed "s|@SOAK@|$SOAK|g" "$feed") > "$out.jsonl" 2> "$out.err" &
 pid=$!
 started=$(date +%s)
@@ -40,7 +40,7 @@ while kill -0 $pid 2>/dev/null; do
         kill -"$signal" $pid
         signal=
     fi
-    # --deadline stops a session that is still answering; this is for one that is not
+    # --max-run-seconds stops a session that is still answering; this is for one that is not
     if [ $(( $(date +%s) - started )) -gt $((DEADLINE + 600)) ]; then
         kill -KILL $pid
     fi

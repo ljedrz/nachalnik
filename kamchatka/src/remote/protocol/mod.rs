@@ -599,9 +599,9 @@ pub struct Attached {
 /// rating travels as its own row, named by the question it is about.
 ///
 /// note: only for the questions something rated, which is `shell` commands in a build that has
-/// `shell-advisor` in it and a session started with `--advise`. A client draws the band where
-/// there is a row for the question it is drawing and draws nothing where there is not, which is
-/// the same thing the panel at a terminal does with the same absence.
+/// `shell-advisor` in it and a session started with `--rate-shell-commands`. A client draws the
+/// band where there is a row for the question it is drawing and draws nothing where there is not,
+/// which is the same thing the panel at a terminal does with the same absence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Judged {
@@ -849,10 +849,10 @@ impl Listed {
 ///
 /// note: the subject is its own spelling rather than a structure, and that is deliberate: for the
 /// three a `Subject` can be read back from, it reads back out of the same string it prints as,
-/// which is what makes `--deny "$(a row off this list)"` mean what it says. Giving the wire a
+/// which is what makes `--auto-deny "$(a row off this list)"` mean what it says. Giving the wire a
 /// second shape for it would be a second thing to keep in step with `Subject::parse`. A server's
 /// row is the exception, and it is `Subject`'s rather than this one's: it prints as `server files`
-/// and is given back with `--allow-server`, because a server's name and a domain are both bare
+/// and is given back with `--auto-allow-server`, because a server's name and a domain are both bare
 /// words and nothing in either says which.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]

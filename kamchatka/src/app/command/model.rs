@@ -341,8 +341,8 @@ impl App {
     ///
     /// note: a row is a **subject** - `fs:read`, `context:look` - which is the same string the
     /// permissions tab is keyed on, so a person who has read one table can read the other and
-    /// `--allow fs:grep` and `/limit fs:grep` name the same thing. A tool id is not enough once
-    /// one tool does five things of five different sizes.
+    /// `--auto-allow fs:grep` and `/limit fs:grep` name the same thing. A tool id is not enough
+    /// once one tool does five things of five different sizes.
     ///
     /// note: the table is the `Limits` map rather than the registry, and it holds a row for every
     /// subject this program's tools declare, whether or not this session offers them. That is

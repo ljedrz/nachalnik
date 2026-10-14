@@ -278,7 +278,7 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     // a rule about a whole domain names the capabilities it answers for, which is what somebody
     // wrote it to decide. It read "nothing registered needs it" - a row was only filled where a
     // tool declared that exact capability, and no tool declares a bare domain - and naming its
-    // tools instead would have told somebody who wrote `--allow log` that it covered `log`
+    // tools instead would have told somebody who wrote `--auto-allow log` that it covered `log`
     harness
         .app
         .policy
@@ -302,11 +302,12 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
 /// An operation the domain above it answers for is not a second row saying the same thing.
 ///
 /// note: every capability a registered tool declares was a subject, and a domain rule made each of
-/// them a *decided* one - so `--allow log` wrote one rule and drew two rows, `log  allow  log:read`
-/// and `log:read  allow  log`, each naming the other in the column beside it. `--allow context`
-/// drew fourteen. Rows on this tab are decisions somebody took, and the two halves of that are
-/// checked here: an operation somebody answered about separately keeps its row, and one nobody has
-/// decided is still counted along the bottom rather than quietly dropped with the rest.
+/// them a *decided* one - so `--auto-allow log` wrote one rule and drew two rows,
+/// `log allow log:read` and `log:read allow log`, each naming the other in the column beside it.
+/// `--auto-allow context` drew fourteen. Rows on this tab are decisions somebody took, and the two
+/// halves of that are checked here: an operation somebody answered about separately keeps its row,
+/// and one nobody has decided is still counted along the bottom rather than quietly dropped with
+/// the rest.
 #[tokio::test]
 async fn an_operation_the_domain_above_it_answers_for_has_no_row_of_its_own() {
     let mut harness = Harness::new(Vec::new());
@@ -383,8 +384,8 @@ async fn an_operation_the_domain_above_it_answers_for_has_no_row_of_its_own() {
 /// A rule about an MCP server names the tools that came from it.
 ///
 /// note: the same fault as the domain row, on the subject that had it worse - the policy's list of
-/// servers existed to answer this and had no caller at all, so `--allow-server files` listed a row
-/// saying nothing registered needed it while every tool it covered sat above it.
+/// servers existed to answer this and had no caller at all, so `--auto-allow-server files` listed a
+/// row saying nothing registered needed it while every tool it covered sat above it.
 #[tokio::test]
 async fn a_rule_about_a_server_names_the_tools_that_came_from_it() {
     let mut harness = Harness::new(Vec::new());
@@ -419,10 +420,10 @@ async fn a_rule_about_a_server_names_the_tools_that_came_from_it() {
 ///
 /// note: the coverage column was filled from what a tool *declares* while `Careful::judges` decides
 /// from something narrower: every tool from a server declares `mcp:call`, and `judges` swaps it for
-/// the server's own name so that `--allow-server files` is one flag rather than two. So a session
-/// run `--allow mcp --mcp big=...` was shown `mcp:call  allow  big__spew` and then refused the very
-/// call - a table that reads as a rule in force over a tool the rule is never consulted about, and
-/// the table somebody checks their flags against.
+/// the server's own name so that `--auto-allow-server files` is one flag rather than two. So a
+/// session run `--auto-allow mcp --mcp big=...` was shown `mcp:call allow big__spew` and then
+/// refused the very call - a table that reads as a rule in force over a tool the rule is never
+/// consulted about, and the table somebody checks their flags against.
 #[tokio::test]
 async fn a_rule_about_mcp_covers_nothing_a_spawned_server_offers() {
     let mut harness = Harness::new(Vec::new());

@@ -41,11 +41,11 @@ use crate::app::{App, NOTICES, Outcome, Overlay, Speaker, text::plural};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Stop {
-    /// `--deadline` ran out.
+    /// `--max-run-seconds` ran out.
     Deadline,
     /// The spend ceiling was reached.
     Spent,
-    /// The last turn stopped at `--requests`, with the model not done.
+    /// The last turn stopped at `--max-requests-per-turn`, with the model not done.
     Paused,
     /// `ctrl+c`.
     Interrupted,
@@ -678,8 +678,8 @@ impl<'a> Headless<'a> {
             )
             .map_err(|e| e.to_string())?;
             // and why it was asked at all, where the answer is that the call named no operation.
-            // This is the run where somebody wrote `--allow fs:read` and is watching every call be
-            // refused, with nothing between the two saying why they never meet
+            // This is the run where somebody wrote `--auto-allow fs:read` and is watching every
+            // call be refused, with nothing between the two saying why they never meet
             if let Some(widened) = widened {
                 writeln!(self.prose, "  {widened}").map_err(|e| e.to_string())?;
             }

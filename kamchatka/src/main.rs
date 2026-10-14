@@ -127,8 +127,9 @@ fn main() -> Result<std::process::ExitCode> {
 /// note: a stop by the clock or a signal decides the status even when the last turn had failed
 /// before it. The status is what a script tells a timeout from a failure by, and the failure has
 /// already been said on standard error and is in the record; said again here, as a failure that
-/// ends the run is. A run that reached its spend ceiling or `--requests` after a failed turn is
-/// still a failure: those stops are read off the session rather than made by anything outside it.
+/// ends the run is. A run that reached its spend ceiling or `--max-requests-per-turn` after a
+/// failed turn is still a failure: those stops are read off the session rather than made by
+/// anything outside it.
 fn stopped_over_failed(
     ran: std::result::Result<(), String>,
     stopped: Option<headless::Stop>,
@@ -178,7 +179,8 @@ impl std::fmt::Display for OutOfTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "out of time {}: `--deadline` passed before the session started, and nothing was run",
+            "out of time {}: `--max-run-seconds` passed before the session started, and nothing \
+             was run",
             self.0
         )
     }
@@ -446,10 +448,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         Some(address) => {
             // note: before the bind, for the reason the whole of this comment gives: a refused
             // argument must leave nothing listening either. Asked of the arguments rather than off
-            // the matches, because a settings file's `deadline` and `on-ask` are written into the
-            // arguments by the merge and leave nothing behind saying where they came from - so a
-            // check on the matches reads a file that says when the run should end as carrying
-            // nothing, and the session serves for ever without a word
+            // the matches, because a settings file's `max-run-seconds` and `on-ask` are written
+            // into the arguments by the merge and leave nothing behind saying where they came
+            // from - so a check on the matches reads a file that says when the run should end as
+            // carrying nothing, and the session serves for ever without a word
             let unserved = given.unserved();
             let flag = match args.serve {
                 Some(_) => "--serve",
@@ -458,8 +460,8 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             anyhow::ensure!(
                 unserved.is_empty(),
                 "`{flag}` does not read {unserved}: a served session is this program's and goes \
-                 on for as long as somebody wants it, while `--deadline` ends a headless run and \
-                 `--on-ask` answers a question nobody is there to answer",
+                 on for as long as somebody wants it, while `--max-run-seconds` ends a headless \
+                 run and `--on-ask` answers a question nobody is there to answer",
             );
             Some(
                 remote::Server::bind(address)
@@ -508,16 +510,17 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         };
     }
 
-    // note: the run's rather than a session's, and counted from the start. `--deadline` promises
-    // to stop a run however far it has got, and the endpoint's probe and an MCP server's handshake
-    // are both waits on somebody else's program that nothing else bounds - see POSTPONED.md for
-    // why a server's has no timeout of its own. A `/restart` does not start the clock again
+    // note: the run's rather than a session's, and counted from the start. `--max-run-seconds`
+    // promises to stop a run however far it has got, and the endpoint's probe and an MCP server's
+    // handshake are both waits on somebody else's program that nothing else bounds - see
+    // POSTPONED.md for why a server's has no timeout of its own. A `/restart` does not start the
+    // clock again
     //
-    // note: `0` is none, as it is for `--spend` and `--requests`: a deadline of nothing stops the
-    // run before the first line is read, which nobody asks for. And one too far off to add to the
-    // clock is none as well, rather than a panic
+    // note: `0` is none, as it is for `--max-spend-tokens` and `--max-requests-per-turn`: a
+    // deadline of nothing stops the run before the first line is read, which nobody asks for. And
+    // one too far off to add to the clock is none as well, rather than a panic
     let ends = args
-        .deadline
+        .max_run_seconds
         .filter(|seconds| *seconds > 0 && headless && server.is_none())
         .and_then(|seconds| begun.checked_add(std::time::Duration::from_secs(seconds)));
 
@@ -540,7 +543,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     let provider = starting(ends, "reaching the model", args.provider()).await?;
     // note: a run nobody watches waits out a busy endpoint for about five minutes rather than
     // fourteen seconds, since there is nobody to tell sooner and a limit several sessions share
-    // lasts longer than that; `--deadline` still bounds the whole run. A restart keeps the
+    // lasts longer than that; `--max-run-seconds` still bounds the whole run. A restart keeps the
     // provider, and with it this
     if headless && server.is_none() {
         provider.set_tries(UNWATCHED_TRIES);

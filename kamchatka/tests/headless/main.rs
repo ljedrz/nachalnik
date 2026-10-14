@@ -464,10 +464,10 @@ impl Tool for Several {
 ///
 /// note: the whole of the failure this is about happened in one session and cost twenty calls. No
 /// operation could be read out of the arguments, so the call declared every operation `fs` has -
-/// and `--allow fs:read` then matched nothing. What the run said was `deny, because nobody is here
-/// to be asked`, which is true and is about the wrong thing: the model went looking for a
-/// different approach, and the person watching had no way to see that their rule and the call
-/// could never meet.
+/// and `--auto-allow fs:read` then matched nothing. What the run said was
+/// `deny, because nobody is here to be asked`, which is true and is about the wrong thing: the
+/// model went looking for a different approach, and the person watching had no way to see that
+/// their rule and the call could never meet.
 ///
 /// note: the call here leaves `action` out, where the session that bought this wrote the whole
 /// wrapper as a string of JSON. That shape is read through now - see `ops::inner` - and the
@@ -560,7 +560,7 @@ async fn a_rule_that_refused_a_call_naming_no_operation_says_the_call_named_none
 ///
 /// note: two sweeps with one model wrote nearly every call as `{"call": {"item": {...}}}`, were
 /// judged against everything each tool does, and spent their sessions refused. Read through, the
-/// call is the `read` it meant, and `--allow fs:read` answers it.
+/// call is the `read` it meant, and `--auto-allow fs:read` answers it.
 #[tokio::test]
 async fn a_call_one_level_too_deep_is_allowed_by_the_rule_for_what_it_asks() {
     let wired = Setup {
@@ -1010,8 +1010,8 @@ async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
 ///
 /// note: `/models` was awaited inside the branch that read its line, so neither the deadline nor
 /// `ctrl+c` could be reached until the endpoint answered - and one that had gone quiet held a
-/// `--deadline` run for as long as the provider's own patience. The listing is sent out now, and
-/// the deadline stops it as it stops a turn. A switch would be waited for instead: half an
+/// `--max-run-seconds` run for as long as the provider's own patience. The listing is sent out now,
+/// and the deadline stops it as it stops a turn. A switch would be waited for instead: half an
 /// `/endpoint` is worse than a late exit.
 #[tokio::test]
 async fn a_deadline_stops_a_command_waiting_on_an_endpoint() {
@@ -1072,8 +1072,8 @@ async fn a_deadline_stops_a_command_waiting_on_an_endpoint() {
 
 /// A deadline too far off to be an instant is no deadline, rather than a panic.
 ///
-/// note: `--deadline 18446744073709551615` added the seconds to the clock with `+`, which panics
-/// on overflow - so the run died with exit 101 before reading a line, and wrote no record.
+/// note: `--max-run-seconds 18446744073709551615` added the seconds to the clock with `+`, which
+/// panics on overflow - so the run died with exit 101 before reading a line, and wrote no record.
 #[tokio::test]
 async fn a_deadline_past_the_end_of_time_is_none() {
     let Wired {

@@ -65,7 +65,7 @@ main() {
     } > "$SWEEPS/$name.in"
     [ -n "${RESUME:-}" ] && resume=(-r "$RESUME")
     local limit=()
-    [ -n "${DEADLINE:-}" ] && limit=(--deadline "$DEADLINE")
+    [ -n "${DEADLINE:-}" ] && limit=(--max-run-seconds "$DEADLINE")
     : > "$SWEEPS/$name.jsonl"
     : > "$SWEEPS/$name.err"
     : > "$SWEEPS/$name.carried"

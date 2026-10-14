@@ -719,7 +719,7 @@ fn gemini() -> Option<(
     let kernel = Kernel::new(Config::default());
     let provider = Arc::new(nachalnik_providers::Gemini::new(model, base, key));
     kernel.set_provider(provider.clone());
-    // what `--gemini` wires up: this dialect's turn *is* an order, so the projector sends one
+    // what `--api gemini` wires up: this dialect's turn *is* an order, so the projector sends one
     kernel.set_projector(Arc::new(LinearProjector {
         send_blocks: true,
         ..Default::default()

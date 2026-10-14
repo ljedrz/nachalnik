@@ -128,7 +128,7 @@ fn a_directory_rule_is_about_a_component() {
 
 /// Every rule this takes is one the matcher can match, and the ones it cannot are refused by name.
 ///
-/// note: `--allow 'src/**'` was taken, drawn on the permissions tab and consulted about every
+/// note: `--auto-allow 'src/**'` was taken, drawn on the permissions tab and consulted about every
 /// call, and no path has ever matched it - it has no trailing slash, so it was compared with file
 /// names, which hold no `/`. RUNNING.md offered it as the example of a path rule. The pair that
 /// matters is the two halves agreeing: what is accepted is what `path_matches` can answer yes to.
@@ -373,8 +373,8 @@ fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
 /// `context` allows the context: every action it has, with nothing else to say about it.
 ///
 /// note: four of them were seeded as questions, so allowing the tool left an `exclude` still
-/// asking - which made `--allow context` mean something other than `context`, with no way to tell
-/// from the words which four were the exceptions.
+/// asking - which made `--auto-allow context` mean something other than `context`, with no way to
+/// tell from the words which four were the exceptions.
 #[test]
 fn allowing_a_tool_allows_every_action_of_it() {
     let policy = Careful::new();
@@ -425,9 +425,9 @@ fn refusing_one_action_refuses_only_that_action() {
 
 /// A tool somebody refused stays refused, however finely an action of it is named.
 ///
-/// note: the half that keeps `--deny` worth writing. There is deliberately no way to spell "the
-/// tool is refused, but this one action is fine": the strictest of everything consulted wins, and
-/// `--deny` is the last word.
+/// note: the half that keeps `--auto-deny` worth writing. There is deliberately no way to spell
+/// "the tool is refused, but this one action is fine": the strictest of everything consulted wins,
+/// and `--auto-deny` is the last word.
 #[test]
 fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     let policy = Careful::new();
@@ -437,8 +437,8 @@ fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     assert_eq!(asking_about_action(&policy, "elide"), Verdict::Deny);
 }
 
-/// A rule is spelled the way it is read out, so `--deny "$(a row off the permissions tab)"` means
-/// what it says - which is the property `Subject::parse` exists to keep.
+/// A rule is spelled the way it is read out, so `--auto-deny "$(a row off the permissions tab)"`
+/// means what it says - which is the property `Subject::parse` exists to keep.
 #[test]
 fn every_kind_of_rule_survives_the_trip_through_text() {
     for (text, expected) in [
@@ -643,9 +643,10 @@ fn the_policy_reads_a_path_and_a_command_through_the_wrapper() {
 /// A refusal of somebody else's tools is still consulted about a server's, whoever allowed the
 /// server.
 ///
-/// note: naming the server stands in for `mcp:call`, so that `--allow-server files` grants what it
-/// says without `mcp:call` being answered too - and the stand-in dropped a *refusal* of `mcp:call`
-/// along with its question. `--deny mcp:call --allow-server files` ran every tool the server had.
+/// note: naming the server stands in for `mcp:call`, so that `--auto-allow-server files` grants
+/// what it says without `mcp:call` being answered too - and the stand-in dropped a *refusal* of
+/// `mcp:call` along with its question. `--auto-deny mcp:call --auto-allow-server files` ran every
+/// tool the server had.
 #[test]
 fn a_refused_mcp_call_is_not_talked_past_by_an_allowed_server() {
     let request = PermissionRequest {

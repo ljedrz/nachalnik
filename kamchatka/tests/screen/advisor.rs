@@ -320,10 +320,10 @@ async fn no_advisor_means_no_line() {
 
 /// A build that can rate commands and is not doing so says why, where somebody would look.
 ///
-/// note: the failure this catches is the one that actually happened: built with the feature, a
-/// key in the environment, no `--advise`, and a question drawn exactly as it was before any of it
-/// existed - no rating, and nothing anywhere accounting for the absence. The feature puts the
-/// advisor in the binary and the flag starts one, and a screen that does not say so leaves
+/// note: the failure this catches is the one that actually happened: built with the feature, a key
+/// in the environment, no `--rate-shell-commands`, and a question drawn exactly as it was before
+/// any of it existed - no rating, and nothing anywhere accounting for the absence. The feature puts
+/// the advisor in the binary and the flag starts one, and a screen that does not say so leaves
 /// somebody reading their own build flags to find out.
 #[tokio::test]
 async fn a_build_that_can_rate_commands_says_when_nothing_is_rating_them() {
@@ -331,11 +331,14 @@ async fn a_build_that_can_rate_commands_says_when_nothing_is_rating_them() {
     harness.tab(Tab::Permissions);
 
     let said = harness.flat();
-    assert!(said.contains("--advise is what turns that on"), "{said}");
+    assert!(
+        said.contains("--rate-shell-commands is what turns that on"),
+        "{said}"
+    );
 }
 
-/// What the advisor's answers cost is counted against `--spend`, and `/spend` says how much of it
-/// was the advisor's.
+/// What the advisor's answers cost is counted against `--max-spend-tokens`, and `/spend` says how
+/// much of it was the advisor's.
 ///
 /// note: it was dropped. The advisor is asked inside the permission policy, which writes no event,
 /// so a ceiling that added up `model.finished` alone was none at all on the advisor - and one

@@ -679,11 +679,11 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
 ///
 /// note: [`action_of`] answering `None` is not a quiet fallback - it widens what the call declares
 /// to every capability the tool has, which is the strictest reading of a call nobody can place and
-/// the right one. What this adds is somebody saying so. A session started with `--allow fs:read`
-/// is then asked about `fs:write` as well, the rule it was given matches nothing, and in a run
-/// with nobody at the prompt the refusal reads `this call was refused when it was asked about` -
-/// which sends a model looking for a different *approach* when what is wrong is the shape of the
-/// call it just made.
+/// the right one. What this adds is somebody saying so. A session started with
+/// `--auto-allow fs:read` is then asked about `fs:write` as well, the rule it was given matches
+/// nothing, and in a run with nobody at the prompt the refusal reads
+/// `this call was refused when it was asked about` - which sends a model looking for a different
+/// *approach* when what is wrong is the shape of the call it just made.
 ///
 /// note: only for a tool whose schema is laid out the way this module lays one out - its
 /// arguments under [`WRAPPER`], or an `action` with an `enum` of the operations at the top level -

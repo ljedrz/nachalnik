@@ -297,9 +297,9 @@ fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
         shown(&specs, limits, config.default_tool_output_limit)
     ));
     // note: read off the configuration rather than stated, as `rules` does, so that a session run
-    // `--forget-truncated` is not told here that the whole of anything cut is still available and
-    // the opposite two actions away. What that costs is a model going looking for content this
-    // session was told to drop
+    // `--discard-cut-off-output` is not told here that the whole of anything cut is still
+    // available and the opposite two actions away. What that costs is a model going looking for
+    // content this session was told to drop
     out.push_str(match config.keep_truncated_output {
         true => {
             "The whole of anything cut is excluded beside what you were shown and can be \
@@ -418,11 +418,11 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // which tools each capability binds, so a verdict is read as being about something
     //
     // note: `Careful::decides` as well as the declaration, because they are not the same list.
-    // `mcp:call` is declared by every tool from a server and answered for by the server's own
-    // name where this program spawned it, so read off the declaration alone, a session run
-    // `--allow mcp --mcp big=...` would list that server's tools under an allowed `mcp:call` here
-    // and then refuse them. A row still appears - somebody wrote that rule - and it says what is
-    // true, which is that nothing here is judged by it
+    // `mcp:call` is declared by every tool from a server and answered for by the server's own name
+    // where this program spawned it, so read off the declaration alone, a session run
+    // `--auto-allow mcp --mcp big=...` would list that server's tools under an allowed `mcp:call`
+    // here and then refuse them. A row still appears - somebody wrote that rule - and it says what
+    // is true, which is that nothing here is judged by it
     let mut binds: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
     for spec in kernel.tool_specs() {
         for capability in spec.capabilities {
@@ -560,7 +560,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     if !decided.is_empty() {
         // note: what these cover is the third column, because the two kinds do not cover the same
         // sort of thing: a domain is a set of operations and a server is a set of tools. A heading
-        // about single actions binding the tool they name would be true of neither - `--allow
+        // about single actions binding the tool they name would be true of neither - `--auto-allow
         // log` is every operation in `log`, and `server big` names no tool at all
         out.push_str("\nand the broader rules, which have no row of their own above:\n");
         for (rule, covers, verdict, _) in &decided {

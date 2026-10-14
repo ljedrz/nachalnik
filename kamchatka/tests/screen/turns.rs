@@ -1125,7 +1125,7 @@ async fn what_an_edit_takes_out_and_what_it_puts_in_are_a_diff_s_two_colours() {
 /// it is one of the lines.
 ///
 /// note: the chat drew every thought, then every sentence, then every call, which is right for a
-/// turn with one of each and wrong for the interleaved ones `--gemini` is there to keep: a turn
+/// turn with one of each and wrong for the interleaved ones `--api gemini` is there to keep: a turn
 /// that thought, said, thought again and said again read as two thoughts and then two sentences.
 ///
 /// note: and the call is there at all. A turn's blocks are its thoughts, its sentences and the

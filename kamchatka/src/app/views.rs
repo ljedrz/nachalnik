@@ -56,7 +56,7 @@ impl Stance {
     /// and the page a caller with no screen is given, and they are the same answer to the same
     /// question. A capability a tool declares and a shell judged against `net:reach` only
     /// sometimes are both here, because which set a rule covers is the first thing somebody
-    /// writing `--allow log` would want to check.
+    /// writing `--auto-allow log` would want to check.
     pub fn covers(&self) -> String {
         match (self.tools.is_empty(), self.sometimes.is_empty()) {
             (true, true) => "nothing registered needs it".to_owned(),
@@ -487,11 +487,11 @@ impl App {
     ///
     /// note: the subjects first and what each one covers second, rather than filling the lists
     /// while walking the tools. Walking fills a row only where a tool declares that exact
-    /// capability, so a rule about a whole domain - which is what `--allow fs` writes - would get a
-    /// row saying "nothing registered needs it" beside the `fs:*` rows it answers for. A domain
-    /// rule covers every tool with a capability in it; a server rule covers every tool
-    /// that came from it; a path rule covers every tool that is handed a path. Asking one question
-    /// per subject is how all four get answered instead of one.
+    /// capability, so a rule about a whole domain - which is what `--auto-allow fs` writes - would
+    /// get a row saying "nothing registered needs it" beside the `fs:*` rows it answers for. A
+    /// domain rule covers every tool with a capability in it; a server rule covers every tool that
+    /// came from it; a path rule covers every tool that is handed a path. Asking one question per
+    /// subject is how all four get answered instead of one.
     fn all_stances(&self) -> Vec<Stance> {
         let specs = self.kernel.tool_specs();
         let reaching = Subject::Capability(Capability::net("reach"));
@@ -503,11 +503,11 @@ impl App {
         let mut subjects: BTreeSet<Subject> = ruled.keys().cloned().collect();
 
         // note: an operation whose answer comes from the domain above it is the same decision a
-        // second time. `--allow log` is one rule, and a row each for `log` and `log:read`, each
-        // naming the other in the column beside it, would say it twice. The domain row says it
-        // and names every operation it answers for, which is what a rule is read for. One
-        // somebody has answered about separately keeps its row, since that is a decision of its
-        // own, and so does one nobody has decided: that is what the count of the rest is made of
+        // second time. `--auto-allow log` is one rule, and a row each for `log` and `log:read`,
+        // each naming the other in the column beside it, would say it twice. The domain row says it
+        // and names every operation it answers for, which is what a rule is read for. One somebody
+        // has answered about separately keeps its row, since that is a decision of its own, and so
+        // does one nobody has decided: that is what the count of the rest is made of
         let answered_above = |capability: &Capability| {
             !ruled.contains_key(&Subject::Capability(capability.clone()))
                 && ruled
@@ -546,10 +546,10 @@ impl App {
         // rule is not to open what it names; see `tools::search`
         let covers = |subject: &Subject| -> Vec<String> {
             // note: a domain rule answers for a *set of capabilities*, and those are what it is
-            // worth naming. Saying which tools it reaches is true and says nothing - `--allow log`
-            // would read `log  allow  log`, three times the same word - where the capabilities
-            // are the thing somebody wrote the rule to decide and the thing they would look for
-            // to check they got it right.
+            // worth naming. Saying which tools it reaches is true and says nothing -
+            // `--auto-allow log` would read `log allow log`, three times the same word - where the
+            // capabilities are the thing somebody wrote the rule to decide and the thing they would
+            // look for to check they got it right.
             if let Subject::Domain(domain) = subject {
                 let mut inside: Vec<String> = specs
                     .iter()

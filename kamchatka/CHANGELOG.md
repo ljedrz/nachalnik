@@ -9,36 +9,63 @@ minor bump may break you.
 
 ### breaking
 
+- **Settings say what they do.** Several flags, and the settings-file keys named after them, were
+  one word that left out what was limited, in what unit, or what an allow was for. They are
+  renamed, with no aliases, so a settings file or a script using an old name is refused until it is
+  updated:
+
+  | was | is now |
+  |---|---|
+  | `--gemini`, `--anthropic`, `--responses` | `--api gemini`, `--api anthropic`, `--api responses`; `chat-completions` unless given |
+  | `--system` | `--system-prompt`; `-s` is unchanged |
+  | `--requests` | `--max-requests-per-turn` |
+  | `--parallel` | `--parallel-tool-calls` |
+  | `--allow`, `--deny` | `--auto-allow`, `--auto-deny` |
+  | `--allow-server`, `--deny-server` | `--auto-allow-server`, `--auto-deny-server` |
+  | `--deadline` | `--max-run-seconds` |
+  | `--spend` | `--max-spend-tokens` |
+  | `--compact` | `--compact-context-at` |
+  | `--forget-truncated` | `--discard-cut-off-output` |
+  | `--advise` | `--rate-shell-commands` |
+  | `--send-oversized` | `--send-oversized-requests` |
+  | `--sandbox-allow` | `--sandbox-write` |
+
+  Each settings key is its flag without the `--`, as before: `"api": "gemini"`, `"auto-allow"`,
+  `"max-run-seconds"`. `--api` is one setting where three switches could name two dialects at once,
+  which had to be refused after the fact. In the library, `Args` and `Settings` have the new names
+  as fields and `config::Api` is new; `wiring::Setup` is unchanged. `/requests` and `/spend` keep
+  their names.
 - **A session is recorded in a directory whose name is not UTF-8.** The record's names were built
   from how the temporary directory displays, which puts a replacement character where the bytes
   are not UTF-8, so under such a `$TMPDIR` they named a directory that was not there and the
   session was not recorded. The paths are `Path`s now: `Recorded::log` and `Recorded::state` are
   `PathBuf`s, `Recorder::log` and `Recorder::state` return `&Path`, and `App::write_session` takes
   two `&Path`s.
-- **The tools can be offered flat.** `introspect::install` takes a `tools::Layout`, and `Shell`
-  and `wiring::Setup` have a `layout` field, which is `Layout::Wrapped` unless `--flat-calls` says
-  otherwise.
+- **The tools can be offered flat.** `introspect::install` takes a `tools::Layout`, and `Shell` and
+  `wiring::Setup` have a `layout` field, which is `Layout::Wrapped` unless `--flat-tool-arguments`
+  says otherwise.
 
 ### added
 
 - **`/requests`** shows how many requests one turn sends before it pauses, and `/requests N`
   changes it while the session runs, from the next request on; `0` is no limit, as for
-  `--requests`. It could only be set at startup, so raising it meant a restart.
-- **`--mcp-timeout`**, and `mcp-timeout` in a settings file, is how many seconds a call to an MCP
-  server's tool may wait for its answer before it is given up on, saying which server: ten minutes
-  unless given, and `0` waits as long as the server takes. A server that hung, or answered with
-  something the protocol library dropped, held the turn until it was interrupted.
-- **`--patience`**, and `patience` in a settings file, is how many seconds the model's answer may
-  say nothing before the request is given up on - before its first word, or between two. It was
-  a fixed 150, which a free endpoint under load can outlast with a request it then answers.
+  `--max-requests-per-turn`. It could only be set at startup, so raising it meant a restart.
+- **`--mcp-timeout-seconds`**, and `mcp-timeout-seconds` in a settings file, is how many seconds a
+  call to an MCP server's tool may wait for its answer before it is given up on, saying which
+  server: ten minutes unless given, and `0` waits as long as the server takes. A server that hung,
+  or answered with something the protocol library dropped, held the turn until it was interrupted.
+- **`--max-silence-seconds`**, and `max-silence-seconds` in a settings file, is how many seconds the
+  model's answer may say nothing before the request is given up on - before its first word, or
+  between two. It was a fixed 150, which a free endpoint under load can outlast with a request it
+  then answers.
 
-- **`--flat-calls`**, and `flat-calls` in a settings file, offers this program's own tools with
-  every argument at the top level of a call, beside `action`, rather than inside one `call` object.
-  A model whose own call format is a flat list of keys and values can slip back into it partway
-  through the nested object, and the call cannot be read; offered flat, it has nothing nested to
-  slip inside. Off by default, since the flat schema says which arguments belong to which operation
-  only in their descriptions. A refusal tells a model offered flat to write its arguments at the
-  top level, never inside `call`.
+- **`--flat-tool-arguments`**, and `flat-tool-arguments` in a settings file, offers this program's
+  own tools with every argument at the top level of a call, beside `action`, rather than inside one
+  `call` object. A model whose own call format is a flat list of keys and values can slip back into
+  it partway through the nested object, and the call cannot be read; offered flat, it has nothing
+  nested to slip inside. Off by default, since the flat schema says which arguments belong to which
+  operation only in their descriptions. A refusal tells a model offered flat to write its arguments
+  at the top level, never inside `call`.
 
 ### changed
 
@@ -59,13 +86,13 @@ minor bump may break you.
   about.** The question showed the raw wrapper, which nobody can judge, and a yes only led to the
   tool refusing the call. It goes to the tool now, which says what is wrong and runs nothing. A
   refusal by rule still refuses it, and a tool from an MCP server is still asked about.
-- **`--allow-server` for a server this run does not start is said rather than refused.** Which
+- **`--auto-allow-server` for a server this run does not start is said rather than refused.** Which
   servers run is up to the command line, so a settings file allowing the usual ones was refused
   whenever `--mcp` left one out. It is taken now, and said at startup and in each session; the
-  allow grants nothing. `--deny-server` for one is still refused, since it is most likely a
+  allow grants nothing. `--auto-deny-server` for one is still refused, since it is most likely a
   misspelling that leaves the server it meant to the question.
-- **An allow for a file name a broader rule still asks about or refuses stops the session.**
-  Every path rule that matches a call is consulted and the strictest wins, so `--allow .env` beside
+- **An allow for a file name a broader rule still asks about or refuses stops the session.** Every
+  path rule that matches a call is consulted and the strictest wins, so `--auto-allow .env` beside
   the default `.env*: ask` changed nothing and was taken without a word. It is refused now, naming
   the rule that decides, which is the one to allow instead.
 - **`/spend` says the figure is this session's since it was started or resumed.** It said "this
@@ -115,7 +142,7 @@ minor bump may break you.
   the failure is still said on standard error.
 - **A command that stops itself is ended and says so.** `kill -STOP $$`, or a `SIGTSTP` to the
   command's group, left the call waiting for output that never came, until the turn was
-  interrupted or a headless run's `--deadline` ended it. The status line now says the command
+  interrupted or a headless run's `--max-run-seconds` ended it. The status line now says the command
   stopped itself, with which signal, and was ended, and what it had said by then is kept.
 - **A confined command is told its `$TMPDIR` is writable.** Every command has a temporary
   directory of its own that it may write in even where the working directory is read-only, and
@@ -158,7 +185,7 @@ minor bump may break you.
   with its exchange instead. A few short questions with screenshots in them then read as worth
   the summary their going leaves, and the request grew by that summary.
 
-- **A refusal under a root named in `/dev` is not blamed on the confinement.** `--sandbox-allow`
+- **A refusal under a root named in `/dev` is not blamed on the confinement.** `--sandbox-write`
   and `--sandbox-read` are granted under `/dev` as anywhere else, but `shell` judged a path there
   by the named devices alone. A command refused a terminal under an allowed `/dev/pts` was told
   the path was outside what the session reaches, when the terminal's own permissions refused it.
@@ -221,8 +248,9 @@ minor bump may break you.
 - **The note under a refused command says each path's own reason.** A command refused for two
   reasons at once - a write where the session may only read, and a read outside what it reaches -
   was told that every path it named was outside what the session reaches, so a model took a
-  directory opened for it with `--sandbox-read`, or the working directory under `--deny fs:write`,
-  for one it could not read. Each path is now named with the reason that applies to it.
+  directory opened for it with `--sandbox-read`, or the working directory under
+  `--auto-deny fs:write`, for one it could not read. Each path is now named with the reason that
+  applies to it.
 
 - **A served session refuses a command from a client another one has replaced.** The replaced
   client's connection was told to go and went when it next looked, and a command it had read
@@ -316,8 +344,9 @@ minor bump may break you.
   the correction for one the next request would read.
 
 - **A server name typed on the command line is not blamed on the settings file.** An unknown
-  `--deny-server` name was refused with the file's path in front of it whenever the file carried
-  `allow-server`, which the shipped one does, so the person went to edit a file that never said it.
+  `--auto-deny-server` name was refused with the file's path in front of it whenever the file
+  carried `allow-server`, which the shipped one does, so the person went to edit a file that never
+  said it.
 
 - **A tool name an MCP server clashes on is named once**, where it was named once for each copy of
   it that clashed: "offers py__add, py__add".

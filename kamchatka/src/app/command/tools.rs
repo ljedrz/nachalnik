@@ -151,10 +151,10 @@ impl App {
     /// note: named `spend_command` because `App::spend` is the ceiling itself and a method may not
     /// be both. The command is `/spend`, which is the word on the command line too.
     ///
-    /// note: it exists because a ceiling a session cannot see is a session that stops for no
-    /// reason anybody at it can read, and because somebody who set one and meant to set a larger
-    /// one should not have to start again. `0` takes it away, the way `--requests 0` does - the
-    /// same spelling for the same idea, rather than a second word for "none".
+    /// note: it exists because a ceiling a session cannot see is a session that stops for no reason
+    /// anybody at it can read, and because somebody who set one and meant to set a larger one
+    /// should not have to start again. `0` takes it away, the way `--max-requests-per-turn 0`
+    /// does - the same spelling for the same idea, rather than a second word for "none".
     ///
     /// note: every sentence here says the figure is *this run's*, because a total starts at
     /// nothing in every process and reads as the session's to anybody carried on with `-r` - and
@@ -216,11 +216,12 @@ impl App {
     }
 
     /// Shows or changes how many requests one turn sends before it pauses; `0` takes the limit
-    /// away, as `--requests 0` does.
+    /// away, as `--max-requests-per-turn 0` does.
     ///
     /// note: the kernel's own setting, changed in place, so it holds from the next request - the
-    /// running turn's included - and a restart to change `--requests` is not needed. Not carried
-    /// into a snapshot: a resumed session, and a `/restart`, starts from `--requests` again.
+    /// running turn's included - and a restart to change `--max-requests-per-turn` is not needed.
+    /// Not carried into a snapshot: a resumed session, and a `/restart`, starts from
+    /// `--max-requests-per-turn` again.
     pub(super) fn requests_command(&mut self, rest: &str) {
         let rest = rest.trim();
         if rest.is_empty() {

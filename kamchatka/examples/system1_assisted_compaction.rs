@@ -6,8 +6,8 @@
 //! ```
 //!
 //! note: any model on `https://openrouter.ai/api/v1/models?output_modalities=decisions`. It goes
-//! through [`endpoint::advise::connect`], which is what `--advise` itself goes through, so the
-//! two choose the key, the address and the model the same way.
+//! through [`endpoint::advise::connect`], which is what `--rate-shell-commands` itself goes
+//! through, so the two choose the key, the address and the model the same way.
 //!
 //! An agent's context fills up, and something has to go. `kamchatka` ships [`Shedder`], which takes
 //! what is oldest - and age is a *proxy*. Nobody wants the oldest gone; they want the
@@ -249,8 +249,8 @@ fn excerpt(text: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
-    // the program's own path to an advisor, so that what `--advise` accepts is what this example
-    // accepts: `KAMCHATKA_SYSTEM1_MODEL`, and a key for wherever its questions go
+    // the program's own path to an advisor, so that what `--rate-shell-commands` accepts is what
+    // this example accepts: `KAMCHATKA_SYSTEM1_MODEL`, and a key for wherever its questions go
     let engine =
         endpoint::advise::connect(&endpoint::session_endpoint(endpoint::Wire::OpenAi)).await?;
     if let Some(notice) = engine.notice() {

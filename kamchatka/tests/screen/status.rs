@@ -894,8 +894,8 @@ async fn params_lists_what_the_endpoint_publishes_beside_each_parameter() {
     );
 }
 
-/// Under `--gemini` the figures the listing publishes are about fields of `generationConfig`, and
-/// `/params` names them by their path into it, sets one without taking its neighbours away, and
+/// Under `--api gemini` the figures the listing publishes are about fields of `generationConfig`,
+/// and `/params` names them by their path into it, sets one without taking its neighbours away, and
 /// reads a bound inside one that was set whole.
 #[tokio::test]
 async fn params_reads_inside_a_parameter_where_the_listing_names_fields_inside_it() {
