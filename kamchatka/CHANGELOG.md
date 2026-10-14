@@ -50,6 +50,12 @@ minor bump may break you.
 
 ### added
 
+- **`remote::server::{apply_event, apply_outcome, apply_arrival, released}` and
+  `remote::Serving::answered`**, what a loop that owns the `App` does with the kernel's events, the
+  end of a turn, a connection and a client's command. Public because the terminal's loop in the
+  binary and `remote::Server::run` both call them, which is what keeps a drawn session and a served
+  one saying the same things.
+
 - **A QR code of the `--web` address.** It is printed under the address at startup where stdout
   is a terminal, shown in a panel as the session starts where the page is on the network and a
   screen covers what was printed, and shown again by the new `/web`. The encoder is the
@@ -76,6 +82,9 @@ minor bump may break you.
 
 ### changed
 
+- **A drawn session and a served one say the same things the same way.** A client that fails to
+  connect is a note in both, where it was an error when served, and events that went by too fast
+  are said in one sentence pointing at the records, where the screen named `/save`.
 - **The `--web` key is eight hex digits rather than 32,** so that it can be typed on a phone. A
   hundred wrong keys close the page to everybody for a minute, which is said where the person will
   read it, and keeps 32 bits out of reach of a device on the network guessing at it.

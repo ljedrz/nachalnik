@@ -483,12 +483,7 @@ impl Server {
         notices.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
-            // what the session has said first - the list a command came back with - and then the
-            // lines that waited for it, so that nothing is heard in an order it did not happen in
-            serving.pump(app);
-            if app.release().await {
-                serving.pump(app);
-            }
+            released(app, Some(&mut serving)).await;
             // a second `ctrl+c` or a closed stream leaves at once; a `/quit` waits for the turn
             if app.leaving() && !leaving {
                 failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
@@ -508,40 +503,7 @@ impl Server {
             tokio::select! {
                 incoming = self.arrived() => apply_arrival(&mut serving, app, incoming),
                 Some(ask) = serving.asked() => {
-                    // note: the command holds the `App` for as long as it takes - there is one of
-                    // it - so the loop waits. Nothing a client sends waits on an endpoint here any
-                    // more, since a command that would is sent out and finished when it comes back
-                    // (see `App::in_flight`), but answering one is still not instant. What the loop
-                    // keeps doing meanwhile is reading the kernel's broadcast, in a second
-                    // `select!` underneath this one, because that is the only thing here that
-                    // *loses* rather than queues: a subscription that falls behind drops what it
-                    // did not read. What this loop reads the stream for is `App::trace`, which is
-                    // handed to every client that attaches afterwards, holes and all.
-                    //
-                    // note: the events and nothing else. A connection waits in the listen backlog,
-                    // an outcome in an unbounded channel and a `ctrl+c` in its own stream: all
-                    // three arrive late either way and none of them is dropped, so taking them
-                    // early would buy an ordering no client can tell apart.
-                    //
-                    // note: what is still *held* is the next command - the client's own, or the
-                    // attach of one replacing it - because answering one needs the `App` and the
-                    // `App` is lent out, for no longer than the command takes to do.
-                    let mut held = Vec::new();
-                    // a block of its own, because the future borrows the `App` until it is
-                    // dropped and the drain below is what wants it back
-                    {
-                        let doing = serving.answer(app, ask);
-                        tokio::pin!(doing);
-                        loop {
-                            tokio::select! {
-                                () = &mut doing => break,
-                                event = events.recv() => held.push(event),
-                            }
-                        }
-                    }
-                    for event in held {
-                        leaving |= !apply_event(app, event);
-                    }
+                    leaving |= !serving.answered(app, ask, events).await;
                 },
                 event = events.recv() => leaving |= !apply_event(app, event),
                 () = presses.pressed() => {
@@ -556,7 +518,15 @@ impl Server {
                         _ => crate::headless::Stop::Terminated,
                     });
                 }
-                Some(outcome) = finished.recv() => apply_outcome(app, events, outcome, &mut failed),
+                Some(outcome) = finished.recv() => {
+                    match &outcome {
+                        Outcome::Failed(e) => failed = Some(e.clone()),
+                        // a command coming back says nothing about how the last turn went
+                        Outcome::Returned(_) => {}
+                        _ => failed = None,
+                    }
+                    apply_outcome(app, events, outcome);
+                }
                 Ok(()) = reaching.changed() => {}
                 // note: while a turn runs, for the reason `headless.rs` gives
                 _ = notices.tick(), if app.busy => {
@@ -587,28 +557,51 @@ fn run_is_over(resting: Option<tokio::time::Instant>, now: tokio::time::Instant)
     resting.is_none_or(|until| now >= until + RESTING)
 }
 
-/// Takes on a connection, or says why there is not one; one branch of [`Server::run`]'s loop.
+/// Says what the session has said, then hands in the lines that waited for a command still out,
+/// the desk's and the clients', once it has come back or been stopped, and says those too;
+/// `true` when there were any. See `App::in_flight`.
 ///
-/// note: these four are functions rather than bodies in the loop, because the events have a second
-/// caller in the drain that catches up after a command held the `App`, and because a branch cannot
-/// `break` where it stands. Out of the loop they read as the four things that happen to a served
+/// note: the pump comes first so that a client hears what the command came back with before
+/// what the lines after it did, and nothing is heard in an order it did not happen in. A loop
+/// with nobody attached hands the lines in all the same.
+pub async fn released(app: &mut App, mut serving: Option<&mut Serving>) -> bool {
+    if let Some(serving) = serving.as_deref_mut() {
+        serving.pump(app);
+    }
+    if !app.release().await {
+        return false;
+    }
+    if let Some(serving) = serving {
+        serving.pump(app);
+    }
+
+    true
+}
+
+/// Takes on a connection, or says why there is not one; one branch of both loops that serve a
 /// session.
-fn apply_arrival(serving: &mut Serving, app: &mut App, incoming: std::io::Result<Arrived>) {
+///
+/// note: these are functions rather than bodies in the loops, because there are two loops that
+/// serve - [`Server::run`] and the terminal's own - and because the events have a second caller
+/// in the drain that catches up after a command held the `App`. Out of the loops they read as the
+/// things that happen to a served session, said the same way by both.
+pub fn apply_arrival(serving: &mut Serving, app: &mut App, incoming: std::io::Result<Arrived>) {
     match incoming {
         Ok(arrived) => serving.attend(app, arrived),
         // one connection failing to arrive is not a reason to end a session that may have a turn
         // running in it
-        Err(e) => app.say(Speaker::Error, format!("a client could not connect: {e}")),
+        Err(e) => app.say(Speaker::Note, format!("a client could not connect: {e}")),
     }
 }
 
 /// Takes in one thing the kernel said; `false` when the stream has ended and the session with it.
-fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvError>) -> bool {
+///
+/// note: what lagged is said rather than recovered. The stream keeps `App` up to date - the screen
+/// and the projections handed to clients - and the session log is the one that keeps everything:
+/// the clients read it for themselves, `/save` writes it, and it drops nothing.
+pub fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvError>) -> bool {
     match event {
         Ok(event) => app.on_event(event),
-        // note: nothing a client can see is lost here. What this loop is doing with the stream is
-        // keeping `App` up to date for the projections it hands out; the clients read the log for
-        // themselves, and the log drops nothing
         Err(broadcast::error::RecvError::Lagged(missed)) => app.say(
             Speaker::Note,
             format!(
@@ -622,23 +615,15 @@ fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvError>)
     true
 }
 
-/// Takes in the end of a turn, and keeps what it failed with if it did; or a command coming back,
-/// which says nothing about how the last turn went.
-fn apply_outcome(
-    app: &mut App,
-    events: &mut broadcast::Receiver<Event>,
-    outcome: Outcome,
-    failed: &mut Option<String>,
-) {
-    // the turn's last events are still queued behind this one, and `select!` picks whichever
-    // branch is ready rather than whichever happened first
+/// Takes in the end of a turn, or a command coming back, after the events still queued ahead of it.
+///
+/// note: the turn's last events are still in the queue behind this, and `select!` picks whichever
+/// branch is ready rather than whichever happened first - so an outcome taken first would put "the
+/// turn paused after 3 requests" *above* the result it paused after. The transcript is meant to be
+/// what happened, in that order.
+pub fn apply_outcome(app: &mut App, events: &mut broadcast::Receiver<Event>, outcome: Outcome) {
     while let Ok(event) = events.try_recv() {
         app.on_event(event);
-    }
-    match &outcome {
-        Outcome::Failed(e) => *failed = Some(e.clone()),
-        Outcome::Returned(_) => {}
-        _ => *failed = None,
     }
     app.on_outcome(outcome);
 }
@@ -837,11 +822,8 @@ impl Serving {
     /// [`App::in_flight`]. So a client's command is answered in the time it takes to do, and the
     /// loop goes back to everybody else.
     ///
-    /// note: what it does not cost is anything *lost*. Both loops that call this read the
-    /// kernel's broadcast while they wait - see the branch in [`Server::run`] - because a
-    /// subscription that falls behind drops what it did not read, and `App::trace` is built from
-    /// what this loop read. Everything else that arrives meanwhile queues: a connection in the
-    /// listen backlog, an outcome in an unbounded channel, a `ctrl+c` in its own stream.
+    /// note: what it does not cost is anything *lost*, as long as the kernel's broadcast is read
+    /// while it runs, which [`Serving::answered`] does for both loops.
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
             // nothing to seat and nothing to change, so asked of whoever asks
@@ -909,6 +891,49 @@ impl Serving {
                 });
             }
         }
+    }
+
+    /// Does one of them as [`Serving::answer`] does, reading the kernel's broadcast meanwhile, and
+    /// takes in what it read once the command is done; `false` when the stream ended meanwhile and
+    /// the session with it.
+    ///
+    /// note: the command holds the `App` for as long as it takes - there is one of it - so the
+    /// loop waits. What it keeps doing meanwhile is reading the broadcast, because that is the only
+    /// thing either loop reads that *loses* rather than queues: a subscription that falls behind
+    /// drops what it did not read, which is a hole in what the screen shows and in `App::trace`,
+    /// handed to every client that attaches afterwards.
+    ///
+    /// note: the events and nothing else. The keys are in a stream, a connection waits in the
+    /// listen backlog, an outcome in an unbounded channel and a `ctrl+c` in its own stream: they
+    /// arrive late either way and none of them is dropped, so taking them early would buy an
+    /// ordering nobody can tell apart. What is still *held* is the next command, because answering
+    /// one needs the `App` and the `App` is lent out, for no longer than the command takes.
+    pub async fn answered(
+        &mut self,
+        app: &mut App,
+        asked: Asked,
+        events: &mut broadcast::Receiver<Event>,
+    ) -> bool {
+        let mut held = Vec::new();
+        // a block of its own, because the future borrows the `App` until it is dropped and the
+        // drain below is what wants it back
+        {
+            let doing = self.answer(app, asked);
+            tokio::pin!(doing);
+            loop {
+                tokio::select! {
+                    () = &mut doing => break,
+                    event = events.recv() => held.push(event),
+                }
+            }
+        }
+
+        let mut open = true;
+        for event in held {
+            open &= apply_event(app, event);
+        }
+
+        open
     }
 
     /// Takes on a connection that has just arrived.

@@ -78,12 +78,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   added to `sandbox::DEVICES`, are unchecked. Unblocked by a run on a machine where `/dev/shm` is
   writable.
 
-- **The terminal's loop and a served session's loop handle the kernel's events in two copies.**
-  `main.rs` and `remote/server/mod.rs` each take in the broadcast, drain the outcomes, answer held
-  questions around `serving.answer` and pump the server twice, and the copies have drifted in
-  wording: a client that fails to connect is a note at the terminal and an error when served.
-  Sharing them is a refactor of both loops, worth doing together with the next change to either.
-
 - **The first undo in a fresh session removes its setup.** `--system-prompt` and `-f` add items to
   the context like anything else, so each is an undo step: `/undo` in a session nobody has typed in
   yet removes the system instruction, and a second removes the attached file, each only reported as
