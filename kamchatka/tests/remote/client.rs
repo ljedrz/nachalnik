@@ -1499,6 +1499,95 @@ async fn a_loop_of_somebody_elses_can_serve_the_session() {
     assert!(app.quit, "a `/quit` from a client did not reach the loop");
 }
 
+/// A connection that falls more than a broadcast's worth of the session's own lines behind is told
+/// how many it missed, and then where the session stands, before the lines that are still there.
+///
+/// note: nothing a client asks for makes a session say that many lines between two looks of a
+/// connection, so this is a loop of its own, on the one thread a `#[tokio::test]` runs on: told to,
+/// it says three hundred lines and pumps them out without yielding, and the connection's task
+/// cannot read any of them until every one has been sent.
+#[tokio::test]
+async fn a_connection_that_falls_behind_is_told_what_it_missed_and_where_things_stand() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![]);
+    let server = Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("nothing would listen");
+    let at = server.address();
+    let (flood, mut flooded) = tokio::sync::mpsc::unbounded_channel::<()>();
+
+    let loop_ = tokio::spawn(async move {
+        let mut serving = kamchatka::remote::Serving::new(&app);
+        while !app.quit {
+            serving.pump(&app);
+            tokio::select! {
+                arrived = server.arrived() => {
+                    if let Ok(arrived) = arrived {
+                        serving.attend(&mut app, arrived);
+                    }
+                }
+                Some(ask) = serving.asked() => serving.answer(&mut app, ask).await,
+                Some(()) = flooded.recv() => {
+                    for line in 0..300 {
+                        app.say(Speaker::Note, format!("line {line}"));
+                    }
+                    serving.pump(&app);
+                }
+                event = events.recv() => match event {
+                    Ok(event) => app.on_event(event),
+                    Err(_) => break,
+                },
+                Some(outcome) = finished.recv() => app.on_outcome(outcome),
+            }
+        }
+        app.kernel.finish();
+        serving.last(&app).await;
+    });
+
+    let (mut peer, _) = Peer::attached(&at).await;
+    flood.send(()).expect("the loop is running");
+    let heard = peer
+        .until(|m| matches!(m, Message::Said { text, .. } if text == "line 299"))
+        .await;
+
+    let missed = heard
+        .iter()
+        .position(|m| matches!(m, Message::Missed { .. }))
+        .unwrap_or_else(|| panic!("nothing said it missed anything: {heard:?}"));
+    let Message::Missed { frames } = &heard[missed] else {
+        unreachable!("found as one")
+    };
+    assert!(*frames >= 300 - 256, "{frames} missed of 300 into 256");
+    // and where the session stands, asked for and said again, ahead of the lines still there
+    let standing = heard
+        .iter()
+        .position(|m| matches!(m, Message::Busy { .. }))
+        .unwrap_or_else(|| panic!("where the session stands was not said: {heard:?}"));
+    let first_line = heard
+        .iter()
+        .position(|m| matches!(m, Message::Said { text, .. } if text.starts_with("line ")))
+        .expect("the lines still there arrived");
+    assert!(missed < standing && standing < first_line, "{heard:?}");
+    assert!(
+        !heard
+            .iter()
+            .any(|m| matches!(m, Message::Said { text, .. } if text == "line 0")),
+        "the oldest line arrived, so nothing fell behind: {heard:?}"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    tokio::time::timeout(PATIENCE, loop_)
+        .await
+        .expect("the loop did not end")
+        .expect("the loop panicked");
+}
+
 /// A restart from a client hands the session back to be built again, and lets go of the client.
 ///
 /// note: two claims, and they are the two halves `main` leans on. The loop returning with
