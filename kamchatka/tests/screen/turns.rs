@@ -315,6 +315,74 @@ async fn a_turn_that_runs_out_of_requests_says_so_instead_of_looking_finished() 
     assert!(harness.screen().contains("and there it was"));
 }
 
+/// `/requests` shows how many requests a turn sends and changes it while the session runs, so a
+/// paused turn can be given more room without a restart.
+#[tokio::test]
+async fn requests_changes_the_budget_while_the_session_runs() {
+    let mut harness = Harness::configured(
+        [
+            ModelResponse::tool_calls(vec![call("c1", "look", json!({}))]),
+            ModelResponse::tool_calls(vec![call("c2", "look", json!({}))]),
+            ModelResponse::text("and there it was"),
+        ],
+        Config {
+            max_requests_per_turn: Some(1),
+            ..Default::default()
+        },
+    );
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "nothing")));
+
+    harness.send("/requests").await;
+    assert!(
+        harness
+            .screen()
+            .contains("at most 1 request before it pauses"),
+        "{}",
+        harness.screen()
+    );
+
+    harness.send("look around").await;
+    harness.settle().await;
+    assert!(harness.screen().contains("paused after 1 request;"));
+
+    harness.send("/requests nine").await;
+    assert!(
+        harness
+            .screen()
+            .contains("`nine` is not a number of requests"),
+        "{}",
+        harness.screen()
+    );
+    assert_eq!(harness.app.kernel.max_requests_per_turn(), Some(1));
+
+    // raised, with the way on from the paused turn named
+    harness.send("/requests 2").await;
+    assert_eq!(harness.app.kernel.max_requests_per_turn(), Some(2));
+    assert!(
+        harness
+            .screen()
+            .contains("`/continue` carries on the paused one"),
+        "{}",
+        harness.screen()
+    );
+
+    // two requests are what the rest of the turn takes, and it finishes rather than pausing
+    harness.send("/continue").await;
+    harness.settle().await;
+    assert!(
+        harness.screen().contains("and there it was"),
+        "{}",
+        harness.screen()
+    );
+
+    // and `0` takes the limit away
+    harness.send("/requests 0").await;
+    assert_eq!(harness.app.kernel.max_requests_per_turn(), None);
+}
+
 /// `ctrl+r` is `/continue`, from whichever tab it is pressed on.
 #[tokio::test]
 async fn ctrl_r_carries_on_a_paused_turn_from_any_tab() {

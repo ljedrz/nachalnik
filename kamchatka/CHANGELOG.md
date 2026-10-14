@@ -21,6 +21,9 @@ minor bump may break you.
 
 ### added
 
+- **`/requests`** shows how many requests one turn sends before it pauses, and `/requests N`
+  changes it while the session runs, from the next request on; `0` is no limit, as for
+  `--requests`. It could only be set at startup, so raising it meant a restart.
 - **`--mcp-timeout`**, and `mcp-timeout` in a settings file, is how many seconds a call to an MCP
   server's tool may wait for its answer before it is given up on, saying which server: ten minutes
   unless given, and `0` waits as long as the server takes. A server that hung, or answered with

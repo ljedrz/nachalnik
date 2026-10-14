@@ -387,6 +387,7 @@ impl App {
             // `space` on the context tab sends that instead
             "limit" => self.limit(rest),
             "spend" => self.spend_command(rest),
+            "requests" => self.requests_command(rest),
             "budget" => self.budget(),
             // note: a command as well as the `y` on the context tab, because on the chat tab the
             // keys belong to the prompt - a bare `y` there is a `y` typed into a message, which

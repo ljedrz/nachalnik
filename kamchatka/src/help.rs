@@ -309,6 +309,8 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         something out of it and the pass is worked out again
     /spend [TOKENS]     what the provider has charged for this session, and the
                         ceiling it stops at; 0 takes the ceiling away
+    /requests [N]       how many requests a turn sends before it pauses, or
+                        change it from the next request on; 0 is no limit
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered, and what is turned off
     /tools toggle ID    stop offering one of them, or offer it again.

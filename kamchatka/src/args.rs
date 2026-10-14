@@ -146,6 +146,7 @@ pub struct Args {
     pub mcp: Vec<String>,
 
     /// How many requests one turn may make before it stops and asks; `0` is no limit at all.
+    /// `/requests N` changes it while the session runs.
     #[arg(long, value_name = "N", default_value_t = 8)]
     pub requests: usize,
 
