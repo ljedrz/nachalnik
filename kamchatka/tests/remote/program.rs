@@ -340,6 +340,13 @@ fn a_session_on_the_web_writes_every_session_out() {
             "Sec-Fetch-Site: cross-site\r\n",
             page.as_str(),
         ),
+        // and from a page on this machine on another port - a server a command started - which
+        // the browser calls the same site and not the same origin
+        (
+            "GET /events?tab=elsewhere",
+            "Sec-Fetch-Site: same-site\r\n",
+            page.as_str(),
+        ),
     ] {
         let answer = foreign(line, extra, host);
         assert!(
