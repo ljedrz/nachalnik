@@ -2121,6 +2121,79 @@ async fn the_deadline_ends_the_program_itself() {
     assert!(said.contains("out of time"), "{said}");
 }
 
+/// `--patience` is how long the program waits on an answer that says nothing, and `0` is refused.
+///
+/// note: it was a fixed two and a half minutes, and a free endpoint under load can queue a request
+/// for longer than that before answering it, so every request was given up on. The listener takes
+/// the connection and never answers, so only the patience can end the turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_patience_given_is_how_long_a_silent_answer_is_waited_on() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("its address");
+    // the startup's own questions - a listing, a probe - are answered at once, so that what is
+    // waited on is the request for an answer and nothing else
+    std::thread::spawn(move || {
+        use std::io::{Read as _, Write as _};
+
+        let mut held = Vec::new();
+        while let Ok((mut socket, _)) = listener.accept() {
+            let mut start = [0u8; 4];
+            let _ = socket.read_exact(&mut start);
+            match &start {
+                b"GET " => {
+                    let _ = socket.write_all(
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    );
+                }
+                _ => held.push(socket),
+            }
+        }
+    });
+
+    let output = common::command()
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--patience",
+            "2",
+            "--deadline",
+            "60",
+        ])
+        .env("KAMCHATKA_BASE_URL", format!("http://{address}/v1"))
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write as _;
+            writeln!(child.stdin.take().expect("stdin is a pipe"), "hello")?;
+            child.wait_with_output()
+        })
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{said}");
+    assert!(said.contains("2s"), "it says how long it waited: {said}");
+
+    let (ok, said) = {
+        let output = common::command()
+            .args(["--headless", "--no-record", "--patience", "0"])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    };
+    assert!(
+        !ok && said.contains("`0` would give every request up at once"),
+        "{said}"
+    );
+}
+
 /// A run whose last turn failed and which the deadline then ended leaves with the deadline's
 /// status, and still says the turn failed.
 ///

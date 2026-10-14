@@ -21,6 +21,10 @@ minor bump may break you.
 
 ### added
 
+- **`--patience`**, and `patience` in a settings file, is how many seconds the model's answer may
+  say nothing before the request is given up on - before its first word, or between two. It was
+  a fixed 150, which a free endpoint under load can outlast with a request it then answers.
+
 - **`--flat-calls`**, and `flat-calls` in a settings file, offers this program's own tools with
   every argument at the top level of a call, beside `action`, rather than inside one `call` object.
   A model whose own call format is a flat list of keys and values can slip back into it partway
