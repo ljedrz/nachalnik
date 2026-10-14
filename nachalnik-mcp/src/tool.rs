@@ -100,11 +100,29 @@ pub(crate) struct McpTool {
     /// The name the server knows it by, which is not necessarily the one the model uses.
     remote: String,
     spec: ToolSpec,
+    /// The server's name, and how long a call may wait on it; see
+    /// [`Server::answering_within`](crate::Server::answering_within).
+    within: Option<(String, std::time::Duration)>,
 }
 
 impl McpTool {
     pub(crate) fn new(peer: Peer<RoleClient>, remote: String, spec: ToolSpec) -> Self {
-        Self { peer, remote, spec }
+        Self {
+            peer,
+            remote,
+            spec,
+            within: None,
+        }
+    }
+
+    /// Gives up on a call once it has waited `within` on the server called `server`.
+    pub(crate) fn answering_within(
+        mut self,
+        server: &str,
+        within: Option<std::time::Duration>,
+    ) -> Self {
+        self.within = within.map(|within| (server.to_owned(), within));
+        self
     }
 }
 
@@ -212,10 +230,27 @@ impl Tool for McpTool {
                 )));
             }
         };
+        let started = tokio::time::Instant::now();
         let answered = loop {
             tokio::select! {
                 answered = &mut handle.rx => break answered,
                 () = tokio::time::sleep(HEARTBEAT) => {
+                    // note: told to stop as an interrupted call is, and said as the server's
+                    // silence rather than the model's doing: the same call may be answered in
+                    // time on another try, and the model should know which server to blame
+                    if let Some((server, within)) = &self.within
+                        && started.elapsed() >= *within
+                    {
+                        let told = match handle.cancel(Some("timed out".to_owned())).await {
+                            Ok(()) => "was told to stop",
+                            Err(_) => "could not be told to stop",
+                        };
+                        return Ok(ToolOutput::error(format!(
+                            "the MCP server `{server}` did not answer within {}s, and {told}; \
+                             what it had done by then is not known",
+                            within.as_secs()
+                        )));
+                    }
                     if output.is_interrupted() {
                         let told = match handle.cancel(Some("interrupted".to_owned())).await {
                             Ok(()) => "was told to stop",

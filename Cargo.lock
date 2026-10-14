@@ -1538,7 +1538,7 @@ dependencies = [
 
 [[package]]
 name = "nachalnik-mcp"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "nachalnik",
  "nachalnik-utils",
