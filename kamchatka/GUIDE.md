@@ -340,8 +340,7 @@ the same question as reading it would.
 deterministic, so two identical searches produce the same context item.
 
 **A long file is read in parts, and `read` says where each part ends.** Past the output limit
-(32,000 bytes, or a tenth of a smaller model's context window, unless `/limit fs:read` says
-otherwise), it stops at the last whole line that fits, and its first line says which lines were
+(see below), it stops at the last whole line that fits, and its first line says which lines were
 returned and the `from` value to continue with. A single line too long for the limit comes back as
 its start, with `grep` or `shell` named as the way to the rest. `from` and `lines` read any part of
 a file, including logs too large to hold in memory. The alternative, `sed -n` through `shell`, needs
@@ -350,7 +349,9 @@ a file, including logs too large to hold in memory. The alternative, `sed -n` th
 **The output limit is set per permission**, so `fs:read` and `fs:grep` each have their own. It
 starts at 32,000 bytes, and at 8,000 where the result is a fixed-format report rather than part of
 the session's content: `fs:write`, `fs:edit`, `context:budget`, `context:note`, `context:revise`,
-`setup:model` and `setup:policy`. `/limit` lists them, numbered, and changes one from its next call
+`setup:model` and `setup:policy`. On a small model each is lower still, a tenth of the context
+window at about four bytes a token, so that one answer cannot fill it; a limit you set with `/limit`
+is kept whatever the window. `/limit` lists them, numbered, and changes one from its next call
 on, e.g. `/limit fs:read 64000`. A result that was cut keeps the full version next to it, excluded,
 and <kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` cut nothing: a read
 stops at a line and says where to read on from, and a `grep` too long for its limit says which files

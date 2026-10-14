@@ -265,10 +265,12 @@ pub(crate) const REPORT: usize = 8_000;
 /// is the exception to the excluded whole, because it stops itself at a line under this limit
 /// and says where to read on from: the file is the whole, and nothing was cut to keep.
 ///
-/// note: `fs:read` is held to the context window as well, until somebody sets it: a tenth of the
-/// window at about four bytes a token, and never more than its row. On a small window one read at
-/// 32,000 bytes is most of the context, and two in a turn left no room for the model's next call,
-/// so the request was refused. A row somebody set is theirs, and is what it says.
+/// note: every row is held to the context window as well, until somebody sets it: a tenth of the
+/// window at about four bytes a token, and never more than the row. On a small window one answer at
+/// 32,000 bytes - a read, a build's output, a search, a look at the context - is most of the
+/// context, and two in a turn left no room for the model's next call, so the request was refused.
+/// The rows of reports are at 8,000 bytes, which a window under twenty thousand tokens is the only
+/// one to bring down. A row somebody set is theirs, and is what it says.
 #[derive(Debug, Clone)]
 pub struct Limits(Arc<Mutex<Table>>);
 
@@ -286,8 +288,8 @@ impl Table {
     /// The limit a row is at: its own, or less on a small window; see the note on [`Limits`].
     fn of(&self, subject: &str) -> Option<usize> {
         let row = *self.rows.get(subject)?;
-        match (subject, self.window) {
-            (WINDOWED, Some(window)) if !self.set.contains(subject) => {
+        match self.window {
+            Some(window) if !self.set.contains(subject) => {
                 Some(row.min((window * 4 / 10).max(FLOOR)))
             }
             _ => Some(row),
@@ -295,11 +297,8 @@ impl Table {
     }
 }
 
-/// The row the window holds down; see the note on [`Limits`].
-const WINDOWED: &str = "fs:read";
-
-/// The least a window holds that row down to, in bytes, so a window too small to work in still
-/// shows a read some lines of a file.
+/// The least a window holds a row down to, in bytes, so a window too small to work in still shows
+/// some lines of an answer.
 const FLOOR: usize = 1024;
 
 impl Default for Limits {
@@ -443,40 +442,51 @@ pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>>
 mod tests {
     use serde_json::json;
 
-    use super::{CEILING, FLOOR, Limits, arg};
+    use super::{CEILING, FLOOR, Limits, REPORT, arg};
 
-    /// `fs:read` is held to a tenth of a small window, never above its row, and a row somebody set
+    /// Every row is held to a tenth of a small window, never above itself, and a row somebody set
     /// is left as they set it.
     #[test]
-    fn a_read_is_held_to_a_small_window_until_somebody_sets_it() {
+    fn every_row_is_held_to_a_small_window_until_somebody_sets_it() {
         let limits = Limits::new();
         assert_eq!(limits.of("fs:read"), Some(CEILING), "no window known");
+        assert_eq!(limits.of("context:budget"), Some(REPORT));
 
         // 14,000 tokens: a tenth is 1,400, at four bytes a token
         limits.window(Some(14_000));
-        assert_eq!(limits.of("fs:read"), Some(5_600));
+        for subject in ["fs:read", "exec:run", "fs:grep", "context:look", "log:read"] {
+            assert_eq!(limits.of(subject), Some(5_600), "{subject}");
+        }
+        assert_eq!(
+            limits.of("context:budget"),
+            Some(5_600),
+            "a report is held too"
+        );
         assert!(
-            limits.all().contains(&("fs:read".to_owned(), 5_600)),
+            limits.all().contains(&("exec:run".to_owned(), 5_600)),
             "`/limit` lists what is in force"
         );
-        // only that row
-        assert_eq!(limits.of("exec:run"), Some(CEILING));
-        // a large window is not a reason to raise it, and a tiny one does not take it to nothing
+        // a window large enough leaves a report where it was, and a large one raises nothing
+        limits.window(Some(40_000));
+        assert_eq!(limits.of("context:budget"), Some(REPORT));
+        assert_eq!(limits.of("exec:run"), Some(16_000));
         limits.window(Some(1_000_000));
-        assert_eq!(limits.of("fs:read"), Some(CEILING));
+        assert_eq!(limits.of("exec:run"), Some(CEILING));
+        // and a tiny one does not take it to nothing
         limits.window(Some(100));
-        assert_eq!(limits.of("fs:read"), Some(FLOOR));
+        assert_eq!(limits.of("exec:run"), Some(FLOOR));
 
-        // a row somebody set is what they set, whatever the window
+        // a row somebody set is what they set, whatever the window, and the others still move
         limits.window(Some(14_000));
         assert_eq!(
-            limits.set("fs:read", 20_000),
+            limits.set("exec:run", 20_000),
             Some(5_600),
             "what it was in force at"
         );
-        assert_eq!(limits.of("fs:read"), Some(20_000));
+        assert_eq!(limits.of("exec:run"), Some(20_000));
         limits.window(Some(1_000));
-        assert_eq!(limits.of("fs:read"), Some(20_000));
+        assert_eq!(limits.of("exec:run"), Some(20_000));
+        assert_eq!(limits.of("fs:read"), Some(FLOOR));
     }
 
     /// A text argument that arrived as something else is refused as that, not as missing.

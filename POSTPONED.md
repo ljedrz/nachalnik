@@ -148,12 +148,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   read from outside, and an undo followed by a redo leaves two pointless records), so this needs a
   kernel operation that clears the undo history, a core addition only for a client's benefit.
 
-- **Output limits other than `fs:read`'s ignore the context window.** A command's output, a `grep`
-  or a `context:look` is cut at 32,000 bytes whatever the window, so a session on a small model can
-  fill its context with one of them. Holding every row at that tier to the window as `fs:read` is,
-  or letting the compactor drop what the model has already seen in this turn when the request would
-  otherwise be refused, would close it; the first changes what each tool shows on a small model, the
-  second the runtime's compaction contract. Unblocked by choosing which.
+- **An MCP tool's text ignores the context window.** Every row of `/limit` is held to a tenth of
+  a small model's window, but a server's tool has no row: it is cut at the kernel's
+  `default_tool_output_limit`, 32,000 bytes, which is fixed when the kernel is built. A setter for
+  it, which `kamchatka` would move with the model as it moves the rows, would close it. Unblocked
+  by a session on a small model that a server's tool fills.
 
 - **`/params` showing a parameter's type and range.** It shows the default and maximum where the
   model listing publishes them, and nothing else, because no endpoint publishes more. A table kept

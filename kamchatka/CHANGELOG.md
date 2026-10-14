@@ -72,11 +72,12 @@ minor bump may break you.
 - **A session runs at most 64 of one answer's tool calls.** A model caught repeating itself could
   answer with thousands, every one run and recorded. The rest are answered as not run, saying to
   ask for them in the next answer.
-- **`fs:read` is held to a small model's context window.** Until `/limit fs:read` sets it, a read
-  stops at a tenth of the window, at about four bytes a token, where that is under 32,000 bytes.
-  On a 14,000-token window one read was over 8,000 tokens, and two in a turn left no room for the
+- **Output limits are held to a small model's context window.** Until `/limit` sets one, a call's
+  output is cut at a tenth of the window, at about four bytes a token, where that is under the
+  row's own limit: a read, a command's output, a search, a look at the context alike. On a
+  14,000-token window one read was over 8,000 tokens, and two in a turn left no room for the
   model's next call, so its request was refused. The window followed is the model in use, through
-  `/model`.
+  `/model`. A tool with no row of its own, such as an MCP server's, is still cut at 32,000 bytes.
 - **`fs write` makes the directories a new file goes in.** Writing into a directory that was not
   there was refused, and a session with `exec` denied could not make one at all. The directories
   are made inside the reach and nowhere else, one at a time beneath where the path was allowed and
