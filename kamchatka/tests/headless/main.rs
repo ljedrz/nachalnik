@@ -2905,6 +2905,49 @@ async fn a_rule_given_at_the_start_is_in_the_record() {
     );
 }
 
+/// The start of the record reads top down: the projector a provider asked for is told apart from
+/// the one the runtime started with, and the rules come after the tools they are about.
+#[tokio::test]
+async fn the_start_of_the_record_reads_in_order() {
+    let Wired { app, .. } = Setup {
+        compact: None,
+        allow: vec![Subject::parse("exec:run")],
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let seen: Vec<String> = app
+        .kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            nachalnik::Event::ProjectorChanged { from, to } => {
+                let short = |name: &str| name.rsplit("::").next().unwrap_or(name).to_owned();
+                Some(format!("{} → {}", short(&from), short(&to)))
+            }
+            nachalnik::Event::ToolsChanged { .. } => Some("tools".to_owned()),
+            nachalnik::Event::PolicyRuled { subject, .. } => Some(subject),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        seen.first().map(String::as_str),
+        Some("LinearProjector → LinearProjector (no reasoning)"),
+        "{seen:?}"
+    );
+    assert_eq!(
+        seen.last().map(String::as_str),
+        Some("exec:run"),
+        "{seen:?}"
+    );
+    assert!(seen.contains(&"tools".to_owned()), "{seen:?}");
+}
+
 /// What a person reads is text: an escape sequence in the model's words is not handed to their
 /// terminal.
 ///
