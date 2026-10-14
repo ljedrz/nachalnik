@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::{
     out_of_quota,
-    reading::{Events, Read, complaint, compressed, failure, not_json, read},
+    reading::{BrokeOff, Events, Read, complaint, compressed, failure, not_json, read},
     refused,
 };
 
@@ -297,6 +297,8 @@ pub(crate) enum Sent {
 enum Busy {
     /// Nothing came back, in a way that a busy server produces.
     Unsent(Unsent),
+    /// The answer began and broke before a byte of it arrived.
+    Broke(BoxError),
     /// The server answered, and the answer was a refusal.
     Refused {
         /// The status, or the code inside an error object that came with a good one.
@@ -363,14 +365,16 @@ pub(crate) async fn sent(
             }
             Err(reason) => return Err(reason.giving_up(asking.model, tried)),
             Ok(mut response) if streaming && response.status().is_success() => {
-                match read(&mut response, asking, events).await? {
-                    Read::Refused { code, said } => Busy::Refused {
+                match read(&mut response, asking, events).await {
+                    Ok(Read::Refused { code, said }) => Busy::Refused {
                         code,
                         transient: passing(code) && !out_of_quota(&said),
                         said,
                         asked: None,
                     },
-                    other => return Ok(Sent::Streamed(other)),
+                    Ok(other) => return Ok(Sent::Streamed(other)),
+                    Err(broke) if broke.is::<BrokeOff>() => Busy::Broke(broke),
+                    Err(e) => return Err(e),
                 }
             }
             Ok(response) => {
@@ -442,6 +446,11 @@ pub(crate) async fn sent(
                 return Err(reason.giving_up(asking.model, tried));
             }
             Busy::Unsent(reason) => (doubling, reason.what_happened().to_owned()),
+            Busy::Broke(broke) if tried >= asking.tries => return Err(broke),
+            Busy::Broke(broke) => (
+                doubling,
+                format!("broke off before any of its answer arrived ({broke})"),
+            ),
             Busy::Refused {
                 code,
                 said,
