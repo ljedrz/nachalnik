@@ -717,6 +717,8 @@ impl Tool for Shell {
         // either, so that what is kept is the start of the output with no hole in it
         let (mut dropped, mut full) = (0, false);
         let mut interrupted = false;
+        // the signal the command stopped itself with, where it did; see `stopped_itself`
+        let mut halted = None;
         let mut waited = None;
         loop {
             // the timeout is what makes a command that says nothing at all interruptible; without
@@ -763,6 +765,12 @@ impl Tool for Shell {
                         waited = Some(Ok(status));
                         break;
                     }
+                    if let Some(signal) = stopped_itself(&child) {
+                        stop(&mut child).await;
+                        keep(&line, &mut collected, &output, &mut full, &mut dropped);
+                        halted = Some(signal);
+                        break;
+                    }
                 }
             }
 
@@ -791,6 +799,12 @@ impl Tool for Shell {
                 Err(_) if output.is_interrupted() => {
                     stop(&mut child).await;
                     interrupted = true;
+                }
+                Err(_) if halted.is_none() => {
+                    if let Some(signal) = stopped_itself(&child) {
+                        stop(&mut child).await;
+                        halted = Some(signal);
+                    }
                 }
                 Err(_) => {}
             }
@@ -843,6 +857,17 @@ impl Tool for Shell {
         let reached = gatekeeper.and_then(Gatekeeper::over);
         let scratch = running.over();
         let (meant, status) = match (interrupted, waited) {
+            // note: said for what it was, not as the kill that ended it. A stopped command waits
+            // for a `SIGCONT` nothing here will send, and the model that wrote `kill -STOP $$` is
+            // told why its command came back, so it does not try the same thing again
+            (false, _) if let Some(signal) = halted => (
+                Exit::Stopped,
+                format!(
+                    "exit: stopped itself with {}, and was ended, since nothing would continue \
+                     it; what is below is what it had said by then",
+                    signal_name(signal)
+                ),
+            ),
             (true, _) => (
                 Exit::Stopped,
                 // note: not "at the person's request": a deadline interrupts the same way, and
@@ -1100,6 +1125,40 @@ impl Drop for Running {
     }
 }
 
+/// The signal the command stopped itself with, where it has: `kill -STOP $$`, or a `SIGTSTP` to
+/// its group, which stops the shell as well as what it runs.
+///
+/// note: asked without reaping and without taking the stop away (`WNOWAIT`), so it is asked again
+/// each heartbeat and leaves the end of the command to tokio, which waits on it. A stopped command
+/// is waited on for ever otherwise: nothing here sends a `SIGCONT`, and a confined one cannot be
+/// continued by anybody else.
+///
+/// note: the command's own process, which is the shell. A program the shell runs that stops itself
+/// and nothing else leaves the shell waiting on it, asleep rather than stopped, and is not seen
+/// here; nor is a job the command started in the background, which it may stop on purpose.
+fn stopped_itself(child: &tokio::process::Child) -> Option<i32> {
+    use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+
+    let pid = Pid::from_raw(i32::try_from(child.id()?).ok()?)?;
+    waitid(
+        WaitId::Pid(pid),
+        WaitIdOptions::STOPPED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
+    )
+    .ok()??
+    .stopping_signal()
+}
+
+/// A stopping signal's name, as a model would write it.
+fn signal_name(signal: i32) -> String {
+    match signal {
+        libc::SIGSTOP => "SIGSTOP".to_owned(),
+        libc::SIGTSTP => "SIGTSTP".to_owned(),
+        libc::SIGTTIN => "SIGTTIN".to_owned(),
+        libc::SIGTTOU => "SIGTTOU".to_owned(),
+        other => format!("signal {other}"),
+    }
+}
+
 /// Stops a running command, and whatever that command started that is still in its group.
 ///
 /// note: the group rather than the process, because a shell command is rarely one process. `make`
@@ -1340,6 +1399,29 @@ mod tests {
             after.lines().any(|line| std::path::Path::new(line) == at),
             "{after}"
         );
+    }
+
+    /// A command that stops itself is ended and says so, rather than waited on until somebody
+    /// interrupts the turn; one that stops a job of its own is not.
+    #[tokio::test]
+    async fn a_command_that_stops_itself_is_ended_and_says_so() {
+        for (cmd, signal) in [
+            ("echo before; kill -STOP $$; echo after", "SIGSTOP"),
+            ("echo before; kill -TSTP 0; echo after", "SIGTSTP"),
+        ] {
+            let said = ran(cmd).await;
+            assert!(
+                said.starts_with(&format!("exit: stopped itself with {signal}")),
+                "{cmd}: {said}"
+            );
+            assert_eq!(Exit::of(&said), Some(Exit::Stopped), "{said}");
+            assert!(said.contains("before") && !said.contains("after"), "{said}");
+        }
+
+        // a job it stopped itself is its own business, and the command goes on to its end
+        let said = ran("sleep 30 & kill -STOP $!; echo went on; kill -KILL $!").await;
+        assert!(said.starts_with("exit: 0"), "{said}");
+        assert!(said.contains("went on"), "{said}");
     }
 
     /// A shell with no confinement, in the temporary directory.

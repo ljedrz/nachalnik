@@ -56,6 +56,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A command that stops itself is ended and says so.** `kill -STOP $$`, or a `SIGTSTP` to the
+  command's group, left the call waiting for output that never came, until the turn was
+  interrupted or a headless run's `--deadline` ended it. The status line now says the command
+  stopped itself, with which signal, and was ended, and what it had said by then is kept.
 - **A confined command is told its `$TMPDIR` is writable.** Every command has a temporary
   directory of its own that it may write in even where the working directory is read-only, and
   neither the `shell` tool's description nor the sandbox line said so, so a model in a read-only
