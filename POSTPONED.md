@@ -79,12 +79,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   read from outside, and an undo followed by a redo leaves two pointless records), so this needs a
   kernel operation that clears the undo history, a core addition only for a client's benefit.
 
-- **An MCP tool's text ignores the context window.** Every row of `/limit` is held to a tenth of
-  a small model's window, but a server's tool has no row: it is cut at the kernel's
-  `default_tool_output_limit`, 32,000 bytes, which is fixed when the kernel is built. A setter for
-  it, which `kamchatka` would move with the model as it moves the rows, would close it. Unblocked
-  by a session on a small model that a server's tool fills.
-
 - **`/params` showing a parameter's type and range.** It shows the default and maximum where the
   model listing publishes them, and nothing else, because no endpoint publishes more. A table kept
   in this workspace would just be someone's documentation as of the day it was copied. Unblocked by

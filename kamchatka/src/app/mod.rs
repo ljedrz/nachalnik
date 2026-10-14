@@ -762,7 +762,7 @@ impl App {
         // what the kernel did before this was here to watch is not this session's to charge
         let charged = kernel.with_history(|log| log.last_seq());
         // the window of the model already in place; a change of model says it again
-        limits.window(kernel.budget().limit);
+        held_to_window(&kernel, &limits);
 
         Self {
             kernel,
@@ -1688,5 +1688,15 @@ impl App {
     #[cfg(not(feature = "tui"))]
     fn draft(&self) -> String {
         String::new()
+    }
+}
+
+/// Holds the output limits to the context window of the model in use: the rows, and what the
+/// kernel cuts a tool with no row at - one from an MCP server - which starts where the kernel was
+/// built to cut it and only ever comes down from there. A kernel built to cut nothing is left so.
+fn held_to_window(kernel: &Kernel, limits: &Limits) {
+    limits.window(kernel.budget().limit);
+    if let Some(built) = kernel.config().default_tool_output_limit {
+        kernel.set_default_tool_output_limit(Some(limits.held(built)));
     }
 }

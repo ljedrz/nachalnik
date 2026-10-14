@@ -100,7 +100,8 @@ minor bump may break you.
   row's own limit: a read, a command's output, a search, a look at the context alike. On a
   14,000-token window one read was over 8,000 tokens, and two in a turn left no room for the
   model's next call, so its request was refused. The window followed is the model in use, through
-  `/model`. A tool with no row of its own, such as an MCP server's, is still cut at 32,000 bytes.
+  `/model`. A tool with no row of its own, such as an MCP server's, is held to the same window,
+  from 32,000 bytes down.
 - **`fs write` makes the directories a new file goes in.** Writing into a directory that was not
   there was refused, and a session with `exec` denied could not make one at all. The directories
   are made inside the reach and nowhere else, one at a time beneath where the path was allowed and

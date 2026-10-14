@@ -1251,7 +1251,8 @@ async fn a_session_runs_only_so_many_calls_of_one_answer() {
     );
 }
 
-/// The window a model is changed to is the one `fs:read` is held to.
+/// The window a model is changed to is the one `fs:read` is held to, and so is what the kernel
+/// cuts a tool with no row at, which is every tool from an MCP server.
 ///
 /// note: the table is told at startup and then by `ModelChanged`, so a `/model` to a model with a
 /// smaller window holds reads to that one rather than to the window the session began with.
@@ -1266,6 +1267,11 @@ async fn a_read_is_held_to_the_window_of_the_model_in_use() {
     .await;
 
     assert_eq!(run.app.limits.of("fs:read"), Some(5_600), "{}", run.prose);
+    assert_eq!(
+        run.app.kernel.default_tool_output_limit(),
+        Some(5_600),
+        "a server's tool is held to the same window"
+    );
 }
 
 /// A session refused for length by an endpoint that publishes no limit passes the next messages
