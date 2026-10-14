@@ -31,6 +31,11 @@ minor bump may break you.
 
 ### changed
 
+- **`fs:read` is held to a small model's context window.** Until `/limit fs:read` sets it, a read
+  stops at a tenth of the window, at about four bytes a token, where that is under 32,000 bytes.
+  On a 14,000-token window one read was over 8,000 tokens, and two in a turn left no room for the
+  model's next call, so its request was refused. The window followed is the model in use, through
+  `/model`.
 - **`fs write` makes the directories a new file goes in.** Writing into a directory that was not
   there was refused, and a session with `exec` denied could not make one at all. The directories
   are made inside the reach and nowhere else, one at a time beneath where the path was allowed and

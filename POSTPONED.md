@@ -226,14 +226,12 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   read from outside, and an undo followed by a redo leaves two pointless records), so this needs a
   kernel operation that clears the undo history, a core addition only for a client's benefit.
 
-- **Output limits that ignore the context window.** A call's output is cut at a fixed number of
-  bytes (32,000 for `fs:read`) regardless of the model's context size, and the compactor never
-  touches the turn in progress. With a 14,000-token window, one read is over 8,000 tokens: two reads
-  in a turn fill the context past the point where the full-context notice leaves any room, the
-  model's next call goes over the limit, the request is refused, and a headless run skips every
-  message after it. Either of two changes would fix it, and both change behaviour: limits that scale
-  with the window, or letting the compactor drop what the model has already seen in this turn when
-  the request would otherwise be refused.
+- **Output limits other than `fs:read`'s ignore the context window.** A command's output, a `grep`
+  or a `context:look` is cut at 32,000 bytes whatever the window, so a session on a small model can
+  fill its context with one of them. Holding every row at that tier to the window as `fs:read` is,
+  or letting the compactor drop what the model has already seen in this turn when the request would
+  otherwise be refused, would close it; the first changes what each tool shows on a small model, the
+  second the runtime's compaction contract. Unblocked by choosing which.
 
 - **`/params` showing a parameter's type and range.** It shows the default and maximum where the
   model listing publishes them, and nothing else, because no endpoint publishes more. A table kept

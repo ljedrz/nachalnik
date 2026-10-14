@@ -283,6 +283,8 @@ impl App {
                 Speaker::Error,
                 format!("the model asked for `{tool}`, which is not a tool here"),
             ),
+            // the window `fs:read` is held to moves with the model; see the note on `Limits`
+            Event::ModelChanged { .. } => self.limits.window(self.kernel.budget().limit),
             // note: a file added to the context is not said out loud here. The chat already draws
             // a line for it off the item, and a second one off this event would say it twice, one
             // above the other, for every `-f` and every `/attach`. The derived line is the one
