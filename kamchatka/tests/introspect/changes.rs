@@ -1133,6 +1133,66 @@ async fn undo_after_a_resume_says_the_earlier_changes_were_not_carried_over() {
     assert_eq!(kernel.item(read).unwrap().state, ContextState::Excluded);
 }
 
+/// What the model changed before a resume it can walk back after one, where the snapshot carried
+/// the history.
+///
+/// note: the history `undo` walks was the process's alone, so a resumed session had nothing for
+/// the model to undo and an exclusion it had made could only come back by `restore`. It is written
+/// into the snapshot's file now, beside the runtime's fields, and read back on a resume.
+#[tokio::test]
+async fn what_the_model_changed_before_a_resume_it_can_undo_after_one() {
+    use std::sync::Arc;
+
+    let (first, _provider, anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "exclude", "ids": [1], "reason": "done with it" }),
+    )]));
+    let read = first.push(ContextItem::file("read.rs", "..."));
+    first.push(ContextItem::user("drop the file"));
+    first.turn().await.expect("the turn failed");
+    assert_eq!(first.item(read).unwrap().state, ContextState::Excluded);
+
+    // the snapshot's file as the program writes it, and read back as `-r` reads it
+    let written = kamchatka::introspect::snapshot_with(&first.snapshot(), Some(&anchor.history()))
+        .expect("it renders");
+    let snapshot: nachalnik::Snapshot = serde_json::from_slice(&written).expect("a snapshot");
+    let saved: serde_json::Value = serde_json::from_slice(&written).expect("JSON");
+
+    let kernel = nachalnik::Kernel::resume(nachalnik::Config::default(), snapshot);
+    kernel.set_provider(Arc::new(nachalnik::test::ScriptedProvider::new(one_turn(
+        vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "I need it back" }),
+        )],
+    ))));
+    let policy = Arc::new(kamchatka::tools::Careful::new());
+    policy.set(
+        &kamchatka::tools::Subject::parse("context"),
+        nachalnik::Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let installed = kamchatka::introspect::install(
+        &kernel,
+        policy,
+        kamchatka::tools::Limits::default(),
+        Default::default(),
+    );
+    installed
+        .history()
+        .carry(&saved[kamchatka::introspect::HISTORY])
+        .expect("the history reads back");
+    kernel.push(ContextItem::user("undo that"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("walked 1 of your own change"), "{said}");
+    assert!(!said.contains("not carried over"), "{said}");
+    assert_eq!(kernel.item(read).unwrap().state, ContextState::Active);
+}
+
 /// A pin the model made is still the model's after a resume, and one the person made is still
 /// theirs.
 ///

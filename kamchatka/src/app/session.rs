@@ -74,8 +74,8 @@ impl App {
                     .map_err(|e| format!("could not render record {}: {e}", record.seq))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let snapshot = serde_json::to_vec_pretty(&snapshot)
-            .map_err(|e| format!("could not render the session: {e}"))?;
+        let history = self.introspect.as_ref().map(|it| it.history());
+        let snapshot = crate::introspect::snapshot_with(&snapshot, history.as_ref())?;
 
         // named, because "No such file or directory" on its own leaves somebody guessing which
         // one; `-r` says which file it could not read and this should match it

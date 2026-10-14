@@ -71,11 +71,13 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: La
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor), policy.clone());
     let forked = Arc::new(AtomicU64::new(0));
+    let history = History::default();
 
     kernel.add_tool(Arc::new(Context::new(
         reach.clone(),
         limits.clone(),
         layout,
+        history.0.clone(),
     )));
     kernel.add_tool(Arc::new(Fork::new(
         reach.clone(),
@@ -89,6 +91,7 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: La
     Installed {
         _anchor: anchor,
         forked,
+        history,
     }
 }
 
@@ -101,6 +104,7 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: La
 pub struct Installed {
     _anchor: Arc<Kernel>,
     forked: Arc<AtomicU64>,
+    history: History,
 }
 
 impl Installed {
@@ -110,6 +114,69 @@ impl Installed {
     pub fn forked(&self) -> u64 {
         self.forked.swap(0, Ordering::Relaxed)
     }
+
+    /// The `context` tool's own undo history; see [`History`].
+    pub fn history(&self) -> History {
+        self.history.clone()
+    }
+}
+
+/// The changes the `context` tool made and can walk back with its own `undo`, which a snapshot
+/// carries so that a resumed session's model still can.
+///
+/// note: the runtime's snapshot has no place for one tool's memory, and should not: what goes in it
+/// is the session. So it is written into the snapshot's file beside the runtime's fields, under
+/// [`HISTORY`], which the runtime does not read and a resume here reads back. An entry read back
+/// follows the rule a live one does: an item changed since it was recorded is left alone.
+#[derive(Clone, Default)]
+pub struct History(Arc<parking_lot::Mutex<context::Journal>>);
+
+impl std::fmt::Debug for History {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("History").finish_non_exhaustive()
+    }
+}
+
+/// The key a snapshot's file holds the [`History`] under.
+pub const HISTORY: &str = "kamchatka-context-history";
+
+impl History {
+    /// What to write into a snapshot's file under [`HISTORY`].
+    pub fn saved(&self) -> Value {
+        serde_json::to_value(&*self.0.lock()).unwrap_or(Value::Null)
+    }
+
+    /// Takes on what a snapshot's file held under [`HISTORY`], in place of what is here.
+    pub fn carry(&self, saved: &Value) -> Result<(), String> {
+        let mut journal: context::Journal = serde_json::from_value(saved.clone())
+            .map_err(|e| format!("the `context` tool's undo history could not be read: {e}"))?;
+        journal.carried = true;
+        *self.0.lock() = journal;
+
+        Ok(())
+    }
+}
+
+/// What a snapshot's file holds under [`HISTORY`], where it holds anything there.
+pub fn saved_history(path: &std::path::Path) -> Option<Value> {
+    let written: Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+
+    written.get(HISTORY).cloned()
+}
+
+/// A snapshot as the bytes of its file, with the `context` tool's history beside the runtime's
+/// fields where there is one.
+pub fn snapshot_with(
+    snapshot: &nachalnik::Snapshot,
+    history: Option<&History>,
+) -> Result<Vec<u8>, String> {
+    let mut written =
+        serde_json::to_value(snapshot).map_err(|e| format!("could not render the session: {e}"))?;
+    if let (Some(history), Value::Object(fields)) = (history, &mut written) {
+        fields.insert(HISTORY.to_owned(), history.saved());
+    }
+
+    serde_json::to_vec_pretty(&written).map_err(|e| format!("could not render the session: {e}"))
 }
 
 /// The way back to the kernel a tool is registered on, and the policy its calls are judged by.
