@@ -231,6 +231,9 @@ struct InnerKernel {
     max_requests: RwLock<Option<usize>>,
     /// How large a picture in a tool's output is kept whole; see [`Kernel::set_picture_limit`].
     picture_limit: RwLock<Option<usize>>,
+    /// What a tool that sets no limit of its own is cut at; see
+    /// [`Kernel::set_default_tool_output_limit`].
+    output_limit: RwLock<Option<usize>>,
 }
 
 /// The agent runtime: a state machine, a context, and nothing else.
@@ -522,6 +525,7 @@ impl Kernel {
             call_ceiling: RwLock::new(None),
             max_requests: RwLock::new(config.max_requests_per_turn),
             picture_limit: RwLock::new(None),
+            output_limit: RwLock::new(config.default_tool_output_limit),
             config,
         };
 
@@ -532,8 +536,9 @@ impl Kernel {
 
     /// Returns the kernel's configuration, as it was built with.
     ///
-    /// note: [`Config::max_requests_per_turn`] here is where the kernel started;
-    /// [`Kernel::max_requests_per_turn`] is what it holds to now.
+    /// note: [`Config::max_requests_per_turn`] and [`Config::default_tool_output_limit`] here are
+    /// where the kernel started; [`Kernel::max_requests_per_turn`] and
+    /// [`Kernel::default_tool_output_limit`] are what it holds to now.
     pub fn config(&self) -> &Config {
         &self.0.config
     }
