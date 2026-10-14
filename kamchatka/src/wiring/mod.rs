@@ -41,6 +41,9 @@ mod record;
 pub(crate) use record::unclaimed;
 pub use record::{Recorded, Recorder, record};
 
+/// How many of one answer's tool calls a session runs; see `Kernel::set_call_ceiling`.
+pub const CALLS: usize = 64;
+
 /// Everything a session is set up with, and what each of them means.
 ///
 /// note: a settings struct with a `Default` rather than a builder, the way
@@ -667,6 +670,10 @@ impl Setup {
             Some(snapshot) => Kernel::resume(config, snapshot),
             None => Kernel::new(config),
         };
+        // note: a model caught repeating itself can answer with thousands of calls; past this
+        // many in one answer the rest are answered and not run. Far more than an answer that
+        // means its calls asks for, and few enough that a loop costs a turn rather than a context
+        kernel.set_call_ceiling(Some(CALLS));
 
         // note: subscribed before anything is plugged in, so that the wiring is on the trace like
         // everything else. Setting the provider, the policy, the compactor and each tool are all

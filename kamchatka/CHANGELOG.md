@@ -39,6 +39,9 @@ minor bump may break you.
 
 ### changed
 
+- **A session runs at most 64 of one answer's tool calls.** A model caught repeating itself could
+  answer with thousands, every one run and recorded. The rest are answered as not run, saying to
+  ask for them in the next answer.
 - **`fs:read` is held to a small model's context window.** Until `/limit fs:read` sets it, a read
   stops at a tenth of the window, at about four bytes a token, where that is under 32,000 bytes.
   On a 14,000-token window one read was over 8,000 tokens, and two in a turn left no room for the

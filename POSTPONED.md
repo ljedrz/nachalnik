@@ -9,13 +9,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
-- **Nothing bounds how many tool calls one answer may make.** The kernel prepares and runs every
-  call a response carries, so a model caught in a repetition loop - one answer of thousands of
-  calls, most of them the same call - has every one of them run and recorded, and the context
-  fills with copies. A ceiling on calls per answer (`Config`, the rest answered with an error
-  saying so), or one run of a call repeated with the same arguments in one answer, would stop it;
-  each changes what a response with many calls means to a client. Unblocked by choosing which.
-
 - **`nachalnik/src/kernel/mod.rs` is best changed with the state machine moved out.** The loop -
   `state`, `decide`, `cancel_pending_calls`, `step`, `step_once`, `turn`, with `Machine`, `Claim`,
   `Restore`, `PreparedCall`, `state_for` and `transition` - is one banner-marked region sharing the
