@@ -104,6 +104,9 @@ a script can tell a completed session from a stopped one:
 | `124` | ran out of `--deadline`, whether or not the session had started (as `timeout` does) |
 | `129`, `130`, `143` | ended by `SIGHUP`, <kbd>ctrl+c</kbd> or `SIGTERM`: `128` plus the signal |
 
+A deadline or a signal decides the status even when the last turn had failed before it, since it's
+what ended the run; the failure is still said on stderr and is in the record.
+
 If more than one applies, the first is reported. A served session without a screen exits the same
 way when a signal ends it.
 

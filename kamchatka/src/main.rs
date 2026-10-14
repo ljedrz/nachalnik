@@ -122,6 +122,32 @@ fn main() -> Result<std::process::ExitCode> {
     }
 }
 
+/// What a run with no screen comes to: how it stopped short, if it did, or why it failed.
+///
+/// note: a stop by the clock or a signal decides the status even when the last turn had failed
+/// before it. The status is what a script tells a timeout from a failure by, and the failure has
+/// already been said on standard error and is in the record; said again here, as a failure that
+/// ends the run is. A run that reached its spend ceiling or `--requests` after a failed turn is
+/// still a failure: those stops are read off the session rather than made by anything outside it.
+fn stopped_over_failed(
+    ran: std::result::Result<(), String>,
+    stopped: Option<headless::Stop>,
+) -> Result<Option<headless::Stop>> {
+    use headless::Stop;
+
+    match (ran, stopped) {
+        (Ok(()), stopped) => Ok(stopped),
+        (
+            Err(e),
+            Some(stop @ (Stop::Deadline | Stop::Interrupted | Stop::Terminated | Stop::HungUp)),
+        ) => {
+            let _ = writeln!(std::io::stderr(), "Error: {e}");
+            Ok(Some(stop))
+        }
+        (Err(e), _) => Err(anyhow::anyhow!("{e}")),
+    }
+}
+
 /// How many times a headless run sends a request for a turn while the endpoint says it is busy;
 /// see `Dialect::set_tries`.
 const UNWATCHED_TRIES: usize = 10;
@@ -752,11 +778,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                     .map(|()| None),
                 #[cfg(not(feature = "tui"))]
                 false => unreachable!("there is no screen in this build"),
-                true => server
-                    .run(&mut app, &mut events, &mut finished)
-                    .await
-                    .map(|()| server.stopped())
-                    .map_err(|e| anyhow::anyhow!("{e}")),
+                true => {
+                    let ran = server.run(&mut app, &mut events, &mut finished).await;
+                    stopped_over_failed(ran, server.stopped())
+                }
             },
             None => match headless {
                 true => {
@@ -770,11 +795,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                         driver = driver
                             .deadline(ends.saturating_duration_since(tokio::time::Instant::now()));
                     }
-                    driver
+                    let ran = driver
                         .run(&mut app, &mut events, &mut finished, &mut input)
-                        .await
-                        .map(|()| driver.stopped())
-                        .map_err(|e| anyhow::anyhow!("{e}"))
+                        .await;
+                    stopped_over_failed(ran, driver.stopped())
                 }
                 #[cfg(feature = "tui")]
                 false => drawn(&mut app, &mut events, &mut finished, None)

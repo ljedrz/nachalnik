@@ -124,13 +124,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Raising the client's timeout with the patience, or saying how the two combine, is part of the
   change. Unblocked by choosing the names and that rule.
 
-- **A headless or served run stopped short after its last turn failed exits 1.** `Headless::run`
-  and `Server::run` answer `Err` whenever the last turn failed, and the stop - a deadline,
-  `ctrl+c`, a signal - is read only on the `Ok` path, so a run whose last turn failed and which was
-  then stopped exits 1 rather than 124, 129, 130 or 143. An interrupted turn ends as a stop rather than a failure, so it takes a turn that
-  failed on its own. Unblocked by choosing which of the two a script is told: the stop, under the
-  rule that the first cause wins, or the failure.
-
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the
   picture to where its API takes one - a user message after the tool messages - without changing
