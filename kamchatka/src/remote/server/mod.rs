@@ -1273,6 +1273,8 @@ fn project(app: &App) -> Attached {
     let items = app.kernel.items();
     let going = app.going();
     let asking = app.kernel.pending_permissions();
+    // one reading, for both of the figures made from it
+    let budget = app.kernel.budget();
 
     let mut attached = Attached {
         rated: rated(app, &asking),
@@ -1284,7 +1286,8 @@ fn project(app: &App) -> Attached {
         busy: app.working(),
         stepping: app.stepping,
         model: app.kernel.provider().map(|provider| provider.info()),
-        budget: app.kernel.budget(),
+        expected: Some(app.expected(&going, &budget)),
+        budget,
         spent: app.spent(),
         spend: app.spend(),
         overspent: app.overspent(),

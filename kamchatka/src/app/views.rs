@@ -131,6 +131,19 @@ impl App {
         )
     }
 
+    /// What the next request is expected to cost: [`App::anchored`] where there is an anchor, and
+    /// the counter's own estimate where there is not.
+    ///
+    /// note: the one figure every view of the session shows - the status line, a served session's
+    /// projection, and so the web page and `--connect` - so that they agree. The page added up
+    /// the raw estimate for itself while the terminal showed this, and the two drifted apart by
+    /// the counter's error over the whole context, which grows with the session. `/budget` is the
+    /// one place both are shown, side by side and named.
+    pub fn expected(&self, going: &Going, budget: &Budget) -> usize {
+        self.anchored(going, budget)
+            .unwrap_or_else(|| budget.used())
+    }
+
     /// What one item would cost the request if it were sending its content, as the counter sees
     /// it now.
     ///

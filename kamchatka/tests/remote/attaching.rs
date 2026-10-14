@@ -6,9 +6,89 @@
 //! each is refused by name rather than served something that looks right.
 
 use kamchatka::remote::protocol::{self, Command, Message};
-use nachalnik::ModelResponse;
+use nachalnik::{ContextItem, ModelResponse, Usage};
 
 use crate::{Peer, attaching, quit, records, served, served_as};
+
+/// A projection says what the next request is expected to cost in the terminal's own figure:
+/// anchored on what the provider charged for the last request, not the counter's raw estimate.
+///
+/// note: the web page added up the budget for itself while the status line showed the anchored
+/// figure, and on a context the counter is wrong about the two drifted apart by its whole error.
+#[tokio::test]
+async fn a_projection_carries_the_figure_the_status_line_shows() {
+    let session = served(
+        vec![ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(9_000),
+                ..Default::default()
+            }),
+            ..ModelResponse::text("done")
+        }],
+        // a context the counter is going to be wrong about, and a provider that says so
+        |app| {
+            app.kernel.push(ContextItem::file(
+                "haystack.txt",
+                "a needle in it. ".repeat(200),
+            ));
+        },
+    )
+    .await;
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    // with no response yet there is nothing to anchor on, and the estimate is all there is
+    assert_eq!(attached.expected, Some(attached.budget.used()));
+
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Busy { busy: true }))
+        .await;
+    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+        .await;
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(projected)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    let expected = projected.expected.expect("this build sends the figure");
+    assert!(
+        expected >= 9_000,
+        "not anchored on the provider's figure: {expected}"
+    );
+    assert_ne!(
+        expected,
+        projected.budget.used(),
+        "the counter's raw estimate"
+    );
+
+    // and a session that predates the field is still read, with nothing in it
+    let mut sent = serde_json::to_value(&heard[heard.len() - 1]).expect("it writes");
+    sent.as_object_mut()
+        .expect("an object")
+        .remove("expected")
+        .expect("this build sends the field");
+    let Message::Projected(older) = serde_json::from_value::<Message>(sent).expect("it reads")
+    else {
+        unreachable!("it was a projection")
+    };
+    assert_eq!(older.expected, None);
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    let going = app.going();
+    assert_eq!(
+        expected,
+        app.expected(&going, &app.kernel.budget()),
+        "the status line's figure"
+    );
+}
 
 /// A projection from a session that predates the advisor's reasons is still one a client reads.
 ///

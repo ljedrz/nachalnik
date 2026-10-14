@@ -444,6 +444,7 @@ mod tests {
                 limit: None,
                 reported: None,
             },
+            expected: None,
             spent: 0,
             spend: None,
             overspent: false,
