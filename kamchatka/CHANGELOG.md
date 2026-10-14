@@ -65,6 +65,10 @@ minor bump may break you.
 
 ### fixed
 
+- **An attach refused for a projection too long to send leaves the attached client attached.** The
+  newcomer was seated before the size was checked, so the client there before was let go, the
+  newcomer was then refused, and nobody had the session. The newcomer is seated only with a
+  projection it can be sent.
 - **An attachment named as a picture that does not start as one is said when it goes in.** A
   `.png` holding text went out as `image/png`, and the endpoint refused that request and every one
   after it with a sentence naming no item. A PNG, JPEG, GIF or WebP whose first bytes are not that

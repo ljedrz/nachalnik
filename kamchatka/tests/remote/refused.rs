@@ -320,6 +320,23 @@ async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
     })
     .await;
 
+    // a client that asks for the records with a watermark rather than a projection is served,
+    // which is the way out the refusal below points at, and it holds the session
+    let mut seated = Socket::connect(&session.at).await;
+    seated
+        .send(crate::attaching(Some(session.kernel.last_seq()), None))
+        .await;
+    // a resume is answered with the standing messages first and the `done` last; see
+    // `Answered::standing`
+    let mut done = false;
+    for _ in 0..4 {
+        if matches!(seated.recv_a_whole_frame().await, Message::Done { .. }) {
+            done = true;
+            break;
+        }
+    }
+    assert!(done, "the records were refused along with the projection");
+
     let mut socket = Socket::connect(&session.at).await;
     socket.send(crate::attaching(None, None)).await;
 
@@ -335,31 +352,19 @@ async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
     assert!(error.contains("records are still there"), "{error}");
     assert!(error.contains("inspect"), "{error}");
 
-    // and the session is not lost: a client that asks for the records with a watermark rather than
-    // a projection is served, which is the way out the sentence points at
-    let mut socket = Socket::connect(&session.at).await;
-    socket
-        .send(crate::attaching(Some(session.kernel.last_seq()), None))
-        .await;
-    // a resume is answered with the standing messages first and the `done` last; see
-    // `Answered::standing`
-    let mut done = false;
-    for _ in 0..4 {
-        if matches!(socket.recv_a_whole_frame().await, Message::Done { .. }) {
-            done = true;
-            break;
-        }
-    }
-    assert!(done, "the records were refused along with the projection");
-
-    // ended from this connection rather than a fresh one, which cannot attach: this session's
-    // projection is over the cap, and that is the whole of what is under test above
-    socket
+    // note: and the client already there keeps the session. Seated before the size was known, the
+    // refused newcomer let it go, and nobody had the session; its `/quit` would then be refused as
+    // from a client replaced, and the session would not end
+    seated
         .send(Command::Submit {
             line: "/quit".to_owned(),
         })
         .await;
-    session.ended().await.1.expect("the session failed");
+    tokio::time::timeout(std::time::Duration::from_secs(20), session.ended())
+        .await
+        .expect("the client already attached was let go by an attach that was refused")
+        .1
+        .expect("the session failed");
 }
 
 /// The browser page's copy of the line limit is the limit.
