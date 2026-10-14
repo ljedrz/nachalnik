@@ -208,7 +208,8 @@ pub(crate) fn yes_or_no(args: &Value, name: &str) -> Result<bool, String> {
 /// note: named because two places need the same number and one of them is not a row in this table.
 /// Every tool this program ships has a row; a tool from an MCP server has none and holds no handle
 /// to this, so what stops one of those filling a context is
-/// [`Config::default_tool_output_limit`](nachalnik::Config), set to this in `wiring`.
+/// [`Config::default_tool_output_limit`](nachalnik::Config), set to this in `wiring` and held to
+/// the window with the rows; see [`Limits::held`].
 pub(crate) const CEILING: usize = 32_000;
 
 /// The most of one call's output a tool here keeps, in bytes: what a command writes to each of its
@@ -288,11 +289,17 @@ impl Table {
     /// The limit a row is at: its own, or less on a small window; see the note on [`Limits`].
     fn of(&self, subject: &str) -> Option<usize> {
         let row = *self.rows.get(subject)?;
+        match self.set.contains(subject) {
+            true => Some(row),
+            false => Some(self.held(row)),
+        }
+    }
+
+    /// A limit nobody set, held to the window.
+    fn held(&self, bytes: usize) -> usize {
         match self.window {
-            Some(window) if !self.set.contains(subject) => {
-                Some(row.min((window * 4 / 10).max(FLOOR)))
-            }
-            _ => Some(row),
+            Some(window) => bytes.min((window * 4 / 10).max(FLOOR)),
+            None => bytes,
         }
     }
 }
@@ -372,6 +379,17 @@ impl Limits {
     /// known.
     pub fn window(&self, tokens: Option<usize>) {
         self.0.lock().window = tokens;
+    }
+
+    /// A limit nobody set, in bytes, held to the window as a row nobody set is.
+    ///
+    /// note: for what a tool with no row is cut at - one from an MCP server - which is the kernel's
+    /// own limit rather than a row, since what has no row cannot be set. The `App` hands it to
+    /// [`Kernel::set_default_tool_output_limit`] as the window moves.
+    ///
+    /// [`Kernel::set_default_tool_output_limit`]: nachalnik::Kernel::set_default_tool_output_limit
+    pub fn held(&self, bytes: usize) -> usize {
+        self.0.lock().held(bytes)
     }
 
     /// The limit in force for a subject, if this holds one for it.

@@ -294,7 +294,7 @@ fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
     let config = kernel.config();
     out.push_str(&format!(
         "\n{}",
-        shown(&specs, limits, config.default_tool_output_limit)
+        shown(&specs, limits, kernel.default_tool_output_limit())
     ));
     // note: read off the configuration rather than stated, as `rules` does, so that a session run
     // `--discard-cut-off-output` is not told here that the whole of anything cut is still
