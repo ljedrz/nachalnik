@@ -1757,10 +1757,16 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
         budget.limit,
         used * 100.0,
     );
+    // the reason is one of two: a result the model had read is taken whatever the room, and only
+    // the one about room names a percentage, so what every marker shares is how it begins - on an
+    // elided item, and after `compaction: ` on a removed one
     assert!(
-        taken
-            .iter()
-            .all(|item| item.note.as_deref().unwrap_or_default().contains("%")),
+        taken.iter().all(|item| {
+            let note = item.note.as_deref().unwrap_or_default();
+            note.strip_prefix("compaction: ")
+                .unwrap_or(note)
+                .starts_with("compacted")
+        }),
         "and each marker carries the reason it gave"
     );
 
