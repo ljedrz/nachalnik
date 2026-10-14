@@ -106,6 +106,12 @@ found through `KAMCHATKA_CALL`, an environment variable every command runs with 
 anything that clears its environment (`env -i`) isn't found. `--leave-running` leaves them running,
 for servers you started on purpose, and still lists them.
 
+A program that stops itself (with `SIGSTOP`, or a `SIGTSTP` with no terminal to give back to) is
+waited on by the command that ran it, and so is the call: it doesn't end, and nothing says it's
+stuck rather than slow. Telling that from a background job a command stopped on purpose would mean
+watching every process a command starts, and the way out is the one for any call that runs too
+long: <kbd>esc</kbd> at the screen, and `ctrl+c` or `--max-run-seconds` in a headless run.
+
 A run stopped by one of these says so on stderr when it happens, and exits with its own status, so
 a script can tell a completed session from a stopped one:
 

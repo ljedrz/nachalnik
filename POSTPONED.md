@@ -80,12 +80,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   already quotes what arrived. Unblocked by a decision on what the history should say the model
   sent, and a live test of that choice on the strict endpoints.
 
-- **A program a command runs that stops only itself is waited on until the turn is interrupted.**
-  The shell is then asleep waiting on it rather than stopped, so nothing says the call is stuck.
-  Seeing it means looking through the command's process group for a stopped process the shell is
-  waiting on, and telling that from a background job the command stopped on purpose, which is left
-  alone. Unblocked by deciding that scan is worth its code.
-
 - **The Anthropic client and signed thinking after an edited history.** Described in the
   `nachalnik_providers::anthropic` docs, with the models it affects, and handled by neither the
   code nor the tests: some models reject a signed thinking block sent back after anything before
