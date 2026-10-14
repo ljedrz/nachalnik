@@ -126,6 +126,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A call nobody can be asked about is refused as the standing rule it is.** Under `--on-ask
+  deny`, a call the rules ask about was asked and answered `deny` by the run, and the model was told
+  it had been refused once, by a person, and that a different approach might be allowed - though the
+  run refuses that call, and every call the same rule asks about, until it ends. Under
+  `--no-sandbox` that included every command whose name `net:reach` matches. The policy refuses such
+  a call itself now, naming the rule that would have asked, and the run's line says the same.
 - **A confined command's temporary directory is granted as it was made.** Its rule was built from
   its path, opened again when the ruleset was built, so where the session's own `$TMPDIR` is inside
   what its commands may write, a job an earlier command left running could swap the new directory

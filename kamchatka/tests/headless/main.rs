@@ -408,7 +408,12 @@ async fn a_name_no_command_answers_to_is_cut_before_it_is_quoted_back() {
     assert!(!run.names().contains(&"model.requested".to_owned()));
 }
 
-/// A question nobody is there to answer is refused, and the model is told.
+/// A question nobody is there to answer is refused, and the model is told it is a standing rule,
+/// naming the rule that would have asked.
+///
+/// note: refused by the policy rather than asked and answered. Answered, it reached the model as
+/// one person's answer to one call, with a different approach maybe allowed - when every call the
+/// same rule asks about would be refused the same way for the rest of the run.
 #[tokio::test]
 async fn an_unanswerable_question_is_denied_by_default() {
     let script = vec![
@@ -430,10 +435,17 @@ async fn an_unanswerable_question_is_denied_by_default() {
         .kernel
         .items()
         .iter()
-        .any(|item| item.content.to_text().contains("not permitted"));
-    assert!(refusal, "the model was not told");
+        .map(|item| item.content.to_text().into_owned())
+        .find(|text| text.contains("not permitted"))
+        .expect("the model was not told");
+    assert!(refusal.contains("standing rule"), "{refusal}");
+    assert!(refusal.contains("asked about by `fs:read`"), "{refusal}");
     assert!(
-        run.prose.contains("nobody is here to be asked"),
+        !run.names().contains(&"permission.requested".to_owned()),
+        "nobody was there to ask"
+    );
+    assert!(
+        run.prose.contains("nobody is here to answer"),
         "{}",
         run.prose
     );
@@ -481,6 +493,8 @@ async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
     ];
     let run = run("read it\n", script, |app| {
         app.kernel.add_tool(Arc::new(Several));
+        // told what the tool declares, as `wiring` tells it about every tool a session has
+        app.policy.offers(Several.spec());
         app.policy
             .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     })

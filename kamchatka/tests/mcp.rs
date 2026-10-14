@@ -346,7 +346,8 @@ async fn a_servers_tool_is_refused_when_nobody_has_answered_for_it() {
     assert!(run.names.contains(&"permission.decided".to_owned()));
     assert!(!run.names.contains(&"tool.started".to_owned()));
     assert!(
-        run.prose.contains("nobody is here to be asked"),
+        run.prose
+            .contains("asked about by the rule for the `py` server, and nobody is here to answer"),
         "{}",
         run.prose
     );
