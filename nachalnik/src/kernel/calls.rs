@@ -25,9 +25,9 @@ use super::{Batch, Kernel, PreparedCall, Restore, State};
 impl Kernel {
     /// Matches the model's calls to tools, asks the policy about each, and queues them.
     ///
-    /// note: Nothing about a permission is announced until every call is queued, and the
-    /// announcements and the move of the state machine happen under one hold of the machine lock,
-    /// so a client can see a question only once there is one to answer. Its whole job here is to
+    /// note: Nothing about a permission is announced until every call is queued, and then
+    /// [`Kernel::settle`] announces them and moves the machine together, so a client can see a
+    /// question only once there is one to answer. Its whole job here is to
     /// answer the question it is handed, and it would not be much of a runtime if
     /// [`Kernel::decide`] could fail purely because the client was quick about it - which it
     /// would, if a request were announced while the policy was still being consulted about the
@@ -137,16 +137,12 @@ impl Kernel {
             });
         }
 
-        // the calls are queued, announced and the machine moved without letting go of the lock,
-        // so that by the time anybody can see a `permission.requested` there is a request to
-        // answer, and a `Kernel::decide` racing this simply waits its turn
+        // queued under the same hold that announces them, so a `Kernel::decide` racing this
+        // waits for the request it answers to be there
         let mut machine = self.0.machine.lock();
         let to = Self::state_for(&prepared);
         machine.pending = prepared;
-        for announcement in announcements {
-            self.emit(announcement);
-        }
-        self.transition(&mut machine, to.clone());
+        self.settle(&mut machine, announcements, to.clone());
 
         to
     }
@@ -171,34 +167,7 @@ impl Kernel {
             // watching the stream sees a call finish rather than a batch of them
             let mut batch = Batch::default();
             for prepared in &prepared {
-                // asked before the lock below is taken, since it is the policy's code
-                let refused = self.refusal(prepared.grant, &prepared.request, &*prepared.policy);
-
-                // an interrupt stops the ones that have not started. They are still recorded,
-                // and recorded as not having run, because a call with no result at all would
-                // leave the model looking at a question nobody answered
-                //
-                // note: the flag is read and the start announced under one hold of the machine
-                // lock, which is where `interrupt` sets and announces it. Read outside it, an
-                // interrupt landing between the two put `turn.interrupted` in the record ahead
-                // of a call that then ran
-                let output = {
-                    let _machine = self.0.machine.lock();
-                    match (self.is_interrupted(), refused) {
-                        (true, _) => {
-                            Err(ToolOutput::error("interrupted before this call was made"))
-                        }
-                        (false, Some(refusal)) => Err(refusal),
-                        (false, None) => {
-                            self.started(&prepared.call);
-                            Ok(())
-                        }
-                    }
-                };
-                let output = match output {
-                    Ok(()) => self.run(prepared.tool.clone(), prepared.call.clone()).await,
-                    Err(output) => output,
-                };
+                let output = self.invoke(prepared, true).await;
                 self.record_output(prepared, output, &mut batch);
             }
         }
@@ -214,13 +183,8 @@ impl Kernel {
     async fn invoke_together(&self, prepared: &[PreparedCall]) -> Vec<ToolOutput> {
         let mut running = tokio::task::JoinSet::new();
         for (index, call) in prepared.iter().enumerate() {
-            let (kernel, tool, grant) = (self.clone(), call.tool.clone(), call.grant);
-            let (request, policy) = (call.request.clone(), call.policy.clone());
-            let call = call.call.clone();
-            running.spawn(async move {
-                let output = kernel.invoke(tool, call, request, grant, &*policy).await;
-                (index, output)
-            });
+            let (kernel, call) = (self.clone(), call.clone());
+            running.spawn(async move { (index, kernel.invoke(&call, false).await) });
         }
 
         let mut outputs: Vec<Option<ToolOutput>> = (0..prepared.len()).map(|_| None).collect();
@@ -244,21 +208,31 @@ impl Kernel {
     }
 
     /// Runs one call. A refusal and a failure are both outputs, because the model is told about
-    /// them either way.
-    async fn invoke(
-        &self,
-        tool: Arc<dyn Tool>,
-        call: ToolCall,
-        request: PermissionRequest,
-        grant: Option<(Grant, GrantSource)>,
-        policy: &dyn PermissionPolicy,
-    ) -> ToolOutput {
-        if let Some(refusal) = self.refusal(grant, &request, policy) {
-            return refusal;
+    /// them either way. `stoppable` is whether an outstanding interrupt keeps it from starting,
+    /// which only the calls run one at a time are: a batch run together has been started whole.
+    ///
+    /// note: an interrupt stops the calls that have not started. They are still recorded, and
+    /// recorded as not having run, because a call with no result at all would leave the model
+    /// looking at a question nobody answered.
+    ///
+    /// note: the flag is read and the start announced under one hold of the machine lock, which
+    /// is where `interrupt` sets and announces it. Read outside it, an interrupt landing between
+    /// the two put `turn.interrupted` in the record ahead of a call that then ran.
+    async fn invoke(&self, prepared: &PreparedCall, stoppable: bool) -> ToolOutput {
+        // asked before the lock below is taken, since it is the policy's code
+        let refused = self.refusal(prepared.grant, &prepared.request, &*prepared.policy);
+        {
+            let _machine = self.0.machine.lock();
+            if stoppable && self.is_interrupted() {
+                return ToolOutput::error("interrupted before this call was made");
+            }
+            if let Some(refusal) = refused {
+                return refusal;
+            }
+            self.started(&prepared.call);
         }
 
-        self.started(&call);
-        self.run(tool, call).await
+        self.run(prepared.tool.clone(), prepared.call.clone()).await
     }
 
     /// What a refused call is answered with, or `None` for one that may run.

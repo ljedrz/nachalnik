@@ -11,10 +11,11 @@ A file-by-file map of the workspace, with reasons wherever the layout isn't obvi
 
 | file | what lives there |
 | --- | --- |
-| `kernel/mod.rs` | `Kernel`, `State`, `StateChange`, the state machine, construction and resuming, and observing a session. |
+| `kernel/mod.rs` | `Kernel`, `State`, `StateChange`, construction and resuming, and observing a session. |
+| `kernel/machine.rs` | the state machine: interrupting, deciding, cancelling, `step` and `turn`, and the transitions they make. |
 | `kernel/context.rs` | the public operations on the context: push, set a state, replace, undo and redo, count, project, compact. |
-| `kernel/components.rs` | the public operations on what a kernel is assembled from: provider, tools, policy, projector, counter, compactor, full notice, parameters. |
-| `kernel/request.rs` | private: building a request, sending it, and repairing the call identifiers it came back with. |
+| `kernel/components.rs` | the public operations on what a kernel is assembled from: provider, tools, policy, projector, counter, compactor, parameters. |
+| `kernel/request.rs` | building a request, sending it, and repairing the call identifiers it came back with; the full notice, set here beside what places and retires it. |
 | `kernel/calls.rs` | private: asking the policy about a model's tool calls, running them, recording what they produced. |
 | `context/mod.rs` | `Context`: the items in order, identifiers handed out, undo/redo. |
 | `context/item.rs` | `ContextItem`, `ContextId`, `ContextKind`, `ContextState`. |
