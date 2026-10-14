@@ -9,13 +9,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
-- **Two `fork`s in one turn under `--parallel-tool-calls` can both call their copies the same
-  context.** The copy before is found by whichever fork takes the `last_read` lock first, and the
-  comparison is one way, so where a call writing to the context lands between the two snapshots and
-  the later fork locks first, neither says the two differ. Taking the lock before the snapshot would
-  make the lock order the snapshot order; what is missing is a test that can order the two forks,
-  since the kernel runs parallel calls on a `JoinSet`.
-
 - **No test makes a connection fall behind the session's own lines.** What a connection more than
   256 of them behind does - say how many it missed, ask the session where it stands and say that -
   has no test through a connection. Making one lag needs the session to say that many lines between

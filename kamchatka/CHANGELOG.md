@@ -127,6 +127,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Two forks of one turn under `--parallel-tool-calls` compare their copies in the order they took
+  them.** With a call writing to the context between the two copies, the later copy could reach the
+  comparison first, find nobody before it, and leave the earlier one finding nothing the later did
+  not have - and both said they were the same context.
 - **A call nobody can be asked about is refused as the standing rule it is.** Under `--on-ask
   deny`, a call the rules ask about was asked and answered `deny` by the run, and the model was told
   it had been refused once, by a person, and that a different approach might be allowed - though the

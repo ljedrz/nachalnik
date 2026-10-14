@@ -161,12 +161,15 @@ impl Tool for Fork {
             "draft" => {
                 branch(
                     &kernel,
-                    &call.id,
-                    None,
-                    &[],
+                    Asked {
+                        call: &call.id,
+                        question: None,
+                        without: &[],
+                    },
                     &output,
                     &self.forked,
                     &self.read,
+                    || {},
                 )
                 .await
             }
@@ -195,18 +198,28 @@ impl Tool for Fork {
                 }
                 branch(
                     &kernel,
-                    &call.id,
-                    Some(question),
-                    &without,
+                    Asked {
+                        call: &call.id,
+                        question: Some(question),
+                        without: &without,
+                    },
                     &output,
                     &self.forked,
                     &self.read,
+                    || {},
                 )
                 .await
             }
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
     }
+}
+
+/// What one call asked a fork: which call it was, the question if it put one, and what to leave out.
+struct Asked<'a> {
+    call: &'a ToolCallId,
+    question: Option<&'a str>,
+    without: &'a [ContextId],
 }
 
 /// Answers on a copy of the context, and hands back only what was said.
@@ -235,128 +248,153 @@ impl Tool for Fork {
 /// The copy is taken as the context stands, and compared with the copy the fork beside it was
 /// given, so the two forks of a turn are either alike or the reply says how they are not.
 ///
+/// note: `looked` is called once the copy is taken, and is nothing but a place for a test to stand
+/// between the copy and what is made of it.
+///
 /// note: and what it was charged, added to `forked` for the session's ceiling. Read off the fork's
 /// own log once its turn is over, whatever the turn came to, rather than off the stream the relay
 /// reads: the relay is stopped as soon as the turn ends, and a figure it had not reached yet would
 /// be spent and never counted.
 async fn branch(
     kernel: &Kernel,
-    asking: &ToolCallId,
-    question: Option<&str>,
-    without: &[ContextId],
+    asked: Asked<'_>,
     output: &OutputSink,
     forked: &AtomicU64,
     last_read: &std::sync::Mutex<Read>,
+    looked: impl FnOnce(),
 ) -> Result<ToolOutput, BoxError> {
+    let Asked {
+        call: asking,
+        question,
+        without,
+    } = asked;
     let Some(provider) = kernel.provider() else {
         return Ok(ToolOutput::error("there is no provider to ask"));
     };
 
-    let mut snapshot = kernel.snapshot();
-    let asking_in = snapshot
-        .items
-        .iter()
-        .find(|item| item.calls().any(|call| &call.id == asking))
-        .map(|turn| {
-            (
-                turn.id,
-                turn.calls().map(|call| call.id.clone()).collect::<Vec<_>>(),
-            )
-        });
-    let siblings: std::collections::HashSet<ToolCallId> = asking_in
-        .as_ref()
-        .map(|(_, calls)| {
-            calls
-                .iter()
-                .filter(|call| *call != asking)
-                .cloned()
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut left_out = Vec::new();
-    let mut unanswered = Vec::new();
-    for item in &mut snapshot.items {
-        // named first: a sibling's result the caller also named is one it asked to leave out
-        if without.contains(&item.id) {
-            // excluded rather than deleted, so the fork's own account of itself can still name
-            // the item by the number this session knows it by
-            item.state = ContextState::Excluded;
-            item.note = Some("left out of this fork".into());
-            left_out.push(item.id);
-        } else if let ContextKind::ToolResult { call, .. } = &item.kind
-            && siblings.contains(call)
-        {
-            item.state = ContextState::Excluded;
-            item.note = Some("answered in the same turn this fork was asked in".into());
-            unanswered.push(item.id);
-        }
-    }
-    let fork = Kernel::resume(
-        Config {
-            session_name: Some(format!("{}#fork", kernel.session_name())),
-            // it answers once and is thrown away: there is nothing for an undo stack to be for,
-            // and nothing after the first request for a second one to build on
-            context_undo_depth: 0,
-            max_requests_per_turn: Some(1),
-            ..Config::default()
-        },
-        snapshot,
-    );
-    fork.set_provider(provider);
-    fork.set_projector(kernel.projector());
-    // whose items the count is about: what follows adds a system instruction of this tool's own,
-    // and `ask` adds the question - neither of them the caller's, so neither is counted. A fork is
-    // worth having because two runs are comparable, and a number that moves with which of the two
-    // operations asked for it is not
-    let theirs: std::collections::BTreeSet<ContextId> =
-        fork.items().iter().map(|item| item.id).collect();
-    // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
-    // tool calls and their results and no tool definitions at all, and a model reading that asks
-    // for a tool - which nothing here can run, so the answer comes back as a call and no words.
-    // Without being told, a model does this as a rule rather than as a corner case
-    fork.push(
-        ContextItem::system(
-            "You are a copy of this session, made to think and not to act. You have no tools \
-             here, and nothing you ask for can be run: answer in words, from what is already in \
-             front of you.",
-        )
-        .pinned(),
-    );
-    if let Some(question) = question {
-        fork.push(ContextItem::user(question).because("put to a fork of this context"));
-    }
-    // what the fork will actually read, rather than what it was handed: the projector still has
-    // to repair the call this very tool is answering out of the copy, and a count taken before it
-    // did would be one the fork never saw
-    let read: Vec<ContextId> = fork
-        .project()
-        .included
-        .iter()
-        .filter(|id| theirs.contains(id))
-        .copied()
-        .collect();
-    let items = read.len();
-    // note: what the fork before this one read, where it was another fork of this same turn. Two
-    // forks in a turn are the comparison `fork` exists for, and a call that writes to the
-    // context - `context` with a `note`, say - adds an item the fork before it did not have, so
-    // the two copies differ however carefully the siblings above are excluded. Nothing in the
-    // snapshot says which call wrote an item, so this compares the two rather than guessing, and
-    // the sentence below is weakened by what it finds
-    let extra: Vec<ContextId> = match asking_in.as_ref().map(|(turn, _)| *turn) {
-        Some(turn) => {
-            let mut last = last_read.lock().expect("no lock is held across a request");
-            let earlier = (last.turn == Some(turn)).then(|| last.items.clone());
-            last.turn = Some(turn);
-            last.items = read.clone();
-            // in the order the copy has them, so the sentence reads like a context
-            earlier.map_or_else(Vec::new, |earlier| {
-                let earlier: std::collections::BTreeSet<ContextId> = earlier.into_iter().collect();
-                read.into_iter()
-                    .filter(|id| !earlier.contains(id))
+    // note: held from before the copy is taken until what it read is written down, so that two
+    // forks of a turn compare their copies in the order they took them. Taken only to compare, two
+    // forks under `--parallel-tool-calls` could copy the context either side of a call writing to
+    // it and then lock the other way round - the later copy first, finding nobody before it, and
+    // the earlier one second, finding nothing the later did not have - and both said they were
+    // the same context. Held in a block of its own, because nothing in it awaits and the future
+    // that held it across an await could not be sent between threads
+    let (fork, items, left_out, unanswered, extra) = {
+        // a panic in here - the projector is somebody else's code - leaves what was read last as
+        // it was, since that is written only at the end, so the lock is taken back rather than
+        // every later fork failing on it
+        let mut last = last_read
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut snapshot = kernel.snapshot();
+        looked();
+        let asking_in = snapshot
+            .items
+            .iter()
+            .find(|item| item.calls().any(|call| &call.id == asking))
+            .map(|turn| {
+                (
+                    turn.id,
+                    turn.calls().map(|call| call.id.clone()).collect::<Vec<_>>(),
+                )
+            });
+        let siblings: std::collections::HashSet<ToolCallId> = asking_in
+            .as_ref()
+            .map(|(_, calls)| {
+                calls
+                    .iter()
+                    .filter(|call| *call != asking)
+                    .cloned()
                     .collect()
             })
+            .unwrap_or_default();
+        let mut left_out = Vec::new();
+        let mut unanswered = Vec::new();
+        for item in &mut snapshot.items {
+            // named first: a sibling's result the caller also named is one it asked to leave out
+            if without.contains(&item.id) {
+                // excluded rather than deleted, so the fork's own account of itself can still name
+                // the item by the number this session knows it by
+                item.state = ContextState::Excluded;
+                item.note = Some("left out of this fork".into());
+                left_out.push(item.id);
+            } else if let ContextKind::ToolResult { call, .. } = &item.kind
+                && siblings.contains(call)
+            {
+                item.state = ContextState::Excluded;
+                item.note = Some("answered in the same turn this fork was asked in".into());
+                unanswered.push(item.id);
+            }
         }
-        None => Vec::new(),
+        let fork = Kernel::resume(
+            Config {
+                session_name: Some(format!("{}#fork", kernel.session_name())),
+                // it answers once and is thrown away: there is nothing for an undo stack to be for,
+                // and nothing after the first request for a second one to build on
+                context_undo_depth: 0,
+                max_requests_per_turn: Some(1),
+                ..Config::default()
+            },
+            snapshot,
+        );
+        fork.set_provider(provider);
+        fork.set_projector(kernel.projector());
+        // whose items the count is about: what follows adds a system instruction of this tool's own,
+        // and `ask` adds the question - neither of them the caller's, so neither is counted. A fork is
+        // worth having because two runs are comparable, and a number that moves with which of the two
+        // operations asked for it is not
+        let theirs: std::collections::BTreeSet<ContextId> =
+            fork.items().iter().map(|item| item.id).collect();
+        // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
+        // tool calls and their results and no tool definitions at all, and a model reading that asks
+        // for a tool - which nothing here can run, so the answer comes back as a call and no words.
+        // Without being told, a model does this as a rule rather than as a corner case
+        fork.push(
+            ContextItem::system(
+                "You are a copy of this session, made to think and not to act. You have no tools \
+                 here, and nothing you ask for can be run: answer in words, from what is already in \
+                 front of you.",
+            )
+            .pinned(),
+        );
+        if let Some(question) = question {
+            fork.push(ContextItem::user(question).because("put to a fork of this context"));
+        }
+        // what the fork will actually read, rather than what it was handed: the projector still has
+        // to repair the call this very tool is answering out of the copy, and a count taken before it
+        // did would be one the fork never saw
+        let read: Vec<ContextId> = fork
+            .project()
+            .included
+            .iter()
+            .filter(|id| theirs.contains(id))
+            .copied()
+            .collect();
+        let items = read.len();
+        // note: what the fork before this one read, where it was another fork of this same turn. Two
+        // forks in a turn are the comparison `fork` exists for, and a call that writes to the
+        // context - `context` with a `note`, say - adds an item the fork before it did not have, so
+        // the two copies differ however carefully the siblings above are excluded. Nothing in the
+        // snapshot says which call wrote an item, so this compares the two rather than guessing, and
+        // the sentence below is weakened by what it finds
+        let extra: Vec<ContextId> = match asking_in.as_ref().map(|(turn, _)| *turn) {
+            Some(turn) => {
+                let earlier = (last.turn == Some(turn)).then(|| last.items.clone());
+                last.turn = Some(turn);
+                last.items = read.clone();
+                // in the order the copy has them, so the sentence reads like a context
+                earlier.map_or_else(Vec::new, |earlier| {
+                    let earlier: std::collections::BTreeSet<ContextId> =
+                        earlier.into_iter().collect();
+                    read.into_iter()
+                        .filter(|id| !earlier.contains(id))
+                        .collect()
+                })
+            }
+            None => Vec::new(),
+        };
+
+        (fork, items, left_out, unanswered, extra)
     };
 
     let mut events = fork.subscribe();
@@ -536,4 +574,126 @@ fn written_beside(extra: &[ContextId]) -> String {
          context and their answers are not a comparison.",
         numbers.join(", ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{Arc, Mutex, atomic::AtomicU64, mpsc},
+        time::Duration,
+    };
+
+    use nachalnik::{
+        Config, ContextItem, Kernel, ModelResponse, OutputSink, ToolCallId,
+        test::{ScriptedProvider, call},
+    };
+    use serde_json::json;
+
+    use super::{Asked, Read, branch};
+
+    /// Two forks of a turn compare their copies in the order they took them, whichever reaches the
+    /// comparison first.
+    ///
+    /// note: the order the kernel runs a turn's calls in under `--parallel-tool-calls` is a
+    /// `JoinSet`'s, which no test can choose, so this stands between the first fork's copy and its
+    /// comparison and runs the second there: something is written to the context, and the second
+    /// fork is let go for as long as it takes to copy it. Compared in the order they reached the
+    /// lock, the second fork found nobody before it and the first found nothing the second did not
+    /// have, and both said they were the same context.
+    #[test]
+    fn forks_compare_their_copies_in_the_order_they_took_them() {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse::text("one way"),
+            ModelResponse::text("the other way"),
+        ])));
+        kernel.push(ContextItem::user("go"));
+        kernel.push(ContextItem::assistant(
+            "",
+            vec![
+                call("c1", "fork", json!({ "action": "ask" })),
+                call("c2", "fork", json!({ "action": "ask" })),
+            ],
+        ));
+        let last_read = Arc::new(Mutex::new(Read::default()));
+        let forked = Arc::new(AtomicU64::new(0));
+        let ask = |kernel: Kernel,
+                   last_read: Arc<Mutex<Read>>,
+                   forked: Arc<AtomicU64>,
+                   asking: &'static str,
+                   looked: Box<dyn FnOnce() + Send>| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a runtime");
+            let output = runtime.block_on(branch(
+                &kernel,
+                Asked {
+                    call: &ToolCallId::from(asking),
+                    question: Some("which way?"),
+                    without: &[],
+                },
+                &OutputSink::disconnected(),
+                &forked,
+                &last_read,
+                looked,
+            ));
+            output
+                .expect("the fork answered")
+                .content
+                .to_text()
+                .into_owned()
+        };
+
+        let (copied, taken) = mpsc::channel();
+        let second = {
+            let (kernel, last_read, forked) = (kernel.clone(), last_read.clone(), forked.clone());
+            move || {
+                ask(
+                    kernel,
+                    last_read,
+                    forked,
+                    "c2",
+                    Box::new(move || {
+                        let _ = copied.send(());
+                    }),
+                )
+            }
+        };
+        let (written, running) = (Arc::new(Mutex::new(None)), Arc::new(Mutex::new(None)));
+        let first = ask(
+            kernel.clone(),
+            last_read,
+            forked,
+            "c1",
+            Box::new({
+                let (kernel, written, running) = (kernel.clone(), written.clone(), running.clone());
+                move || {
+                    *written.lock().unwrap() =
+                        Some(kernel.push(ContextItem::user("written between the two copies")));
+                    *running.lock().unwrap() = Some(std::thread::spawn(second));
+                    // the second fork's copy, if it can take one before this fork compares; it
+                    // cannot, where the lock is held from before the copy, and this waits it out
+                    let _ = taken.recv_timeout(Duration::from_millis(300));
+                }
+            }),
+        );
+        let second = running
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the second fork was started")
+            .join()
+            .expect("the second fork answered");
+        let written = written.lock().unwrap().expect("the item was written");
+
+        assert!(
+            first.contains("the same context answering again"),
+            "the first copy has nobody before it: {first}"
+        );
+        assert!(
+            second.contains("wrote to your context") && second.contains(&written.to_string()),
+            "the second copy has an item the first did not, and says which: {second}"
+        );
+    }
 }
