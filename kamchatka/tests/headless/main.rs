@@ -1203,6 +1203,23 @@ async fn a_message_that_cannot_fit_is_passed_over_until_there_is_room() {
     assert!(run.prose.contains("there is room now"), "{}", run.prose);
 }
 
+/// The window a model is changed to is the one `fs:read` is held to.
+///
+/// note: the table is told at startup and then by `ModelChanged`, so a `/model` to a model with a
+/// smaller window holds reads to that one rather than to the window the session began with.
+#[tokio::test]
+async fn a_read_is_held_to_the_window_of_the_model_in_use() {
+    let run = run("hello\n", vec![ModelResponse::text("hi")], |app| {
+        app.kernel.set_provider(Arc::new(
+            ScriptedProvider::new(vec![ModelResponse::text("hi")])
+                .with_info(ModelInfo::new("scripted", "small").with_context_limit(14_000)),
+        ));
+    })
+    .await;
+
+    assert_eq!(run.app.limits.of("fs:read"), Some(5_600), "{}", run.prose);
+}
+
 /// A session refused for length by an endpoint that publishes no limit passes the next messages
 /// over until the context is smaller than the one refused, and then sends again.
 ///

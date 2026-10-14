@@ -12,7 +12,10 @@
 //! done with, and to whole exchanges once there is no room left. `ops` is under all of them: what a tool that does several things declares, and the
 //! schema a model is shown for it.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use nachalnik::{BoxError, Capability, Tool};
 use parking_lot::Mutex;
@@ -261,8 +264,43 @@ pub(crate) const REPORT: usize = 8_000;
 /// the whole claims the call and the short copy is dropped. This is for the next call. `fs:read`
 /// is the exception to the excluded whole, because it stops itself at a line under this limit
 /// and says where to read on from: the file is the whole, and nothing was cut to keep.
+///
+/// note: `fs:read` is held to the context window as well, until somebody sets it: a tenth of the
+/// window at about four bytes a token, and never more than its row. On a small window one read at
+/// 32,000 bytes is most of the context, and two in a turn left no room for the model's next call,
+/// so the request was refused. A row somebody set is theirs, and is what it says.
 #[derive(Debug, Clone)]
-pub struct Limits(Arc<Mutex<BTreeMap<String, usize>>>);
+pub struct Limits(Arc<Mutex<Table>>);
+
+/// What [`Limits`] holds.
+#[derive(Debug)]
+struct Table {
+    rows: BTreeMap<String, usize>,
+    /// The rows somebody has set, which the window does not move.
+    set: BTreeSet<String>,
+    /// The context window of the model in use, in tokens, where it is known.
+    window: Option<usize>,
+}
+
+impl Table {
+    /// The limit a row is at: its own, or less on a small window; see the note on [`Limits`].
+    fn of(&self, subject: &str) -> Option<usize> {
+        let row = *self.rows.get(subject)?;
+        match (subject, self.window) {
+            (WINDOWED, Some(window)) if !self.set.contains(subject) => {
+                Some(row.min((window * 4 / 10).max(FLOOR)))
+            }
+            _ => Some(row),
+        }
+    }
+}
+
+/// The row the window holds down; see the note on [`Limits`].
+const WINDOWED: &str = "fs:read";
+
+/// The least a window holds that row down to, in bytes, so a window too small to work in still
+/// shows a read some lines of a file.
+const FLOOR: usize = 1024;
 
 impl Default for Limits {
     fn default() -> Self {
@@ -324,12 +362,22 @@ impl Limits {
                 (subject, if bounded { REPORT } else { CEILING })
             });
 
-        Self(Arc::new(Mutex::new(rows.collect())))
+        Self(Arc::new(Mutex::new(Table {
+            rows: rows.collect(),
+            set: BTreeSet::new(),
+            window: None,
+        })))
+    }
+
+    /// Says how large the context window of the model in use is, in tokens; `None` where it is not
+    /// known.
+    pub fn window(&self, tokens: Option<usize>) {
+        self.0.lock().window = tokens;
     }
 
     /// The limit in force for a subject, if this holds one for it.
     pub fn of(&self, subject: &str) -> Option<usize> {
-        self.0.lock().get(subject).copied()
+        self.0.lock().of(subject)
     }
 
     /// The limit for a call, found by the subject that call needs.
@@ -347,19 +395,21 @@ impl Limits {
 
     /// Sets one, returning what it was; `None` if this holds no limit for that subject.
     pub fn set(&self, subject: &str, bytes: usize) -> Option<usize> {
-        self.0.lock().get_mut(subject).map(|at| {
-            let was = *at;
-            *at = bytes;
-            was
-        })
+        let mut table = self.0.lock();
+        let was = table.of(subject)?;
+        table.rows.insert(subject.to_owned(), bytes);
+        table.set.insert(subject.to_owned());
+
+        Some(was)
     }
 
-    /// Every limit this holds, by subject.
+    /// Every limit this holds, by subject, as each is in force.
     pub fn all(&self) -> Vec<(String, usize)> {
-        self.0
-            .lock()
-            .iter()
-            .map(|(subject, bytes)| (subject.clone(), *bytes))
+        let table = self.0.lock();
+        table
+            .rows
+            .keys()
+            .filter_map(|subject| Some((subject.clone(), table.of(subject)?)))
             .collect()
     }
 }
@@ -393,7 +443,41 @@ pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>>
 mod tests {
     use serde_json::json;
 
-    use super::arg;
+    use super::{CEILING, FLOOR, Limits, arg};
+
+    /// `fs:read` is held to a tenth of a small window, never above its row, and a row somebody set
+    /// is left as they set it.
+    #[test]
+    fn a_read_is_held_to_a_small_window_until_somebody_sets_it() {
+        let limits = Limits::new();
+        assert_eq!(limits.of("fs:read"), Some(CEILING), "no window known");
+
+        // 14,000 tokens: a tenth is 1,400, at four bytes a token
+        limits.window(Some(14_000));
+        assert_eq!(limits.of("fs:read"), Some(5_600));
+        assert!(
+            limits.all().contains(&("fs:read".to_owned(), 5_600)),
+            "`/limit` lists what is in force"
+        );
+        // only that row
+        assert_eq!(limits.of("exec:run"), Some(CEILING));
+        // a large window is not a reason to raise it, and a tiny one does not take it to nothing
+        limits.window(Some(1_000_000));
+        assert_eq!(limits.of("fs:read"), Some(CEILING));
+        limits.window(Some(100));
+        assert_eq!(limits.of("fs:read"), Some(FLOOR));
+
+        // a row somebody set is what they set, whatever the window
+        limits.window(Some(14_000));
+        assert_eq!(
+            limits.set("fs:read", 20_000),
+            Some(5_600),
+            "what it was in force at"
+        );
+        assert_eq!(limits.of("fs:read"), Some(20_000));
+        limits.window(Some(1_000));
+        assert_eq!(limits.of("fs:read"), Some(20_000));
+    }
 
     /// A text argument that arrived as something else is refused as that, not as missing.
     #[test]

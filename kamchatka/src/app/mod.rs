@@ -756,6 +756,8 @@ impl App {
         };
         // what the kernel did before this was here to watch is not this session's to charge
         let charged = kernel.with_history(|log| log.last_seq());
+        // the window of the model already in place; a change of model says it again
+        limits.window(kernel.budget().limit);
 
         Self {
             kernel,

@@ -339,12 +339,12 @@ the same question as reading it would.
 deterministic, so two identical searches produce the same context item.
 
 **A long file is read in parts, and `read` says where each part ends.** Past the output limit
-(32,000 bytes, unless `/limit fs:read` says otherwise), it stops at the last whole line that fits,
-and its first line says which lines were returned and the `from` value to continue with. A single
-line too long for the limit comes back as its start, with `grep` or `shell` named as the way to the
-rest. `from` and `lines` read any part of a file, including logs too large to hold in memory. The
-alternative, `sed -n` through `shell`, needs `exec:run`, even for a file the session is already
-allowed to read.
+(32,000 bytes, or a tenth of a smaller model's context window, unless `/limit fs:read` says
+otherwise), it stops at the last whole line that fits, and its first line says which lines were
+returned and the `from` value to continue with. A single line too long for the limit comes back as
+its start, with `grep` or `shell` named as the way to the rest. `from` and `lines` read any part of
+a file, including logs too large to hold in memory. The alternative, `sed -n` through `shell`, needs
+`exec:run`, even for a file the session is already allowed to read.
 
 **The output limit is set per permission**, so `fs:read` and `fs:grep` each have their own. It
 starts at 32,000 bytes, and at 8,000 where the result is a fixed-format report rather than part of
