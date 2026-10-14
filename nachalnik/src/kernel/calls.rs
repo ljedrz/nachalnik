@@ -38,13 +38,29 @@ impl Kernel {
     pub(super) async fn prepare_calls(&self, calls: &[ToolCall], mut turn: Batch) -> State {
         let mut prepared = Vec::with_capacity(calls.len());
         let mut announcements = Vec::with_capacity(calls.len());
+        let ceiling = self.call_ceiling();
 
-        for call in calls {
+        for (asked, call) in calls.iter().enumerate() {
             self.emit(Event::ToolRequested {
                 call: call.id.clone(),
                 tool: call.tool.clone(),
                 args: call.args.clone(),
             });
+
+            // past the ceiling nothing is asked about or run, and each call is still answered,
+            // joining the turn's checkpoint as a call nobody can run does; see
+            // `Kernel::set_call_ceiling`
+            if let Some(ceiling) = ceiling.filter(|ceiling| asked >= *ceiling) {
+                self.record_tool_result(
+                    call,
+                    None,
+                    ToolOutput::error(over_the_ceiling(calls.len(), ceiling)),
+                    None,
+                    None,
+                    &mut turn,
+                );
+                continue;
+            }
 
             let Some(tool) = self.tool(&call.tool) else {
                 self.emit(Event::ToolUnknown {
@@ -522,6 +538,14 @@ fn described(error: &(dyn std::error::Error + 'static)) -> String {
 /// note: "crashed" rather than "panicked", for the reason [`refusal`] is written in no codebase's
 /// idiom. A payload that is not a string - `panic_any` with anything else - has nothing to show,
 /// and is said to have said nothing rather than rendered as a type name.
+/// What a call past the ceiling is answered with.
+fn over_the_ceiling(asked: usize, ceiling: usize) -> String {
+    format!(
+        "not run: this answer asked for {asked} tool calls, and only the first {ceiling} of one \
+         answer are run. Ask for the rest in your next answer, once you have read these results"
+    )
+}
+
 /// Runs one of a tool's own methods, catching a panic in it as `invoke`'s are caught.
 fn guarded<T>(asked: impl FnOnce() -> T) -> std::thread::Result<T> {
     std::panic::catch_unwind(AssertUnwindSafe(asked))

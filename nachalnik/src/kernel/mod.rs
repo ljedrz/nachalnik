@@ -283,6 +283,8 @@ struct InnerKernel {
     turn_requests: AtomicUsize,
     /// What is put into the context as it becomes full; see [`Kernel::set_full_notice`].
     full_notice: RwLock<Option<ContextItem>>,
+    /// How many of one answer's tool calls are run; see [`Kernel::set_call_ceiling`].
+    call_ceiling: RwLock<Option<usize>>,
 }
 
 /// The agent runtime: a state machine, a context, and nothing else.
@@ -575,6 +577,7 @@ impl Kernel {
             full: AtomicBool::new(false),
             turn_requests: AtomicUsize::new(0),
             full_notice: RwLock::new(None),
+            call_ceiling: RwLock::new(None),
             config,
         };
 

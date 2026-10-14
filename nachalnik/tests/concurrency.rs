@@ -627,6 +627,52 @@ async fn a_tool_that_panics_saying_what_a_call_needs_fails_that_call() {
     }
 }
 
+/// Past the call ceiling nothing is asked about or run, and every call is still answered, however
+/// the calls run.
+///
+/// note: a model caught in a repetition loop answered with thousands of calls, and every one was
+/// run and recorded. The ones past the ceiling are answered with how many ran and to ask again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn calls_past_the_ceiling_are_answered_and_not_run() {
+    for parallel in [false, true] {
+        let kernel = three_calls(parallel, Arc::new(PanicsAsked("nothing")));
+        assert_eq!(kernel.set_call_ceiling(Some(2)), None);
+
+        kernel.turn().await.expect("the turn goes on");
+
+        let results = tool_results_text(&kernel);
+        assert_eq!(results.len(), 3, "every call is answered: {results:?}");
+        assert!(
+            ["c1 ran", "c2 ran"]
+                .iter()
+                .all(|ran| results.iter().any(|said| said.contains(ran))),
+            "the first two ran: {results:?}"
+        );
+        assert!(
+            results
+                .iter()
+                .any(|said| said.starts_with("not run") && said.contains("asked for 3")),
+            "the third is told why it did not run: {results:?}"
+        );
+        let started = kernel
+            .history()
+            .iter()
+            .filter(|record| matches!(record.event, Event::ToolStarted { .. }))
+            .count();
+        let asked = kernel
+            .history()
+            .iter()
+            .filter(|record| {
+                matches!(
+                    record.event,
+                    Event::PermissionDecided { .. } | Event::PermissionRequested { .. }
+                )
+            })
+            .count();
+        assert_eq!((started, asked), (2, 2), "parallel: {parallel}");
+    }
+}
+
 /// A tool that panics on the second call in `needs` or `limit`, as named, and runs every call.
 struct PanicsAsked(&'static str);
 

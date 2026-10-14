@@ -295,6 +295,29 @@ impl Kernel {
         std::mem::replace(&mut *self.0.full_notice.write(), notice)
     }
 
+    /// Sets how many of one answer's tool calls are run, returning what it was; `None`, the
+    /// default, runs every one.
+    ///
+    /// note: a model caught in a repetition loop can answer with thousands of calls, most of them
+    /// the same one, and every one is prepared, run and recorded, filling the context with copies.
+    /// The calls past the ceiling are answered with an error saying how many ran and to ask for
+    /// the rest in another answer, so every call still has its result, and nothing past it runs or
+    /// is asked about. A ceiling rather than one run of a call repeated in one answer, because a
+    /// model may mean a repetition - a read after a write - and a loop of distinct calls is still a
+    /// loop.
+    ///
+    /// note: a setter rather than a field of [`Config`], which a caller builds by its fields and
+    /// which would break every one of them; like a field of it, a setting and not part of the
+    /// session's state, so a snapshot does not carry it.
+    pub fn set_call_ceiling(&self, ceiling: Option<usize>) -> Option<usize> {
+        std::mem::replace(&mut *self.0.call_ceiling.write(), ceiling)
+    }
+
+    /// Returns how many of one answer's tool calls are run, where there is a ceiling.
+    pub fn call_ceiling(&self) -> Option<usize> {
+        *self.0.call_ceiling.read()
+    }
+
     /// Returns what is put into the context as it becomes full, if anything is.
     pub fn full_notice(&self) -> Option<ContextItem> {
         self.0.full_notice.read().clone()
