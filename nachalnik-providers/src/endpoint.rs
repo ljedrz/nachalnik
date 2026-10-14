@@ -142,7 +142,7 @@ pub trait Dialect: Endpoint + Provider {
             // most endpoints speaking this dialect reject a message carrying a field they do not
             // know, and there is no agreed name for that one. Projecting it would only mean
             // paying for it. The turn keeps its reasoning either way: it is in the record, on the
-            // context tab, and prunable like everything else.
+            // context tab, and can be excluded like everything else.
             send_reasoning: false,
             ..Default::default()
         }

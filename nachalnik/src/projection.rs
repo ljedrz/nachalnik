@@ -185,7 +185,7 @@ pub struct LinearProjector {
     /// Whether tool calls and tool results whose counterpart is not in the projection are
     /// dropped from it.
     ///
-    /// note: This is what makes pruning safe. Most providers reject a request in which an
+    /// note: This is what makes excluding safe. Most providers reject a request in which an
     /// assistant turn asks for a tool that never gets a result (or vice versa), so removing one
     /// half of a pair would otherwise turn into a request error at the worst possible moment.
     /// Every drop is listed in [`Projection::repairs`].

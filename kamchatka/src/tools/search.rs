@@ -289,7 +289,7 @@ impl Skipped {
 /// walker's order is nondeterministic and two identical searches answering in two different
 /// orders would be two different context items. Hidden files searched, because a model that
 /// cannot find `.github/workflows` concludes the file does not exist - an absence it cannot
-/// account for is worse than a few extra files opened - and `.git` alone is pruned, because it is
+/// account for is worse than a few extra files opened - and `.git` alone is skipped, because it is
 /// a database rather than anything anybody wrote. And the walker does not follow links: each one
 /// is yielded as itself, and [`followed`] decides about it one at a time, which is where a link is
 /// a question about the *reach* rather than about walking.

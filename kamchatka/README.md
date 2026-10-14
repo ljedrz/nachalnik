@@ -163,9 +163,9 @@ happened yet**:
 ```
 
 If the model answers with a tool call (say, `shell` running `wc -l`), the session stops in `ready`:
-the command has been decided and permitted, but isn't running. From here you can read it, prune
-the context, drop it, or `/step` again to run it. Most agents have an "approve this command?"
-prompt bolted onto the loop; here, stopping is part of the loop itself.
+the command has been decided and permitted, but isn't running. From here you can read it,
+exclude things from the context, drop it, or `/step` again to run it. Most agents have an "approve
+this command?" prompt bolted onto the loop; here, stopping is part of the loop itself.
 
 Use `/step` again for each transition (the tool runs, then the next request is sent), or
 `/continue` for the rest of the turn. While stepping, answering a permission question doesn't

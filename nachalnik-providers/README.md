@@ -39,8 +39,8 @@ The Gemini client is the main reason this crate has more than one API. Gemini re
 a turn *in the order they were produced* (a thought, a sentence, a tool call, more thinking), and an
 OpenAI-compatible wrapper in front of it can't represent that: it squashes the turn into a `content`
 string next to a `tool_calls` list, losing the order. Here the turn arrives as `Content::Blocks`, is
-counted and pruned like anything else, and is sent back the same way, with each signature attached
-to its part, which Gemini requires on the next request.
+counted, excluded and elided like anything else, and is sent back the same way, with each
+signature attached to its part, which Gemini requires on the next request.
 
 The Anthropic client does the same for Anthropic's Messages API, where a turn is a list of typed
 blocks. Its thinking is signed, and a turn that thought before calling a tool must send that
@@ -51,7 +51,7 @@ API caches nothing unless asked; the `cache_control` parameter changes that, and
 off.
 
 Some Anthropic models reject a signed thinking block if anything before it in the history was
-pruned or edited, which sessions here do. [The module's
+excluded, elided or edited, which sessions here do. [The module's
 docs](https://docs.rs/nachalnik-providers/latest/nachalnik_providers/anthropic/) list which models,
 and what to do about it.
 

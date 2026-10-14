@@ -299,7 +299,7 @@ struct InnerKernel {
 /// note: One agent is one kernel. A fleet of them shares nothing except whatever you hand to
 /// both - a [`Tool`], a [`Provider`] - and needs no coordination, because a kernel's state is its
 /// own. Several threads driving *one* kernel is also fine: reading is cheap and every mutation is
-/// atomic, so a client can render, prune and preview while a turn is running. What it cannot do
+/// atomic, so a client can render, exclude and preview while a turn is running. What it cannot do
 /// is drive the loop twice at once, which is [`Error::Busy`] rather than a second request.
 ///
 /// note: A kernel is not `Drop`-safe against reference cycles: if you store a `Kernel` inside a
@@ -467,7 +467,7 @@ impl Kernel {
     /// one renames the colliding calls, and the results answering them, before pushing.
     ///
     /// note: identifiers and nothing else. What they belonged to is not the kernel's business,
-    /// and one reserved for an item that is later pruned stays reserved, because an identifier is
+    /// and one reserved for an item that is later excluded stays reserved, because an identifier is
     /// never reused - not even by an item [`Kernel::undo`] took away.
     pub fn reserve_calls(&self, calls: impl IntoIterator<Item = ToolCallId>) -> usize {
         let mut seen = self.0.seen_calls.lock();

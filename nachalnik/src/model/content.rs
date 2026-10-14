@@ -22,8 +22,8 @@ use crate::{Context, Kernel, Projector, TokenCounter};
 /// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than a
 /// copy. That is what makes the rest of the design affordable: an item is copied on every state
 /// change (the undo snapshot keeps the old one) and again into a message on every request, so
-/// copying a 4 MiB tool output each time would make pruning cost more the more there was to
-/// prune.
+/// copying a 4 MiB tool output each time would make excluding cost more the more there was to
+/// exclude.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]

@@ -147,7 +147,7 @@ calling. None of them can touch what a person pinned.
 
 **[`nachalnik-eval`](nachalnik-eval)** turns the same handles around and uses them to *test* a model
 rather than to serve one: forking a context is `snapshot` and `resume`, what a copy will read is
-`project`, pruning is `set_state`.
+`project`, excluding and eliding are `set_state`.
 
 ---
 

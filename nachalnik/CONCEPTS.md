@@ -23,7 +23,7 @@ kernel.redo()?;
 ```
 
 `set_state` reports what it did to each identifier (`changed`, `unchanged`, `unknown`), because
-"there is no item 12" and "item 12 was already pruned" are different answers.
+"there is no item 12" and "item 12 was already excluded" are different answers.
 
 `annotate` is the exception: it doesn't create its own undo step. Metadata belongs to the operation
 it describes, so `undo` removes an annotation together with the operation before it. It still
@@ -33,7 +33,7 @@ Excluding an item removes it from the *projection* (the request), not from the r
 identifier, stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a
 `redo`. `Elided` is in between: the item stays in the request as a one-line placeholder, so a large
 tool result stops costing tokens without its tool call having to be removed too. The default
-projector removes the other half of a call/result pair when one half is gone, so pruning can't
+projector removes the other half of a call/result pair when one half is gone, so excluding can't
 produce a request the provider will reject. It reports this in `Projection::repairs` *and* in the
 session log, because any request the kernel adjusted is one you'll want to be able to look into
 afterwards.
@@ -41,7 +41,7 @@ afterwards.
 **Nothing is destroyed, not even by a limit.** A tool output over its limit is recorded twice: the
 full output, excluded, and the truncated copy the model sees. Showing the model the full output is
 a `set_state` like any other, not a re-run of the tool. Keeping it is cheap: content, tool-call
-arguments and tool schemas are all shared, so pruning a four-megabyte tool result, putting it into
+arguments and tool schemas are all shared, so excluding a four-megabyte tool result, putting it into
 a request, and recording it in an event all just pass a pointer to the same bytes. Set
 `Config::keep_truncated_output` to `false` when a tool can produce more than you are willing to go
 on holding; the truncation is still reported either way.
@@ -53,7 +53,7 @@ edits to the same file then apply in sequence. `Config::parallel_tool_calls` giv
 speed, on purpose and never by default: nothing in the kernel can tell whether a model's calls are
 independent, so the judgement is yours. Either way the results are recorded in the order the model
 asked for them. Several threads on a *single* kernel are fine too — reading is cheap and every
-mutation is atomic, so a client can render, prune and preview while a turn is in flight. The one
+mutation is atomic, so a client can render, exclude and preview while a turn is in flight. The one
 thing two threads cannot do is drive the loop at the same time, which is `Error::Busy` rather than
 a second request.
 
@@ -87,7 +87,7 @@ ContextItem::assistant(
 
 It is a variant of `Content` rather than a field on `Message` because content is the one type a
 `ModelResponse`, a `ContextItem` and a `Message` all carry — so the order survives from the wire,
-into the context where it is counted and pruned like anything else, and back out again.
+into the context where it is counted, excluded and elided like anything else, and back out again.
 
 A turn is recorded *either* that way *or* in the three conventional slots, never both, so nothing
 can hold two accounts of it; `calls()` and `thinking()` on an item or a response read whichever is
@@ -232,9 +232,9 @@ std::fs::write("session.json", serde_json::to_vec(&snapshot)?)?;
 let kernel = Kernel::resume(Config::default(), snapshot);
 ```
 
-Everything that is easy to lose comes back: pins, the reasons items were pruned, a turn's reasoning,
-the signature attached to a tool call, what the token counter had learned about the real cost of a
-request, and the identifiers already used, so a resumed session can't reuse one. You supply the
-provider, policy and tools again, because they aren't part of the session. Setting
+Everything that is easy to lose comes back: pins, the reasons items were excluded, a turn's
+reasoning, the signature attached to a tool call, what the token counter had learned about the real
+cost of a request, and the identifiers already used, so a resumed session can't reuse one. You
+supply the provider, policy and tools again, because they aren't part of the session. Setting
 `Config::session_name` resumes under a new name, which is how a session gets forked rather than
 continued.

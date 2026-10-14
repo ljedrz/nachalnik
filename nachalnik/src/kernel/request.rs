@@ -149,8 +149,8 @@ impl Kernel {
         // themselves rather than where they happen to be written down
         let calls: Vec<ToolCall> = response.calls().cloned().collect();
 
-        // note: the reasoning is recorded on the turn that produced it, so that it is counted
-        // and prunable like everything else, and so that a provider whose API insists on seeing
+        // note: the reasoning is recorded on the turn that produced it, so that it is counted and
+        // can be excluded like everything else, and so that a provider whose API insists on seeing
         // its own thinking again can get it back; whether it is *sent* is the projector's call
         //
         // note: recorded as the first of a batch, so the checkpoint it takes is written down under
@@ -384,7 +384,7 @@ impl Kernel {
     /// note: The identifiers a whole session has used are remembered, not just the ones in the
     /// response being repaired. A provider that numbers its calls from zero on every turn - and
     /// they exist - would otherwise produce a request carrying the same `tool_call_id` twice,
-    /// and, worse, one in which pruning a single result silently leaves a call unanswered,
+    /// and, worse, one in which excluding a single result silently leaves a call unanswered,
     /// because a set of identifiers cannot tell the two apart.
     ///
     /// note: a turn recorded as ordered blocks keeps its calls in its content, so repairing one
