@@ -23,14 +23,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   repeats `invoke`'s refuse-or-start sequence. Each is a refactor with no change in behaviour, and
   waits for the next change that touches the loop, which would review it.
 
-- **`--connect` to a listener that accepts and then closes retries for a minute.** A first attempt
-  that cannot connect fails at once, and one that connects and cannot send `attach`, or reads the
-  connection closing before anything came back, is taken for a dropped session: the client retries
-  for `GIVE_UP` and then says the session had 0 records when it was last seen, which it never was.
-  The write fails only when the peer has closed before it, so a fix needs the first-read path in the
-  loop as well as that write, and a test needs a peer that closes at a chosen moment. Unblocked by
-  writing that peer.
-
 - **Two `fork`s in one turn under `--parallel-tool-calls` can both call their copies the same
   context.** The copy before is found by whichever fork takes the `last_read` lock first, and the
   comparison is one way, so where a call writing to the context lands between the two snapshots and
