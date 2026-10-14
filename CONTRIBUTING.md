@@ -62,7 +62,8 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 - **`kamchatka`'s** read `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL` and **`KAMCHATKA_TEST_MODEL`**,
   not the binary's `KAMCHATKA_MODEL`. Using the wrong one falls back to the default model, and the
   tests then fail on tool calls rather than on the model name. They also need
-  `KAMCHATKA_CONTEXT_LIMIT` small enough for the compaction test to exceed (`12288` works),
+  `KAMCHATKA_CONTEXT_LIMIT` small enough for the compaction test to exceed (`12288` works, and
+  `16384` for a Claude model, which counts one read of its file as more than `12288`),
   `KAMCHATKA_DOCUMENT_MODEL` for the PDF test, and `KAMCHATKA_GEMINI_API_KEY` for the tests of
   Google's own API.
 - **`nachalnik-providers`'** `anthropic_live`, `responses_live` and `gemini_live` read the
