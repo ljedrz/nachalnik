@@ -14,6 +14,20 @@ const CONFIDENCE: &str = "CONFIDENCE";
 /// The tag a context item's number is asked for on.
 const ITEM: &str = "ITEM";
 
+/// What a [`Reading::Choice`] question ends with.
+const CHOOSE: &str = "Answer with one line, and nothing after it:\n{answer}: <one of: {among}>";
+
+/// What a [`Reading::Number`] question ends with.
+const COUNT: &str = "Answer with one line, and nothing after it:\n{answer}: <a whole number>";
+
+/// What a [`Reading::Claim`] question ends with.
+const CLAIM: &str = "Answer with these two lines, and nothing after them:\n{answer}: <yes or no>\n\
+                     {confidence}: <0-100, how sure you are that that answer is right>";
+
+/// What a [`Reading::Item`] question ends with.
+const POINT: &str =
+    "Answer with one line, and nothing after it:\n{item}: <the item's number in your context>";
+
 /// What a markdown line may begin with before it begins.
 ///
 /// note: models emphasise, and they bullet. `- **ANSWER:** \`kirov\`` is the same answer as
@@ -107,25 +121,28 @@ pub enum Reading {
 }
 
 impl Reading {
+    /// The templates [`instructions`](Self::instructions) fills, one per shape, so that an
+    /// experiment's digest can cover what every question it asks ends with.
+    pub const TEMPLATES: [&'static str; 4] = [CHOOSE, COUNT, CLAIM, POINT];
+
     /// The sentence appended to a question, telling the subject what to answer with.
     pub fn instructions(&self) -> String {
-        match self {
-            Self::Choice(among) => format!(
-                "Answer with one line, and nothing after it:\n{ANSWER}: <one of: {}>",
-                among.join(" | ")
-            ),
-            Self::Number => {
-                format!("Answer with one line, and nothing after it:\n{ANSWER}: <a whole number>")
-            }
-            Self::Claim => format!(
-                "Answer with these two lines, and nothing after them:\n{ANSWER}: <yes or no>\n\
-                 {CONFIDENCE}: <0-100, how sure you are that that answer is right>"
-            ),
-            Self::Item => format!(
-                "Answer with one line, and nothing after it:\n{ITEM}: <the item's number in \
-                 your context>"
-            ),
-        }
+        let template = match self {
+            Self::Choice(_) => CHOOSE,
+            Self::Number => COUNT,
+            Self::Claim => CLAIM,
+            Self::Item => POINT,
+        };
+        let among = match self {
+            Self::Choice(among) => among.join(" | "),
+            _ => String::new(),
+        };
+
+        template
+            .replace("{answer}", ANSWER)
+            .replace("{confidence}", CONFIDENCE)
+            .replace("{item}", ITEM)
+            .replace("{among}", &among)
     }
 
     /// Reads what a subject said.

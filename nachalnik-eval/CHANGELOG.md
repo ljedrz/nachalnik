@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **Every experiment's digest covers the sentence its questions end with, and the instrument is
+  `v6`.** The line telling a subject what shape to answer in was left out of the digest, so
+  rewording it would have changed what every subject is asked while every fingerprint stayed the
+  same. Its four templates are `Reading::TEMPLATES` now, and every digest moves once: nothing a
+  subject is asked changed, so a `v5` run and a `v6` one asked the same questions, though their
+  fingerprints differ.
+
 ### fixed
 
 - **Eliding an item the session had already excluded leaves it excluded.** `Intervention::elided`

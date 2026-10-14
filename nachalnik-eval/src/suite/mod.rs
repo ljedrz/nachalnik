@@ -106,6 +106,8 @@ pub(crate) fn instrument(
     text.extend(templates.iter().copied());
     // what every copy is told, which is part of what every copy reads
     text.push(crate::fork::PREAMBLE);
+    // and what every question ends with, which is part of what it asks
+    text.extend(crate::Reading::TEMPLATES);
 
     Instrument::of(
         script::VERSION,

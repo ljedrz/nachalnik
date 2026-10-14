@@ -21,7 +21,7 @@
 /// note: Stated by hand rather than derived, and it is the coarse half of the identity: the
 /// digest beside it in every [`Instrument`](crate::Instrument) is computed from the text itself
 /// and catches what a forgotten bump does not.
-pub const VERSION: &str = "5";
+pub const VERSION: &str = "6";
 
 /// Substitutes `{name}` placeholders in a template.
 ///

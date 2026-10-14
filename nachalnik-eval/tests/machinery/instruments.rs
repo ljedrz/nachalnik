@@ -102,49 +102,49 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
     for (experiment, pinned) in [
         (
             suite::Attribution::new().instrument(),
-            "v5/depot+orchard+foundry+ferry+kiln+mill #a07494342877cbc9",
+            "v6/depot+orchard+foundry+ferry+kiln+mill #ffa6e8f47044d44c",
         ),
         (
             suite::Recursion::new().instrument(),
-            "v5/depot #b700ab1e931e50e2",
+            "v6/depot #bddc718e3c18c6e3",
         ),
         (
             suite::Lie::new().instrument(),
-            "v5/depot+cancelled #72ad89748986c4e5",
+            "v6/depot+cancelled #14c544c14c48fa35",
         ),
         (
             suite::Privilege::new().instrument(),
-            "v5/depot+orchard #896b935b8fd6fcb0",
+            "v6/depot+orchard #b6f1a17a39496b45",
         ),
         (
             suite::Feedback::new().instrument(),
-            "v5/depot+orchard #0b4b68c9b9d01bf6",
+            "v6/depot+orchard #62520acbdeb9064f",
         ),
         (
             suite::Instrumented::new().instrument(),
-            "v5/depot+orchard+foundry+ferry+kiln+mill #49bf2ab6dbaa24fe",
+            "v6/depot+orchard+foundry+ferry+kiln+mill #ce5e75a72a57a3d7",
         ),
         (
             suite::Repair::new().instrument(),
-            "v5/depot+orchard+foundry+ferry+kiln+planted #a2fa046fb6002e99",
+            "v6/depot+orchard+foundry+ferry+kiln+planted #8d9e0499cd9436a5",
         ),
-        // note: still `v5`, and that is the rule in `script.rs` doing what it promises. This
-        // experiment added two templates and a note nothing else reads, so a `lie` run taken
-        // before it existed is comparable with one taken after, which is the property that lets
-        // the suite grow at all.
+        // note: added under `v5` without a bump, and that is the rule in `script.rs` doing what it
+        // promises. This experiment added two templates and a note nothing else reads, so a `lie`
+        // run taken before it existed was comparable with one taken after, which is the property
+        // that lets the suite grow at all.
         (
             suite::Conflict::new().instrument(),
-            "v5/depot+omsk-return #fa476e0f0ebce5e2",
+            "v6/depot+omsk-return #57e757ef27a17284",
         ),
-        // note: still `v5`, by the same rule: two templates and a set of material nothing else
-        // reads, so every fingerprint above is the one it had before `provenance` existed.
+        // note: added under `v5` without a bump, by the same rule: two templates and a set of
+        // material nothing else reads, so no fingerprint above moved when `provenance` arrived.
         (
             suite::Provenance::new().instrument(),
-            "v5/listing #cbc52a3857d85488",
+            "v6/listing #9e7eb874c3884412",
         ),
         (
             suite::Provenance::new().on(&suite::CONFIG).instrument(),
-            "v5/config #2dfa847c408fadd2",
+            "v6/config #2c3b08b31a11fd40",
         ),
     ] {
         assert_eq!(experiment.to_string(), pinned);
