@@ -42,7 +42,8 @@ pub(crate) const QUIET: Duration = Duration::from_secs(10);
 /// How much longer it has to keep saying nothing before being mentioned again.
 pub(crate) const AGAIN: Duration = Duration::from_secs(30);
 
-/// How long a *stream* may say nothing before the request is given up on.
+/// How long a *stream* may say nothing before the request is given up on, unless the caller says
+/// otherwise; see [`Dialect::set_patience`](crate::Dialect::set_patience).
 pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
 
 /// The same, for an answer that is not streamed at all.
@@ -97,12 +98,8 @@ pub(crate) struct Vigil {
 }
 
 impl Vigil {
-    /// Starts watching, now, with the patience a stream gets.
-    pub(crate) fn new() -> Self {
-        Self::waiting(PATIENCE)
-    }
-
-    /// The same, for a wait of a different shape; see [`WHOLE_ANSWER`].
+    /// Starts watching, now, giving up on a silence of `patience`: the caller's for a stream, and
+    /// [`WHOLE_ANSWER`] for an answer that is not streamed.
     pub(crate) fn waiting(patience: Duration) -> Self {
         Self {
             last: Instant::now(),
@@ -273,6 +270,9 @@ pub(crate) struct Asking<'a> {
     /// How many times the request may be sent while the server is busy, the first included; see
     /// [`Dialect::set_tries`](crate::Dialect::set_tries).
     pub(crate) tries: usize,
+    /// How long a stream may say nothing before it is given up on; see
+    /// [`Dialect::set_patience`](crate::Dialect::set_patience).
+    pub(crate) patience: Duration,
 }
 
 impl Asking<'_> {
@@ -338,7 +338,7 @@ pub(crate) async fn sent(
     // nothing arrives until the whole answer does, when it is not a stream, so the silence that
     // means "this has stalled" is a much longer one
     let patience = match streaming {
-        true => PATIENCE,
+        true => asking.patience,
         false => WHOLE_ANSWER,
     };
     let mut tried = 0;
@@ -753,7 +753,7 @@ mod tests {
 
     #[test]
     fn a_stream_that_goes_quiet_is_mentioned_once_and_then_occasionally() {
-        let mut vigil = Vigil::new();
+        let mut vigil = Vigil::waiting(PATIENCE);
 
         // a gap short enough to be a model thinking is not news
         assert_eq!(judged(&mut vigil, 0), "waited");
@@ -780,7 +780,7 @@ mod tests {
 
     #[test]
     fn a_stream_that_starts_talking_again_starts_the_count_over() {
-        let mut vigil = Vigil::new();
+        let mut vigil = Vigil::waiting(PATIENCE);
         assert_eq!(judged(&mut vigil, QUIET.as_secs()), "said");
 
         // it came back, and the quiet before it had been mentioned - so the next one is news

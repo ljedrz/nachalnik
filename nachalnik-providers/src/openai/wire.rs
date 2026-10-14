@@ -207,6 +207,7 @@ impl Provider for OpenAiCompatible {
             deltas: &deltas,
             notice: &self.notice,
             tries: self.tries(),
+            patience: self.patience(),
         };
 
         let sending = || {

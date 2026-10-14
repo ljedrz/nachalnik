@@ -128,6 +128,23 @@ pub trait Dialect: Endpoint + Provider {
         let _ = tries;
     }
 
+    /// How long a stream may say nothing - before its first byte or between two - before the
+    /// request is given up on. Two and a half minutes unless set.
+    ///
+    /// note: a free endpoint under load can hold a request in its queue for longer than that
+    /// before the first byte and then answer it normally, and a request given up on there is a
+    /// model that never answers, though it would if waited for.
+    ///
+    /// note: a client handed over with a whole-request timeout of its own - see
+    /// `OpenAiCompatible::client_with` - cuts off a long queue followed by a long answer
+    /// first, as a connection error; give such a client the patience plus the time an answer
+    /// takes. The clients the providers build for themselves have no such timeout.
+    ///
+    /// note: defaulted to doing nothing, for a dialect that does not stream.
+    fn set_patience(&self, patience: std::time::Duration) {
+        let _ = patience;
+    }
+
     /// The projection this dialect can carry.
     ///
     /// note: it is answered here, beside the `to_wire` that has to honour it, because the two drift

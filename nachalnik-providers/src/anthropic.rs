@@ -101,6 +101,9 @@ pub struct Anthropic {
     /// How many times a request is sent while the server is busy, the first included; see
     /// [`Dialect::set_tries`].
     tries: AtomicUsize,
+    /// How long a stream may say nothing before the request is given up on; see
+    /// [`Dialect::set_patience`].
+    patience: Mutex<std::time::Duration>,
     /// Whether an instruction added mid-session is sent where it stands, as a `system` message,
     /// rather than joined into `system` at the top: until the model says it takes no such message.
     in_place: AtomicBool,
@@ -148,6 +151,7 @@ impl Anthropic {
             configured: None,
             attempts: AtomicUsize::new(0),
             tries: AtomicUsize::new(RETRIES),
+            patience: Mutex::new(crate::waiting::PATIENCE),
             in_place: AtomicBool::new(true),
             notice: Mutex::new(None),
             app: Attribution::default(),
@@ -179,6 +183,14 @@ impl Anthropic {
     /// listing or a probe is not one.
     pub fn attempts(&self) -> usize {
         self.attempts.load(Ordering::SeqCst)
+    }
+
+    /// Waits this long for a stream that says nothing before giving the request up, rather than
+    /// the two and a half minutes it waits unless told; see [`Dialect::set_patience`].
+    #[must_use]
+    pub fn with_patience(self, patience: std::time::Duration) -> Self {
+        *self.patience.lock() = patience;
+        self
     }
 
     /// Measures against this limit rather than against whatever the endpoint advertises.
@@ -743,6 +755,7 @@ impl Anthropic {
             deltas,
             notice: &self.notice,
             tries: self.tries.load(Ordering::SeqCst),
+            patience: *self.patience.lock(),
         };
 
         let url = format!("{base}/messages");
@@ -1047,6 +1060,10 @@ impl Endpoint for Anthropic {
 }
 
 impl Dialect for Anthropic {
+    fn set_patience(&self, patience: std::time::Duration) {
+        *self.patience.lock() = patience;
+    }
+
     fn set_tries(&self, tries: usize) {
         self.tries.store(tries.max(1), Ordering::SeqCst);
     }

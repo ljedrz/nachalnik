@@ -72,6 +72,9 @@ pub struct OpenAiCompatible {
     /// How many times a request is sent while the server is busy, the first included; see
     /// [`Dialect::set_tries`].
     tries: AtomicUsize,
+    /// How long a stream may say nothing before the request is given up on; see
+    /// [`Dialect::set_patience`].
+    patience: Mutex<std::time::Duration>,
     /// What the last retry was about, taken by [`Endpoint::take_notice`], for a client that has
     /// somewhere to put it and no stderr to spare.
     notice: Mutex<Option<String>>,
@@ -128,6 +131,7 @@ impl OpenAiCompatible {
             listed: Mutex::new(Entry::default()),
             attempts: AtomicUsize::new(0),
             tries: AtomicUsize::new(RETRIES),
+            patience: Mutex::new(crate::waiting::PATIENCE),
             notice: Mutex::new(None),
             app: Attribution::default(),
             label: "openai-compatible".to_owned(),
@@ -286,6 +290,11 @@ impl OpenAiCompatible {
         self.tries.load(Ordering::SeqCst)
     }
 
+    /// How long a stream may say nothing; see [`Dialect::set_patience`].
+    fn patience(&self) -> std::time::Duration {
+        *self.patience.lock()
+    }
+
     /// Says which app these requests are being made on behalf of, all of it at once.
     ///
     /// note: the way to hand over one [`Attribution`] built for several clients, which is what a
@@ -324,6 +333,14 @@ impl OpenAiCompatible {
     #[must_use]
     pub fn unlisted(mut self, unlisted: bool) -> Self {
         self.app.unlisted = unlisted;
+        self
+    }
+
+    /// Waits this long for a stream that says nothing before giving the request up, rather than
+    /// the two and a half minutes it waits unless told; see [`Dialect::set_patience`].
+    #[must_use]
+    pub fn with_patience(self, patience: std::time::Duration) -> Self {
+        *self.patience.lock() = patience;
         self
     }
 
@@ -747,6 +764,10 @@ impl Endpoint for OpenAiCompatible {
 }
 
 impl Dialect for OpenAiCompatible {
+    fn set_patience(&self, patience: std::time::Duration) {
+        *self.patience.lock() = patience;
+    }
+
     fn set_tries(&self, tries: usize) {
         self.tries.store(tries.max(1), Ordering::SeqCst);
     }

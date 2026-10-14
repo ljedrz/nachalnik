@@ -12,9 +12,7 @@ use serde_json::Value;
 
 use crate::{
     markup::{quoted, status_and_words, unmarked},
-    waiting::{
-        Asking, HEARTBEAT, LARGEST, PATIENCE, Silence, Vigil, gone_quiet, stalled, too_large,
-    },
+    waiting::{Asking, HEARTBEAT, LARGEST, Silence, Vigil, gone_quiet, stalled, too_large},
 };
 
 /// What one dialect makes of the events in a stream.
@@ -157,7 +155,7 @@ pub(crate) async fn read(
     let mut stopped = Stopped::Done;
     // whether that marker arrived, which a clean close is told apart from below
     let mut marked = false;
-    let mut vigil = Vigil::new();
+    let mut vigil = Vigil::waiting(asking.patience);
 
     if let Some(encoded) = compressed(asking.model, response.headers()) {
         return Err(encoded);
@@ -230,14 +228,14 @@ pub(crate) async fn read(
                 }
                 match silence {
                     Silence::Enough if seen.is_empty() => {
-                        return Err(stalled(asking.model, PATIENCE));
+                        return Err(stalled(asking.model, asking.patience));
                     }
                     // what arrived before the silence is kept, as for a stream broken off
                     Silence::Enough => {
                         asking.say(format!(
                             "{} said nothing for {}s mid-answer; what had arrived is kept",
                             asking.model,
-                            PATIENCE.as_secs()
+                            asking.patience.as_secs()
                         ));
                         stopped = Stopped::CutOff;
                         break;

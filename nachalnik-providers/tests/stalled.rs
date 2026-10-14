@@ -423,6 +423,42 @@ async fn a_stream_nobody_answers_is_asked_for_once() {
     assert!(said.contains("never answered; giving up after"), "{said}");
 }
 
+/// A provider given more patience waits that long for a stream that says nothing, and says how
+/// long it waited.
+///
+/// note: two and a half minutes was fixed, and a free endpoint under load can hold a request in
+/// its queue longer than that before answering it normally - so every request was given up on,
+/// and the model was unusable though it would have answered. On a paused clock, as above.
+#[cfg(feature = "openai")]
+#[tokio::test(start_paused = true)]
+async fn a_patient_provider_waits_as_long_as_it_was_told() {
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        nachalnik_providers::OpenAiCompatible::new(
+            "deaf",
+            counting_deaf_server(requests.clone()).await,
+            "no key needed",
+        )
+        .with_patience(Duration::from_secs(300)),
+    ));
+    kernel.push(ContextItem::user("are you there?"));
+
+    let mut turn = Box::pin(kernel.turn());
+    assert!(
+        tokio::time::timeout(Duration::from_secs(200), &mut turn)
+            .await
+            .is_err(),
+        "it gave up before the patience it was given"
+    );
+    let said = tokio::time::timeout(Duration::from_secs(3600), turn)
+        .await
+        .expect("it gave up")
+        .expect_err("an answer that never came is a failure")
+        .to_string();
+    assert!(said.contains("300s"), "{said}");
+}
+
 /// A client whose DNS never answers, so that every attempt fails before a connection is made.
 ///
 /// note: a resolver that hangs rather than one that fails, because the answer has to be the one a

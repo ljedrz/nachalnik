@@ -71,9 +71,10 @@ money. All three are handled separately, the same way for every client:
 - **A stalled stream can be interrupted**, so a server that accepts a connection and then goes
   silent doesn't hang the program.
 - **Silence is reported** through `Endpoint::take_notice`, and the attempt is abandoned after 150
-  seconds. If the stream had already sent something, that part is kept as an interrupted turn. A
-  request that reached the server isn't sent again, since the server may still be working on it and
-  a second attempt would be billed again.
+  seconds, or the patience a caller gives with `with_patience` or `Dialect::set_patience`. If the
+  stream had already sent something, that part is kept as an interrupted turn. A request that
+  reached the server isn't sent again, since the server may still be working on it and a second
+  attempt would be billed again.
 - **A busy server is retried; an exhausted quota is not.** A `Retry-After` longer than a minute
   means a daily limit, not a busy server.
 - **An interrupt is a normal result, not an error.** It returns `StopReason::Other("interrupted")`

@@ -274,6 +274,7 @@ pub(super) async fn respond(
         deltas: &deltas,
         notice: &provider.notice,
         tries: provider.tries(),
+        patience: provider.patience(),
     };
 
     let sending = || {

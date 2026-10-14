@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **How long a stream may say nothing can be set.** `with_patience` on each provider and
+  `Dialect::set_patience` give the silence a request is given up after, which was a fixed 150
+  seconds. A free endpoint under load can hold a request in its queue for longer than that before
+  the first byte and then answer it normally, so every request was given up on and the model was
+  unusable. A client handed over with a whole-request timeout of its own cuts off a long queue
+  followed by a long answer first, and the docs say to give it the patience plus the answer's time.
+
 ### fixed
 
 - **A stream that breaks before a byte of its answer arrives is sent again.** A reset HTTP/2
