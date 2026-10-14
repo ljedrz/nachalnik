@@ -265,6 +265,12 @@ pub struct Args {
     #[arg(long, value_name = "SECONDS")]
     pub deadline: Option<u64>,
 
+    /// How many seconds the model's answer may say nothing - before its first word, or between
+    /// two - before the request is given up on; 150 unless given. A free endpoint under load can
+    /// hold a request in its queue for longer than that and then answer it normally.
+    #[arg(long, value_name = "SECONDS")]
+    pub patience: Option<u64>,
+
     /// Stop the session once the provider has charged this many tokens for it, in and out; `0` is
     /// no ceiling. Time is not the only thing a run nobody is watching can spend; `/spend` changes
     /// it while it runs.
@@ -359,6 +365,7 @@ impl Args {
             allow_server,
             deny_server,
             deadline,
+            patience,
             spend,
             forget_truncated,
             send_oversized,
@@ -602,6 +609,14 @@ impl Args {
         // other figure this program settles at startup is refused here, and this one used to be
         // read out of the environment and dropped when it did not parse
         endpoint::checked_limit().map_err(|e| anyhow::anyhow!("{e}"))?;
+        // note: refused rather than read as no limit, as `0` is for `--deadline`: a stream given
+        // no patience at all is given up on at its first silence, which is no session anybody meant
+        anyhow::ensure!(
+            self.patience != Some(0),
+            "{}`patience` is how many seconds an answer may say nothing, and `0` would give every \
+             request up at once; leave it out for the default of 150",
+            at("patience").unwrap_or_default()
+        );
         // note: here rather than in the parser, so that a settings file's `compact` is held to it
         // too. A fraction, and said so: `80`, meant as a percentage, would be no compactor at all,
         // and anything at or below zero one that took every tool result
@@ -864,7 +879,7 @@ impl Args {
     /// is picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
     pub async fn provider(&self) -> Result<Arc<dyn Dialect>> {
         let model = self.model.as_deref();
-        match self.wire()? {
+        let provider = match self.wire()? {
             endpoint::Wire::Gemini => endpoint::gemini::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
@@ -879,7 +894,12 @@ impl Args {
                 .map(|it| it as Arc<dyn Dialect>),
         }
         .map_err(|e| anyhow::anyhow!("{e}"))
-        .context("could not reach the model")
+        .context("could not reach the model")?;
+        if let Some(seconds) = self.patience {
+            provider.set_patience(std::time::Duration::from_secs(seconds));
+        }
+
+        Ok(provider)
     }
 }
 

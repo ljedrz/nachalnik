@@ -106,6 +106,8 @@ pub struct Settings {
     pub on_ask: Option<String>,
     /// Seconds after which a headless run stops, however far it has got; `0` never does.
     pub deadline: Option<u64>,
+    /// Seconds a model's answer may say nothing before the request is given up on.
+    pub patience: Option<u64>,
     /// Tokens the provider may charge for the session before it stops.
     pub spend: Option<u64>,
     /// Whether to drop the whole of a tool's output once it has been shortened.

@@ -57,6 +57,10 @@ exits normally: what arrived is kept and the session is saved, which wouldn't ha
 were killed. <kbd>ctrl+c</kbd> does the same; pressing it again exits immediately. `--deadline 0`
 means no deadline, as `0` means no limit for `--spend` and `--requests`.
 
+`--patience 600` is how long, in seconds, an answer may say nothing before the request is given up
+on: before its first word, or between two. It's 150 unless given, and a free endpoint under load can
+hold a request in its queue for longer than that and then answer it normally.
+
 `--spend 50000` also stops a run, because a model stuck in a loop will stay within any deadline you
 were willing to give it. The unit is tokens (`input + output`, as the provider reports them,
 including `fork`s); there are no prices here. It's a stopping point rather than a hard cap, since a
