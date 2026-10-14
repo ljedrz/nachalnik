@@ -28,6 +28,7 @@
 
   "deadline": null,
   "patience": null,
+  "mcp-timeout": null,
   "spend": null,
   "no-record": false,
 

@@ -21,6 +21,10 @@ minor bump may break you.
 
 ### added
 
+- **`--mcp-timeout`**, and `mcp-timeout` in a settings file, is how many seconds a call to an MCP
+  server's tool may wait for its answer before it is given up on, saying which server: ten minutes
+  unless given, and `0` waits as long as the server takes. A server that hung, or answered with
+  something the protocol library dropped, held the turn until it was interrupted.
 - **`--patience`**, and `patience` in a settings file, is how many seconds the model's answer may
   say nothing before the request is given up on - before its first word, or between two. It was
   a fixed 150, which a free endpoint under load can outlast with a request it then answers.

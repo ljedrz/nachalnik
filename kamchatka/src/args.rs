@@ -271,6 +271,11 @@ pub struct Args {
     #[arg(long, value_name = "SECONDS")]
     pub patience: Option<u64>,
 
+    /// How many seconds a call to an MCP server's tool may wait for its answer before it is given
+    /// up on; 600 unless given, and `0` waits as long as the server takes.
+    #[arg(long, value_name = "SECONDS")]
+    pub mcp_timeout: Option<u64>,
+
     /// Stop the session once the provider has charged this many tokens for it, in and out; `0` is
     /// no ceiling. Time is not the only thing a run nobody is watching can spend; `/spend` changes
     /// it while it runs.
@@ -366,6 +371,7 @@ impl Args {
             deny_server,
             deadline,
             patience,
+            mcp_timeout,
             spend,
             forget_truncated,
             send_oversized,
@@ -793,6 +799,18 @@ impl Args {
         })
     }
 
+    /// How long a call to an MCP server's tool may wait: `--mcp-timeout`, ten minutes unless given,
+    /// and no limit for `0`.
+    ///
+    /// note: ten minutes because a tool may be a build or a search that takes a while, and what
+    /// this is for is the one that never answers at all; a turn can still be interrupted sooner.
+    pub fn mcp_within(&self) -> Option<std::time::Duration> {
+        match self.mcp_timeout.unwrap_or(MCP_TIMEOUT) {
+            0 => None,
+            seconds => Some(std::time::Duration::from_secs(seconds)),
+        }
+    }
+
     /// The names of the servers this run starts, as `attach` names them.
     fn servers(&self) -> Vec<String> {
         #[cfg(feature = "mcp")]
@@ -956,6 +974,9 @@ fn last_model(path: &std::path::Path) -> Option<String> {
         .map(|info| info.model)
         .filter(|model| !model.is_empty())
 }
+
+/// How many seconds a call to an MCP server's tool waits unless `--mcp-timeout` says otherwise.
+const MCP_TIMEOUT: u64 = 600;
 
 /// Where a refusal about `field` names the settings file: only where the file said it - carried the
 /// key, and was not overruled by a flag. Asked the other way round, "not typed" named the file for

@@ -136,12 +136,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   nothing else uses it. Going further means the tool reading a file the kernel doesn't hold, with
   every answer saying which records came from it.
 
-- **No time limit on an MCP server's startup.** The handshake, `tools/list` and `resources/read`
-  wait as long as the server takes, and the first `npx -y` can legitimately take minutes to
-  download its package. A limit has to be long enough for that and short enough to be useful, and
-  what a person sees while waiting is part of the same decision. Each server is named on stderr
-  before it starts, and `--deadline` limits a headless run; a session with a screen just waits.
-
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning only appears there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it.
   Nothing tested so far needed it; a model that does, with a live test showing the difference,
@@ -217,13 +211,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Seeing it means looking through the command's process group for a stopped process the shell is
   waiting on, and telling that from a background job the command stopped on purpose, which is left
   alone. Unblocked by deciding that scan is worth its code.
-
-- **A malformed MCP response leaves the call waiting.** A response with the call's id but neither a
-  `result` nor an `error`, or a result with a different id, is dropped by `rmcp`, and the call waits
-  for an answer that never comes until an interrupt or `--deadline` ends it, just as with a server
-  that never answers. Reporting it needs `rmcp` to pass malformed responses on, which is up to
-  `rmcp`; a time limit on calls is the alternative, and the same decision as the startup time limit
-  above.
 
 - **The Anthropic client and signed thinking after an edited history.** Described in the
   `nachalnik_providers::anthropic` docs, with the models it affects, and handled by neither the

@@ -38,6 +38,22 @@ pub async fn attach(
     policy: &Careful,
     specs: &[String],
 ) -> Result<Vec<Server>, String> {
+    attach_within(kernel, policy, specs, None).await
+}
+
+/// [`attach`], with every call to a server's tools given up on once it has waited `within`; `None`
+/// waits as long as the server takes.
+///
+/// note: a server that hangs, or answers with something `rmcp` drops - an id with neither a
+/// result nor an error - left the call waiting until the turn was interrupted. No limit on the
+/// startup: the first `npx -y` can take minutes to download its package, and each server is named
+/// on standard error before it starts.
+pub async fn attach_within(
+    kernel: &Kernel,
+    policy: &Careful,
+    specs: &[String],
+    within: Option<std::time::Duration>,
+) -> Result<Vec<Server>, String> {
     let mut servers = Vec::new();
     let mut offered = Vec::new();
     let mut taken: HashSet<String> = kernel.tool_ids().into_iter().collect();
@@ -68,12 +84,15 @@ pub async fn attach(
         // note: told apart by what failed, because both arrive as `Error::Connect` and only the
         // spawn fails with an I/O error of its own. A program that is not there never got as far
         // as a handshake, and saying it did not answer one sends somebody looking at the server
-        let server = Server::spawn(name, command).await.map_err(|e| match &e {
+        let mut server = Server::spawn(name, command).await.map_err(|e| match &e {
             nachalnik_mcp::Error::Connect(why) if why.is::<std::io::Error>() => {
                 format!("`{line}` could not be started: {why}")
             }
             _ => format!("`{line}` did not answer the handshake: {e}"),
         })?;
+        if let Some(within) = within {
+            server = server.answering_within(within);
+        }
         let tools = server
             .tools()
             .await

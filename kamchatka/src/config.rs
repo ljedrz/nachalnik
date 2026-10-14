@@ -108,6 +108,8 @@ pub struct Settings {
     pub deadline: Option<u64>,
     /// Seconds a model's answer may say nothing before the request is given up on.
     pub patience: Option<u64>,
+    /// Seconds a call to an MCP server's tool may wait for its answer; `0` waits for ever.
+    pub mcp_timeout: Option<u64>,
     /// Tokens the provider may charge for the session before it stops.
     pub spend: Option<u64>,
     /// Whether to drop the whole of a tool's output once it has been shortened.

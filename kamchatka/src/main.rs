@@ -576,7 +576,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             let _ = writeln!(std::io::stderr(), "· starting the MCP server `{spec}`");
         }
         starting(ends, "starting the MCP servers", async {
-            kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
+            kamchatka::mcp::attach_within(&app.kernel, &app.policy, &args.mcp, args.mcp_within())
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))
         })
