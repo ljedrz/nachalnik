@@ -1042,34 +1042,15 @@ async fn drawn(
     outcome
 }
 
-/// Hands one event off the kernel's broadcast to the screen, or says how many went by unread;
-/// `false` once the broadcast has closed and nothing more will come.
-///
-/// note: the screen is the live view, and the session log is the one that keeps everything, so
-/// what lagged is said rather than recovered.
-#[cfg(feature = "tui")]
-fn taken(app: &mut App, event: Result<Event, tokio::sync::broadcast::error::RecvError>) -> bool {
-    use tokio::sync::broadcast::error::RecvError;
-
-    match event {
-        Ok(event) => app.on_event(event),
-        Err(RecvError::Lagged(missed)) => app.say(
-            Speaker::Note,
-            format!("{missed} events went by too fast to draw; /save has them all"),
-        ),
-        Err(RecvError::Closed) => return false,
-    }
-
-    true
-}
-
 /// Draws, waits for whichever of the things that can happen happens first, and does it again.
 ///
 /// note: `server` is the half that makes this the same session from two places at once. The keys
 /// and the socket are two ways into one [`App`], and only one loop can own it - so this one does,
 /// and `remote::Serving` is how the connections reach it: `pump` says what the session has said,
-/// `arrived` and `attend` take on whoever connected, and `asked` and `answer` do what they ask.
-/// They are calls rather than a loop so that `remote::Server::run` can make the same ones.
+/// `arrived` and `attend` take on whoever connected, and `asked` and `answered` do what they ask.
+/// They are calls rather than a loop so that `remote::Server::run` can make the same ones, and
+/// what both loops do with an event, an outcome or an arrival is a function of `remote::server`'s
+/// that both call.
 #[cfg(feature = "tui")]
 async fn run(
     terminal: &mut ratatui::DefaultTerminal,
@@ -1079,6 +1060,7 @@ async fn run(
     server: Option<&mut remote::Server>,
     mut serving: Option<&mut remote::Serving>,
 ) -> Result<()> {
+    use kamchatka::remote::server::{apply_arrival, apply_event, apply_outcome, released};
     use tokio::sync::broadcast::error::{RecvError, TryRecvError};
     use tokio_stream::StreamExt as _;
 
@@ -1097,18 +1079,7 @@ async fn run(
     loop {
         // before the frame, so that what a client is told and what the screen shows are one look at
         // the `App` rather than two. Nothing here draws
-        if let Some(serving) = &mut serving {
-            serving.pump(app);
-        }
-        // the lines that waited for a command still out, the desk's and the client's, once it has
-        // come back or been stopped - after the pump, so that a client hears what the command came
-        // back with before what the lines after it did; see `App::in_flight`
-        if app.release().await {
-            if let Some(serving) = &mut serving {
-                serving.pump(app);
-            }
-            stale = true;
-        }
+        stale |= released(app, serving.as_deref_mut()).await;
         if stale {
             terminal.draw(|frame| ui::draw(frame, app))?;
             (stale, quiet_ticks) = (false, 0);
@@ -1141,7 +1112,7 @@ async fn run(
                 let queued = events.len();
                 let mut event = event;
                 for _ in 0..=queued {
-                    if !taken(app, event) {
+                    if !apply_event(app, event) {
                         return Ok(());
                     }
                     match events.try_recv() {
@@ -1151,16 +1122,7 @@ async fn run(
                     }
                 }
             },
-            Some(outcome) = finished.recv() => {
-                // the turn's last events are still in the queue behind this, and `select!` picks
-                // whichever branch is ready rather than whichever happened first - so an outcome
-                // drawn now would put "the turn paused after 3 requests" *above* the result it
-                // paused after. The transcript is meant to be what happened, in that order
-                while let Ok(event) = events.try_recv() {
-                    app.on_event(event);
-                }
-                app.on_outcome(outcome);
-            }
+            Some(outcome) = finished.recv() => apply_outcome(app, events, outcome),
             // and the two that are only there where this session is also served. They are the same
             // pair `remote::Server::run` selects on, in a loop that happens to have a screen
             arrived = async {
@@ -1168,44 +1130,24 @@ async fn run(
                     Some(server) => server.arrived().await,
                     None => std::future::pending().await,
                 }
-            } => match (arrived, &mut serving) {
-                (Ok(arrived), Some(serving)) => serving.attend(app, arrived),
-                // the two are made together and there is no listener without one, so this is a
-                // shape the types ask for and nothing reaches. Dropping the connection is what it
-                // would mean if anything ever did
-                (Ok(_), None) => {}
-                // one connection failing to arrive is not a reason to end a session that may have
-                // a turn running in it, and the person at the screen is the one who can see this
-                (Err(e), _) => app.say(Speaker::Note, format!("a client could not connect: {e}")),
-            },
+            } => {
+                // the two are made together and there is no listener without one, so a connection
+                // with nobody serving is a shape the types ask for and nothing reaches. Dropping
+                // it is what that would mean if anything ever did
+                if let Some(serving) = &mut serving {
+                    apply_arrival(serving, app, arrived);
+                }
+            }
             Some(ask) = async {
                 match &mut serving {
                     Some(serving) => serving.asked().await,
                     None => std::future::pending().await,
                 }
             } => {
-                // note: the same as in `remote::Server::run`: the command holds the `App` and the
-                // loop waits for as long as it takes to do - never for an endpoint, which a command
-                // is sent out to instead (see `App::in_flight`) - and the kernel's broadcast is read
-                // meanwhile, because it is the one channel here that drops what nobody took rather
-                // than queueing it. The keys are in a stream, the outcome in an unbounded channel, a
-                // connection in the listen backlog; all of those arrive late. A lagged subscription
-                // is a hole in what the screen shows and in the trace every later client is handed.
-                let mut held = Vec::new();
-                if let Some(serving) = &mut serving {
-                    let doing = serving.answer(app, ask);
-                    tokio::pin!(doing);
-                    loop {
-                        tokio::select! {
-                            () = &mut doing => break,
-                            event = events.recv() => held.push(event),
-                        }
-                    }
-                }
-                for event in held {
-                    if !taken(app, event) {
-                        return Ok(());
-                    }
+                if let Some(serving) = &mut serving
+                    && !serving.answered(app, ask, events).await
+                {
+                    return Ok(());
                 }
             }
             // a served session's own, which was subscribed before its socket existed
