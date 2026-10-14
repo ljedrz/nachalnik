@@ -226,7 +226,7 @@ It listens on loopback, or on this machine's IP address on a private network (10
 $ kamchatka --web 192.168.1.5:8080 -m qwen/qwen3-coder
 ```
 
-A phone on the same network can then open the printed address, `http://192.168.1.5:8080/<key>/`,
+A phone on the same network can then open the printed address, `http://192.168.1.5:8080/<key>`,
 or scan the QR code of it printed below it. The screen covers both as it opens, so with a screen
 the code is shown in a panel when the session starts, and `/web` shows it again. But every other
 device on the network that learns the address can open it too, and any of them can read it from the
@@ -238,7 +238,7 @@ refused. On a network you don't trust, tunnel over SSH instead and open the page
 phone$ ssh -N -L 8080:127.0.0.1:8080 host
 ```
 
-then `http://localhost:8080/<key>/`. The page refuses requests from other web pages open in the same
+then `http://localhost:8080/<key>`. The page refuses requests from other web pages open in the same
 browser: a request must be addressed to an IP address or `localhost` (not a host name, which a DNS
 rebinding attack would use), must come from the page itself when it says where it came from, and a
 command must be JSON. The host name rule also means a tunnel that forwards its own host name, such

@@ -293,13 +293,18 @@ fn a_session_on_the_web_writes_every_session_out() {
         panic!("the tab `{name}` never opened");
     };
 
-    // the page refuses to be framed, since a framed copy opens a stream of its own
+    // the page refuses to be framed, since a framed copy opens a stream of its own - and it is
+    // served at the address as printed, which ends at the key
     let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
     stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
-    write!(stream, "GET /{key}/ HTTP/1.1\r\nHost: {page}\r\n\r\n").expect("the request goes out");
+    write!(stream, "GET /{key} HTTP/1.1\r\nHost: {page}\r\n\r\n").expect("the request goes out");
     let mut served = String::new();
     let _ = stream.read_to_string(&mut served);
     let head = served.split("\r\n\r\n").next().unwrap_or_default();
+    assert!(
+        head.starts_with("HTTP/1.1 200"),
+        "the page was not served: {head}"
+    );
     assert!(
         head.contains("Content-Security-Policy: frame-ancestors 'none'")
             && head.contains("X-Frame-Options: DENY"),

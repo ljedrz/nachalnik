@@ -260,11 +260,13 @@ impl Web {
         }
     }
 
-    /// The page's URL, e.g. `http://127.0.0.1:8080/3f…/`, its key included. Read from the socket,
+    /// The page's URL, e.g. `http://127.0.0.1:8080/3fa91c07`, its key included. Read from the socket,
     /// so it has the actual port when bound to port 0.
     pub fn address(&self) -> String {
         match self.listener.local_addr() {
-            Ok(at) => format!("http://{at}/{}/", self.key),
+            // note: without a trailing slash, which nobody types; the page is served at the key
+            // either way, and builds its routes from wherever it was opened
+            Ok(at) => format!("http://{at}/{}", self.key),
             Err(_) => format!("port {}", self.port),
         }
     }
@@ -515,7 +517,7 @@ fn keyless(host: &str) -> String {
     format!(
         "This address is missing the page's key.\n\n\
          Open the whole address kamchatka printed when it started: http://{host}/ followed by \
-         eight letters and digits and a slash. Or scan the QR code it showed, or type /web in the \
+         eight letters and digits. Or scan the QR code it showed, or type /web in the \
          session to show both again.\n"
     )
 }

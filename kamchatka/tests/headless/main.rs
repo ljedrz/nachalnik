@@ -896,17 +896,17 @@ async fn web_shows_the_address_and_its_code() {
     assert!(reply.page.is_none());
     assert!(reply.said[0].text.contains("no page is being served"));
 
-    app.web = Some("http://192.168.1.5:8080/0123abcd/".to_owned());
+    app.web = Some("http://192.168.1.5:8080/0123abcd".to_owned());
     let reply = app.submit("/web").await;
     let Some(Overlay::Text { pages, .. }) = reply.page else {
         panic!("`/web` opened no page");
     };
     let body = &pages[0].body;
     assert!(
-        body.starts_with("http://192.168.1.5:8080/0123abcd/"),
+        body.starts_with("http://192.168.1.5:8080/0123abcd"),
         "{body}"
     );
-    let code = kamchatka::qr::Code::new("http://192.168.1.5:8080/0123abcd/").expect("it fits");
+    let code = kamchatka::qr::Code::new("http://192.168.1.5:8080/0123abcd").expect("it fits");
     assert!(body.contains(&code.lines().join("\n")), "{body}");
 }
 
