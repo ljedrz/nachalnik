@@ -221,13 +221,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   already quotes what arrived. Unblocked by a decision on what the history should say the model
   sent, and a live test of that choice on the strict endpoints.
 
-- **The web page relies on `Origin` for browsers that don't send `Sec-Fetch-Site`.** An image or a
-  no-cors fetch from another site has no `Origin`, and the page refuses it based on fetch metadata;
-  but a browser old enough to send neither gets through to `GET /events` and takes over the session
-  from the tab that had it. The page can't be framed, which covers frames; covering the rest for
-  every browser would need a token in the page's URL that `/events` checks, which changes how the
-  page is opened.
-
 - **A program a command runs that stops only itself is waited on until the turn is interrupted.**
   The shell is then asleep waiting on it rather than stopped, so nothing says the call is stuck.
   Seeing it means looking through the command's process group for a stopped process the shell is

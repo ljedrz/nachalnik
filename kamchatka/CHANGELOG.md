@@ -65,6 +65,11 @@ minor bump may break you.
 
 ### fixed
 
+- **Another page in an old browser cannot take a `--web` session.** The page refused other pages
+  by `Origin` and `Sec-Fetch-Site`, and a browser that sent neither let another site's image or
+  no-cors fetch open its stream and take the session from the tab that had it. Every route is now
+  beneath a random key in the page's address, which is printed at startup, and a request without it
+  is refused. The address to open is the one printed, key and all.
 - **A headless run refused for length by an endpoint that publishes no limit stops sending.** The
   refusal stood only while the context was over the published limit, and with none published it
   never was, so every message after it was sent and refused in turn. It is measured against the

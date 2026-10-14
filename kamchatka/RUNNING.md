@@ -204,28 +204,32 @@ served on a loopback port of its own, which is printed like `--serve`'s. The scr
 where there is a terminal, and a browser that loses the connection reconnects and catches up by
 itself. This is the `webui` feature, which release builds include.
 
-The page has no authentication or encryption. It listens on loopback, or on this machine's IP
+The page has no encryption, and no authentication but a random key in its address, which is
+printed at startup: every route is beneath it, so a browser has to be given the whole address. It
+listens on loopback, or on this machine's IP
 address on a private network (10/8, 172.16/12, 192.168/16, fc00::/7):
 
 ```console
 $ kamchatka --web 192.168.1.5:8080 -m qwen/qwen3-coder
 ```
 
-A phone on the same network can then open `http://192.168.1.5:8080/`, but so can every other device
-on it: any of them can control the session, including running shell commands as you, and read its
-traffic. kamchatka warns about this at startup and in each session. Host names, `0.0.0.0` and public
-addresses are refused. On a network you don't trust, tunnel over SSH instead and open the page at
-`localhost`:
+A phone on the same network can then open the printed address, `http://192.168.1.5:8080/<key>/`, but
+so can every other device on it that learns the address, which any of them can read from the
+traffic: whoever has it can control the session, including running shell commands as you. kamchatka
+warns about this at startup and in each session. Host names, `0.0.0.0` and public addresses are
+refused. On a network you don't trust, tunnel over SSH instead and open the page at `localhost`:
 
 ```console
 phone$ ssh -N -L 8080:127.0.0.1:8080 host
 ```
 
-then `http://localhost:8080/`. The page refuses requests from other web pages open in the same
+then `http://localhost:8080/<key>/`. The page refuses requests from other web pages open in the same
 browser: a request must be addressed to an IP address or `localhost` (not a host name, which a DNS
 rebinding attack would use), must come from the page itself when it says where it came from, and a
 command must be JSON. The host name rule also means a tunnel that forwards its own host name, such
-as `tailscale serve`, is refused. The page can answer permission questions, so its port is closed
+as `tailscale serve`, is refused. And a page that was never shown the address can't reach the
+session even through a browser too old to say where a request came from, since it doesn't have the
+key. The page can answer permission questions, so its port is closed
 to the session's own commands, like the session's port.
 
 The page has the same four tabs as the terminal, in the same order: the button in the top right

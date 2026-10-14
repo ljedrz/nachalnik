@@ -196,30 +196,31 @@ cause harm, what stops them, and what doesn't.
 - **Anyone who reaches a served session.** The protocol can use the `shell` tool, so reaching it
   means running commands as the person who started it. `--serve` binds to loopback only and makes
   its socket `0600`, and there is no other authentication. `--web` serves a page for the session,
-  also without authentication; whoever reaches the page controls the session like the person at
-  the keyboard. It listens on loopback, or on an IP address in a private range, in which case every
-  device on that network can control and read the session, and `kamchatka` warns about this at
-  startup and in each session. A host name is taken only where it resolves to this machine, as
-  `localhost` does; one that resolves elsewhere, wildcards and public addresses are refused. From
-  further away, use a tunnel that authenticates. Other web pages open in a browser on the same
-  machine are refused: the page only accepts same-origin JSON requests addressed to an IP address
-  or `localhost`. That rests on the browser saying where a request came from, with `Origin` or
-  `Sec-Fetch-Site`; one old enough to send neither lets another page's image or no-cors fetch take
-  the session from the tab that had it (see [POSTPONED.md](POSTPONED.md)). Clients can answer permission questions, so the session's own commands are kept
-  out too: ports the session or its page are served on are closed to every command sandboxed while
-  they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel the ruleset is
-  `Partial` and a port is closed only where the network is shut or asked about, which the gate
-  holds, so with TCP allowed or refused by Landlock alone, a command can reach a session served
-  over TCP and answer its questions. That is not worked around, and the startup warning says so. A
-  socket file can be reached by every sandboxed command below Linux 7.1, and from 7.1 by any that
-  may write where it is, so connections are refused when the other end is in the
-  session of a command this process sandboxed (each runs in its own session), which covers anything
-  it left running. What gets through: a process a command started with `setsid`, the `gateway`
-  example's page (a separate process, so it can't close its port to the session's commands), and
-  any *other* served session on the machine. A session only closes its own ports, and a TCP
-  connection doesn't identify the process behind it, so one process's sandboxed command is an
-  ordinary client to a session in another, and that session's addresses are up to whoever started
-  it. A command allowed on the network can reach all three.
+  whose only credential is a random key in its address, printed at startup; whoever has the address
+  controls the session like the person at the keyboard. It listens on loopback, or on an IP address
+  in a private range, in which case every device on that network can read the session's traffic, and
+  any that learns the address can control it, and `kamchatka` warns about this at startup and in
+  each session. A host name is taken only where it resolves to this machine, as `localhost` does;
+  one that resolves elsewhere, wildcards and public addresses are refused. From further away, use a
+  tunnel that authenticates. Other web pages open in a browser on the same machine are refused: the
+  page only accepts same-origin JSON requests addressed to an IP address or `localhost`. That rests
+  on the browser saying where a request came from, with `Origin` or `Sec-Fetch-Site`, and where one
+  is too old to send either, on the key: every route is beneath it, and a page that was never shown
+  the address can't guess it. Clients can answer permission questions, so the session's own commands
+  are kept out too: ports the session or its page are served on are closed to every command
+  sandboxed while they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel
+  the ruleset is `Partial` and a port is closed only where the network is shut or asked about, which
+  the gate holds, so with TCP allowed or refused by Landlock alone, a command can reach a session
+  served over TCP and answer its questions. That is not worked around, and the startup warning says
+  so. A socket file can be reached by every sandboxed command below Linux 7.1, and from 7.1 by any
+  that may write where it is, so connections are refused when the other end is in the session of a
+  command this process sandboxed (each runs in its own session), which covers anything it left
+  running. What gets through: a process a command started with `setsid`, the `gateway` example's
+  page (a separate process, so it can't close its port to the session's commands), and any *other*
+  served session on the machine. A session only closes its own ports, and a TCP connection doesn't
+  identify the process behind it, so one process's sandboxed command is an ordinary client to a
+  session in another, and that session's addresses are up to whoever started it. A command allowed
+  on the network can reach all three.
 - **An MCP server.** It's a program the person chose, running unconfined with the person's
   environment and access to everything the person can read. What `kamchatka` controls is what its
   answers can do: its tools are judged under the server's name, and what it returns goes into the

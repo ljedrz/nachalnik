@@ -751,11 +751,11 @@ async fn the_page_is_closed_to_commands_and_listens_only_on_loopback() {
     let web = kamchatka::web::Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
         .await
         .expect("it listens");
-    let port: u16 = web
-        .address()
-        .trim_end_matches('/')
-        .rsplit(':')
-        .next()
+    let address = web.address();
+    let port: u16 = address
+        .strip_prefix("http://")
+        .and_then(|rest| rest.split('/').next())
+        .and_then(|host| host.rsplit(':').next())
         .and_then(|port| port.parse().ok())
         .expect("a port");
     assert!(closed().contains(&port), "{:?}", closed());

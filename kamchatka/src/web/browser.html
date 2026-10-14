@@ -325,6 +325,8 @@ let adrift = false;     // and whether the stream has gone, which is the other h
  * tab order is the cheapest kind of similarity there is.
  */
 const VIEWS = ["chat", "context", "events", "permissions"];
+// where the routes are: beneath the key this page was opened at, with or without its slash
+const ROOT = location.pathname.endsWith("/") ? location.pathname : `${location.pathname}/`;
 
 /**
  * The longest line the session sends, which is `protocol::MAX_LINE` on the other side of the relay.
@@ -431,7 +433,7 @@ function clipped(el, l) {
  */
 async function send(command) {
   try {
-    const answer = await fetch(`/do?tab=${tab}`, {
+    const answer = await fetch(`${ROOT}do?tab=${tab}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(command),
@@ -1393,7 +1395,7 @@ window.onerror = (message, src, line) => { say("error", `${message} (${src}:${li
 // `showing` and the class always agree, and this is where it starts being true
 show("chat");
 
-const events = new EventSource(`/events?tab=${tab}`);
+const events = new EventSource(`${ROOT}events?tab=${tab}`);
 events.onmessage = (e) => heard(JSON.parse(e.data));
 // note: no reconnection anywhere in this file, and one place that stops it - a page replaced by
 // another client, in `heard`. `EventSource` reconnects by itself and sends

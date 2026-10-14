@@ -33,9 +33,11 @@
 //! are refused. From further away, use a tunnel that authenticates, such as `ssh -L`. `--serve`
 //! stays loopback-only: its clients are programs, which can use a tunnel.
 //!
-//! Requests from other web pages open in the same browser are refused by `foreign`. The page can
-//! answer permission questions, so its port is closed to the commands this process confines (see
-//! `Sandbox::closed`), the same as a served session's port.
+//! Requests from other web pages open in the same browser are refused by `foreign`, and anything
+//! not addressed beneath the page's key - a random path the program prints as part of the page's
+//! address - is refused by `beneath`. The page can answer permission questions, so its port is
+//! closed to the commands this process confines (see `Sandbox::closed`), the same as a served
+//! session's port.
 
 use std::{
     collections::HashMap,
@@ -97,6 +99,8 @@ pub struct Web {
     session: String,
     /// The listening port, closed to confined commands until this is dropped.
     port: u16,
+    /// The path segment every route is beneath; see [`beneath`].
+    key: Arc<str>,
     /// Who can reach the page.
     reach: Reach,
 }
@@ -177,12 +181,14 @@ impl Web {
             .port();
         // the page can answer permission questions, so close its port to confined commands, as
         // for a served session's port
+        let key = fresh_key().map_err(|e| format!("could not make the page's key: {e}"))?;
         crate::sandbox::serving_on(port);
 
         Ok(Self {
             listener,
             session: session.to_owned(),
             port,
+            key: key.into(),
             reach,
         })
     }
@@ -205,11 +211,11 @@ impl Web {
         }
     }
 
-    /// The page's URL, e.g. `http://127.0.0.1:8080/`. Read from the socket, so it has the actual
-    /// port when bound to port 0.
+    /// The page's URL, e.g. `http://127.0.0.1:8080/3f…/`, its key included. Read from the socket,
+    /// so it has the actual port when bound to port 0.
     pub fn address(&self) -> String {
         match self.listener.local_addr() {
-            Ok(at) => format!("http://{at}/"),
+            Ok(at) => format!("http://{at}/{}/", self.key),
             Err(_) => format!("port {}", self.port),
         }
     }
@@ -230,14 +236,15 @@ impl Web {
                 }
             };
             let _ = browser.set_nodelay(true);
-            let (session, tabs, named, said) = (
+            let (session, tabs, named, said, key) = (
                 self.session.clone(),
                 tabs.clone(),
                 named.clone(),
                 said.clone(),
+                self.key.clone(),
             );
             tokio::spawn(async move {
-                if let Err(e) = serve(browser, &session, tabs, named).await {
+                if let Err(e) = serve(browser, &session, &key, tabs, named).await {
                     said(format!("a browser connection failed: {e}"));
                 }
             });
@@ -253,7 +260,13 @@ impl Drop for Web {
 }
 
 /// One browser connection: read a request, answer it, and for a stream stay as long as it lasts.
-async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> Result<(), String> {
+async fn serve(
+    browser: TcpStream,
+    session: &str,
+    key: &str,
+    tabs: Tabs,
+    named: Named,
+) -> Result<(), String> {
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
     let Some(request) = head(&mut reader).await? else {
@@ -273,9 +286,18 @@ async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> R
         )
         .await;
     }
+    let Some(path) = beneath(path, key) else {
+        return reply(
+            &mut write,
+            "403 Forbidden",
+            "text/plain",
+            b"this page is reached at the address the program printed, key and all",
+        )
+        .await;
+    };
 
     match (request.method.as_str(), path) {
-        ("GET", "/") => page(&mut write).await,
+        ("GET", "" | "/") => page(&mut write).await,
         // note: the browser's own reconnection, arriving as a resume. `Last-Event-ID` is the last
         // `id:` this tab was sent, which is a record sequence, which is what `attach` takes
         ("GET", "/events") => {
@@ -360,6 +382,35 @@ fn foreign(request: &Request) -> Option<&'static str> {
     }
 
     None
+}
+
+/// The route a path names beneath the page's key, or `None` where it is not beneath it.
+///
+/// note: what `foreign` cannot cover. That rests on the browser saying where a request came from,
+/// and one old enough to send neither `Origin` nor `Sec-Fetch-Site` let another page's image or
+/// no-cors fetch open `/events` and take the session from the tab that had it. A page elsewhere
+/// cannot guess a path it was never shown, and the program prints it only where the person reads
+/// it. Compared without stopping at the first difference, so the time an answer takes says nothing
+/// of how much of a guess was right.
+fn beneath<'a>(path: &'a str, key: &str) -> Option<&'a str> {
+    let rest = path.strip_prefix('/')?;
+    let given = rest.split('/').next().unwrap_or_default();
+    let same = given.len() == key.len()
+        && given
+            .bytes()
+            .zip(key.bytes())
+            .fold(0u8, |differ, (a, b)| differ | (a ^ b))
+            == 0;
+
+    same.then(|| &rest[given.len()..])
+}
+
+/// A key for the page: 128 random bits, as hex.
+fn fresh_key() -> std::io::Result<String> {
+    let mut bytes = [0u8; 16];
+    std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut bytes)?;
+
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 /// Serves the client, which is one file and no build step.
