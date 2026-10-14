@@ -413,6 +413,62 @@ async fn invoke(tool: &Arc<dyn Tool>, args: Value) -> ToolOutput {
         .expect("the bridge answers rather than failing")
 }
 
+/// A server with one tool that never answers.
+#[derive(Clone, Default)]
+struct Hangs;
+
+impl ServerHandler for Hangs {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::default()
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult::with_all_items(vec![McpTool::new(
+            "waits",
+            "never comes back",
+            schema(json!({})),
+        )]))
+    }
+
+    async fn call_tool(
+        &self,
+        _request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        std::future::pending().await
+    }
+}
+
+/// A call a server never answers is given up on once the limit it was given has passed, naming the
+/// server.
+///
+/// note: a server that hangs, or a response `rmcp` drops because it carries neither a result nor
+/// an error, held the turn until somebody interrupted it.
+#[tokio::test]
+async fn a_call_nobody_answers_is_given_up_on_within_its_limit() {
+    let server = serve("slow", Hangs)
+        .await
+        .answering_within(std::time::Duration::from_secs(1));
+    let tools = server.tools().await.expect("it lists its tools");
+
+    let said = tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        invoke(&tools[0], json!({})),
+    )
+    .await
+    .expect("the call was waited on for longer than its limit");
+    assert!(said.is_error, "{:?}", said.content);
+    let text = said.content.to_text().into_owned();
+    assert!(
+        text.contains("`slow` did not answer within 1s"),
+        "the server and the limit are named: {text}"
+    );
+}
+
 #[tokio::test]
 async fn a_call_reaches_the_server_and_the_answer_comes_back() {
     let (server, calls) = bench("files").await;

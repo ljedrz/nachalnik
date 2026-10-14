@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`Server::answering_within`** gives up on a call to one of the server's tools once it has
+  waited that long, tells the server to stop as an interrupt does, and answers the call with an
+  error naming the server and the limit. No limit unless one is given. A server that hangs, or a
+  response `rmcp` drops because it carries neither a result nor an error, held the turn until it
+  was interrupted.
+
 ### fixed
 
 - **Arguments a provider could not parse are not sent to the server as the arguments.** A provider

@@ -64,6 +64,9 @@ pub struct Server {
     name: String,
     prefix: bool,
     trust: Trust,
+    /// How long one call may wait on the server, where there is a limit; see
+    /// [`Server::answering_within`].
+    within: Option<std::time::Duration>,
     running: RunningService<RoleClient, ()>,
     /// The process, where this spawned one; see [`Server::spawn`].
     ///
@@ -88,6 +91,7 @@ impl Server {
             name: name.into(),
             prefix: true,
             trust: Trust::default(),
+            within: None,
             running,
             #[cfg(feature = "child-process")]
             child: None,
@@ -170,6 +174,17 @@ impl Server {
         self
     }
 
+    /// Gives up on a call to one of this server's tools once it has waited this long for an answer,
+    /// telling the server to stop and the model that the call went unanswered.
+    ///
+    /// note: no limit unless one is given, since how long a tool may take is the caller's to know.
+    /// A call that never comes back - a server that hangs, or a response `rmcp` drops because it
+    /// carries neither a result nor an error - holds the turn until it is interrupted otherwise.
+    pub fn answering_within(mut self, within: std::time::Duration) -> Self {
+        self.within = Some(within);
+        self
+    }
+
     /// Offers the tools under their own names rather than the server's plus theirs.
     ///
     /// note: Shorter, and worth it for a single server. With two of them it is how one server's
@@ -214,11 +229,10 @@ impl Server {
             .map(|tool| {
                 let prefix = self.prefix.then_some(self.name.as_str());
                 let spec = spec_of(tool_id(prefix, &tool.name), &tool, &self.trust);
-                let wrapped: Arc<dyn Tool> = Arc::new(McpTool::new(
-                    self.running.peer().clone(),
-                    tool.name.to_string(),
-                    spec,
-                ));
+                let wrapped: Arc<dyn Tool> = Arc::new(
+                    McpTool::new(self.running.peer().clone(), tool.name.to_string(), spec)
+                        .answering_within(&self.name, self.within),
+                );
 
                 wrapped
             })
