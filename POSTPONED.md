@@ -16,13 +16,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   saying so), or one run of a call repeated with the same arguments in one answer, would stop it;
   each changes what a response with many calls means to a client. Unblocked by choosing which.
 
-- **`fs` refuses a call whose text has a backslash JSON does not allow.** A model that writes a
-  regex into its arguments as `"\.source\("` rather than `"\\.source\\("` gets the call
-  refused, with a sentence saying to write every backslash twice, and some models make the same
-  mistake on every call after it. Reading such text again with the stray backslashes doubled
-  would recover what was meant, but it is the tool guessing at arguments it was not given, which
-  nothing else in it does. Unblocked by deciding whether that guess is worth making.
-
 - **A tool that panics outside `invoke` takes the step with it.** The kernel catches a panic where
   it polls a tool, as INVARIANTS.md says, but calls `Tool::needs` and `Tool::limit` with the
   model's arguments, and `Tool::spec` wherever it labels a result, outside that catch. A tool that
@@ -111,12 +104,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   purpose, and Google is not known to send this shape. Unblocked by deciding what counts
   as an answer from this dialect, or by a response that shows the shape.
 
-- **Argument fragments streamed before a call's identifier are announced under an empty one.**
-  `Delta::ToolArgs` is sent with the identifier the call has at that moment, so a client drawing
-  calls as they stream shows the opening fragments under no identifier and the rest under the real
-  one. What is recorded is right. Unblocked by a client that needs it; holding the fragments until
-  the identifier comes, or keying deltas on the call's position, are the two ways.
-
 - **A reset HTTP/2 stream is not retried.** `worth_waiting_out` retries a request that never got
   an answer only when it timed out, on the reasoning that every other transport failure is a
   decision or a bug. A server resetting the stream - `http2 error: stream error received:
@@ -190,37 +177,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   mechanism. Its doc says what it is. Renaming it is a breaking change to `nachalnik`, so it waits
   for the next release that breaks anything; a type alias for the old name would ease it.
 
-- **`Kernel::set_full_notice` is announced by nothing.** It is the one component setter with no
-  event, so a log reads the notice only once one is placed, as a `context.added`, and never says
-  which notice was set, changed or taken away before then. Announcing it needs a new event kind -
-  a change to the record every reader of the log meets - and whether to carry the notice's text
-  or only that one is set is the open question. Unblocked by a client that needs to tell from the
-  log what notice a session had.
-
-- **One resource that can't be read loses `Server::resources` the whole listing.** A server
-  refusing one read makes the call an error, and the resources that read fine are not returned.
-  Naming the failure in place, as a resource with no text is named, would also turn a server that
-  has died into a list of failures and an `Ok`, unless the two kinds of error are told apart.
-  Unblocked by a caller that needs a partial listing.
-
 - **`--allow-server` for a server this run doesn't start.** A server rule naming a server that isn't
   running is refused, for both allow and deny, just as rules for a domain no tool uses are. A
   settings file that allows a server is refused along with it when `--mcp` on the command line
   replaces the file's server list and leaves that server out. An unused allow grants nothing, so
   the alternative is to refuse only unused denies, at the cost of treating the two differently.
-
-- **Reference text is copied on every projection.** `LinearProjector` sends a reference as
-  `{label}:\n{text}`, building a new string from the item's content every time the context is
-  projected. That's the largest cost in a projection, and the one place content shared everywhere
-  else gets copied. Avoiding it means sending the label as a separate block, which changes what is
-  sent in every API.
-
-- **A version counter for the context.** Several things project the same context twice in a row
-  with nothing to say it hasn't changed: `maybe_compact` and then `build_request`, and a client's
-  frame, which builds `Going` and then calls `Kernel::budget`. Reusing the first projection isn't
-  safe while the context can change in between. A number the context increments on every change
-  would make all of these cacheable, but it's an addition to the core only for clients' benefit,
-  which is why it waits.
 
 - **The model's `undo` in the person's undo history.** When the `context` tool undoes a change that
   moved items into several states, it creates one kernel checkpoint per state and note, because
@@ -245,11 +206,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   download its package. A limit has to be long enough for that and short enough to be useful, and
   what a person sees while waiting is part of the same decision. Each server is named on stderr
   before it starts, and `--deadline` limits a headless run; a session with a screen just waits.
-
-- **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused with a suggestion to
-  write `b.txt*`, because a domain, a tool id and a file name are all bare words. Treating a bare
-  word that isn't a domain as a path rule would turn a typo like `--deny contextt` into a rule about
-  a file that silently matches nothing, so this waits for a syntax that's unambiguous.
 
 - **`--allow .env` doesn't stop the question about `.env`.** The default rule `.env*` asks, every
   path rule that matches a call is consulted, and the strictest answer wins, so an allow for the
@@ -276,23 +232,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   might be allowed, even though the rule will keep refusing for the rest of the session. Saying
   which rule applied means letting a policy name it in `PermissionPolicy::why`, a change to
   `nachalnik`.
-
-- **Compressed responses are refused, not decompressed.** An endpoint that compresses its response
-  without being asked to gets an error naming the encoding. Supporting it means reqwest's `gzip`
-  feature, one more dependency in a crate that keeps them to a minimum.
-
-- **A `y` typed into `--connect` before its question arrives.** At a terminal it's sent to the model
-  as a message, and the question waits for the next one. Piped input doesn't have this problem,
-  because a piped client only reads its next line once the turn is over or a question is open.
-  The fix would be holding a lone letter typed at a terminal until a question arrives and dropping
-  it if none does, but then `y` means different things depending on when it was typed.
-
-- **A record that proves it hasn't been edited.** Each record could include a hash of the previous
-  one, so `--check` could confirm a log is unedited from start to finish. That proves "unedited",
-  not "authentic": whoever edits a record can recompute all the hashes after it, and this workspace
-  has no signing key. It would be cheap to add on top of `FORMAT` and `Record::format`, since the
-  field would be additive; it waits because it's worth less than what `--check` already does: work
-  for readers other than this program, and records that say what went wrong.
 
 - **A confined command isn't told its `$TMPDIR` is writable.** Every command is handed a scratch
   directory of its own as `TMPDIR`, writable even where the working directory is read-only, as
@@ -345,13 +284,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   with its parts kept for a person, or not counting a part the endpoint never answered, would
   settle it; which one is the choice.
 
-- **`run.py` lets running sweeps spend turns on an endpoint that refuses everything.** Its pause
-  holds only new starts, and each running sweep's `drive.py` goes on retrying, with its waits
-  growing, until it closes the part. Freezing the running sessions (`SIGSTOP`) and probing until
-  the endpoint answers would spend nothing, but what a frozen request's connection does after
-  `SIGCONT` is untested. It matters less now that failed turns are retried in place; unblocked by
-  deciding it is worth the code.
-
 - **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
   `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
   dossiers, the templates and the fork's preamble but not that sentence. Changing it would change
@@ -359,12 +291,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Hashing it moves every digest at once, so runs made before could no longer be compared with runs
   after though nothing they were asked changed; it waits for the next change that bumps
   `script::VERSION` anyway.
-
-- **A session's root directories are resolved on every check.** `Reach` resolves the working
-  directory and every `--sandbox-allow` and `--sandbox-read` root each time it checks a path, which
-  a `grep` over a large tree pays for every file and symlink. Resolving them once at startup would
-  mean a root that appears, moves or is relinked during the session is judged by its old location;
-  that changes the boundary, so it isn't just an optimisation.
 
 - **The first undo in a fresh session removes its setup.** `--system` and `-f` add items to the
   context like anything else, so each is an undo step: `/undo` in a session nobody has typed in yet
