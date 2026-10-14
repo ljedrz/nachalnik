@@ -25,6 +25,12 @@ minor bump may break you.
   it. Measured with its text, a screenshot is over any limit text is held to, and the model was
   shown a sentence naming it instead. `None`, the default, measures it with the rest as before.
 
+### deprecated
+
+- **`Removed` is `ReportItem`.** Every item a `CompactionReport` names has this type - the elided
+  ones, the ones the kernel refused and the summary as well as the removed ones - so its name said
+  the opposite of three of the four fields it is in. `Removed` is kept as a deprecated alias.
+
 ### fixed
 
 - **A tool that panics saying what a call needs, or how much of it to keep, fails that call.**

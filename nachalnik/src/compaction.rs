@@ -120,7 +120,7 @@ pub struct CompactionPlan {
 /// told the result. The plan stays open for exactly that reason.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct Removed {
+pub struct ReportItem {
     /// The item's identifier; one taken out can be brought back with [`Kernel::set_state`].
     pub id: ContextId,
     /// The item's label.
@@ -128,6 +128,10 @@ pub struct Removed {
     /// What it was costing.
     pub tokens: usize,
 }
+
+/// The old name of [`ReportItem`], from when the only items a report named were removed ones.
+#[deprecated(note = "renamed to `ReportItem`")]
+pub type Removed = ReportItem;
 
 /// Exactly what a compaction pass did.
 ///
@@ -138,15 +142,15 @@ pub struct Removed {
 #[non_exhaustive]
 pub struct CompactionReport {
     /// The items that were excluded.
-    pub removed: Vec<Removed>,
+    pub removed: Vec<ReportItem>,
     /// The items that were reduced to a marker, with what they were costing before.
-    pub elided: Vec<Removed>,
+    pub elided: Vec<ReportItem>,
     /// The items the kernel refused to remove because they are pinned, or are the call or the
     /// result a pinned item is paired with - once for each of the two lists that named one,
     /// however often that list named it.
-    pub refused: Vec<Removed>,
+    pub refused: Vec<ReportItem>,
     /// The summary item that was added, if any.
-    pub summary: Option<Removed>,
+    pub summary: Option<ReportItem>,
     /// Why the pass happened.
     pub reason: String,
     /// The projected token total before: what a request made just before the pass would have cost.

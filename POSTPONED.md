@@ -62,12 +62,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   message type must declare the version it was added in. Meanwhile, `Message::Unknown` lets clients
   survive messages they don't know, and `Attached::version` tells them what the server speaks.
 
-- **`compaction::Removed` is the type of every item a compaction report names.** The elided items,
-  the ones the kernel refused to touch and the summary that was added are each a `Removed`, so a
-  report's type says the opposite of three of its four fields, against the rule of one word per
-  mechanism. Its doc says what it is. Renaming it is a breaking change to `nachalnik`, so it waits
-  for the next release that breaks anything; a type alias for the old name would ease it.
-
 - **The model's `undo` in the person's undo history.** When the `context` tool undoes a change that
   moved items into several states, it creates one kernel checkpoint per state and note, because
   `set_state` moves items into one state at a time and the kernel has no operation that moves them
