@@ -533,11 +533,6 @@ fn described(error: &(dyn std::error::Error + 'static)) -> String {
     said
 }
 
-/// What a call whose tool panicked is told: that it crashed, and what the panic said.
-///
-/// note: "crashed" rather than "panicked", for the reason [`refusal`] is written in no codebase's
-/// idiom. A payload that is not a string - `panic_any` with anything else - has nothing to show,
-/// and is said to have said nothing rather than rendered as a type name.
 /// What a call past the ceiling is answered with.
 fn over_the_ceiling(asked: usize, ceiling: usize) -> String {
     format!(
@@ -568,6 +563,11 @@ fn panicked_needing(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
+/// What a call whose tool panicked is told: that it crashed, and what the panic said.
+///
+/// note: "crashed" rather than "panicked", for the reason [`refusal`] is written in no codebase's
+/// idiom. A payload that is not a string - `panic_any` with anything else - has nothing to show,
+/// and is said to have said nothing rather than rendered as a type name.
 fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
     let said = payload
         .downcast_ref::<&str>()
