@@ -276,6 +276,23 @@ impl Projector for LinearProjector {
 
         projection
     }
+
+    /// The type's path and the two switches a provider sets, as
+    /// `nachalnik::projection::LinearProjector (blocks, no reasoning)`.
+    ///
+    /// note: the switches because the type alone cannot tell a change apart from no change. Every
+    /// provider shipped with this crate installs one of these, and the kernel starts with the
+    /// default one - so a session announced `LinearProjector → LinearProjector` while the shape of
+    /// every assistant turn on the wire changed. The other fields stay out: nothing sets them, and
+    /// a name listing them all would be a debug print.
+    fn name(&self) -> &'static str {
+        match (self.send_blocks, self.send_reasoning) {
+            (false, true) => concat!(module_path!(), "::LinearProjector"),
+            (true, true) => concat!(module_path!(), "::LinearProjector (blocks)"),
+            (false, false) => concat!(module_path!(), "::LinearProjector (no reasoning)"),
+            (true, false) => concat!(module_path!(), "::LinearProjector (blocks, no reasoning)"),
+        }
+    }
 }
 
 impl LinearProjector {
