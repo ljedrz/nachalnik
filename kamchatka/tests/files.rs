@@ -176,9 +176,6 @@ async fn an_edit_that_matches_nothing_says_so() {
 }
 
 /// `write` puts the whole file there, and `read` reads it back.
-///
-/// note: a directory that is not there is not made on the way, and the answer is the operating
-/// system's own sentence about it. That is the honest half of writing a file nobody asked for.
 #[tokio::test]
 async fn what_write_put_there_is_what_read_hands_back() {
     let dir = scratch("files-round-trip");
@@ -195,24 +192,15 @@ async fn what_write_put_there_is_what_read_hands_back() {
     let read = ask(&dir, "read", json!({ "path": "new.md" })).await;
     assert_eq!(read, "one\ntwo\n");
 
-    let missing = ask(
+    // and in a directory that is not there yet, which is made for it
+    let said = ask(
         &dir,
         "write",
         json!({ "path": "notes/new.md", "content": "one\n" }),
     )
     .await;
-    // the name a component at a time, because the answer carries the path resolved, with the
-    // working directory in front of it
-    for part in ["notes", "new.md"] {
-        assert!(
-            missing.contains(part),
-            "it names the path it could not write: {missing}"
-        );
-    }
-    assert!(
-        !dir.join("notes").exists(),
-        "the directory above a file is not made for it"
-    );
+    assert!(said.contains("wrote 4 bytes"), "{said}");
+    assert_eq!(held(&dir, "notes/new.md"), "one\n");
 }
 
 /// A file with one byte in it that is not text is said to be one, where it is, and what else to
@@ -456,7 +444,10 @@ async fn a_directory_is_refused_by_what_it_is_being_asked_for() {
     // for `shell` to read
     let write = ask(&dir, "write", json!({ "path": "sub", "content": "x" })).await;
     assert!(write.contains("nothing was written"), "{write}");
-    assert!(write.contains("`fs` makes no directories"), "{write}");
+    assert!(
+        write.contains("`fs` writes files, not directories"),
+        "{write}"
+    );
     assert!(!write.contains("`shell` can read"), "{write}");
 }
 
@@ -1350,12 +1341,13 @@ async fn edits_of_one_file_at_once_all_land() {
     assert_eq!(held(&dir, "a.txt"), upper.join("\n") + "\n");
 }
 
-/// A write into a directory that is not there names the directory and how to make it.
+/// A write into a directory that is not there makes it, inside the reach and nowhere else.
 ///
-/// note: `fs` makes no directories, and the system's `No such file or directory` is about the
-/// file, which reads as though the file were the missing part.
+/// note: a session with `exec` denied could not lay out a new module at all, since only `shell`
+/// made directories. A directory made to hold a file the session may write is no more than the
+/// file, and a path out of the reach is still refused before anything is made.
 #[tokio::test]
-async fn a_write_into_a_missing_directory_names_it() {
+async fn a_write_into_a_missing_directory_makes_it() {
     let dir = scratch("files-write-unmade");
 
     let said = ask(
@@ -1364,13 +1356,22 @@ async fn a_write_into_a_missing_directory_names_it() {
         json!({ "path": "src/util/helpers.rs", "content": "x" }),
     )
     .await;
-    let missing = dir.canonicalize().expect("it is there").join("src");
-    assert!(
-        said.contains(&format!("the directory {} is not there", missing.display())),
-        "{said}"
+    assert!(said.contains("wrote 1 bytes"), "{said}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("src/util/helpers.rs")).expect("it was written"),
+        "x"
     );
-    assert!(said.contains("`mkdir -p "), "{said}");
-    assert!(!dir.join("src").exists());
+
+    // and out of the reach nothing is made on the way to being refused
+    let outside = scratch("files-write-unmade-outside");
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": outside.join("made/here.txt").to_string_lossy(), "content": "x" }),
+    )
+    .await;
+    assert!(said.contains("outside what this session reaches"), "{said}");
+    assert!(!outside.join("made").exists(), "{said}");
 }
 
 /// A write refused for anything other than the directory being missing says so, and is not told
@@ -1440,10 +1441,10 @@ async fn an_edit_of_a_missing_file_names_write() {
     assert!(!dir.join("missing.py").exists());
 }
 
-/// An edit of a file whose directory is not there either says so, since the `write` it names
-/// would be refused for it next.
+/// An edit of a file whose directory is not there either says that `write` makes both, and
+/// makes neither itself.
 #[tokio::test]
-async fn an_edit_of_a_file_in_a_missing_directory_names_the_directory() {
+async fn an_edit_of_a_file_in_a_missing_directory_names_write() {
     let dir = scratch("files-edit-missing-dir");
 
     let said = ask(
@@ -1452,15 +1453,10 @@ async fn an_edit_of_a_file_in_a_missing_directory_names_the_directory() {
         json!({ "path": "notes/todo.md", "old": "a", "new": "b" }),
     )
     .await;
-    assert!(said.contains("`write` makes a new one"), "{said}");
     assert!(
-        said.contains(&format!(
-            "the directory {} is not there",
-            dir.join("notes").display()
-        )),
+        said.contains("`write` makes a new one, and the directories it goes in"),
         "{said}"
     );
-    assert!(said.contains("`fs` makes no directories"), "{said}");
     assert!(!dir.join("notes").exists());
 }
 
@@ -1533,52 +1529,6 @@ async fn a_path_ending_in_a_separator_with_no_shell_offers_no_mkdir() {
     assert!(said.contains("is not available in this session"), "{said}");
 }
 
-/// And the other half of that answer, where `shell` is refused, reads as one sentence.
-///
-/// note: this arm was reflowed to the source column and the inter-word spaces came with it, so
-/// the model - which reads this one line and has to choose what to do next - was told to `write`
-/// followed by 27 spaces and then `it`. `cargo fmt` cannot see inside a string literal, so nothing
-/// but a test catches it, and this is the only message in the two tools that carries one.
-#[tokio::test]
-async fn a_write_into_a_missing_directory_with_no_shell_is_one_sentence() {
-    use kamchatka::tools::{Careful, Subject};
-    use nachalnik::{Capability, Verdict};
-
-    let dir = scratch("files-write-unmade-refused");
-    let policy = std::sync::Arc::new(Careful::new());
-    policy.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
-
-    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
-    let fs = tools
-        .iter()
-        .find(|it| it.spec().id == "fs")
-        .expect("`fs` should be one of the built-in tools");
-    let said = fs
-        .invoke(
-            &call(
-                "c1",
-                "fs",
-                json!({ "action": "write", "path": "src/x.txt", "content": "x" }),
-            ),
-            OutputSink::disconnected(),
-        )
-        .await
-        .expect("the tool answers the call either way")
-        .content
-        .to_text()
-        .into_owned();
-
-    assert!(said.contains("is not available in this session"), "{said}");
-    assert!(
-        said.contains("so write it in a directory that is there"),
-        "{said}"
-    );
-    assert!(
-        !said.contains("  "),
-        "a message the model reads once carried a run of spaces: {said:?}"
-    );
-}
-
 /// `fs` sends the model to `shell`, or to an operation of its own, only where it could use it now:
 /// not with `shell` turned off, and not where nobody is there to answer the question a call to it
 /// would be.
@@ -1607,19 +1557,17 @@ async fn fs_sends_the_model_only_where_it_could_go() {
             .into_owned()
     };
     let edit = json!({ "action": "edit", "path": "notes/todo.md", "old": "a", "new": "b" });
+    let trail = json!({ "action": "write", "path": "trail/", "content": "x" });
     let text = json!({ "action": "read", "path": "latin.txt" });
 
-    let said = ask(edit.clone()).await;
+    let said = ask(trail.clone()).await;
     assert!(said.contains("mkdir"), "with `shell` on offer: {said}");
     let said = ask(text.clone()).await;
     assert!(said.contains("`shell` can read it as bytes"), "{said}");
 
     policy.withdraw("shell", true);
-    let said = ask(edit.clone()).await;
-    assert!(
-        !said.contains("mkdir") && !said.contains("Make it"),
-        "{said}"
-    );
+    let said = ask(trail).await;
+    assert!(!said.contains("mkdir"), "{said}");
     let said = ask(text.clone()).await;
     assert!(!said.contains("`shell`"), "{said}");
     assert!(said.contains("`grep` searches a file"), "{said}");

@@ -292,6 +292,47 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     assert_eq!(said, "mine");
 }
 
+/// A directory a write is to make is not made through a link swapped in after the path was
+/// checked.
+///
+/// note: the directories under a new file are made one name at a time from the one before, held
+/// open beneath where the path was allowed, so a link put in place of one of them is refused
+/// rather than followed out of the reach - the same race the test above is about, for the
+/// directories `write` makes rather than the file it opens.
+#[test]
+fn a_directory_turned_into_a_link_out_is_not_made_through() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let base = common::scratch("made-swapped")
+        .canonicalize()
+        .expect("it exists");
+    let (inside, outside) = (base.join("w"), base.join("elsewhere"));
+    std::fs::create_dir_all(&inside).expect("the working directory");
+    std::fs::create_dir_all(&outside).expect("a directory outside it");
+    let reach = Reach {
+        workdir: inside.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+
+    let written = reach
+        .allows("d/new/notes.txt", Access::Writing)
+        .expect("it is inside");
+    std::os::unix::fs::symlink(&outside, inside.join("d")).expect("a link out where `d` goes");
+
+    let refused = reach
+        .make_parents(&written)
+        .expect_err("the path leads out now");
+    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(!outside.join("new").exists(), "nothing was made out there");
+
+    // and with nothing in the way, every directory is made
+    std::fs::remove_file(inside.join("d")).expect("the link");
+    reach.make_parents(&written).expect("they are made");
+    assert!(inside.join("d/new").is_dir());
+}
+
 /// A refusal names everywhere the session reaches, not only the directory it started in.
 ///
 /// note: it used to say "outside {workdir}, which is as far as this session reaches", which was

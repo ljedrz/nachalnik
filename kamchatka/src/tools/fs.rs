@@ -106,7 +106,11 @@ fn ops() -> Vec<Op> {
             "write",
             "writes a whole file, replacing whatever was there",
             vec![
-                Arg::text("path", "the file to write").needed(),
+                Arg::text(
+                    "path",
+                    "the file to write, made with any directory it needs",
+                )
+                .needed(),
                 Arg::text("content", "the whole new file").needed(),
             ],
         ),

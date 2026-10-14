@@ -194,11 +194,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   what a person sees while waiting is part of the same decision. Each server is named on stderr
   before it starts, and `--deadline` limits a headless run; a session with a screen just waits.
 
-- **`fs write` doesn't create directories.** Writing into a directory that doesn't exist is refused
-  with the directory's name, and a model without `exec` can't create it. Creating missing parent
-  directories inside the allowed paths would change what `fs:write` allows, so it's a question for
-  the permission rules, not the tool.
-
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning only appears there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it.
   Nothing tested so far needed it; a model that does, with a live test showing the difference,

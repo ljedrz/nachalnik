@@ -39,9 +39,10 @@ What changes to this workspace must keep true about what is and isn't enforced.
   The `fs` tool runs in-process, so it enforces the same boundary in its own code, which is a
   weaker guarantee: it resolves the path (following symlinks), checks it, and then opens it with
   `openat2` and `RESOLVE_BENEATH` relative to the allowed directory, so if a path component is
-  replaced by a symlink in between, the kernel refuses it. On kernels older than 5.6 it is an
-  ordinary open, and such a swap isn't caught. A directory swapped during a directory walk is only
-  caught for the files opened inside it.
+  replaced by a symlink in between, the kernel refuses it. The directories a `write` makes for a
+  new file are made the same way, one at a time from the one before, refusing a symlink. On
+  kernels older than 5.6 it is an ordinary open, and such a swap isn't caught. A directory swapped
+  during a directory walk is only caught for the files opened inside it.
 - **Network access is asked about when a command tries to use it, not based on the command's
   name.** The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
   `socket()` call for `AF_INET` or `AF_INET6` (the first step of any network use, DNS lookups
