@@ -137,12 +137,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Raising the client's timeout with the patience, or saying how the two combine, is part of the
   change. Unblocked by choosing the names and that rule.
 
-- **Two assertions in `kamchatka/tests/introspect/fork.rs` cannot fail.** They check that a reply
-  does not say "Nothing of yours was taken away", a sentence the code no longer writes, so they hold
-  whatever `fork` says. Pointed at the sameness claim instead they contradict
-  `two_forks_with_nothing_writing_between_them_still_say_they_are_the_same_context`, which pins
-  that claim on purpose. Unblocked by saying what they should guard, or removing them.
-
 - **`/restart` starts the `--spend` count again.** `--spend` stops "the session" once that much
   has been charged for it, and `/restart` starts a fresh session in the same process, so the total
   goes back to nothing and a run already at its ceiling can spend it again; `/spend` meanwhile says

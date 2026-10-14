@@ -304,11 +304,6 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
         pretended.contains("Nothing you named with `without` was taken away"),
         "{pretended}"
     );
-    assert!(
-        !pretended.contains("Nothing of yours was taken away"),
-        "that sentence has to be the one about what was named, or a sibling's result kept out of \
-         the copy reads as nothing withheld: {pretended}"
-    );
     // and the count is the caller's items, not the two this tool adds: the copy's own system
     // instruction and the question put to it
     assert!(
@@ -370,11 +365,6 @@ async fn a_fork_beside_another_call_says_what_that_call_kept_out_of_the_copy() {
     assert!(
         said.contains("other call in this turn was answered after you asked"),
         "the copy is one result short of the caller's context, and nothing in the answer said so: \
-         {said}"
-    );
-    assert!(
-        !said.contains("Nothing of yours was taken away"),
-        "and the sentence that says nothing was withheld has to be the one about what was named: \
          {said}"
     );
     assert!(
