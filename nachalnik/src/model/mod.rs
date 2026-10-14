@@ -422,7 +422,7 @@ pub struct Overrun {
     ///
     /// note: [`ModelInfo::context_limit`] rather than a number out of the refusal, which is a
     /// sentence and names more numbers than it looks like it does. The difference between the two
-    /// is what somebody is told to prune, so it is worth taking from the side that measured it.
+    /// is what somebody is told to free, so it is worth taking from the side that measured it.
     pub limit: Option<u64>,
 }
 
@@ -473,7 +473,7 @@ pub struct ModelResponse {
     /// The model's reasoning output, where the provider exposes it.
     ///
     /// note: The kernel records this on the assistant turn it belongs to, so it is as visible,
-    /// countable and prunable as everything else - and so that a provider whose API requires
+    /// countable and excludable as everything else - and so that a provider whose API requires
     /// reasoning to be echoed back verbatim can get it back out of [`Message::reasoning`]. It is
     /// never separated from the turn that produced it, because for a signed or encrypted
     /// reasoning block that would be worse than dropping it.
@@ -880,7 +880,8 @@ mod tests {
         assert!(
             Arc::ptr_eq(a, b),
             "a context item is cloned on every state change and again into every request; \
-             copying a megabyte each time would make pruning cost more the more there was to prune"
+             copying a megabyte each time would make excluding cost more the more there was to \
+             exclude"
         );
 
         // and content made from a string that is already shared is that string

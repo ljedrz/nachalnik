@@ -44,8 +44,8 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   kernel polls the tool, handled the same way, and reported as `tool.panicked`.
 - **Nothing in a model's output reaches the permission policy** except the tool name and the
   arguments, both as data. A model claiming it already has permission changes nothing.
-- **`Content` is shared, not copied.** Every variant is behind an `Arc`, so pruning a four-megabyte
-  tool result only moves a pointer. Don't add code paths that clone the bytes.
+- **`Content` is shared, not copied.** Every variant is behind an `Arc`, so excluding a
+  four-megabyte tool result only moves a pointer. Don't add code paths that clone the bytes.
 - **The token counter openly says it's an estimate.** No tokenizer goes into this crate, since
   that would assume a particular model. `Calibrating` adjusts its estimates based on what providers
   actually charge, from then on, and never silently rewrites figures already recorded

@@ -258,7 +258,7 @@ Anthropic's Messages API (OpenRouter supports it too, at `/api/v1/messages`), an
 uses OpenAI's Responses API, at the same address and with the same key as chat completions. All
 three return a turn's parts in the order they were produced (thinking, a sentence, a tool call),
 whereas chat completions squashes a turn into a string next to a list of calls. Here the order is
-kept, and the parts are counted, pruned and elided like any other content; the context tab and the
+kept, and the parts are counted, excluded and elided like any other content; the context tab and the
 `context` tool show them in order, and each part is sent back with the signature or encrypted
 reasoning it came with, without which the next request is rejected. Under `--responses`,
 instructions added mid-session stay where they were added, so the cached start of the prompt
@@ -403,7 +403,7 @@ endpoint advertised, which can be lower than its real context window.
 With no keys in a pipe, `--headless` prints the `/compact` list to stderr and goes ahead: a line the
 operator typed doesn't need confirming.
 
-`/compact` is also how to recover a session too big to send. The tool that prunes the context
+`/compact` is also how to recover a session too big to send. The tool that excludes and elides
 belongs to the *model* (`context`), and using it costs a request, which is exactly what's failing.
 
 In a pipe, once a turn has been refused for this and as long as the next request would be too,

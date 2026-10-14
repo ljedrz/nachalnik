@@ -261,13 +261,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   wording: a client that fails to connect is a note at the terminal and an error when served.
   Sharing them is a refactor of both loops, worth doing together with the next change to either.
 
-- **"Prune" is still the documents' word for taking something out.** `prune` is gone as a command
-  and as an action of `context`, in favour of exclude and elide, but CONCEPTS.md, the root README,
-  `kamchatka`'s README and RUNNING.md, `nachalnik-providers`' README and INVARIANTS.md still use it
-  for excluding or eliding in general. Each reads as ordinary English where it stands; replacing
-  them is a pass over the prose, and waits on whether the one-word rule covers a document's general
-  verbs as well as the program's own.
-
 - **A sweep resumed eight times is run again from nothing.** `run.py` resumes an incomplete sweep
   from its snapshot up to eight parts, and a resume the endpoint never answered is a part like any
   other. Once there are eight, `resumable` gives up and the sweep is set aside and run again from

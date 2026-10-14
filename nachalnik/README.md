@@ -45,7 +45,7 @@ them have run:
 
 ```rust
 match kernel.step().await? {
-    State::Ready { calls } => { /* look at them, prune, or cancel_pending_calls */ }
+    State::Ready { calls } => { /* look at them, exclude, or cancel_pending_calls */ }
     State::Deciding { .. } => { /* ask a person, then kernel.decide(..) */ }
     _ => {}
 }
@@ -254,7 +254,7 @@ Both are off by default, because neither is part of the runtime:
 Three offline, and API-key-free:
 
 * **[transparency][ex-transparency]** — the whole philosophy in one run: what will be sent, a
-  permission prompt, a tool that floods the context, and pruning it away. It also contains the
+  permission prompt, a tool that floods the context, and excluding it. It also contains the
   permission policy and the `/context` renderer the library deliberately does not:
   `cargo run --example transparency --features selectors`
 * **[compaction][ex-compaction]** — a compactor that summarizes what it drops, and the user

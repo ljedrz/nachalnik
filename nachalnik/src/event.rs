@@ -269,7 +269,7 @@ pub enum Event {
         skipped: Vec<Skipped>,
         /// What the projector had to take out to keep the request valid.
         ///
-        /// note: Dropping a tool call whose result has been pruned is the kernel changing what
+        /// note: Dropping a tool call whose result has been excluded is the kernel changing what
         /// the model is told. It is the right thing to do and it is still an alteration, so it
         /// goes on the record rather than only into a [`Projection`](crate::Projection) that
         /// nobody kept.
@@ -668,7 +668,7 @@ impl DeltaSink {
     /// the future - so it offers the fact and the provider decides. A streaming provider that
     /// checks this between fragments can return the text it has, with whatever
     /// [`StopReason`](crate::StopReason) it thinks fits, and the kernel records that turn like
-    /// any other: partial, but real, and in the context where it can be seen and pruned.
+    /// any other: partial, but real, and in the context where it can be seen and excluded.
     ///
     /// note: A provider that ignores it is not broken, only slower to stop - the interrupt is
     /// still honoured before the next request. Dropping the future driving

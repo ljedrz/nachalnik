@@ -25,7 +25,7 @@
 //!
 //! **A signed thinking block is bound to the conversation before it** on Claude Fable 5.1, Opus
 //! 5.5 and Sonnet 5.5. Its signature records the instructions, the tools and every message ahead of
-//! it, and once any of those is edited - an item pruned, rewritten or elided, the instructions
+//! it, and once any of those is edited - an item excluded, rewritten or elided, the instructions
 //! changed, a tool added - every later thinking block is invalid. Accounts created on or after
 //! 2026-08-31 are refused for sending one, with a 400 that says the block "is bound to a different
 //! conversation"; older ones are not, for now. Editing earlier turns is what a session here does
@@ -546,7 +546,7 @@ fn is_empty(value: &Value) -> bool {
 /// the top-level `cache_control`, which follows the end of the conversation as it grows, and one on
 /// the end of the instructions - or of the tools, where there are none - which holds when the
 /// conversation is edited further back. Here it is edited further back as a matter of course: an
-/// item pruned, rewritten or elided changes the prefix from that point on, and without the second
+/// item excluded, rewritten or elided changes the prefix from that point on, and without the second
 /// breakpoint everything before it would be written again too.
 ///
 /// note: `cache_control` in the parameters replaces the default for both, so a `ttl` given there
@@ -1060,7 +1060,7 @@ impl Dialect for Anthropic {
     /// signature, so `render` leaves it out, and the budget still counts it: the projector has a
     /// switch for all reasoning and none for unsigned reasoning. Turning it off would drop the
     /// signed blocks too, which is the one thing this dialect cannot afford, so the cost is an
-    /// estimate that is high by that thinking until it is pruned or the session moves on.
+    /// estimate that is high by that thinking until it is excluded or the session moves on.
     fn projection(&self) -> LinearProjector {
         LinearProjector {
             send_blocks: true,

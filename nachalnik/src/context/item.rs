@@ -35,8 +35,8 @@ impl fmt::Display for ContextId {
 ///
 /// note: This is the one taxonomy the kernel actually uses: the variants carrying data carry
 /// exactly what is needed to rebuild a wire message from the item alone - an assistant turn's
-/// tool calls, and a tool result's call identity. Without them, a pruned context could not be
-/// projected back into a valid request.
+/// tool calls, and a tool result's call identity. Without them, a context with items
+/// excluded could not be projected back into a valid request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -52,8 +52,8 @@ pub enum ContextKind {
         /// The model's own reasoning, where the provider exposed it.
         ///
         /// note: This lives on the turn rather than in an item of its own, because some APIs
-        /// require it to be echoed back attached to exactly the turn it came from. Pruning the
-        /// turn prunes the reasoning with it, which is the only correct answer for a signed
+        /// require it to be echoed back attached to exactly the turn it came from. Excluding the
+        /// turn excludes the reasoning with it, which is the only correct answer for a signed
         /// block.
         #[serde(default)]
         reasoning: Option<Content>,

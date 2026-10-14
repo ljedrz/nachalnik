@@ -184,7 +184,7 @@ pub fn out_of_quota(error: &str) -> bool {
 /// token count a complaint of this kind can name. The limit is *not* taken from the prose. In
 /// `you requested about 92674 tokens (92174 of text input, 500 in the output)`, against a model
 /// that takes 65536, the second-largest number is neither of the two, and the difference is what
-/// somebody would be told to prune.
+/// somebody would be told to free.
 ///
 /// note: `limit` is what makes the reading safe: a refusal for length names a request larger than
 /// the model takes, and nothing else in the sentence is larger than the limit. Without one, a
@@ -197,7 +197,7 @@ pub fn out_of_quota(error: &str) -> bool {
 /// native one, and both refusals arrive from the same address for the same model id. The
 /// aggregator's names the limit the session measures against and a request close to the
 /// session's own count, which is a correction worth having. The upstream's names neither, because
-/// it is another tokenizer's count of the same bytes. Reading it would tell somebody to prune
+/// it is another tokenizer's count of the same bytes. Reading it would tell somebody to free
 /// tokens that were never there, and would teach the counter a scale this session is not held
 /// to. An unread refusal is still the server's own sentence, which names the problem in words.
 pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
