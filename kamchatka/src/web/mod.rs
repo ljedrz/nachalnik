@@ -382,7 +382,9 @@ async fn serve(
             .is_some_and(|given| given.len() == key.len());
         if guessed && guesses.lock().unwrap_or_else(|e| e.into_inner()).wrong(now) {
             said(format!(
-                "{GUESSES} wrong keys have been tried at the page, so it refuses everything for                  the next {} seconds. If they were not yours, something on the network is                  guessing at it",
+                "{GUESSES} wrong keys have been tried at the page, so it refuses everything for \
+                 the next {} seconds. If they were not yours, something on the network is \
+                 guessing at it",
                 PAUSE.as_secs()
             ));
         }
