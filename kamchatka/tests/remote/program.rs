@@ -228,13 +228,18 @@ fn a_session_on_the_web_writes_every_session_out() {
 
     // the page's address is the second line it prints, and everything after that is the ending
     let mut out = std::io::BufReader::new(child.stdout.take().expect("stdout is a pipe")).lines();
-    let page = loop {
+    let (page, key) = loop {
         let line = out
             .next()
             .expect("the program stopped before saying where the page is")
             .expect("stdout is readable");
         if let Some((_, at)) = line.split_once(" at http://") {
-            break at.trim_end_matches('/').to_owned();
+            // the host and port, and the key every route is beneath
+            let (page, key) = at
+                .trim_end_matches('/')
+                .split_once('/')
+                .expect("the address carries the page's key");
+            break (page.to_owned(), key.to_owned());
         }
     };
 
@@ -244,7 +249,7 @@ fn a_session_on_the_web_writes_every_session_out() {
         stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
         write!(
             stream,
-            "GET /events?tab={name} HTTP/1.1\r\nHost: {page}\r\n\r\n"
+            "GET /{key}/events?tab={name} HTTP/1.1\r\nHost: {page}\r\n\r\n"
         )
         .expect("the request goes out");
         let mut seen = Vec::new();
@@ -269,7 +274,7 @@ fn a_session_on_the_web_writes_every_session_out() {
             stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
             write!(
                 stream,
-                "POST /do?tab={name} HTTP/1.1\r\nHost: {page}\r\nContent-Type: application/json\r\n\
+                "POST /{key}/do?tab={name} HTTP/1.1\r\nHost: {page}\r\nContent-Type: application/json\r\n\
                  Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             )
@@ -291,7 +296,7 @@ fn a_session_on_the_web_writes_every_session_out() {
     // the page refuses to be framed, since a framed copy opens a stream of its own
     let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
     stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
-    write!(stream, "GET / HTTP/1.1\r\nHost: {page}\r\n\r\n").expect("the request goes out");
+    write!(stream, "GET /{key}/ HTTP/1.1\r\nHost: {page}\r\n\r\n").expect("the request goes out");
     let mut served = String::new();
     let _ = stream.read_to_string(&mut served);
     let head = served.split("\r\n\r\n").next().unwrap_or_default();
@@ -320,35 +325,48 @@ fn a_session_on_the_web_writes_every_session_out() {
         let _ = stream.read_to_string(&mut answer);
         answer
     };
-    let post_first = "POST /do?tab=first";
+    let post_first = format!("POST /{key}/do?tab=first");
+    let events = format!("GET /{key}/events?tab=elsewhere");
     for (line, extra, host) in [
         (
-            post_first,
+            post_first.clone(),
             "Content-Type: application/json\r\nOrigin: http://elsewhere.example\r\n",
             page.as_str(),
         ),
-        (post_first, "Content-Type: text/plain\r\n", page.as_str()),
         (
-            post_first,
+            post_first.clone(),
+            "Content-Type: text/plain\r\n",
+            page.as_str(),
+        ),
+        (
+            post_first.clone(),
             "Content-Type: application/json\r\n",
             "elsewhere.example",
         ),
         // a frame or an image somewhere else, which carries no `Origin`, taking the session
         // from the tab that has it
         (
-            "GET /events?tab=elsewhere",
+            events.clone(),
             "Sec-Fetch-Site: cross-site\r\n",
             page.as_str(),
         ),
         // and from a page on this machine on another port - a server a command started - which
         // the browser calls the same site and not the same origin
         (
-            "GET /events?tab=elsewhere",
+            events.clone(),
             "Sec-Fetch-Site: same-site\r\n",
             page.as_str(),
         ),
+        // and from a browser that says where a request came from neither way, which only the
+        // key keeps out: a request without it, and one with a key it guessed
+        ("GET /events?tab=elsewhere".to_owned(), "", page.as_str()),
+        (
+            format!("GET /{}/events?tab=elsewhere", "0".repeat(key.len())),
+            "",
+            page.as_str(),
+        ),
     ] {
-        let answer = foreign(line, extra, host);
+        let answer = foreign(&line, extra, host);
         assert!(
             answer.starts_with("HTTP/1.1 403"),
             "a request from somewhere else was taken: {line} {extra}{host}\n{answer}"
@@ -478,13 +496,18 @@ fn the_web_page_relays_to_a_session_on_a_socket_file() {
         .spawn()
         .expect("the program did not start");
     let mut out = std::io::BufReader::new(child.stdout.take().expect("stdout is a pipe")).lines();
-    let page = loop {
+    let (page, key) = loop {
         let line = out
             .next()
             .expect("the program stopped before saying where the page is")
             .expect("stdout is readable");
         if let Some((_, at)) = line.split_once(" at http://") {
-            break at.trim_end_matches('/').to_owned();
+            // the host and port, and the key every route is beneath
+            let (page, key) = at
+                .trim_end_matches('/')
+                .split_once('/')
+                .expect("the address carries the page's key");
+            break (page.to_owned(), key.to_owned());
         }
     };
 
@@ -493,7 +516,7 @@ fn the_web_page_relays_to_a_session_on_a_socket_file() {
     stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
     write!(
         stream,
-        "GET /events?tab=one HTTP/1.1\r\nHost: {page}\r\n\r\n"
+        "GET /{key}/events?tab=one HTTP/1.1\r\nHost: {page}\r\n\r\n"
     )
     .expect("the request goes out");
     let mut seen = Vec::new();
