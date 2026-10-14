@@ -234,14 +234,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   `rmcp`; a time limit on calls is the alternative, and the same decision as the startup time limit
   above.
 
-- **An attachment named as an image is sent as one, whatever it contains.** `attach.rs` picks the
-  media type from the file extension alone, so a `.png` containing text is sent as `image/png`; the
-  endpoint then rejects the request (a 502, or `Invalid image data-url`) and every later one while
-  the item is in the context, with an error that doesn't say which item. An empty file is reported
-  when it's attached, with the `/exclude` to remove it; a non-empty file of the wrong type isn't,
-  since only its contents would show it. Checking an image's first bytes against its type would
-  prevent this, but would also reject files that can be attached today, which is why it waits.
-
 - **The Anthropic client and signed thinking after an edited history.** Described in the
   `nachalnik_providers::anthropic` docs, with the models it affects, and handled by neither the
   code nor the tests: some models reject a signed thinking block sent back after anything before

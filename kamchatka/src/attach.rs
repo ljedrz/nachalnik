@@ -171,16 +171,95 @@ pub fn describe(item: &ContextItem) -> Option<String> {
 /// while it is in. The refusal comes back as the endpoint's own sentence, `Invalid image data-url`
 /// or a bare 502, and names no item, so the consequence and the way out are said here, where the
 /// item went in.
+///
+/// note: a picture that does not start the way its type does is said for the same reason: the
+/// endpoint refuses what it cannot read, every request after it as well, and names no item. It is
+/// said rather than refused, because the type is the person's claim and INVARIANTS.md keeps it
+/// theirs; what is checked is the claim, against the few bytes each type this program names begins
+/// with, and nothing is chosen in its place.
 pub fn caution(item: &ContextItem) -> Option<String> {
-    let empty = item
-        .content
-        .blobs()
-        .into_iter()
-        .find(|blob| blob.byte_len() == 0)?;
+    let blobs = item.content.blobs();
+    if let Some(empty) = blobs.iter().find(|blob| blob.byte_len() == 0) {
+        return Some(format!(
+            "{} is empty, and goes out as {} with nothing in it. Endpoints refuse that, so every \
+             request is refused while it is in the context: `/exclude {}` takes it out",
+            item.label, empty.media_type, item.id
+        ));
+    }
+    let unlike = blobs
+        .iter()
+        .find(|blob| starts_as(&blob.media_type, &blob.data) == Some(false))?;
 
     Some(format!(
-        "{} is empty, and goes out as {} with nothing in it. Endpoints refuse that, so every \
-         request is refused while it is in the context: `/exclude {}` takes it out",
-        item.label, empty.media_type, item.id
+        "{} goes out as {} and does not start as one. An endpoint refuses a picture it cannot \
+         read, so if it is not one, every request is refused while it is in the context: \
+         `/exclude {}` takes it out",
+        item.label, unlike.media_type, item.id
     ))
+}
+
+/// Whether a picture's bytes, as the base64 they are held in, start the way its type's do; `None`
+/// for a type this does not know the start of.
+///
+/// note: read off the base64 rather than decoded, since a signature of a few bytes is a few fixed
+/// characters there. A WebP file is `RIFF`, four bytes of size and then `WEBP`, so the characters
+/// the size lands in are passed over.
+fn starts_as(media_type: &str, data: &str) -> Option<bool> {
+    let at = |range: std::ops::Range<usize>, said: &str| data.get(range) == Some(said);
+    Some(match media_type {
+        "image/png" => at(0..11, "iVBORw0KGgo"),
+        "image/jpeg" => at(0..4, "/9j/"),
+        "image/gif" => at(0..6, "R0lGOD"),
+        "image/webp" => at(0..4, "UklG") && at(11..16, "XRUJQ"),
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use nachalnik::{Content, ContextItem};
+
+    use super::caution;
+
+    /// A picture whose bytes do not start the way its type's do is said with the `/exclude` that
+    /// takes it out, and one that does is said nothing about.
+    ///
+    /// note: the endpoint refuses a picture it cannot read, and every request after it while it is
+    /// in, with a sentence that names no item. Each start below is the real format's, a WebP's
+    /// with a size between `RIFF` and `WEBP` that differs from file to file.
+    #[test]
+    fn a_picture_that_does_not_start_as_one_is_said() {
+        let item = |media_type: &str, bytes: &[u8]| {
+            ContextItem::file(
+                "shot",
+                Content::blob(media_type.to_owned(), STANDARD.encode(bytes)),
+            )
+        };
+
+        for (media_type, start) in [
+            ("image/png", &b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"[..]),
+            ("image/jpeg", &b"\xff\xd8\xff\xe0\0\x10JFIF"[..]),
+            ("image/gif", &b"GIF89a\x01\0\x01\0"[..]),
+            ("image/webp", &b"RIFF\x24\x01\0\0WEBPVP8 "[..]),
+            ("image/webp", &b"RIFF\xff\xff\xff\x7fWEBPVP8L"[..]),
+        ] {
+            assert_eq!(
+                caution(&item(media_type, start)),
+                None,
+                "{media_type} that is one"
+            );
+            let said = caution(&item(media_type, b"this is a text file, really"))
+                .unwrap_or_else(|| panic!("{media_type} that is text was said nothing about"));
+            assert!(
+                said.contains(&format!(
+                    "goes out as {media_type} and does not start as one"
+                )) && said.contains("`/exclude "),
+                "{said}"
+            );
+        }
+
+        // a type it knows no start of is the person's claim, and nothing is said
+        assert_eq!(caution(&item("application/pdf", b"not a pdf")), None);
+    }
 }

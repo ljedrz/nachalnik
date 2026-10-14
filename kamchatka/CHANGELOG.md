@@ -65,6 +65,11 @@ minor bump may break you.
 
 ### fixed
 
+- **An attachment named as a picture that does not start as one is said when it goes in.** A
+  `.png` holding text went out as `image/png`, and the endpoint refused that request and every one
+  after it with a sentence naming no item. A PNG, JPEG, GIF or WebP whose first bytes are not that
+  format's is now said when it is attached, with the `/exclude` that takes it out. It still goes in
+  as asked: the type is the person's claim.
 - **Another page in an old browser cannot take a `--web` session.** The page refused other pages
   by `Origin` and `Sec-Fetch-Site`, and a browser that sent neither let another site's image or
   no-cors fetch open its stream and take the session from the tab that had it. Every route is now
