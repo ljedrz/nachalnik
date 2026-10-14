@@ -513,6 +513,42 @@ async fn an_answered_question_does_not_refill_the_request_budget() {
     ));
 }
 
+/// The request budget can be changed while the session runs, and the change holds from the next
+/// request, without building the kernel again.
+#[tokio::test]
+async fn the_request_budget_can_be_changed_while_the_session_runs() {
+    let kernel = Kernel::new(Config {
+        max_requests_per_turn: Some(1),
+        ..Default::default()
+    });
+    kernel.set_policy(Arc::new(AllowAll));
+    let provider = Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "echo", json!({}))]),
+        ModelResponse::tool_calls(vec![call("c2", "echo", json!({}))]),
+        ModelResponse::text("done"),
+    ]));
+    kernel.set_provider(provider.clone());
+    kernel.add_tool(Arc::new(ConstTool::new("echo", "hi")));
+    kernel.push(ContextItem::user("go"));
+
+    assert_eq!(kernel.turn().await.unwrap(), State::Idle);
+    assert_eq!(provider.remaining(), 2);
+
+    // raised, the turn carried on has the room to finish
+    assert_eq!(kernel.set_max_requests_per_turn(Some(2)), Some(1));
+    assert_eq!(kernel.max_requests_per_turn(), Some(2));
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Finished { .. }
+    ));
+    assert_eq!(provider.remaining(), 0);
+
+    // and the configuration still says what the kernel was built with
+    assert_eq!(kernel.config().max_requests_per_turn, Some(1));
+    assert_eq!(kernel.set_max_requests_per_turn(None), Some(2));
+    assert_eq!(kernel.max_requests_per_turn(), None);
+}
+
 /// A `turn` that sent nothing counts nothing against the turn's budget.
 ///
 /// note: the count was stored as the turn's own before the step had claimed anything, so a

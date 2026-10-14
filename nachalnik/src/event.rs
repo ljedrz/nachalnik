@@ -81,7 +81,7 @@ pub enum Event {
     /// Somebody asked the loop to stop at the next opportunity.
     #[serde(rename = "turn.interrupted")]
     Interrupted,
-    /// [`Kernel::turn`] stopped at [`Config::max_requests_per_turn`] before the model ended its
+    /// [`Kernel::turn`] stopped at [`Kernel::max_requests_per_turn`] before the model ended its
     /// turn, and the next `turn` carries on from here.
     ///
     /// note: the machine rests in [`State::Idle`] either way, so without this
