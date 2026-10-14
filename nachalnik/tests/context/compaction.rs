@@ -215,7 +215,7 @@ fn a_plan_naming_an_item_twice_moves_it_once() {
         ..CompactionPlan::default()
     });
 
-    let ids = |list: &[nachalnik::Removed]| list.iter().map(|r| r.id).collect::<Vec<_>>();
+    let ids = |list: &[nachalnik::ReportItem]| list.iter().map(|r| r.id).collect::<Vec<_>>();
     assert_eq!(ids(&report.removed), vec![a]);
     assert_eq!(ids(&report.elided), vec![b], "removal wins over elision");
     assert_eq!(kernel.item(a).unwrap().state, ContextState::Excluded);

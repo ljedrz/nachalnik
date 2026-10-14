@@ -692,7 +692,7 @@ fn names(event: &Event, id: ContextId) -> bool {
             items.contains(&id) || skipped.iter().any(|left_out| left_out.id == id)
         }
         Event::Compacted { report } => {
-            let named = |moved: &[nachalnik::Removed]| moved.iter().any(|one| one.id == id);
+            let named = |moved: &[nachalnik::ReportItem]| moved.iter().any(|one| one.id == id);
             named(&report.removed)
                 || named(&report.elided)
                 || named(&report.refused)

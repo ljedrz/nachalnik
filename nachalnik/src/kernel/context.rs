@@ -6,7 +6,7 @@ use std::{collections::HashSet, sync::Arc};
 use serde_json::Value;
 
 use crate::{
-    compaction::{Budget, CompactionPlan, CompactionReport, Removed},
+    compaction::{Budget, CompactionPlan, CompactionReport, ReportItem},
     context::{Context, ContextId, ContextItem, ContextState},
     error::{Error, Result},
     event::Event,
@@ -505,7 +505,7 @@ impl Kernel {
                 let Some(item) = context.item(id) else {
                     continue;
                 };
-                let entry = Removed {
+                let entry = ReportItem {
                     id,
                     label: item.label.clone(),
                     tokens: item.tokens,
@@ -527,7 +527,7 @@ impl Kernel {
                 let Some(item) = context.item(id) else {
                     continue;
                 };
-                let entry = Removed {
+                let entry = ReportItem {
                     id,
                     label: item.label.clone(),
                     tokens: item.tokens,
@@ -597,7 +597,7 @@ impl Kernel {
                 let item = context.item(id).expect("the item was just added");
                 announcements.push(addition(item));
                 announcements.extend(arriving(item));
-                added = Some(Removed {
+                added = Some(ReportItem {
                     id,
                     label: item.label.clone(),
                     tokens: item.tokens,
