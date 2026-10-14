@@ -398,6 +398,9 @@ pub struct App {
     /// still the same tool: what it pinned is still pinned, and what it could still walk back it
     /// still can.
     pub introspect: Option<crate::introspect::Installed>,
+    /// The records of the session this one was resumed from, which [`App::recall`] reads and the
+    /// record this session writes begins with; see [`crate::wiring::Earlier`].
+    pub earlier: crate::wiring::Earlier,
     /// The tools this session is not offering, by id, kept so that they can be offered again.
     ///
     /// note: the tool itself rather than its id, which is what makes this work for a tool nobody
@@ -773,6 +776,7 @@ impl App {
             limits,
             versions: BTreeMap::new(),
             introspect: None,
+            earlier: crate::wiring::Earlier::default(),
             shelved: BTreeMap::new(),
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported

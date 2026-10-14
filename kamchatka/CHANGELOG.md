@@ -82,6 +82,13 @@ minor bump may break you.
 
 ### changed
 
+- **A resumed session's record is the whole session, and the `log` tool reads it as one log.** `-r`
+  reads the record beside the snapshot once, up to where the snapshot was taken, and the record
+  this session writes - as it goes and with `/save` - begins with it, so one hop back is always
+  enough however often a session was resumed. The `log` tool reads those records and this
+  session's own as one log, and says where a killed run's records past its snapshot are missing.
+  `--check` names those as missing before a resume. A record written by an earlier version begins
+  at its own resume, and so does what is carried from it.
 - **A drawn session and a served one say the same things the same way.** A client that fails to
   connect is a note in both, where it was an error when served, and events that went by too fast
   are said in one sentence pointing at the records, where the screen named `/save`.

@@ -3906,6 +3906,43 @@ fn a_resumed_record_checks_clean_and_a_miscounted_one_does_not() {
     );
 }
 
+/// A record carried across a resume - the session before it, then the resumed one - checks clean,
+/// and the records a run past its snapshot wrote are named as missing for that reason.
+#[test]
+fn a_record_carried_across_a_resume_checks_clean() {
+    use kamchatka::check::check;
+    use nachalnik::{Config, Kernel};
+
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("one"));
+    let as_lines = |kernel: &Kernel| -> String {
+        kernel
+            .history()
+            .iter()
+            .map(|record| serde_json::to_string(record).unwrap() + "\n")
+            .collect()
+    };
+
+    let resumed = Kernel::resume(Config::default(), first.snapshot());
+    resumed.push(ContextItem::user("two"));
+    let log = as_lines(&first) + &as_lines(&resumed);
+    let snapshot = serde_json::to_string(&resumed.snapshot()).unwrap();
+    let clean = check(Some(&log), Some(&snapshot));
+    assert!(clean.findings.is_empty(), "{:?}", clean.findings);
+
+    // what `-r` makes of a snapshot its log ran past: the resume numbers on from past the tail
+    let mut past = first.snapshot();
+    past.last_seq += 2;
+    let resumed = Kernel::resume(Config::default(), past);
+    let log = as_lines(&first) + &as_lines(&resumed);
+    let findings = check(Some(&log), None).findings;
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(
+        findings[0].contains("are missing") && findings[0].contains("before a resume"),
+        "{findings:?}"
+    );
+}
+
 /// A finding says which line of the log it is about, counting from one.
 ///
 /// note: written rather than run, because the claim is about how a reader numbers: a person

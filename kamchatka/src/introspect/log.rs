@@ -35,6 +35,7 @@ use crate::{
         ops::{Arg, Layout, Op, actions, inner, schema, unread},
         yes_or_no,
     },
+    wiring::Earlier,
 };
 
 use super::{Reach, if_reachable, unknown};
@@ -99,17 +100,20 @@ fn ops() -> Vec<Op> {
 pub struct Log {
     reach: Reach,
     limits: Limits,
+    /// The records of the session this one was resumed from, which come before the kernel's.
+    earlier: Earlier,
     ops: Vec<Op>,
     schema: Arc<Value>,
 }
 
 impl Log {
     /// Builds one; see [`super::install`], which is the only caller.
-    pub(super) fn new(reach: Reach, limits: Limits, layout: Layout) -> Self {
+    pub(super) fn new(reach: Reach, limits: Limits, earlier: Earlier, layout: Layout) -> Self {
         let ops = ops();
         Self {
             reach,
             limits,
+            earlier,
             schema: Arc::new(schema(&ops, layout)),
             ops,
         }
@@ -163,6 +167,11 @@ impl Tool for Log {
         // taken before the session lock rather than inside it: the closure below must not call
         // back into the kernel, and `counter()` is a call into the kernel
         let counter = kernel.counter();
+        // note: the records of the session this one was resumed from, and then the kernel's, read
+        // as one log. A resumed kernel numbers on from the last record its snapshot reflects, so
+        // the two meet at `session.resumed` with nothing missing between them, and everything
+        // below - the total, the kinds, `since`, the items with a beginning - is of the whole
+        let earlier = self.earlier.records();
 
         // note: the filtering and the rendering both happen in here, which reads like too much to
         // do under a lock and is the cheaper of the two shapes. `Kernel::history` would clone
@@ -176,7 +185,7 @@ impl Tool for Log {
             let mut added = BTreeSet::new();
             let mut hits = 0;
 
-            for record in session.records() {
+            for record in earlier.iter().chain(session.records()) {
                 *kinds.entry(record.event.name()).or_default() += 1;
                 if let Event::ContextAdded { id, .. } = &record.event {
                     added.insert(*id);
@@ -190,19 +199,23 @@ impl Tool for Log {
                 }
             }
 
+            let first = earlier.first().or_else(|| session.records().next());
+            let lost = earlier
+                .last()
+                .zip(session.records().next())
+                .map(|(before, after)| (before.seq + 1, after.seq.saturating_sub(1)))
+                .filter(|(from, to)| from <= to);
             Read {
-                total: session.len(),
+                total: earlier.len() + session.len(),
                 last_seq: session.last_seq(),
-                first_seq: session.records().next().map(|r| r.seq).unwrap_or_default(),
-                resumed: matches!(
-                    session.records().next().map(|r| &r.event),
-                    Some(Event::SessionResumed { .. })
-                ),
+                first_seq: first.map(|r| r.seq).unwrap_or_default(),
+                resumed: matches!(first.map(|r| &r.event), Some(Event::SessionResumed { .. })),
                 kinds,
                 every,
                 matched,
                 hits,
                 added,
+                lost,
             }
         });
 
@@ -259,6 +272,10 @@ struct Read {
     /// is usually really after. An item with no creation record here was in the context before
     /// this log began, and nothing else in an answer says so.
     added: BTreeSet<ContextId>,
+    /// The records between the last one read from before the resume and the first of this
+    /// session's own, where there are any: a run killed after its snapshot was taken numbered
+    /// them, and the session carried on from the snapshot without what they did.
+    lost: Option<(u64, u64)>,
 }
 
 impl Read {
@@ -589,12 +606,23 @@ impl Query {
 /// below the first record and an `ids` filter with no match are both the same question, so both
 /// are answered with this. An empty string is the answer for a log that starts at 1, where
 /// nothing is missing.
+///
+/// note: and the records missing from the middle, where a resume carried on from a snapshot the
+/// log beside it had run past. They are left out because what they did is not in this session -
+/// an item they added is not in its context - and they are said, because a log read as one
+/// whole would otherwise pass over them as if nothing had happened there.
 fn earlier(read: &Read) -> String {
-    if read.first_seq <= 1 {
-        return String::new();
-    }
-
-    match read.resumed {
+    let lost = read.lost.map(|(from, to)| {
+        let (which, them) = match from == to {
+            true => (format!("Record {from} is"), "it"),
+            false => (format!("Records {from} to {to} are"), "them"),
+        };
+        format!(
+            "{which} not here: a run that stopped after the snapshot this session was resumed \
+             from had been taken wrote {them}, and what {them} did is not in this session."
+        )
+    });
+    let begins = (read.first_seq > 1).then(|| match read.resumed {
         true => format!(
             "This log begins at record {}, because the session was resumed; records before it \
              belong to the session it was resumed from and this one cannot read them.",
@@ -604,7 +632,13 @@ fn earlier(read: &Read) -> String {
             "This log starts at record {}, so earlier ones were drained and may have said.",
             read.first_seq
         ),
-    }
+    });
+
+    [begins, lost]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A sentence on a line of its own, or nothing where there is no sentence.

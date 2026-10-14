@@ -1607,13 +1607,74 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
         "{:?}",
         second.used_calls
     );
-    let resumed = std::fs::read_to_string(dir.join("second.jsonl")).expect("saved");
-    let begun: nachalnik::Record =
-        serde_json::from_str(resumed.lines().next().expect("a record")).expect("a record");
+    // the second record begins with the first session's, up to its snapshot and not the tail the
+    // run past it wrote, and the resumed session numbers on from past that tail
+    let resumed: Vec<nachalnik::Record> = std::fs::read_to_string(dir.join("second.jsonl"))
+        .expect("saved")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a record"))
+        .collect();
+    assert_eq!(
+        resumed[0].seq, 1,
+        "the session before the resume is in its record"
+    );
+    assert!(
+        resumed
+            .iter()
+            .all(|record| !(seq + 1..=seq + 3).contains(&record.seq)),
+        "the lost turn's records were carried into a session that does not have what they did"
+    );
+    let begun = resumed
+        .iter()
+        .find(|record| matches!(record.event, nachalnik::Event::SessionResumed { .. }))
+        .expect("the resume is recorded");
     assert!(
         begun.seq > seq + 3,
-        "the resumed log begins at {}",
+        "the resumed session begins at {}",
         begun.seq
+    );
+}
+
+/// A session resumed twice saves one record of the whole of it, from its first record on.
+///
+/// note: each resumed run reads the record beside its snapshot and writes it ahead of its own, so
+/// the third file holds what the first two runs did and one hop back is always enough.
+#[test]
+fn a_session_resumed_twice_saves_the_whole_of_it() {
+    let dir = common::scratch("resumed-twice");
+    let (ok, said) = run_from(&dir, &[], "remember 4817\n/save first.json\n");
+    assert!(ok, "{said}");
+    let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
+    assert!(ok, "{said}");
+    let (ok, said) = run_from(&dir, &["-r", "second.json"], "/save third.json\n");
+    assert!(ok, "{said}");
+
+    let read = |name: &str| -> Vec<nachalnik::Record> {
+        std::fs::read_to_string(dir.join(name))
+            .expect("saved")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a record"))
+            .collect()
+    };
+    let (first, third) = (read("first.jsonl"), read("third.jsonl"));
+    let seqs: Vec<u64> = third.iter().map(|record| record.seq).collect();
+    assert_eq!(
+        seqs,
+        (1..=seqs.len() as u64).collect::<Vec<_>>(),
+        "one log, numbered from 1 without a gap"
+    );
+    assert_eq!(
+        third
+            .iter()
+            .filter(|record| matches!(record.event, nachalnik::Event::SessionResumed { .. }))
+            .count(),
+        2,
+        "both resumes are in it"
+    );
+    assert_eq!(
+        serde_json::to_string(&third[..first.len()]).expect("rendered"),
+        serde_json::to_string(&first).expect("rendered"),
+        "and it begins with the first run's record as that run saved it"
     );
 }
 

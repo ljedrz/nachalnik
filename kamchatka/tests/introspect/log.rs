@@ -801,6 +801,160 @@ async fn an_inherited_item_is_reported_as_having_no_beginning_here() {
     );
 }
 
+/// A resumed session's log reads as one with the record of the session it was resumed from.
+///
+/// note: the records before the resume are read once, out of the log saved beside the snapshot,
+/// and the kernel's own number on from them - so an item made before the resume has its beginning
+/// here, and the log says nothing about records it cannot read, because there are none.
+#[tokio::test]
+async fn a_resumed_log_reads_the_session_before_it_as_one_log() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("which index?"));
+    first.push(ContextItem::assistant("I chose a B-tree.", vec![]));
+    // the pair `/save` writes: the snapshot, and the log beside it under the same name
+    let dir = std::env::temp_dir().join(format!("kamchatka-earlier-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a directory");
+    let state = dir.join("first.json");
+    std::fs::write(
+        &state,
+        serde_json::to_string(&first.snapshot()).expect("a snapshot"),
+    )
+    .expect("written");
+    let lines: Vec<String> = first
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).expect("a record"))
+        .collect();
+    std::fs::write(state.with_extension("jsonl"), lines.join("\n") + "\n").expect("written");
+
+    let kernel = Kernel::resume(Config::default(), first.snapshot());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
+        call("c1", "log", json!({ "action": "read" })),
+        call("c2", "log", json!({ "action": "read", "ids": [2] })),
+        call(
+            "c3",
+            "log",
+            json!({ "action": "read", "since": 0, "take": 64 }),
+        ),
+    ]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let anchor = introspect::install(
+        &kernel,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+    anchor.earlier().read(&state);
+    let _ = std::fs::remove_dir_all(&dir);
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let (whole, item, records) = (&said[0], &said[1], &said[2]);
+    assert!(
+        whole.contains("session.started") && whole.contains("session.resumed"),
+        "both sessions are in the one log: {whole}"
+    );
+    assert!(
+        !whole.contains("cannot read them"),
+        "nothing before the resume is missing: {whole}"
+    );
+    assert!(
+        !item.contains("has no `context.added` here"),
+        "the item made before the resume has its beginning in the log: {item}"
+    );
+    assert!(item.contains("context.added"), "{item}");
+    // and in order, the first session's records ahead of the resume
+    let started = records
+        .find("session.started")
+        .unwrap_or_else(|| panic!("{records}"));
+    let resumed = records
+        .find("session.resumed")
+        .unwrap_or_else(|| panic!("{records}"));
+    assert!(started < resumed, "{records}");
+}
+
+/// And the records a run wrote past its snapshot are said to be missing, where the two meet.
+///
+/// note: `-r` numbers the resumed session on from past them, so that nothing is numbered twice,
+/// and leaves them out of the log read before the resume, because what they did is not in this
+/// session. Read as one log, the two would otherwise pass over the hole as if nothing had happened.
+#[tokio::test]
+async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("which index?"));
+    let mut snapshot = first.snapshot();
+    let taken = snapshot.last_seq;
+    let dir = std::env::temp_dir().join(format!("kamchatka-lost-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a directory");
+    let state = dir.join("first.json");
+    std::fs::write(
+        &state,
+        serde_json::to_string(&snapshot).expect("a snapshot"),
+    )
+    .expect("written");
+    let mut lines: Vec<String> = first
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).expect("a record"))
+        .collect();
+    for seq in taken + 1..=taken + 2 {
+        lines.push(
+            json!({ "seq": seq, "at": 0, "event": {
+                "event": "tool.requested", "call": format!("lost{seq}"), "tool": "fs", "args": {} } })
+            .to_string(),
+        );
+    }
+    std::fs::write(state.with_extension("jsonl"), lines.join("\n") + "\n").expect("written");
+    // what `-r` does with a log that runs past its snapshot
+    snapshot.last_seq = taken + 2;
+
+    let kernel = Kernel::resume(Config::default(), snapshot);
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let anchor = introspect::install(
+        &kernel,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+    assert_eq!(
+        anchor.earlier().read(&state),
+        2,
+        "two records past the snapshot"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(
+        said[0].contains(&format!(
+            "Records {} to {} are not here",
+            taken + 1,
+            taken + 2
+        )),
+        "{}",
+        said[0]
+    );
+}
+
 /// `since` is exclusive, and the schema says which number means everything.
 ///
 /// note: also found live, and it cost the answer. A session reaching for "all of it" wrote the

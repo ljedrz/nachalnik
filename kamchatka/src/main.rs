@@ -563,6 +563,13 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     } = setup
         .wire(provider.clone())
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+    // the record beside the snapshot, before this session's own is started: that one begins
+    // with what this reads, so that it is the whole session rather than the part of it this run
+    // saw, and `App::replay` below says how much of it came back. The path is the one the person
+    // typed, so the log it finds is the one belonging to the session they asked for
+    if let Some(path) = &args.resume {
+        app.recall(Path::new(path));
+    }
     start_recording(&mut app, base.record);
 
     // the servers have to outlive every session this run has, not just the first: dropping one
@@ -716,17 +723,15 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time
         //
-        // note: the record first, because what the items used to say is not in the snapshot - it
-        // is in the log `/save` wrote beside it, which `App::recall` goes looking for and
-        // `App::replay` then says the size of. The path is the one the person typed, so the log it
-        // finds is the one belonging to the session they asked for
+        // note: what the items used to say is not in the snapshot - it is in the log `/save` wrote
+        // beside it, which `App::recall` read as the session was wired and `App::replay` says the
+        // size of
         //
         // note: the first session of the run only. A snapshot is where somebody asked to *start*,
         // and `/restart` is them saying they are done with where they started - a restart that
         // read it back in would be a command with no way to reach an empty session from a resumed
         // one, which is most of what it is for
         if first && let Some(path) = &args.resume {
-            app.recall(Path::new(path));
             app.replay();
             // the `context` tool's own undo history, where the snapshot carries one, so that the
             // model can still walk back what it changed before; see `introspect::History`

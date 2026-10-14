@@ -664,9 +664,12 @@ one it continued from. There are two ways to use the snapshot.
 
 `kamchatka -r PATH` starts a new session from it, which restores it exactly: item numbers, model
 parameters and what the token counter learned come back as they were. It also reads the `.jsonl`
-with the same name, if it's next to the snapshot, for earlier versions of edited items; without
-it, those pages are empty. The resumed session's own log starts at the resume, so for history
-before that, keep the old `.jsonl`.
+with the same name, if it's next to the snapshot, and carries it forward: the resumed session's
+record begins with it, up to where the snapshot was taken, so every record holds the whole session
+however many times it was resumed, the agent's `log` tool reads it as one log, and earlier versions
+of edited items come back. Without it, the record and the `log` tool begin at the resume, and those
+pages are empty. Records a killed run wrote after its snapshot aren't carried, since what they did
+isn't in the session; `--check` names them as missing before the resume.
 
 `/load PATH` brings it into your current session, which is often more useful. It's a context
 operation and follows the same rule as the others: nothing is destroyed. What was in the context is

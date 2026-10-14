@@ -1,8 +1,13 @@
 //! Where a session goes when it is over: written down as it goes, or all at once at the end.
 
-use std::path::{Path, PathBuf};
+use std::{
+    io::{BufRead as _, BufReader},
+    path::{Path, PathBuf},
+    sync::{Arc, OnceLock},
+};
 
-use nachalnik::Kernel;
+use nachalnik::{Kernel, Record};
+use serde::Deserialize;
 
 use crate::app::App;
 
@@ -131,6 +136,12 @@ impl Recorder {
                 snapshotted: None,
             }),
         };
+        // what came before a resume first, so that this record is the whole session rather than
+        // the part of it this process saw; see `Earlier`
+        {
+            let mut kept = recorder.kept.lock();
+            Self::write_all(&mut kept, app.earlier.records().iter())?;
+        }
         recorder.checkpoint(&app.kernel)?;
 
         Ok(recorder)
@@ -202,10 +213,18 @@ impl Recorder {
     }
 
     fn append_into(kept: &mut Kept, kernel: &Kernel) -> Result<(), String> {
+        Self::write_all(kept, kernel.history_since(kept.written).iter())
+    }
+
+    /// Writes these records to the log, a line each, and moves the mark past them.
+    fn write_all<'a>(
+        kept: &mut Kept,
+        records: impl Iterator<Item = &'a Record>,
+    ) -> Result<(), String> {
         use std::io::Write as _;
 
-        for record in kernel.history_since(kept.written) {
-            let line = serde_json::to_string(&record)
+        for record in records {
+            let line = serde_json::to_string(record)
                 .map_err(|e| format!("could not render record {}: {e}", record.seq))?;
             writeln!(kept.file, "{line}").map_err(|e| format!("could not write the log: {e}"))?;
             kept.written = record.seq;
@@ -215,6 +234,76 @@ impl Recorder {
         kept.file
             .flush()
             .map_err(|e| format!("could not write the log: {e}"))
+    }
+}
+
+/// The records of the session a resumed one carries on from, read once out of the log beside its
+/// snapshot, so that this session's record and its `log` tool hold the whole of it.
+///
+/// note: a resumed kernel's log starts at `session.resumed` and numbers on from the last record
+/// the snapshot reflects, so these and the kernel's own are one log with nothing missing between
+/// them. Kept here rather than given to the kernel, whose log is what happened in this process.
+///
+/// note: copied forward into every record written after it - see [`Recorder`] and
+/// [`App::write_session`] - so a log written by this program is the whole session however many
+/// times it was resumed, and one hop back is always enough.
+///
+/// note: shared, because the `log` tool is built before anybody has read anything; a clone reads
+/// what the first one was given.
+#[derive(Clone, Debug, Default)]
+pub struct Earlier(Arc<OnceLock<Arc<[Record]>>>);
+
+impl Earlier {
+    /// The records, oldest first; none until [`Earlier::read`] has found some.
+    pub fn records(&self) -> Arc<[Record]> {
+        self.0.get().cloned().unwrap_or_else(|| Arc::from([]))
+    }
+
+    /// Reads the log beside the snapshot at `state`, up to the record the snapshot reflects, and
+    /// returns how many records it held past that; once, and a second read changes nothing.
+    ///
+    /// note: best effort, and deliberately not an error. The session has resumed by the time this
+    /// runs, and a log that is absent, unreadable or half-written costs the history before the
+    /// resume rather than the session. A line that will not parse is skipped rather than ending
+    /// the walk: the last line of a log from a run that was killed is the one most likely to be
+    /// half a record, and the ones before it are fine.
+    ///
+    /// note: and only up to the record the snapshot was taken at. A run killed in the middle of a
+    /// turn leaves a log that runs past its snapshot, and those records are not this session's:
+    /// what they did is not in it, and the kernel numbers on from the snapshot, so the next record
+    /// here would share a number with one of them.
+    pub fn read(&self, state: &Path) -> usize {
+        /// The one field of the snapshot this needs, read without the rest of it.
+        #[derive(Deserialize)]
+        struct Taken {
+            #[serde(default)]
+            last_seq: u64,
+        }
+
+        if self.0.get().is_some() {
+            return 0;
+        }
+        let Ok(log) = std::fs::File::open(state.with_extension("jsonl")) else {
+            return 0;
+        };
+        let taken = std::fs::File::open(state)
+            .ok()
+            .and_then(|file| serde_json::from_reader::<_, Taken>(BufReader::new(file)).ok())
+            .map_or(u64::MAX, |taken| taken.last_seq);
+
+        let (mut records, mut past) = (Vec::new(), 0);
+        for line in BufReader::new(log).lines().map_while(Result::ok) {
+            let Ok(record) = serde_json::from_str::<Record>(&line) else {
+                continue;
+            };
+            match record.seq > taken {
+                true => past += 1,
+                false => records.push(record),
+            }
+        }
+        let _ = self.0.set(Arc::from(records));
+
+        past
     }
 }
 
