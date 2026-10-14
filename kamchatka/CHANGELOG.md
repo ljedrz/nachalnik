@@ -103,6 +103,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A picture from an MCP server reaches the model.** A tool's output limit measured it with the
+  text beside it, and at megabytes of base64 a screenshot was over any limit text is held to, so
+  the model was shown `[image/png, …]` and a note that bytes were cut in its place. A picture up to
+  what the bridge carries is kept whole now, and only the text around it is cut.
 - **The web page and `--connect` show the same token figure as the terminal.** The status line
   shows what the next request is expected to cost anchored on what the provider charged for the
   last one, while the page added up the counter's raw estimate for itself, and `--connect` printed

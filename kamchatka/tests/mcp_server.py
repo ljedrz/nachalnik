@@ -29,8 +29,18 @@ TOOLS = [
             "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
             "required": ["a", "b"],
         },
-    }
+    },
 ]
+
+# `--pictures` offers a tool that answers with a picture as well, for the test that one reaches the
+# model; apart, so that the other tests' listings stay what they are
+SCREENSHOT = {
+    "name": "screenshot",
+    "description": "a picture, and more text about it than an output limit lets through",
+    "inputSchema": {"type": "object", "properties": {}},
+}
+if "--pictures" in sys.argv[1:]:
+    TOOLS = TOOLS + [SCREENSHOT]
 
 
 listed = [False]
@@ -70,6 +80,19 @@ def result_for(method, params):
         if params.get("name") == "add":
             total = args.get("a", 0) + args.get("b", 0)
             return {"content": [{"type": "text", "text": str(total)}]}
+        # a picture beside 40,000 bytes of text, both over the 32,000 a tool's text is cut at:
+        # what is cut is the text, and the picture is what the model asked for
+        if params.get("name") == "screenshot":
+            return {
+                "content": [
+                    {
+                        "type": "image",
+                        "mimeType": "image/png",
+                        "data": "iVBORw0KGgo" + "A" * 100_000,
+                    },
+                    {"type": "text", "text": "x" * 40_000},
+                ]
+            }
         return {
             "content": [{"type": "text", "text": "no such tool"}],
             "isError": True,
