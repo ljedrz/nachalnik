@@ -76,6 +76,13 @@ minor bump may break you.
 
 ### changed
 
+- **The `--web` key is eight hex digits rather than 32,** so that it can be typed on a phone. A
+  hundred wrong keys close the page to everybody for a minute, which is said where the person will
+  read it, and keeps 32 bits out of reach of a device on the network guessing at it.
+- **An address without the `--web` key is told what to open.** The page answered such a request
+  with a sentence about "the address the program printed, key and all". It now says the key is
+  missing, shows the shape of the address with this page's host and port, and points at the QR
+  code and `/web`.
 - **A session runs at most 64 of one answer's tool calls.** A model caught repeating itself could
   answer with thousands, every one run and recorded. The rest are answered as not run, saying to
   ask for them in the next answer.

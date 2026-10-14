@@ -89,6 +89,54 @@ type Named = Arc<Mutex<Option<String>>>;
 /// Receives errors from individual browser connections, which would otherwise go unreported.
 type Said = Arc<dyn Fn(String) + Send + Sync>;
 
+/// How many wrong keys are taken before the page closes for [`PAUSE`].
+const GUESSES: u32 = 100;
+
+/// How long the page refuses everything once [`GUESSES`] wrong keys have been tried.
+const PAUSE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Wrong keys tried so far, and until when the page is closed for them; see [`Guessing::closed`].
+type Guesses = Arc<Mutex<Guessing>>;
+
+#[derive(Default)]
+struct Guessing {
+    wrong: u32,
+    closed_until: Option<std::time::Instant>,
+}
+
+impl Guessing {
+    /// Whether the page is closed to everybody, the right key included, for wrong ones.
+    ///
+    /// note: the key is 32 bits, so that somebody can type it, and 32 bits is a few billion
+    /// guesses - which a device on the same network can make in days, one request at a time. A
+    /// hundred a minute is the better part of a century for half of them. The right key is refused
+    /// with the rest while it is closed, because a guess that was checked while closed would be a
+    /// guess that was not counted. It is a minute of a page that does not answer for the person it
+    /// is theirs, which is what something on their network guessing at it ought to cost them
+    /// anyway: it is said where they will read it.
+    fn closed(&mut self, now: std::time::Instant) -> bool {
+        match self.closed_until {
+            Some(until) if now < until => true,
+            _ => {
+                self.closed_until = None;
+                false
+            }
+        }
+    }
+
+    /// Counts one wrong key, and answers whether it is the one that closes the page.
+    fn wrong(&mut self, now: std::time::Instant) -> bool {
+        self.wrong += 1;
+        if self.wrong < GUESSES {
+            return false;
+        }
+        self.wrong = 0;
+        self.closed_until = Some(now + PAUSE);
+
+        true
+    }
+}
+
 /// A listening page, ready to relay browsers to a session.
 ///
 /// Binding is separate from [`Web::run`] so that a bad address is reported at startup, before the
@@ -203,9 +251,10 @@ impl Web {
         match self.reach {
             Reach::Machine => None,
             Reach::Network => Some(format!(
-                "the page is reachable from the local network at {} with no authentication or \
-                 encryption: any device on the network can control this session, including running \
-                 shell commands as you, and can read its traffic",
+                "the page is reachable from the local network at {} with no encryption, and \
+                 nothing but the key in its address to keep anybody out: any device on the network \
+                 that learns the address, which includes one reading the network's traffic, can \
+                 control this session, including running shell commands as you",
                 self.address()
             )),
         }
@@ -226,6 +275,7 @@ impl Web {
         let said: Said = Arc::new(said);
         let tabs: Tabs = Arc::default();
         let named: Named = Arc::default();
+        let guesses: Guesses = Arc::default();
         loop {
             // reported, or nothing would explain why pages stop loading (e.g. out of descriptors)
             let browser = match self.listener.accept().await {
@@ -236,15 +286,22 @@ impl Web {
                 }
             };
             let _ = browser.set_nodelay(true);
-            let (session, tabs, named, said, key) = (
+            let (session, tabs, named, said, key, guesses) = (
                 self.session.clone(),
                 tabs.clone(),
                 named.clone(),
                 said.clone(),
                 self.key.clone(),
+                guesses.clone(),
             );
             tokio::spawn(async move {
-                if let Err(e) = serve(browser, &session, &key, tabs, named).await {
+                let served = Served {
+                    session: &session,
+                    key: &key,
+                    guesses: &guesses,
+                    said: &said,
+                };
+                if let Err(e) = serve(browser, served, tabs, named).await {
                     said(format!("a browser connection failed: {e}"));
                 }
             });
@@ -259,14 +316,28 @@ impl Drop for Web {
     }
 }
 
+/// What every connection to one page shares that is not the session's.
+#[derive(Clone, Copy)]
+struct Served<'a> {
+    session: &'a str,
+    key: &'a str,
+    guesses: &'a Guesses,
+    said: &'a Said,
+}
+
 /// One browser connection: read a request, answer it, and for a stream stay as long as it lasts.
 async fn serve(
     browser: TcpStream,
-    session: &str,
-    key: &str,
+    served: Served<'_>,
     tabs: Tabs,
     named: Named,
 ) -> Result<(), String> {
+    let Served {
+        session,
+        key,
+        guesses,
+        said,
+    } = served;
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
     let Some(request) = head(&mut reader).await? else {
@@ -286,12 +357,41 @@ async fn serve(
         )
         .await;
     }
+    let now = std::time::Instant::now();
+    if guesses
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .closed(now)
+    {
+        return reply(
+            &mut write,
+            "429 Too Many Requests",
+            "text/plain; charset=utf-8",
+            CLOSED.as_bytes(),
+        )
+        .await;
+    }
     let Some(path) = beneath(path, key) else {
+        // a guess is a path whose first part is as long as the key: the browser's own
+        // `/favicon.ico`, or an address opened without its key, is somebody who does not have it
+        // rather than somebody trying to find it out, and counting them would close the page on
+        // its own person for opening it wrong
+        let guessed = path
+            .strip_prefix('/')
+            .and_then(|rest| rest.split('/').next())
+            .is_some_and(|given| given.len() == key.len());
+        if guessed && guesses.lock().unwrap_or_else(|e| e.into_inner()).wrong(now) {
+            said(format!(
+                "{GUESSES} wrong keys have been tried at the page, so it refuses everything for                  the next {} seconds. If they were not yours, something on the network is                  guessing at it",
+                PAUSE.as_secs()
+            ));
+        }
+        let host = request.header("host").unwrap_or("HOST:PORT");
         return reply(
             &mut write,
             "403 Forbidden",
-            "text/plain",
-            b"this page is reached at the address the program printed, key and all",
+            "text/plain; charset=utf-8",
+            keyless(host).as_bytes(),
         )
         .await;
     };
@@ -405,9 +505,30 @@ fn beneath<'a>(path: &'a str, key: &str) -> Option<&'a str> {
     same.then(|| &rest[given.len()..])
 }
 
-/// A key for the page: 128 random bits, as hex.
+/// What a browser is shown for an address without the page's key, or with a wrong one.
+///
+/// note: the shape of the address rather than the address, which would be the key handed to
+/// whoever asked without it.
+fn keyless(host: &str) -> String {
+    format!(
+        "This address is missing the page's key.\n\n\
+         Open the whole address kamchatka printed when it started: http://{host}/ followed by \
+         eight letters and digits and a slash. Or scan the QR code it showed, or type /web in the \
+         session to show both again.\n"
+    )
+}
+
+/// What a browser is shown while the page is closed for wrong keys; see [`Guessing::closed`].
+const CLOSED: &str = "Too many wrong keys have been tried, so the page refuses everything for a \
+                      minute.\n\nIf that was not you, something on this network is guessing at \
+                      it.\n";
+
+/// A key for the page: 32 random bits, as eight hex digits.
+///
+/// note: 32 rather than 128 so that it can be typed on a phone; [`Guessing`] is what keeps 32
+/// enough.
 fn fresh_key() -> std::io::Result<String> {
-    let mut bytes = [0u8; 16];
+    let mut bytes = [0u8; 4];
     std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut bytes)?;
 
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
@@ -782,6 +903,43 @@ fn param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The key is eight hex digits, and only it opens a route beneath it.
+    #[test]
+    fn the_key_is_eight_hex_digits() {
+        let key = fresh_key().expect("a key");
+        assert_eq!(key.len(), 8);
+        assert!(key.chars().all(|c| c.is_ascii_hexdigit()), "{key}");
+        assert_eq!(beneath(&format!("/{key}/events"), &key), Some("/events"));
+        assert_eq!(beneath("/events", &key), None);
+        assert_eq!(beneath("/00000000/events", "00000001"), None);
+    }
+
+    /// A hundred wrong keys close the page to everybody for a minute, and then it opens again.
+    #[test]
+    fn wrong_keys_close_the_page_for_a_while() {
+        let mut guessing = Guessing::default();
+        let now = std::time::Instant::now();
+        for _ in 1..GUESSES {
+            assert!(!guessing.wrong(now));
+            assert!(!guessing.closed(now));
+        }
+        assert!(guessing.wrong(now), "the hundredth closes it");
+        assert!(guessing.closed(now));
+        assert!(guessing.closed(now + PAUSE - std::time::Duration::from_secs(1)));
+        assert!(!guessing.closed(now + PAUSE));
+        // and the count starts again rather than closing it on the next wrong key
+        assert!(!guessing.wrong(now + PAUSE));
+    }
+
+    /// The refusal for an address without the key says what to open instead, and not the key.
+    #[test]
+    fn a_keyless_address_is_told_what_to_open() {
+        let said = keyless("192.168.1.5:8080");
+        assert!(said.contains("missing the page's key"), "{said}");
+        assert!(said.contains("http://192.168.1.5:8080/"), "{said}");
+        assert!(said.contains("/web"), "{said}");
+    }
 
     /// Loopback and private-network addresses are accepted in any notation, and nothing else is.
     #[test]

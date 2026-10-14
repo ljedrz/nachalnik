@@ -217,9 +217,10 @@ where there is a terminal, and a browser that loses the connection reconnects an
 itself. This is the `webui` feature, which release builds include.
 
 The page has no encryption, and no authentication but a random key in its address, which is
-printed at startup: every route is beneath it, so a browser has to be given the whole address. It
-listens on loopback, or on this machine's IP
-address on a private network (10/8, 172.16/12, 192.168/16, fc00::/7):
+printed at startup: every route is beneath it, so a browser has to be given the whole address. The
+key is eight hex digits; after 100 wrong ones the page refuses everything for a minute, and says so.
+It listens on loopback, or on this machine's IP address on a private network (10/8, 172.16/12,
+192.168/16, fc00::/7):
 
 ```console
 $ kamchatka --web 192.168.1.5:8080 -m qwen/qwen3-coder
