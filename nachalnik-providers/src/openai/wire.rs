@@ -393,12 +393,9 @@ impl OpenAiCompatible {
                 .calls
                 .into_iter()
                 .map(|call| {
-                    // a model that produces invalid JSON gets to see that it did
-                    let args = arguments_of(&call.args);
-
                     // an empty or repeated identifier is repaired by the kernel, which says so on
                     // the event stream; a provider does not have to paper over it
-                    ToolCall::new(call.id, call.name, args).with_extra(call.extra)
+                    crate::called(call.id, call.name, &call.args).with_extra(call.extra)
                 })
                 .collect(),
             stop: stop_reason(finish.as_deref()),
@@ -660,7 +657,7 @@ fn never_answered(answered: bool, empty: bool) -> bool {
 /// one is handed `message` finished. What they must agree about is what they make of it: a model
 /// whose arguments will not parse, a usage report whose reasoning has to be inferred, and thinking
 /// written into the content. The last two go through the same readers on both paths, `usage_of`
-/// and `said_and_thought`, and the first gets the same `_unparsed` answer on both.
+/// and `said_and_thought`, and the first gets the same [`crate::called`] on both.
 fn whole(body: Value, inline: bool) -> ModelResponse {
     let choice = &body["choices"][0];
     let message = &choice["message"];
@@ -694,20 +691,18 @@ fn whole(body: Value, inline: bool) -> ModelResponse {
                 // anything else that is not a string: a number or a list read as
                 // `arguments_of("")`, which is a call to a tool that takes no arguments, and the
                 // model was told that rather than shown what it wrote
-                let args = match &call["function"]["arguments"] {
-                    arguments @ Value::Object(_) => arguments.clone(),
-                    Value::Null => arguments_of(""),
-                    written => match written.as_str() {
-                        Some(written) => arguments_of(written),
-                        None => json!({ "_unparsed": written.to_string() }),
-                    },
-                };
-
-                ToolCall::new(
+                let (id, name) = (
                     call["id"].as_str().unwrap_or_default(),
                     call["function"]["name"].as_str().unwrap_or_default(),
-                    args,
-                )
+                );
+                match &call["function"]["arguments"] {
+                    arguments @ Value::Object(_) => ToolCall::new(id, name, arguments.clone()),
+                    Value::Null => crate::called(id, name, ""),
+                    written => match written.as_str() {
+                        Some(written) => crate::called(id, name, written),
+                        None => ToolCall::unparsed(id, name, written.to_string()),
+                    },
+                }
                 .with_extra(call["extra_content"].clone())
             })
             .collect(),
@@ -951,20 +946,6 @@ fn reasoning_in(carrier: &Value) -> Option<&str> {
         })
 }
 
-/// A call's arguments, from the text the model wrote.
-///
-/// note: nothing written is no arguments, which is how a server spells a call to a tool that
-/// takes none - read as JSON, it failed, and the model was told its arguments were invalid and
-/// sent the same correct call again. Anything else that is not JSON is kept as it was written.
-pub(super) fn arguments_of(written: &str) -> Value {
-    match written.trim() {
-        "" => json!({}),
-        written => {
-            serde_json::from_str(written).unwrap_or_else(|_| json!({ "_unparsed": written }))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use nachalnik::{Message, ModelRequest, Params, ToolSpec};
@@ -1055,8 +1036,14 @@ mod tests {
         );
     }
 
+    /// The arguments of a call read the way the dialect reads them, for the tests that want an
+    /// object out of them; text that is not one comes back as none.
+    fn arguments_of(written: &str) -> Value {
+        (*crate::called("c1", "t", written).args).clone()
+    }
+
     /// No arguments written is a call with no arguments, and an object sent as one is taken as it
-    /// is; only text that is not JSON is `_unparsed`.
+    /// is; only text that is not a JSON object is kept as unparsed, with no arguments.
     ///
     /// note: an empty string failed to parse, so a call to a tool that takes nothing came back
     /// telling the model its JSON was invalid, and it sent the same correct call again. An object
@@ -1072,12 +1059,18 @@ mod tests {
             )
             .tool_calls
             .remove(0)
-            .args
         };
-        assert_eq!(*call(json!("")), json!({}));
-        assert_eq!(*call(json!({ "path": "." })), json!({ "path": "." }));
-        assert_eq!(*call(json!("{\"path\": \".\"}")), json!({ "path": "." }));
-        assert_eq!(*call(json!("{oops")), json!({ "_unparsed": "{oops" }));
+        assert_eq!(*call(json!("")).args, json!({}));
+        assert_eq!(*call(json!({ "path": "." })).args, json!({ "path": "." }));
+        assert_eq!(
+            *call(json!("{\"path\": \".\"}")).args,
+            json!({ "path": "." })
+        );
+        let broken = call(json!("{oops"));
+        assert_eq!(*broken.args, json!({}));
+        assert_eq!(broken.unparsed.as_deref(), Some("{oops"));
+        // and text that parses to something other than an object is not arguments either
+        assert_eq!(call(json!("[1]")).unparsed.as_deref(), Some("[1]"));
         assert_eq!(arguments_of("  "), json!({}));
     }
 
@@ -1103,20 +1096,23 @@ mod tests {
             )
             .tool_calls
             .remove(0)
-            .args
         };
         for (sent, kept) in [
-            (json!(42), json!("42")),
-            (json!([1, 2]), json!("[1,2]")),
-            (json!(true), json!("true")),
+            (json!(42), "42"),
+            (json!([1, 2]), "[1,2]"),
+            (json!(true), "true"),
         ] {
-            let args = call(sent.clone());
             assert_eq!(
-                args["_unparsed"], kept,
+                call(sent.clone()).unparsed.as_deref(),
+                Some(kept),
                 "{sent} has to be visible to the model"
             );
         }
-        assert_eq!(*call(json!(null)), json!({}), "null is nothing written");
+        assert_eq!(
+            *call(json!(null)).args,
+            json!({}),
+            "null is nothing written"
+        );
 
         // and the streamed one, which is where half a call went missing
         let deltas = DeltaSink::disconnected();
@@ -1128,18 +1124,14 @@ mod tests {
             );
         }
         assert_eq!(gathering.calls.len(), 1);
-        let args = arguments_of(&gathering.calls[0].args);
+        let kept = crate::called("c1", "fs", &gathering.calls[0].args).unparsed;
         assert!(
-            args["_unparsed"]
-                .as_str()
-                .is_some_and(|sent| sent.contains("42")),
-            "the fragment that was not a string is kept: {args}"
+            kept.as_deref().is_some_and(|sent| sent.contains("42")),
+            "the fragment that was not a string is kept: {kept:?}"
         );
         assert!(
-            args["_unparsed"]
-                .as_str()
-                .is_some_and(|sent| sent.contains("read")),
-            "and so is the one that was: {args}"
+            kept.as_deref().is_some_and(|sent| sent.contains("read")),
+            "and so is the one that was: {kept:?}"
         );
     }
 

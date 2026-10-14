@@ -990,10 +990,15 @@ impl Conformance {
             Err(e) => return Outcome::Failed(e),
         };
         match response.calls().collect::<Vec<_>>()[..] {
-            [call] if call.args["_unparsed"] == "{path: notes" => Outcome::Passed,
+            [call]
+                if call.unparsed.as_deref() == Some("{path: notes")
+                    && call.args.as_object().is_some_and(|args| args.is_empty()) =>
+            {
+                Outcome::Passed
+            }
             [call] => Outcome::Failed(format!(
-                "what the model wrote is not in the arguments it was given: {}",
-                call.args
+                "what the model wrote is not kept as unparsed beside no arguments: {:?} beside {}",
+                call.unparsed, call.args
             )),
             [] => Outcome::Failed("the call did not survive at all".to_owned()),
             ref calls => Outcome::Failed(format!("one call came back as {}", calls.len())),

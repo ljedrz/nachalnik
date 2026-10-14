@@ -259,6 +259,29 @@ pub(crate) fn refused(said: String, limit: Option<usize>) -> BoxError {
     }
 }
 
+/// A call, from the text the model wrote for its arguments.
+///
+/// note: nothing written is no arguments, which is how a server spells a call to a tool that takes
+/// none - read as JSON, it failed, and the model was told its arguments were invalid and sent the
+/// same correct call again. Text that is not a JSON object is kept as it was written, on
+/// [`ToolCall::unparsed`](nachalnik::ToolCall::unparsed): the kernel answers the call saying so,
+/// rather than a tool running on nothing, and the call goes back to the model empty rather than
+/// wrapped in a shape of ours it would copy.
+#[cfg(any(feature = "anthropic", feature = "openai"))]
+pub(crate) fn called(
+    id: impl Into<nachalnik::ToolCallId>,
+    name: impl Into<String>,
+    written: &str,
+) -> nachalnik::ToolCall {
+    match written.trim() {
+        "" => nachalnik::ToolCall::new(id, name, serde_json::json!({})),
+        trimmed => match serde_json::from_str::<serde_json::Value>(trimmed) {
+            Ok(args @ serde_json::Value::Object(_)) => nachalnik::ToolCall::new(id, name, args),
+            _ => nachalnik::ToolCall::unparsed(id, name, written),
+        },
+    }
+}
+
 /// Whether a listed identifier names the model being asked about, allowing for the decorations
 /// listings put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.
 pub fn same_model(listed: &str, model: &str) -> bool {

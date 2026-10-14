@@ -47,9 +47,10 @@ async fn a_model_that_writes_broken_arguments_is_shown_that_it_did() {
 
     assert_eq!(response.tool_calls.len(), 1);
     assert_eq!(
-        response.tool_calls[0].args["_unparsed"], "{path: notes",
+        response.tool_calls[0].unparsed.as_deref(),
+        Some("{path: notes"),
         "{:?}",
-        response.tool_calls[0].args
+        response.tool_calls[0]
     );
 }
 
