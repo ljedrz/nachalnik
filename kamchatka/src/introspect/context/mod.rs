@@ -313,6 +313,10 @@ impl Tool for Context {
         self.limits.for_call(&self.needs(call))
     }
 
+    fn unparsed(&self, written: &str) -> Option<String> {
+        crate::tools::ops::advice(written, Layout::of(&self.schema))
+    }
+
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 

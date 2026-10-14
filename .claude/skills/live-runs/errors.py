@@ -1,8 +1,8 @@
 """Every error a tool answered with, across runs, bucketed by its text: errors.py [NAME...]
 
 The row worth reading is a sentence the model did not recover from - the same call again, or the
-thing it was doing never done - and a bucket of `_unparsed` arguments, which is the model, the
-upstream, or the stream assembly, and only a raw stream through proxy.py says which.
+thing it was doing never done - and a bucket of arguments that did not parse, which is the model,
+the upstream, or the stream assembly, and only a raw stream through proxy.py says which.
 """
 import collections, glob, json, os, re, subprocess, sys
 

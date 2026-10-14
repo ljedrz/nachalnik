@@ -142,6 +142,10 @@ impl Tool for Log {
         self.limits.for_call(&self.needs(call))
     }
 
+    fn unparsed(&self, written: &str) -> Option<String> {
+        crate::tools::ops::advice(written, Layout::of(&self.schema))
+    }
+
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         // note: a word this tool does not have is refused by name rather than read as `read`,
         // which is what an absent `action` still is: a model that asked to `clear` the log should

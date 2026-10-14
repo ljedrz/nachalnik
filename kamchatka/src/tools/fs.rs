@@ -209,6 +209,10 @@ impl Tool for Fs {
         self.limits.for_call(&self.needs(call))
     }
 
+    fn unparsed(&self, written: &str) -> Option<String> {
+        crate::tools::ops::advice(written, Layout::of(&self.schema))
+    }
+
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         // the arguments wherever the model put them, which is the one thing that has to happen
         // before anything here reads one

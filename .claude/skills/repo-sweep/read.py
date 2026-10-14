@@ -67,7 +67,13 @@ def from_records(name):
             event = json.loads(line)["event"]
         except (ValueError, KeyError, TypeError):
             continue
-        if event.get("event") != "tool.requested" or event.get("tool") != "context":
+        if event.get("tool") != "context":
+            continue
+        # a call whose arguments did not parse is said in a record of its own, with what was written
+        if event.get("event") == "tool.unparsed":
+            yield "note (did not parse)", event.get("written")
+            continue
+        if event.get("event") != "tool.requested":
             continue
         args = event.get("args") or {}
         # the shapes models wrap a call in: `{"call": {...}}`, or the text of one

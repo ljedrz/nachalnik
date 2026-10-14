@@ -401,23 +401,22 @@ fn sentences(parts: &[String]) -> String {
         .join(". ")
 }
 
-/// The key a provider puts a call's arguments under when they would not parse as JSON.
+/// The key providers once put a call's arguments under when they would not parse as JSON.
 ///
-/// note: `nachalnik-providers` plants it so that "a model that produces invalid JSON gets to see
-/// that it did". Unread, the tool goes looking for `action`, does not find one, and answers
-/// `the \`action\` argument is required` - about a call whose text holds an `action` and a brace
-/// that was never closed. The model is sent to fix the wrong thing, when the one fact it needs is
-/// one the provider already knew.
+/// note: they keep that text on [`nachalnik::ToolCall::unparsed`] now, and the kernel answers the
+/// call, and a call recorded the old way is read back that way - so this key reaches a tool only
+/// where a model wrote it. One does: a session whose history showed it calls in that shape copies
+/// the shape, and goes on copying its own calls once one was read. Unread, the tool goes looking
+/// for `action`, does not find one, and answers `the \`action\` argument is required` - about a
+/// call whose text holds an `action`.
 const UNPARSED: &str = "_unparsed";
 
 /// The text of arguments that never parsed, where that is what is under [`UNPARSED`].
 ///
-/// note: only where the text does not read as an object on its own. The provider puts text it
-/// could not parse under [`UNPARSED`], and sends the call back to the model in the same shape, so
-/// a model can copy that shape onto its next call - the call it meant, whole and valid, written
-/// inside a wrapper of its own. Answered as not JSON, it is copied again on every call after, and a
-/// session makes no call that works. The provider only ever puts text there that does not parse, so
-/// text that does is the model's wrapper, and the call inside it is read.
+/// note: only where the text does not read as an object on its own. A model copying the shape
+/// writes the call it meant, whole and valid, inside the wrapper. Answered as not JSON, it is
+/// copied again on every call after, and a session makes no call that works - so text there that
+/// parses is the model's wrapper round a call, and the call inside it is read.
 fn unparsed(args: &Value) -> Option<&str> {
     let written = args.get(UNPARSED)?.as_str()?;
     let alone = args.as_object().is_some_and(|entries| entries.len() == 1);
@@ -433,11 +432,9 @@ const SHOWN: usize = 200;
 
 /// What is wrong with arguments that never parsed, and the part of them to look at.
 ///
-/// note: the parse is done again here because the provider throws the answer away.
-/// `nachalnik-providers` tries it, keeps the text under [`UNPARSED`] when it fails, and drops the
-/// error - so the one thing that knows *what* was wrong knows it in another crate. Reading it
-/// again costs a parse of a string that is already known not to parse, which is the cheapest
-/// thing in the exchange.
+/// note: for text a model put under [`UNPARSED`] itself; what a provider could not parse is
+/// answered by the kernel, with [`advice`] added. The parse is done again here because nothing
+/// handed over the error, and it costs a parse of a string already known not to parse.
 ///
 /// note: and the window is around the fault rather than the first [`SHOWN`] characters. A fault
 /// past the cut is common, and a message quoting the start of the payload then quotes the part
@@ -503,6 +500,22 @@ fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
         ),
         (None, _) => String::new(),
     }
+}
+
+/// What a tool here adds to the kernel's answer to a call whose arguments did not parse: how to
+/// write it, where the fault is one a model makes without seeing it; see
+/// [`nachalnik::Tool::unparsed`].
+///
+/// note: the kernel says what the parser said, where, and what arrived there. What it cannot know
+/// is that `invalid escape` in a call of `shell` is a regex's `\(` put into a string as it
+/// stands, or that a word right after `{"call":` is the action written bare where the object
+/// goes - the faults that, told only that the JSON was invalid, a model sends again unchanged.
+pub(crate) fn advice(written: &str, layout: Layout) -> Option<String> {
+    let why = serde_json::from_str::<Value>(written).err()?;
+    let said = remedy(written, &why, layout);
+    let how = said.strip_prefix(", ")?;
+
+    Some(format!("Write it {how}."))
 }
 
 /// Where in the text a line and column land, both counted from one; the end of it when they name
@@ -708,8 +721,9 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         return None;
     }
 
-    // note: arguments that never parsed are said to be that, with what arrived. A policy that
-    // refuses the widened call is answered before the tool is handed it, so the tool's own sentence
+    // note: arguments a model wrote under `_unparsed` that never parsed are said to be that, with
+    // what arrived; ones a provider could not parse never reach a policy. A policy that refuses
+    // the widened call is answered before the tool is handed it, so the tool's own sentence
     // about them is never read, and "names no operation" beside `{"call":` - which does not look
     // like a call naming nothing to whoever wrote it - was sent again unchanged, over and over
     if let Some(written) = unparsed(&request.args) {
@@ -1407,9 +1421,8 @@ mod tests {
 
     /// Arguments that never parsed are answered as that, not as an argument nobody gave.
     ///
-    /// note: the text is a JSON string closed with an XML tag, the way a model can end one. The
-    /// provider hands it over under `_unparsed` precisely so it can be reported, and read as
-    /// missing arguments the report would be `the \`action\` argument is required`, about a call
+    /// note: the text is a JSON string closed with an XML tag, the way a model can end one, under
+    /// `_unparsed` as a model copying the old shape writes it. Read as missing arguments the report would be `the \`action\` argument is required`, about a call
     /// whose text says `"action": "note"` near its start.
     #[test]
     fn arguments_that_never_parsed_are_not_a_missing_argument() {

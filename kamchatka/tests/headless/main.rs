@@ -570,6 +570,66 @@ async fn a_rule_that_refused_a_call_naming_no_operation_says_the_call_named_none
     );
 }
 
+/// A call whose arguments did not parse is answered by the kernel with this program's advice for
+/// the fault, and asked about by nobody, in a run that refuses whatever it would ask.
+///
+/// note: a regex's `\(` written into a string as it stands, which is the fault a model makes most
+/// often and sees least: told only that the JSON was invalid, it sends the same call again.
+#[tokio::test]
+async fn a_call_that_did_not_parse_is_told_how_to_write_it() {
+    let wired = Setup {
+        tools: Some(vec!["fs".to_owned()]),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired;
+    app.kernel.set_provider(Arc::new(ScriptedProvider::new(vec![
+        ModelResponse::tool_calls(vec![nachalnik::ToolCall::unparsed(
+            "c1",
+            "fs",
+            r#"{"call": {"action": "grep", "pattern": "f\(x"}}"#,
+        )]),
+        ModelResponse::text("told how"),
+    ])));
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, "search\n".as_bytes())
+        .await
+        .expect("the run failed");
+
+    let told: Vec<String> = app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("call to `fs` (`c1`)"), "{}", told[0]);
+    assert!(told[0].contains("invalid escape"), "{}", told[0]);
+    assert!(
+        told[0].contains("every backslash inside a string written twice"),
+        "and this program's advice for the fault: {}",
+        told[0]
+    );
+    assert!(
+        !told[0].contains("nobody is here to answer"),
+        "nothing was asked about a call nobody can read: {}",
+        told[0]
+    );
+}
+
 /// A call a level too deep is read as the call, by the rule and by the tool alike.
 ///
 /// note: two sweeps with one model wrote nearly every call as `{"call": {"item": {...}}}`, were

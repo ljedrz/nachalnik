@@ -97,7 +97,8 @@ For each run, in this order:
 3. **What the tools answered**: `show.py NAME shell`, `show.py NAME fs:`, `show.py NAME context`.
    The snapshot, not the prose - the model paraphrases, and misreads.
 4. **Errors across every run**: `errors.py`. A sentence the model did not recover from is a
-   friction lead; a bucket of `_unparsed` arguments goes to the proxy.
+   friction lead; a bucket of arguments that did not parse (`tool.unparsed` in the log) goes to the
+   proxy.
 5. **The model's own complaints**: a model that says "I can't tell whether…" or retracts something
    has usually met an answer that did not say what it did.
 
