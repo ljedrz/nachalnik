@@ -18,6 +18,13 @@ minor bump may break you.
 - **`LARGEST_IMAGE`**, the most an image is carried into the context at, is public, for a host to
   hand to `Kernel::set_picture_limit`.
 
+### changed
+
+- **Built against `nachalnik` 0.10.** The runtime's minor moved, and the bridge's tools and servers
+  are that runtime's types, so a caller on 0.9 and a bridge on 0.10 are two runtimes in one build.
+  A call whose arguments did not parse is answered by that runtime before it reaches a server's
+  tool, and `Kernel::set_picture_limit` is what `LARGEST_IMAGE` is for.
+
 ### fixed
 
 - **Arguments a provider could not parse are not sent to the server as the arguments.** A provider
