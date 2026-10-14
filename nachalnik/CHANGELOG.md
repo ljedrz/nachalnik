@@ -20,6 +20,11 @@ minor bump may break you.
   `Config::max_requests_per_turn`, which was the only place it could be set, so changing it meant
   building the kernel again. A change holds from the next request, the running turn's included.
 
+- **`Kernel::set_picture_limit`** keeps a picture in a tool's output whole, up to the size given,
+  beside text cut to the tool's output limit, and `Content::truncate_around_pictures` is what does
+  it. Measured with its text, a screenshot is over any limit text is held to, and the model was
+  shown a sentence naming it instead. `None`, the default, measures it with the rest as before.
+
 ### fixed
 
 - **A tool that panics saying what a call needs, or how much of it to keep, fails that call.**

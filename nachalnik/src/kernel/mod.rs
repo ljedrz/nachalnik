@@ -287,6 +287,8 @@ struct InnerKernel {
     call_ceiling: RwLock<Option<usize>>,
     /// How many requests a turn may send; see [`Kernel::set_max_requests_per_turn`].
     max_requests: RwLock<Option<usize>>,
+    /// How large a picture in a tool's output is kept whole; see [`Kernel::set_picture_limit`].
+    picture_limit: RwLock<Option<usize>>,
 }
 
 /// The agent runtime: a state machine, a context, and nothing else.
@@ -581,6 +583,7 @@ impl Kernel {
             full_notice: RwLock::new(None),
             call_ceiling: RwLock::new(None),
             max_requests: RwLock::new(config.max_requests_per_turn),
+            picture_limit: RwLock::new(None),
             config,
         };
 

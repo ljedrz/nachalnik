@@ -346,7 +346,15 @@ impl Kernel {
                 None
             })
             .or(self.0.config.default_tool_output_limit);
-        let over = limit.is_some_and(|limit| output.content.byte_len() > limit);
+        // note: cut on a copy first, because whether it is over is whether anything is cut - which
+        // a picture kept whole makes a different question from whether it is longer than the limit
+        let pictures = self.picture_limit();
+        let mut shown = output.content.clone();
+        let truncated = limit.and_then(|limit| match pictures {
+            Some(pictures) => shown.truncate_around_pictures(limit, pictures),
+            None => shown.truncate_to(limit),
+        });
+        let over = truncated.is_some();
 
         let whole = (over && self.0.config.keep_truncated_output).then(|| {
             let mut item = ContextItem::tool_result(
@@ -372,7 +380,7 @@ impl Kernel {
             self.add_in(item, batch)
         });
 
-        let truncated = limit.and_then(|limit| output.content.truncate_to(limit));
+        output.content = shown;
         self.record_tool_result(
             &prepared.call,
             Some(&*prepared.tool),

@@ -130,6 +130,58 @@ fn truncating_blocks_says_how_much_of_the_whole_turn_went() {
     assert_eq!(dropped, whole - kept);
 }
 
+/// A picture beside text is kept whole, up to its own limit, and only the text around it is cut;
+/// one over that is named, as it always was.
+#[test]
+fn a_picture_is_kept_whole_and_the_text_around_it_is_cut() {
+    let picture = || Content::blob("image/png", "A".repeat(10_000));
+    let shot = || {
+        Content::blocks([
+            Block::text(Content::text("before ".repeat(20))),
+            Block::text(picture()),
+            Block::text(Content::text("after ".repeat(20))),
+        ])
+    };
+    let text = "before ".repeat(20).len() + "after ".repeat(20).len();
+
+    // the text fits, so nothing is cut though the whole is far over the limit
+    let mut content = shot();
+    assert_eq!(content.truncate_around_pictures(text, 20_000), None);
+    assert_eq!(content, shot());
+
+    // the text does not: what is before the picture goes as far as it fits, the picture is
+    // there whole, and the note counts every byte of text that went
+    let mut content = shot();
+    let dropped = content
+        .truncate_around_pictures(100, 20_000)
+        .expect("the text is over 100 bytes");
+    let blocks = content
+        .as_blocks()
+        .expect("still blocks, with the picture in them");
+    assert_eq!(blocks.len(), 2, "{blocks:?}");
+    let Block::Text(cut) = &blocks[0] else {
+        panic!("{blocks:?}")
+    };
+    let cut = cut.content.to_text();
+    assert!(cut.len() <= 100, "{cut}");
+    assert!(cut.starts_with("before"), "{cut}");
+    let kept = cut.find("\n[...").expect("a note was added");
+    assert_eq!(dropped, text - kept);
+    assert!(cut.contains(&format!("{dropped} bytes truncated by an output limit")));
+    assert_eq!(blocks[1], Block::text(picture()), "the picture, whole");
+
+    // a picture over its own limit is measured with the rest and named, as `truncate_to` does
+    let mut content = shot();
+    content.truncate_around_pictures(100, 5_000).expect("over");
+    assert!(content.as_blocks().is_none());
+    assert!(content.blobs().is_empty());
+
+    // and a picture on its own is never cut
+    let mut content = picture();
+    assert_eq!(content.truncate_around_pictures(100, 20_000), None);
+    assert_eq!(content, picture());
+}
+
 #[test]
 fn a_turn_that_fits_is_left_alone() {
     let mut content = Content::blocks([Block::text(Content::text("short"))]);

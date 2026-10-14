@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Capability, Config, ContextItem, ContextKind, ContextState, Event, Kernel, ModelResponse,
-    OutputSink, Role, State, StopReason,
+    Block, Capability, Config, Content, ContextItem, ContextKind, ContextState, Event, Kernel,
+    ModelResponse, OutputSink, Role, State, StopReason,
     test::{AllowAll, BrokenTool, ConstTool, EchoTool, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -706,6 +706,53 @@ async fn the_default_output_limit_applies_to_tools_without_one() {
         truncated.contains("bytes truncated by an output limit"),
         "{truncated}"
     );
+}
+
+/// With a picture limit set, a tool's picture reaches the model whole beside its text cut to the
+/// output limit, and the whole output is still kept beside it.
+///
+/// note: measured with the rest, a screenshot is over any limit a tool's text is held to, and the
+/// model was shown a sentence naming it in its place.
+#[tokio::test]
+async fn a_tools_picture_reaches_the_model_whole_under_a_picture_limit() {
+    let kernel = Kernel::new(Config {
+        default_tool_output_limit: Some(50),
+        ..Default::default()
+    });
+    assert_eq!(kernel.set_picture_limit(Some(1 << 20)), None);
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "screenshot", json!({}))]),
+    ])));
+    kernel.set_policy(Arc::new(AllowAll));
+    let shot = Content::blocks([
+        Block::text(Content::blob("image/png", "A".repeat(100_000))),
+        Block::text(Content::text("y".repeat(1_000))),
+    ]);
+    kernel.add_tool(Arc::new(ConstTool::new("screenshot", shot.clone())));
+    kernel.push(ContextItem::user("look"));
+
+    kernel.step().await.unwrap();
+    kernel.step().await.unwrap();
+
+    let results = tool_results(&kernel);
+    assert_eq!(results[0].content, shot, "the whole of it, excluded");
+    assert_eq!(results[0].state, ContextState::Excluded);
+    let shown = &results[1].content;
+    assert_eq!(
+        shown.blobs().len(),
+        1,
+        "the picture is in what the model is shown"
+    );
+    assert!(
+        shown
+            .to_text()
+            .contains("bytes truncated by an output limit"),
+        "{}",
+        shown.to_text()
+    );
+
+    // the setter hands back what it was
+    assert_eq!(kernel.set_picture_limit(None), Some(1 << 20));
 }
 
 #[tokio::test]
