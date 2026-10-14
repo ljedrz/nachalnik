@@ -476,6 +476,34 @@ mod tests {
         );
     }
 
+    /// A link at the record directory's name is refused, even to a private directory of this
+    /// user's.
+    ///
+    /// note: the name is fixed and the temporary directory is everybody's, so a link somebody left
+    /// there would send the transcript wherever it pointed. What refuses it is the open not
+    /// following a link, before anything is looked at through it.
+    #[test]
+    fn a_link_at_the_record_directorys_name_is_refused() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let base = std::env::temp_dir().join("kamchatka-private-link");
+        let _ = std::fs::remove_dir_all(&base);
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).expect("a directory to point at");
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700))
+            .expect("made private");
+        private(&real).expect("the directory itself is private");
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&real, &link).expect("a link to it");
+
+        let refused = private(&link).expect_err("a link is not the directory");
+        assert!(
+            refused.contains("is not a directory only you can enter"),
+            "the refusal does not say what is wrong: {refused}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// A link at the snapshot's name is a name that is taken, even when it points at nothing.
     ///
     /// note: `exists` follows a link and answers no for one to a file that is not there, and the
