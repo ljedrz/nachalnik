@@ -51,6 +51,17 @@ jobs:
         run: >
           cargo clippy -p kamchatka --no-default-features --features mcp --all-targets --locked
           -- -D warnings
+      # and the screen and the page each without the other, which is where a gate between them
+      # breaks: `qr` is `webui`'s and the overlay draws its codes, the `/` search is `tui`'s and the
+      # page serves the same session. Every other build here has both or neither
+      - name: clippy, screen without the page
+        run: >
+          cargo clippy -p kamchatka --no-default-features --features tui --all-targets --locked
+          -- -D warnings
+      - name: clippy, page without the screen
+        run: >
+          cargo clippy -p kamchatka --no-default-features --features webui --all-targets --locked
+          -- -D warnings
       # with all features, as docs.rs builds it, since the docs link to features that are off by
       # default
       - name: docs
