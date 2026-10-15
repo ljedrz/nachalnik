@@ -90,14 +90,15 @@ to a run, not a session.
 The rest: `args.rs` the command line and `config.rs` the settings file it merges with,
 `endpoint.rs` the environment variables and the `connect` functions, `check.rs` `--check`,
 `reconcile.rs` `kamchatka reconcile`, `help.rs` the key and selector listings, `attach.rs` adds a
-file to the context, `clipboard.rs` OSC 52, `stopping.rs` <kbd>ctrl+c</kbd>, and `mcp.rs` (feature
-`mcp`) MCP servers.
+file to the context, `clipboard.rs` OSC 52, `stopping.rs` <kbd>ctrl+c</kbd>, `qr.rs` (feature
+`webui`) the QR code of the `--web` address, and `mcp.rs` (feature `mcp`) MCP servers.
 
 **Features.** `tui` (default) covers `ui/`, `app/keys.rs` and the prompt: anything using a
-`KeyEvent` or a `ratatui` type goes behind it, and nothing a *command* can reach may.
+`KeyEvent` or a `ratatui` type goes behind it, and so does `app/search.rs`, the `/` filter.
+Nothing a *command* can reach may go behind it.
 `cargo test -p kamchatka --no-default-features` is the check, and builds a headless binary.
 `remote/` has no feature, since all it needs beyond the rest is `socket2` and one more `tokio`
-feature. `webui` (default) is `web/`.
+feature. `webui` (default) is `web/` and `qr.rs`.
 
 `kamchatka/examples/`: `attached.rs` is a client written against `remote::protocol` and the three
 `app` types it names; `gateway.rs` (feature `webui`) serves `web/`'s page for a session in another
