@@ -90,7 +90,16 @@ fn main() -> Result<std::process::ExitCode> {
         sandbox::scope_signals();
     }
 
+    // note: two workers rather than one per core. What they run waits on the network, a child or
+    // a socket; the reading, writing and searching the file tools do go to the blocking pool,
+    // which this doesn't limit. Every worker is another glibc malloc arena holding memory freed
+    // into it. Measured 2026-10-15 on 32 cores, with a 300-turn headless session against a local
+    // endpoint that answers at once: the peak goes from about 55MB with the default to 40MB with
+    // two, and what stays resident afterwards from 26-50MB (42.5MB median) to 24-44MB (about
+    // 30MB), and the session runs a little faster. One worker does better still, around 21MB,
+    // but then a request being built holds up every stream and client until it is done
     let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()?;
     let outcome = runtime.block_on(session(given));
