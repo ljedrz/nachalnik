@@ -17,6 +17,13 @@ minor bump may break you.
   searched by. Without a screen there is no box to type into, so a headless or served build no
   longer compiles `nucleo-matcher` or reads the local time zone at startup.
 
+### changed
+
+- **Two runtime workers rather than one per core.** What they run waits on the network, and the
+  file tools already work on the blocking pool. On glibc, each worker kept memory of its own: on a
+  32-core machine a long session's peak drops from about 55MB to 40MB, and an idle screen session
+  runs 4 threads instead of 34.
+
 ### removed
 
 - **`examples/system1_assisted_compaction`**, which had a System One model choose what to drop
