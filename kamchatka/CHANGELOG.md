@@ -17,6 +17,13 @@ minor bump may break you.
   searched by. Without a screen there is no box to type into, so a headless or served build no
   longer compiles `nucleo-matcher` or reads the local time zone at startup.
 
+### removed
+
+- **`examples/system1_assisted_compaction`**, which had a System One model choose what to drop
+  from a full context. The program doesn't compact that way and isn't meant to, and an example of
+  it suggested otherwise. The `advise` feature stays, for `shell-advisor` and for library users
+  of `endpoint::advise`.
+
 ## [0.20.0] - 2026-10-14
 
 ### breaking
