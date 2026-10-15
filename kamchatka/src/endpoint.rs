@@ -430,7 +430,7 @@ async fn connected(
 }
 
 /// The advisor: a System One model, asked about tool calls rather than about turns - see
-/// `tools::advice` for what the program asks it, and `system1_assisted_compaction` for another use.
+/// `tools::advice` for what the program asks it.
 ///
 /// note: any of the ones OpenRouter serves, named by `KAMCHATKA_SYSTEM1_MODEL` and with no default,
 /// so that no vendor's is chosen for anybody. A provider OpenRouter does not list is reached

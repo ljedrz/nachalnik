@@ -31,8 +31,7 @@ path = "src/main.rs"
 default = ["mcp", "tui", "webui"]
 # a client for System One models (`endpoint::advise`), which answer typed questions with
 # probabilities instead of writing text: the ones OpenRouter serves, or a compatible server of your
-# own. On its own it changes nothing in the program; `shell-advisor` uses it, and so does the
-# `system1_assisted_compaction` example.
+# own. On its own it changes nothing in the program; `shell-advisor` uses it.
 advise = ["nachalnik-providers/system1"]
 # `--rate-shell-commands`: the advisor rates each `shell` command you're asked about on a
 # three-level scale, shown as green, yellow or red in the permission question. A command chained
@@ -170,13 +169,6 @@ rustix = { version = "1", features = ["event", "fs", "net", "process"] }
 name = "gateway"
 path = "examples/gateway.rs"
 required-features = ["webui"]
-
-# uses a System One model to choose what to drop from a full context, compared with the age order
-# `Shedder` uses. The program doesn't do this; it shows what System One models can be used for
-[[example]]
-name = "system1_assisted_compaction"
-path = "examples/system1_assisted_compaction.rs"
-required-features = ["advise"]
 
 # the test suites that need the screen (drawing frames, pressing keys) or another feature say so,
 # so `cargo test --no-default-features` runs the rest instead of failing to compile
