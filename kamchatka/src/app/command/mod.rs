@@ -547,7 +547,7 @@ fn no_such_command(name: &str) -> String {
 }
 
 impl App {
-    /// The page's address and a QR code of it, for a phone to open; see [`crate::qr`].
+    /// The page's address and a QR code of it, for a phone to open; see `qr`.
     ///
     /// note: a command as well as a line at startup, because the screen is drawn over whatever was
     /// printed before it, and the address is what somebody wants at the moment they pick up the
@@ -560,12 +560,16 @@ impl App {
             );
             return;
         };
-        let body = match crate::qr::Code::new(&address) {
+        // note: the code is `webui`'s, like the page; a build without it never has an address
+        #[cfg(feature = "webui")]
+        let code = crate::qr::Code::new(&address).map(|code| code.lines().join("\n"));
+        #[cfg(not(feature = "webui"))]
+        let code: Option<String> = None;
+        let body = match code {
             Some(code) => format!(
-                "{address}\n\n{}\n\nPoint a phone's camera at the code, or type the address. The \
-                 eight characters after the port are the page's key, and it refuses an address \
-                 without them.",
-                code.lines().join("\n")
+                "{address}\n\n{code}\n\nPoint a phone's camera at the code, or type the address. \
+                 The eight characters after the port are the page's key, and it refuses an \
+                 address without them."
             ),
             None => format!(
                 "{address}\n\nThe eight characters after the port are the page's key, and it \

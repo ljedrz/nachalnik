@@ -238,6 +238,18 @@ fn worst(_: &App, _: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
     None
 }
 
+/// Whether a line of a panel is one of a QR code's, which [`panel`] draws in colours of its own.
+#[cfg(feature = "webui")]
+fn code_line(line: &str) -> bool {
+    crate::qr::Code::is_line(line)
+}
+
+/// The same where the page is not in the build, and so no code of its address either.
+#[cfg(not(feature = "webui"))]
+fn code_line(_: &str) -> bool {
+    false
+}
+
 /// A running command that reached for the network, waiting on a `y`.
 ///
 /// note: the command whole, where the arguments go, because it is what the question is about and
@@ -584,11 +596,11 @@ fn panel(
     // note: a page with a QR code in it is as wide as the code, or as a line beside it that cannot
     // be folded - the address it is a code of - where that is wider. The prose under it folds to
     // fit, and a box twice the code's width is mostly empty space around a thing to photograph
-    let columns = match showing.body.lines().any(crate::qr::Code::is_line) {
+    let columns = match showing.body.lines().any(code_line) {
         true => showing
             .body
             .lines()
-            .filter(|line| crate::qr::Code::is_line(line) || !line.contains(' '))
+            .filter(|line| code_line(line) || !line.contains(' '))
             .map(|line| line.chars().count())
             .max()
             .map_or(columns, |widest| {
@@ -647,7 +659,7 @@ fn panel(
     // not read; see `qr::Code::lines`
     let shown: Vec<Line> = in_view(lines, at, inner)
         .into_iter()
-        .map(|line| match crate::qr::Code::is_line(&line) {
+        .map(|line| match code_line(&line) {
             true => Line::styled(line, Style::default().fg(Color::White).bg(Color::Black)),
             false => Line::from(line),
         })

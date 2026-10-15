@@ -1048,6 +1048,7 @@ async fn a_panel_with_one_face_is_closed_by_the_keys_that_turn_the_others() {
 
 /// `/web` draws the code white on black whatever the terminal's colours, in a panel no wider than
 /// the code.
+#[cfg(feature = "webui")]
 #[tokio::test]
 async fn the_page_panel_is_as_wide_as_its_code() {
     let mut harness = Harness::new([]);
