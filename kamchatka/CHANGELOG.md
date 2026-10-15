@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### breaking
+
+- **`qr` is behind the `webui` feature**, like the page whose address it encodes. A build without
+  `webui` never has an address to draw, so the module was compiled for nothing there. It is still
+  in the default build.
+
 ## [0.20.0] - 2026-10-14
 
 ### breaking

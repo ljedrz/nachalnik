@@ -116,6 +116,7 @@ pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+#[cfg(feature = "webui")]
 pub mod qr;
 pub mod reconcile;
 pub mod remote;

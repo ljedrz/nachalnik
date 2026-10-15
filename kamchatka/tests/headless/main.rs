@@ -978,8 +978,12 @@ async fn web_shows_the_address_and_its_code() {
         body.starts_with("http://192.168.1.5:8080/0123abcd"),
         "{body}"
     );
-    let code = kamchatka::qr::Code::new("http://192.168.1.5:8080/0123abcd").expect("it fits");
-    assert!(body.contains(&code.lines().join("\n")), "{body}");
+    // the code is `webui`'s; a build without it shows the address alone
+    #[cfg(feature = "webui")]
+    {
+        let code = kamchatka::qr::Code::new("http://192.168.1.5:8080/0123abcd").expect("it fits");
+        assert!(body.contains(&code.lines().join("\n")), "{body}");
+    }
 }
 
 /// A line sent into a running turn says that it is waiting, rather than that it was asked.
