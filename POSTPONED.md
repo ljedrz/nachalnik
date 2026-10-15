@@ -59,3 +59,12 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   parameter can set. Neither OpenRouter, which rewrites the message and isn't what checks the
   signature, nor an older account shows the refusal. Unblocked by an Anthropic account created on
   or after 2026-08-31, to see it rejected by the real API and then fixed.
+
+- **What a session costs in money, and what is left of the balance.** OpenRouter reports what each
+  request cost, in credits, in `usage.cost` on every response (in the last chunk of a stream), and
+  nachalnik ignores it. No response includes the balance. `GET /api/v1/key` returns what is left
+  under the key's own spending limit, which is null for a key without one. The account balance is
+  only at `/api/v1/credits`, which needs a management key. Anthropic, OpenAI and Gemini offer
+  neither to an ordinary key, so supporting OpenRouter alone would show a cost on some endpoints
+  and nothing on the rest. Unblocked by providers settling on a common way to report a request's
+  price and a key's balance, or by deciding an OpenRouter-only figure is worth having.
