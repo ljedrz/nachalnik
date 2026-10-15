@@ -12,6 +12,10 @@ minor bump may break you.
 - **`qr` is behind the `webui` feature**, like the page whose address it encodes. A build without
   `webui` never has an address to draw, so the module was compiled for nothing there. It is still
   in the default build.
+- **The `/` search over the panes is behind the `tui` feature**, with the keys that open it:
+  `app::Search`, `App::search` and `app::when`, the local clock the trace pane is drawn and
+  searched by. Without a screen there is no box to type into, so a headless or served build no
+  longer compiles `nucleo-matcher` or reads the local time zone at startup.
 
 ## [0.20.0] - 2026-10-14
 

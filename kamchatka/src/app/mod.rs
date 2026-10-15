@@ -30,6 +30,7 @@ mod command;
 mod events;
 mod going;
 mod questions;
+#[cfg(feature = "tui")]
 mod search;
 mod session;
 mod spend;
@@ -38,6 +39,7 @@ mod turn;
 mod views;
 
 pub use going::Going;
+#[cfg(feature = "tui")]
 pub use search::Search;
 pub(crate) use session::named_calls;
 pub use transcript::{Entry, Said, Speaker};
@@ -47,6 +49,7 @@ pub use views::Stance;
 #[cfg(feature = "tui")]
 mod keys;
 pub(crate) mod text;
+#[cfg(feature = "tui")]
 pub mod when;
 
 pub(crate) use session::{beside, without_suffix};
@@ -573,6 +576,7 @@ pub struct App {
     /// note: one box rather than one per tab, and it is cleared when the tab changes. A query
     /// written for the trace means nothing against the context, and carrying it over would filter
     /// a pane by a phrase nobody typed there.
+    #[cfg(feature = "tui")]
     pub search: Option<Search>,
     /// Which context item the prompt is editing, if it is editing one rather than composing a
     /// message.
@@ -822,6 +826,7 @@ impl App {
             spend: None,
             rendered: 0,
             viewport: 0,
+            #[cfg(feature = "tui")]
             search: None,
             editing: None,
             stepping: false,
@@ -1631,7 +1636,10 @@ impl App {
         // and so does a filter. A query written against the trace means nothing against the
         // context, and one left running on a pane somebody comes back to is a pane showing four
         // rows of hundreds with its explanation on another tab
-        self.search = None;
+        #[cfg(feature = "tui")]
+        {
+            self.search = None;
+        }
 
         self.tab = tab;
         self.focus = match (tab, self.asking()) {

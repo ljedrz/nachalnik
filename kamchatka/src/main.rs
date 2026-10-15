@@ -68,7 +68,9 @@ fn main() -> Result<std::process::ExitCode> {
     // out the local time of day means asking libc, which reads the process environment, and a
     // thread setting a variable while another reads one is undefined behaviour - so `time`
     // refuses to answer once a program is threaded. Here there is nobody to race, and the answer
-    // is good for the rest of the run: the trace pane needs an offset, not a calendar.
+    // is good for the rest of the run: the trace pane needs an offset, not a calendar, and a build
+    // without the pane has no use for either
+    #[cfg(feature = "tui")]
     kamchatka::app::when::note_local_offset(
         time::UtcOffset::current_local_offset()
             .ok()

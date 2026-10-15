@@ -56,6 +56,7 @@ webui = []
 # served builds don't compile the dependencies below, which nothing else uses
 tui = [
     "dep:crossterm",
+    "dep:nucleo-matcher",
     "dep:ratatui",
     "dep:ratatui-textarea",
     "dep:synoptic",
@@ -63,6 +64,7 @@ tui = [
     "dep:tui-markdown",
     "dep:unicode-segmentation",
     "dep:unicode-width",
+    "time/local-offset",
 ]
 
 [dependencies]
@@ -132,13 +134,13 @@ synoptic = { version = "2.2", optional = true }
 
 # `next()` on the terminal's key stream, so only needed with a screen
 tokio-stream = { version = "0.1.1", optional = true }
-# the local UTC offset (read once at startup) and the timestamps on trace lines. Not optional:
-# searching the trace matches on the timestamp, so it is built in `app`, not `ui`. Screen builds
-# already have it through `ratatui-widgets`
-time = { version = "0.3.47", features = ["local-offset"] }
+# the UTC date and time a session's record is named by, so not optional. `tui` adds `local-offset`
+# for the local clock on trace lines, read once at startup. Screen builds already have it through
+# `ratatui-widgets`
+time = "0.3.47"
 # fuzzy matching for `/` on the context and trace panes, from Helix. Just the matcher, not
 # `nucleo`, whose worker pool is built for millions of items; we filter a few hundred
-nucleo-matcher = "0.3"
+nucleo-matcher = { version = "0.3", optional = true }
 # the prompt box must be as tall as its wrapped text, but `ratatui-textarea` doesn't report how
 # many rows it wraps to. `ui::wrapped_rows` counts them by breaking at the same unicode word
 # boundaries (which include `/`, so splitting on spaces isn't enough)

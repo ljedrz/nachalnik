@@ -17,7 +17,9 @@ use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, Domain, Grant, PermissionRequest, Verdict,
 };
 
-use super::{App, Going, Tab, Traced, text::thousands, when};
+use super::{App, Going, Traced, text::thousands};
+#[cfg(feature = "tui")]
+use super::{Tab, when};
 use crate::{sandbox::Confinement, tools::Subject};
 
 /// One row of the permissions tab: a capability, a path rule or a rule about one tool action, what
@@ -378,6 +380,7 @@ impl App {
     /// note: the search goes here, beside `f`, and for the reason `f` is here: this is what the
     /// keys count rows in. A pane filtered on the way to the screen while `context_key` still
     /// indexed the whole context would select the row above the one under the cursor.
+    #[cfg(feature = "tui")]
     fn searched(&self, items: Vec<Arc<ContextItem>>) -> Vec<Arc<ContextItem>> {
         let Some(search) = self.search.as_ref().filter(|_| self.tab == Tab::Context) else {
             return items;
@@ -387,6 +390,12 @@ impl App {
             .into_iter()
             .filter(|item| search.matches_item(item, Self::item_text))
             .collect()
+    }
+
+    /// The same where there is no screen, and so no box to type a search into.
+    #[cfg(not(feature = "tui"))]
+    fn searched(&self, items: Vec<Arc<ContextItem>>) -> Vec<Arc<ContextItem>> {
+        items
     }
 
     /// What a search over the context matches an item on.
@@ -408,6 +417,7 @@ impl App {
     /// note: the state is deliberately not in here. It is on the row as a mark rather than a word,
     /// so there is nothing somebody would be typing to match it, and `/exclude state:excluded` is
     /// the language for asking that question.
+    #[cfg(feature = "tui")]
     fn item_text(item: &ContextItem) -> String {
         format!(
             "{} {} {}",
@@ -423,6 +433,7 @@ impl App {
     /// say - is kept or dropped with the event it belongs to rather than matched on its own. The
     /// alternative is a pane showing the second half of a message whose first half was filtered
     /// out from over it.
+    #[cfg(feature = "tui")]
     pub fn traced(&self) -> Vec<&Traced> {
         let Some(search) = self.search.as_ref().filter(|_| self.tab == Tab::Trace) else {
             return self.trace.iter().collect();
@@ -442,12 +453,19 @@ impl App {
         kept
     }
 
+    /// The same where there is no screen, and so no box to type a search into.
+    #[cfg(not(feature = "tui"))]
+    pub fn traced(&self) -> Vec<&Traced> {
+        self.trace.iter().collect()
+    }
+
     /// What a search over the trace matches an event on.
     ///
     /// note: the clock is in it, which is why the stamp is built down here rather than in the
     /// pane. "the hour it broke" is the question somebody brings to a long run, and
     /// `14:` or a date answers it only if the date and the time are among the things being
     /// matched.
+    #[cfg(feature = "tui")]
     fn event_text(event: &Traced) -> String {
         let read = when::read_off(event.wall);
 
