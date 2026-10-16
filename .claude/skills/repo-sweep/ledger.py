@@ -1,6 +1,9 @@
 """The mutants a sweep has already settled without a test, so that the next one does not ask again.
 
     ledger.py add MUTANTS_OUT VERDICT WHY NAME...    records mutants by their cargo-mutants names
+    ledger.py exclude [--retry-unsettled] CARGO_MUTANTS_ARGS...
+                                                     the settled mutants among those the args select,
+                                                     as `--exclude-re=` arguments, one a line
 
     verdicts.jsonl, beside this file: one JSON object a line -
     {"key": {...}, "verdict": "...", "why": "...", "name": "...", "commit": "...", "date": "..."}
@@ -84,11 +87,41 @@ def append(entries, path=LEDGER):
             out.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def exclusions(args, retry_unsettled=False):
+    """The `--exclude-re` arguments that leave out of a run every mutant the ledger settles.
+
+    note: a settled mutant survives by definition, so a run that includes it spends a whole test
+    suite on it to learn nothing - against the workspace, a minute or more each. Its key is made
+    from `cargo mutants --list --json --diff` with the run's own selection, as from an outcome,
+    and its name is excluded exactly. `unsettled` ones are left out too unless asked for, as
+    `mutants_tasks.py` leaves them out of the sessions.
+    """
+    import subprocess
+
+    listed = subprocess.run(["cargo", "mutants", "--list", "--json", "--diff", *args],
+                            capture_output=True, text=True, check=True).stdout
+    settled = load()
+    names = []
+    for mutant in json.loads(listed):
+        k = key(mutant, mutant["diff"])
+        entry = k and settled.get(ident(k))
+        if entry and (entry["verdict"] != "unsettled" or not retry_unsettled):
+            names.append(mutant["name"])
+    return [f"--exclude-re=^{re.escape(name)}$" for name in names]
+
+
 if __name__ == "__main__":
     import datetime
     import subprocess
     import sys
 
+    if len(sys.argv) > 1 and sys.argv[1] == "exclude":
+        rest = sys.argv[2:]
+        retry = "--retry-unsettled" in rest
+        found = exclusions([a for a in rest if a != "--retry-unsettled"], retry)
+        print("\n".join(found))
+        print(f"{len(found)} settled mutants left out", file=sys.stderr)
+        sys.exit(0)
     if len(sys.argv) < 6 or sys.argv[1] != "add" or sys.argv[3] not in VERDICTS:
         sys.exit(__doc__)
     out, verdict, why, names = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5:]

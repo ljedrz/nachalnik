@@ -346,6 +346,17 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
        --all-features --test-workspace=true --iterate --timeout <3x the measured suite>
    python3 $SKILL/merge.py target/agents/out/X-merged target/agents/out/X-{1,2,3,4}
    ```
+   **Leave out what the ledger settles, before anything runs.** A mutant in `verdicts.jsonl`
+   survives by definition, and each one in a run costs a whole suite to learn nothing again; over
+   all of `kamchatka` that is well over a hundred of them. `ledger.py exclude` takes the run's own
+   selection and prints an `--exclude-re` for each, which adds to `.cargo/mutants.toml`'s list
+   rather than replacing it:
+   ```sh
+   mapfile -t settled < <(python3 $SKILL/ledger.py exclude -p <crate> --all-features)
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60 "${settled[@]}"
+   ```
+   and the same selection for the `--workspace` run (`--workspace --file '<crate>/src/**/*.rs'`).
+
    **Only what changed since a commit** - since the last mutants sweep, say - is the same two runs
    with `--in-diff` added to each, naming a diff of the source since then, by an absolute path,
    since each shard runs from its own worktree:
