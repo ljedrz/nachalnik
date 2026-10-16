@@ -518,6 +518,21 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
 ## gotchas
 
 - `pkill -f PATTERN` matches the shell running it; kill by pid.
+- **A mutants run longer than a tool's time limit is run detached** (`nohup setsid ... &`),
+  and watched with checks that end. A run of several crates, or of `kamchatka` alone, is many
+  hours, and a background task with a time limit is killed with the run inside it.
+- **A run that failed at once looks like one with nothing in it.** `shards.sh` exits 0 whatever
+  cargo-mutants did, and an argument cargo-mutants refuses (an empty one, from an empty list read
+  into a shell array) ends every shard with a usage message and no outcomes. Before a run, count
+  what it should test with `cargo mutants --list` and the same arguments; after it, check the
+  merged outcomes account for every one, and the `--iterate` run's `Found N mutants` lines add up
+  to the first run's missed, timed out and untested. Stop at the first that does not.
+- **A `--test-workspace` run that was stopped is finished by name, not by `--iterate` alone.**
+  `--iterate` leaves out only what was caught or unviable, so it would test every mutant the
+  stopped run already found missed again, each at a whole suite. Make an `--exclude-re=^NAME$` for
+  every mutant in the stopped shards' outcomes, run it again seeded from the first run's merge,
+  check `Found` adds up to what the stopped run never reached, and merge the first run, the
+  stopped shards (copied aside first) and the new ones, in that order.
 - **Never edit a script while bash runs it**, such as a loop driving crate after crate of mutants
   runs. Bash reads a script as it goes and resumes at its old offset in the changed file, which
   can run half a command. Write the new version under another name for the next run.
