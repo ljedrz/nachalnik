@@ -84,6 +84,15 @@ split by checking that the moved lines are the same lines) and `compact/` (what 
 merged with nothing lost). Each is one module or one concern, names its files and lists concrete
 failure classes - narrow scopes are what made the findings real.
 
+A scope names its module's own classes. The classes any Rust code can have whatever its module -
+a panic on input the program does not control, a failure dropped where the work mattered, a path
+checked and used apart, a process or file left behind on an error path, and the like - are
+`CLASSES` in `configure.py`, by kind, and every sweep of that kind is given them. Each comes with a
+pattern the sweep greps the scope for first, so that a class costs one call and a read of what it
+matches rather than a read of every file; a pattern that matches most of the workspace is no help,
+so check a new one's count with `rg -c` before adding it. A class that only one module can have
+belongs in that module's scope instead.
+
 **Each failure class belongs to one kind**, because sweeps of several kinds read the same files
 and a class two kinds look for comes back twice. `OWNS` in `configure.py` says what each kind
 looks for, and every system prompt tells the model to leave the others' to them: duplicated
