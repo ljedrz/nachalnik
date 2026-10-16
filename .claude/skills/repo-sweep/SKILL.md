@@ -227,13 +227,17 @@ For each patch an agent leaves, in the main tree:
    `--no-default-features` where the crate has features), the crate's tests.
 3. **Redo the mutation check yourself**: `git show HEAD:<file> > <file>` for the source only, run
    the new test and see it fail, restore. An agent's check can lie (a shared target dir once handed
-   agents binaries built from each other's sources).
+   agents binaries built from each other's sources). It must fail on its assertion: a test that
+   no longer builds without the fix has shown nothing, so where the fix adds what the test calls,
+   revert only the lines that change the behaviour.
 4. A changelog bullet per crate under `## [unreleased]`, in the style there. Docs-, comment-,
    test- and example-only changes take none and say so in the message.
 5. `git add <files by name>`, commit `crate: what changed, in one lowercase line` + prose, ending
    with the attribution line the session gives.
 
-Fix trivial and clearly right things yourself; one fix per commit.
+Fix trivial and clearly right things yourself; one fix per commit. An agent looks for variants of
+each real finding across the workspace, so two agents can patch the same variant: apply the first
+and drop the other's hunk for it.
 
 ## 6. decisions
 
