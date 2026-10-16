@@ -57,6 +57,17 @@ with what would settle it, and does not count towards the verdict.
   that pins a fix, check it with `scripts/mutate.sh` as CONTRIBUTING.md says: what counts is that
   nothing *else* caught the change, and that the test fails on its assertion rather than because
   it no longer builds.
+- What the branch changes is caught by something. A test the branch adds is checked by hand, as
+  above; the code it changes, by cargo-mutants on that code alone, when the branch changes
+  behaviour and is small enough for it (`--list` first: each mutant is a few minutes of the
+  workspace's suite):
+  ```sh
+  git diff BASE HEAD -- '*.rs' > $REPO/target/agents/branch.diff
+  cargo mutants --list --in-diff $REPO/target/agents/branch.diff --workspace --all-features | wc -l
+  ```
+  and then the `repo-sweep` skill's mutants mode with `--in-diff` (its first step), whose notes on
+  the mutants that are dangerous to run apply here too. A mutant that survives is a finding: a
+  line the branch changed that no test would miss.
 - An existing test extended where one was natural, rather than a second one beside it.
 - A test that cannot fail, or checks less than its name says.
 
