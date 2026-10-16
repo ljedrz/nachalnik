@@ -32,7 +32,10 @@ AUDIT = (
     "claiming anything; open the actual lines. Read AGENTS.md and INVARIANTS.md first for the "
     "project's rules. Report only findings you have verified in the source. No style nits, no "
     "speculation, no findings about missing features the docs say are deliberately absent "
-    "(POSTPONED.md)."
+    "(POSTPONED.md). Before stating a defect, trace it from a real caller to the wrong outcome: "
+    "a check its callers already make, a type that rules the input out, or no caller that ever "
+    "passes it makes it no defect, and code that only looks dangerous is not one. A path you did "
+    "not trace is a LEAD, not a finding."
 )
 
 QUALITY = (
@@ -163,9 +166,81 @@ def others(kind: str) -> str:
     )
 
 
+# by kind: the failure classes any Rust code can have, whatever its module, each with a pattern
+# to `grep` the scope's files for first
+#
+# note: a scope names its module's own classes; these are the ones no scope would think to name
+# and every scope can hold. The pattern is where to start, not the class: it turns "read every
+# file looking for X" into one call and a read of what it matches, and a class whose pattern
+# matches nothing in the scope is cleared for the price of that call.
+CLASSES = {
+    "audit": [
+        r"a panic on input the program does not control - a model's tool arguments, an "
+        r"endpoint's response, a file or settings it reads, an MCP server, a client of a served "
+        r"session - from `unwrap`, `expect`, indexing, or slicing a str at a byte offset not "
+        r"known to be a char boundary (`\.unwrap\(\)|\.expect\(|\[\.\.|\.\.\]|split_at|"
+        r"truncate\(`)",
+        r"arithmetic or a cast that wraps, underflows or truncates on such input "
+        r"(`as (u8|u16|u32|i32|usize)\b|\s-\s1\b|len\(\)\s*-`)",
+        r"a failure dropped where the work it reports matters - a write to a record or a "
+        r"snapshot, a kill, a send - so the program goes on as if it worked "
+        r"(`let _ =|\.ok\(\);|unwrap_or_default\(\)`)",
+        r"a check on a path and the use it guards done apart, so the path can change between "
+        r"them (`\.exists\(\)|canonicalize|metadata\(`)",
+        r"a child process, a task, a file or a directory left behind on an error path, a "
+        r"cancellation or a kill (`Command::new|spawn\(|create_dir|tempfile`)",
+        r"state left wrong when a future is dropped at an `.await`, or a `select!` branch that "
+        r"loses what it had already read (`select!|\.abort\(\)`)",
+        r"data that does not survive its own round trip: written and read back, a field skipped, "
+        r"renamed or defaulted differently on one side (`#\[serde\(`)",
+        r"recursion as deep as the input nests - nested JSON, Markdown, a directory tree",
+    ],
+    "quality": [
+        r"a lock held across an `.await` or blocking work (`\.lock\(\)|\.read\(\)|\.write\(\)`)",
+        r"blocking file or process work, or a sleep, inside async code "
+        r"(`std::fs::|thread::sleep|\.wait\(\)|read_to_string`)",
+        r"something that only grows over a long session: a list, map or cache added to per "
+        r"event and never pruned, an unbounded channel (`unbounded|[Cc]ache\b|history`)",
+        r"work redone per event that could be done once: a pattern, a parser or a table "
+        r"built per call, a whole collection cloned or sorted per frame or chunk (no pattern: "
+        r"read the per-event paths the scope names)",
+        r"an error turned into a string, an `Option` or a default, losing its cause "
+        r"(`map_err\(\|_\||\.ok\(\)\?|unwrap_or_default`)",
+    ],
+    "tests": [
+        r"a test that changes process-wide state other tests read, while tests run on threads "
+        r"at once: an environment variable, the current directory (`set_var|set_current_dir`)",
+        r"a test whose outcome depends on the machine: the person's home or config, a real "
+        r"network, a fixed path in /tmp (`home_dir|/tmp/|https?://`)",
+        r"an error path a public function documents that no test reaches: the test for the "
+        r"case that should be refused is missing, only the accepted one is there",
+    ],
+    "docs": [
+        r"a flag, an environment variable or a settings key the code reads that no document "
+        r"names, or one a document names that the code no longer reads "
+        r"(`env::var|#\[arg\(|long\s*=|rename\s*=`)",
+        r"a command or a code block in a Markdown file that no longer runs as written against "
+        r"the current code - a Rust block in Markdown is not compiled as a doc test is",
+    ],
+}
+
+
+def classes(kind: str) -> str:
+    """The cross-cutting classes of a kind, and how a sweep goes about them."""
+    if kind not in CLASSES:
+        return ""
+    listed = "; ".join(f"({chr(ord('a') + i)}) {c}" for i, c in enumerate(CLASSES[kind]))
+    return (
+        " CROSS-CUTTING CLASSES: besides the classes the scope names, check the scope's files "
+        "for these. Most end with a pattern: `grep` it over the scope first and read what it "
+        f"matches, rather than reading every file looking for the class. {listed}."
+    )
+
+
 # the one line a finding is, by kind: what a verifier needs to find it again and nothing more
 FORMAT = {
-    "audit": "SEVERITY file:line - the defect - the input or state that shows it - the fix",
+    "audit": "SEVERITY file:line - the defect - the input or state that shows it, and where that "
+    "comes from - the fix",
     "tests": "SEVERITY file:line of the test - what it claims - why that does not hold",
     "quality": "perf|quality SEVERITY file:line - the problem - the fix",
     "docs": "SEVERITY doc file:line - code file:line - what the prose says against what the code "
@@ -282,7 +357,7 @@ def main() -> None:
             # kamchatka's notice that the context is full, at twice the cut: past it only where
             # the cuts did not hold, and told sooner it costs the model a call to look
             "compact-context-at": round(min(0.9, 2 * ceiling / limit), 3),
-            "system-prompt": system + others(kind) + report(kind),
+            "system-prompt": system + classes(kind) + others(kind) + report(kind),
         }
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
