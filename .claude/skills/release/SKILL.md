@@ -45,8 +45,11 @@ A crate with nothing unreleased and no commits is not released.
 For each crate to release, in the order `plan.py` gives:
 
 ```sh
-cargo semver-checks -p <crate> --all-features --baseline-rev <crate>-v<last version>
+cargo semver-checks -p <crate> --all-features --baseline-rev <crate>-v<last version> --release-type patch
 ```
+
+`--release-type patch` makes it check everything: left to read the crate's version, it skips
+every check once the version has been bumped, and passes.
 
 - A break it reports moves `x`. So does anything in the changelog's `breaking` section, and what it
   cannot see: a removed or renamed feature, a feature that no longer turns on what it did, a raised

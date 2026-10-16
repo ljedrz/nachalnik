@@ -151,6 +151,11 @@ fault, a documented decision, or the harness. Fixes go on their own branch with 
 without the fix, and anything that needs a person to decide goes into
 [POSTPONED.md](POSTPONED.md).
 
+Three more skills there do the routine work in this file in order, and stop before anything leaves
+the machine: **`live-tests`** runs the live suites with each one's variables and reports per test
+what passed, failed or skipped; **`release`** decides the numbers, runs what CI runs, and makes the
+bump and release commits; **`pre-push`** reviews a branch against the conventions below and CI.
+
 ---
 
 ## conventions
