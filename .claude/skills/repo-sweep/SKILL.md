@@ -185,6 +185,11 @@ columns say what the endpoint costs.
 
 `python3 $SKILL/read.py NAME -f` - its `FINDING:` lines, each once, which is what to verify, and
 then its `LEAD:` lines, each a suspicion worth a quick look.
+`-c` gives what it covered: a `CLEARED:` line for each class it searched and found nothing in, with
+what it searched, and an `UNSEARCHED:` line for each it did not get to. A sweep with no findings
+is only clean where it says CLEARED; its UNSEARCHED classes, and any the scope names that appear in
+neither, are what a narrower scope of the same files is for (write it in `scopes/` with only those
+classes, and run it).
 Without `-f`, its replies and any `context` notes, for the reasoning around a line; `-r` adds the
 model's reasoning. It reads the snapshot, so a sweep still running is read as of the end of its
 last turn, and a resumed one with everything before the resume; `-f` falls back to the prose in

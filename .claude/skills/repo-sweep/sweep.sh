@@ -45,11 +45,14 @@ main() {
     # note: two messages, the scope and the report. Every message after the first starts with
     # each tool result before it elided, so a message that only said "continue" bought a round of
     # reading the same files again; the first now asks for the whole scope in one turn instead
+    #
+    # note: the last asks for a line for every class without a finding as well, cleared or not
+    # searched, since a sweep that found nothing and one that never looked otherwise read the same
     messages() {
         # the scope is one message, however many lines its file has
         printf '%s' "$(tr '\n' ' ' < "$scope")"
         echo ' Cover every file and every failure class the scope names in this one turn before you reply: a reply with no tool call ends your exploration, and nothing after it sends you back.'
-        echo 'Now list every FINDING line from this session again, one a line, in the same terse form, leaving out any you no longer stand by. Then, on lines starting with LEAD:, anything you suspected and did not get to verify, with file:line and what would settle it, at most 30 words each. Nothing else.'
+        echo 'Now list every FINDING line from this session again, one a line, in the same terse form, leaving out any you no longer stand by. Then, on lines starting with LEAD:, anything you suspected and did not get to verify, with file:line and what would settle it, at most 30 words each. Then, for every failure class the scope and the system prompt name that has no FINDING line, one line: CLEARED: the class - what you searched or read that rules it out, or UNSEARCHED: the class, if you did not get to it; at most 15 words each. Nothing else.'
     }
     local resume=()
     {

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """What a sweep found: its replies, which hold its `FINDING:` lines, and any `context` notes it
 kept. With -r, its reasoning as well; with -f, its `FINDING:` lines alone, each once, and then its
-`LEAD:` lines - what it suspected and did not verify.
+`LEAD:` lines - what it suspected and did not verify. With -c, what it covered: its `CLEARED:`
+lines, each a class it searched and found nothing in, and its `UNSEARCHED:` lines, each a class it
+did not get to, which is what a narrower sweep of the same scope is for.
 
-usage: read.py NAME [-r | -f]
+usage: read.py NAME [-r | -f | -c]
 
 From the snapshot the session wrote, beside its log (see `sweeps.py`): kamchatka rewrites it each
 time the session comes to rest, so a sweep still running is read as of the end of its last turn,
@@ -151,6 +153,10 @@ def main():
     if "-f" in args:
         leads = [f"LEAD: {lead}" for lead in findings(args[0], "LEAD")]
         print("\n".join(findings(args[0]) + leads))
+        return
+    if "-c" in args:
+        print("\n".join(f"{word}: {line}" for word in ("CLEARED", "UNSEARCHED")
+                        for line in findings(args[0], word)))
         return
     for heading, said in entries(args[0], "-r" in args):
         if heading is None:
