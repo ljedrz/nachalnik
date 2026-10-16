@@ -97,6 +97,7 @@ def exclusions(args, retry_unsettled=False):
     `mutants_tasks.py` leaves them out of the sessions.
     """
     import subprocess
+    import sys
 
     done = subprocess.run(["cargo", "mutants", "--list", "--json", "--diff", *args],
                           capture_output=True, text=True, check=True)
@@ -113,7 +114,19 @@ def exclusions(args, retry_unsettled=False):
         entry = k and settled.get(ident(k))
         if entry and (entry["verdict"] != "unsettled" or not retry_unsettled):
             names.append(mutant["name"])
-    return [f"--exclude-re=^{re.escape(name)}$" for name in names]
+    found = [f"--exclude-re=^{re.escape(name)}$" for name in names]
+    # note: listed again with the exclusions, because cargo-mutants 27 does not apply
+    # `--exclude-re` to a mutant that deletes a field from a struct expression, whatever the
+    # pattern: those run regardless, and are said to
+    stuck = []
+    if found:
+        again = subprocess.run(["cargo", "mutants", "--list", *args, *found], capture_output=True,
+                               text=True, check=True).stdout.splitlines()
+        stuck = sorted(set(names) & set(again))
+        for name in stuck:
+            print(f"settled but not excludable, so it runs: {name}", file=sys.stderr)
+    print(f"{len(found) - len(stuck)} settled mutants left out, {len(stuck)} not", file=sys.stderr)
+    return found
 
 
 if __name__ == "__main__":
@@ -129,7 +142,6 @@ if __name__ == "__main__":
         # shell array is an empty argument, which cargo-mutants refuses
         for line in found:
             print(line)
-        print(f"{len(found)} settled mutants left out", file=sys.stderr)
         sys.exit(0)
     if len(sys.argv) < 6 or sys.argv[1] != "add" or sys.argv[3] not in VERDICTS:
         sys.exit(__doc__)
