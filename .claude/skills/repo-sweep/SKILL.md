@@ -514,6 +514,9 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
 ## gotchas
 
 - `pkill -f PATTERN` matches the shell running it; kill by pid.
+- **Never edit a script while bash runs it**, such as a loop driving crate after crate of mutants
+  runs. Bash reads a script as it goes and resumes at its old offset in the changed file, which
+  can run half a command. Write the new version under another name for the next run.
 - A command with `&&` before a heredoc, and `git commit` on the next line, commits even when the
   first command failed.
 - `/tmp` itself is not writable here; use `$TMPDIR`.
