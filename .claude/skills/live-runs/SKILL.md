@@ -109,7 +109,11 @@ Then the hard facts: files written outside a workspace, processes still running 
 
 - Find the code, then **reproduce without the model**: a unit or integration test against the tool,
   the kernel, `note_for`, the client. Watch it fail, fix, watch it pass, restore the old line and
-  watch only the new test fail.
+  watch only the new test fail - on its assertion, not by failing to build.
+- **Look for the same root cause elsewhere** before fixing: a scenario finds one place, and the
+  mistake behind it is rarely made once. Say why the code is wrong, grep for this instance, then
+  widen the pattern a step at a time until most of what it matches is noise. Fix what is the same
+  mistake with the same fix, in the same commit.
 - Check POSTPONED.md and the `note:`s first. A behaviour a note defends is a decision, and so is
   any fix that changes what the program does rather than what it says: those go into POSTPONED.md
   in its form - what, why it waits, what would settle it - not into code.
