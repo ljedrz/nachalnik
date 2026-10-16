@@ -346,6 +346,19 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
        --all-features --test-workspace=true --iterate --timeout 300
    python3 $SKILL/merge.py target/agents/out/X-merged target/agents/out/X-{1,2,3,4}
    ```
+   **Only what changed since a commit** - since the last mutants sweep, say - is the same two runs
+   with `--in-diff` added to each, naming a diff of the source since then, by an absolute path,
+   since each shard runs from its own worktree:
+   ```sh
+   git diff <commit> HEAD -- '*.rs' > $REPO/target/agents/since.diff
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 300 \
+       --in-diff $REPO/target/agents/since.diff
+   ```
+   and the same for the `--workspace` run. cargo-mutants then makes only the mutants on lines the
+   diff adds or changes, which is a fraction of the crate's, and everything below is as for a whole
+   crate. `cargo mutants --list --in-diff FILE -p <crate> --all-features | wc -l` says how many,
+   before a build: count each one at a few minutes of the workspace's suite, divided by the shards.
+
    `shards.sh` runs cargo-mutants `--in-place`, one `--shard` in each of the worktrees
    `$REPO/w1`..`wN` (kept out of `git status` by `.git/info/exclude`), under one `guard.py`. Not
    `mutants.sh`'s copies: a copy is at `target/agents/mt/cargo-mutants-PKG-XXXXXX.tmp`, and
