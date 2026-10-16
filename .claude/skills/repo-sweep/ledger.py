@@ -98,8 +98,14 @@ def exclusions(args, retry_unsettled=False):
     """
     import subprocess
 
-    listed = subprocess.run(["cargo", "mutants", "--list", "--json", "--diff", *args],
-                            capture_output=True, text=True, check=True).stdout
+    done = subprocess.run(["cargo", "mutants", "--list", "--json", "--diff", *args],
+                          capture_output=True, text=True, check=True)
+    # note: cargo-mutants lists nothing for a package it does not know, warns, and exits 0, so a
+    # misspelt name would look like a run with nothing settled in it
+    unknown = re.search(r"WARN.*not found.*", done.stderr)
+    if unknown:
+        raise SystemExit(f"cargo mutants: {unknown.group(0).strip()}")
+    listed = done.stdout
     settled = load()
     names = []
     for mutant in json.loads(listed):
