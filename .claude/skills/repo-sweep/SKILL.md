@@ -340,10 +340,10 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    workspace, since a mutant another crate's tests catch is not a gap. One crate at a time, and
    one run at a time:
    ```sh
-   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 300
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60
    python3 $SKILL/merge.py target/agents/out/X-own-merged target/agents/out/X-own-{1,2,3,4}
    SEED=X-own-merged $SKILL/shards.sh X 4 --workspace --file '<crate>/src/**/*.rs' \
-       --all-features --test-workspace=true --iterate --timeout 300
+       --all-features --test-workspace=true --iterate --timeout <3x the baseline>
    python3 $SKILL/merge.py target/agents/out/X-merged target/agents/out/X-{1,2,3,4}
    ```
    **Only what changed since a commit** - since the last mutants sweep, say - is the same two runs
@@ -351,7 +351,7 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    since each shard runs from its own worktree:
    ```sh
    git diff <commit> HEAD -- '*.rs' > $REPO/target/agents/since.diff
-   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 300 \
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60 \
        --in-diff $REPO/target/agents/since.diff
    ```
    and the same for the `--workspace` run. cargo-mutants then makes only the mutants on lines the
@@ -412,8 +412,14 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   tests run another copy's binary. `mutants.sh` unsets it.
 - `-p <crate>` pins the tested packages and overrides `--test-workspace`. The whole workspace
   against one crate's mutants is `--workspace --file '<crate>/src/**/*.rs' --test-workspace=true`.
-- The automatic timeout comes from a baseline that ran only the crate's own tests. Pass
-  `--timeout 300` with `--test-workspace`.
+- **Set the timeout from the baseline, never by habit.** Each shard logs `Unmutated baseline in
+  Xs build + Ys test`: a crate's own tests take seconds, so `--timeout 60` is ample for the first
+  run, and every mutant that hangs costs the whole timeout - 300 seconds there was most of the
+  run, spent waiting on mutants as good as caught. The `--test-workspace` run's baseline is the workspace's suite, under
+  the load of the other shards: take three times what its log says. Not lower: a mutant that runs
+  out of time counts as caught, so a timeout a slow test can reach under load hides misses. The
+  automatic timeout comes from a baseline that ran only the crate's own tests, so it is too short
+  for `--test-workspace`; pass one there.
 - A copy's path is long enough that seven tests fail unmutated, over the unix socket path limit
   or reading a `.gitignore` above the copy. `mutants.sh` skips them and passes `--no-fail-fast`, so
   one failing test binary does not stop the suite - but the served-session tests added since are
