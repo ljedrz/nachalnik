@@ -917,11 +917,14 @@ mod tests {
                 // kept before the answer goes out, so a client that has been answered has been
                 // recorded
                 keeping.lock().push(path.to_owned());
+                // note: `Connection: close`, since every connection is closed after one answer. Left
+                // unsaid, the client pools it, and a request that goes out on it before the close
+                // has been read fails at once, and the probe comes back with nothing
                 let _ = socket
                     .write_all(
                         format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                             Content-Length: {}\r\n\r\n{body}",
+                             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                             body.len()
                         )
                         .as_bytes(),
@@ -1112,11 +1115,12 @@ mod tests {
                     _ => "{}",
                 };
 
+                // `Connection: close`, as `watching` says, for the same reason
                 let _ = socket
                     .write_all(
                         format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                             Content-Length: {}\r\n\r\n{body}",
+                             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                             body.len()
                         )
                         .as_bytes(),
