@@ -125,7 +125,10 @@ if __name__ == "__main__":
         rest = sys.argv[2:]
         retry = "--retry-unsettled" in rest
         found = exclusions([a for a in rest if a != "--retry-unsettled"], retry)
-        print("\n".join(found))
+        # note: nothing at all when there is nothing to leave out; an empty line read into a
+        # shell array is an empty argument, which cargo-mutants refuses
+        for line in found:
+            print(line)
         print(f"{len(found)} settled mutants left out", file=sys.stderr)
         sys.exit(0)
     if len(sys.argv) < 6 or sys.argv[1] != "add" or sys.argv[3] not in VERDICTS:
