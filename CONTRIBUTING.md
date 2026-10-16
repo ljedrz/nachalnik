@@ -86,7 +86,9 @@ Pitfalls:
   field, but nothing catches an assertion that reads the wrong one of two similar fields. When a
   change updates the offline tests, search `tests/live.rs` for the same name.
 - **A skipped test counts as passed**, and the summary doesn't say what was skipped. Use
-  `--nocapture` and search for `skip` to see what ran.
+  `--nocapture` and search for `skip` to see what ran, or the `live-tests` skill in
+  `.claude/skills`, which runs each test on its own, reports which skipped and why, and sets the
+  variables below the way each suite needs them.
 - **`kamchatka`'s tests default to Google's endpoint**, so a run with only a key set sends that key
   to Google and fails for unrelated reasons. Set `KAMCHATKA_BASE_URL` for any other endpoint.
 - **Leave `NACHALNIK_CONTEXT_LIMIT` unset for `nachalnik`'s live tests.** It's for an endpoint that
