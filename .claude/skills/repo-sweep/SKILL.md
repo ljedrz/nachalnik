@@ -340,7 +340,7 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    workspace, since a mutant another crate's tests catch is not a gap. One crate at a time, and
    one run at a time:
    ```sh
-   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout <3x its own tests>
    python3 $SKILL/merge.py target/agents/out/X-own-merged target/agents/out/X-own-{1,2,3,4}
    SEED=X-own-merged $SKILL/shards.sh X 4 --workspace --file '<crate>/src/**/*.rs' \
        --all-features --test-workspace=true --iterate --timeout <3x the measured suite>
@@ -353,7 +353,7 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    rather than replacing it:
    ```sh
    mapfile -t settled < <(python3 $SKILL/ledger.py exclude -p <crate> --all-features)
-   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60 "${settled[@]}"
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout <3x its own tests> "${settled[@]}"
    ```
    and the same selection for the `--workspace` run (`--workspace --file '<crate>/src/**/*.rs'`).
 
@@ -362,7 +362,7 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    since each shard runs from its own worktree:
    ```sh
    git diff <commit> HEAD -- '*.rs' > $REPO/target/agents/since.diff
-   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60 \
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout <3x its own tests> \
        --in-diff $REPO/target/agents/since.diff
    ```
    and the same for the `--workspace` run. cargo-mutants then makes only the mutants on lines the
@@ -425,9 +425,13 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   against one crate's mutants is `--workspace --file '<crate>/src/**/*.rs' --test-workspace=true`.
 - **Set the timeout from a measurement, never by habit.** Every mutant that hangs costs the whole
   timeout, and one that runs out of time counts as caught, so too long wastes hours and too short
-  hides misses. A crate's own tests take seconds (`Unmutated baseline in Xs build + Ys test` in a
-  shard's log), so `--timeout 60` is ample for the first run; 300 there was most of the run,
-  spent waiting on mutants as good as caught. The `--test-workspace` run's log is no guide: its
+  hides misses. For the first run, against the crate's own tests, take three times their time
+  (`Unmutated baseline in Xs build + Ys test` in a shard's log, or `cargo test -p <crate>
+  --all-features` run once): `nachalnik`'s take two seconds, so 60 is ample, but
+  `nachalnik-providers`' take 36, a test there waiting out a stalled stream, so 110. A timeout in
+  the first run is tested again in the second, so one too short there costs time rather than a
+  false catch; it is the second run's timeout that decides. 300 against `nachalnik`'s own tests
+  was most of the run, spent waiting on mutants as good as caught. The `--test-workspace` run's log is no guide: its
   baseline also runs only the crate's own tests, and the automatic timeout and
   `--timeout-multiplier` both come out at 20 seconds, under which every mutant would time out and
   count as caught. Measure the workspace's suite as the shards will run it, all at once:
