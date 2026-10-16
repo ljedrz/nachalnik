@@ -420,6 +420,19 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   out of time counts as caught, so a timeout a slow test can reach under load hides misses. The
   automatic timeout comes from a baseline that ran only the crate's own tests, so it is too short
   for `--test-workspace`; pass one there.
+- **A shard at zero CPU is usually a deadlocked mutant, not a hung run.** Many mutants of the
+  kernel's state machine (`is_interrupted` made `true`, `Restore::disarm` emptied) leave a test
+  waiting on a lock forever: its binary sits on a futex using nothing until the timeout kills it,
+  and the mutant is recorded as TIMEOUT, which counts as caught. Look before concluding anything:
+  `ps -o pid,stat,etimes,pcpu,wchan:20,args --ppid <cargo test's pid>` shows the test binary and
+  what it waits on. Mutants are ordered by file, so one shard can draw a whole file of them and
+  hold the run while the others have finished.
+- **A shard stuck on too long a timeout is stopped and resumed, not waited out.** SIGTERM its
+  `cargo mutants` (it puts the source back) and SIGKILL the test binary if it lingers; copy the
+  shard's output aside; reset its worktree; and run the same `--shard` again with `--iterate` and
+  the shorter `--timeout`, under `guard.py` as `shards.sh` runs it. `--iterate` retests only what
+  was not caught, and rewrites `outcomes.json` with that alone: merge the copy first and the
+  resumed shard last.
 - A copy's path is long enough that seven tests fail unmutated, over the unix socket path limit
   or reading a `.gitignore` above the copy. `mutants.sh` skips them and passes `--no-fail-fast`, so
   one failing test binary does not stop the suite - but the served-session tests added since are
