@@ -343,7 +343,7 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 60
    python3 $SKILL/merge.py target/agents/out/X-own-merged target/agents/out/X-own-{1,2,3,4}
    SEED=X-own-merged $SKILL/shards.sh X 4 --workspace --file '<crate>/src/**/*.rs' \
-       --all-features --test-workspace=true --iterate --timeout <3x the baseline>
+       --all-features --test-workspace=true --iterate --timeout <3x the measured suite>
    python3 $SKILL/merge.py target/agents/out/X-merged target/agents/out/X-{1,2,3,4}
    ```
    **Only what changed since a commit** - since the last mutants sweep, say - is the same two runs
@@ -412,14 +412,22 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   tests run another copy's binary. `mutants.sh` unsets it.
 - `-p <crate>` pins the tested packages and overrides `--test-workspace`. The whole workspace
   against one crate's mutants is `--workspace --file '<crate>/src/**/*.rs' --test-workspace=true`.
-- **Set the timeout from the baseline, never by habit.** Each shard logs `Unmutated baseline in
-  Xs build + Ys test`: a crate's own tests take seconds, so `--timeout 60` is ample for the first
-  run, and every mutant that hangs costs the whole timeout - 300 seconds there was most of the
-  run, spent waiting on mutants as good as caught. The `--test-workspace` run's baseline is the workspace's suite, under
-  the load of the other shards: take three times what its log says. Not lower: a mutant that runs
-  out of time counts as caught, so a timeout a slow test can reach under load hides misses. The
-  automatic timeout comes from a baseline that ran only the crate's own tests, so it is too short
-  for `--test-workspace`; pass one there.
+- **Set the timeout from a measurement, never by habit.** Every mutant that hangs costs the whole
+  timeout, and one that runs out of time counts as caught, so too long wastes hours and too short
+  hides misses. A crate's own tests take seconds (`Unmutated baseline in Xs build + Ys test` in a
+  shard's log), so `--timeout 60` is ample for the first run; 300 there was most of the run,
+  spent waiting on mutants as good as caught. The `--test-workspace` run's log is no guide: its
+  baseline also runs only the crate's own tests, and the automatic timeout and
+  `--timeout-multiplier` both come out at 20 seconds, under which every mutant would time out and
+  count as caught. Measure the workspace's suite as the shards will run it, all at once:
+  ```sh
+  for i in 1 2 3 4; do (cd $REPO/w$i && env -u CARGO_TARGET_DIR cargo test --workspace --all-features --no-run -q); done
+  for i in 1 2 3 4; do ( cd $REPO/w$i && s=$(date +%s); env -u CARGO_TARGET_DIR RUST_TEST_THREADS=8 \
+      cargo test --workspace --all-features --no-fail-fast -q -- --skip <shards.sh's skips> > /dev/null 2>&1; \
+      echo "w$i $? $(( $(date +%s) - s ))s" ) & done; wait
+  ```
+  and pass three times the slowest. It was 65 seconds on a 32-core machine, so `--timeout 200`;
+  a run that logs `Auto-set test timeout to 20s` beside `--test-workspace` is stopped at once.
 - **A shard at zero CPU is usually a deadlocked mutant, not a hung run.** Many mutants of the
   kernel's state machine (`is_interrupted` made `true`, `Restore::disarm` emptied) leave a test
   waiting on a lock forever: its binary sits on a futex using nothing until the timeout kills it,
@@ -427,12 +435,13 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   `ps -o pid,stat,etimes,pcpu,wchan:20,args --ppid <cargo test's pid>` shows the test binary and
   what it waits on. Mutants are ordered by file, so one shard can draw a whole file of them and
   hold the run while the others have finished.
-- **A shard stuck on too long a timeout is stopped and resumed, not waited out.** SIGTERM its
-  `cargo mutants` (it puts the source back) and SIGKILL the test binary if it lingers; copy the
-  shard's output aside; reset its worktree; and run the same `--shard` again with `--iterate` and
-  the shorter `--timeout`, under `guard.py` as `shards.sh` runs it. `--iterate` retests only what
-  was not caught, and rewrites `outcomes.json` with that alone: merge the copy first and the
-  resumed shard last.
+- **A shard stuck on too long a timeout is stopped, not waited out, and not resumed alone.**
+  SIGTERM its `cargo mutants` by pid (it puts the source back), SIGKILL the test binary if it
+  lingers, copy the shard's output aside and reset its worktree. Do not run that `--shard` again
+  with `--iterate`: the settled mutants are dropped before the list is divided, so shard 3 of 4 of
+  the shorter list is a different set, most of it other shards' work. Merge the shards (the copy
+  first) and go on to the `--test-workspace` run, which tests everything not caught, the mutants
+  the stopped shard never reached included.
 - A copy's path is long enough that seven tests fail unmutated, over the unix socket path limit
   or reading a `.gitignore` above the copy. `mutants.sh` skips them and passes `--no-fail-fast`, so
   one failing test binary does not stop the suite - but the served-session tests added since are
