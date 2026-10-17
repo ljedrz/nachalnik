@@ -76,3 +76,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   `@cf/cloudflare/clef`, and then the request goes to meta's model. The check for the short name
   could go, so that the model is added to such an address, or stay and be tested. Unblocked by
   deciding which.
+
+- **Two match arms in `Setup::check` can never be taken.** When a rule in `auto-allow` or
+  `auto-deny` is about nothing a tool here has, the refusal names the setting the rule came from,
+  and two match arms name `auto-allow-server` and `auto-deny-server` for a server's rule. But
+  `unreached`, which finds those rules, never objects to a server's rule, so the two arms are never
+  taken and nothing can test them. Either the arms and their comment go, or a server rule that
+  names no configured server is refused as well, and the arms are tested with it. Unblocked by
+  deciding whether such a rule should be refused.
