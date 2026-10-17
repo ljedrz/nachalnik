@@ -891,6 +891,25 @@ mod tests {
         assert!(chain.chars().count() <= SAID + 1, "{chain}");
     }
 
+    /// A chain whose last cause leaves no room for its start keeps the start instead, and one
+    /// that leaves room keeps both - each cut exactly where it says.
+    #[test]
+    fn a_chain_keeps_its_last_cause_only_where_some_of_its_start_fits() {
+        let head = "x".repeat(200);
+
+        // 20 characters of last cause: 120 - (20 + 2) = 98 characters of head are kept
+        let short = format!("{head}: {}", "y".repeat(20));
+        assert_eq!(
+            cut(&short),
+            format!("{}\u{2026} {}", "x".repeat(98), "y".repeat(20)),
+        );
+
+        // 100 characters of last cause: 120 - 102 is under a quarter of `SAID`, so the reason is
+        // cut from its start with no last cause at all
+        let long = format!("{head}: {}", "z".repeat(100));
+        assert_eq!(cut(&long), format!("{}\u{2026}", "x".repeat(SAID)));
+    }
+
     /// The rubric is read by the nearest level, not by the one it has passed.
     #[test]
     fn a_score_lands_on_the_band_it_is_nearest() {
@@ -1065,6 +1084,49 @@ mod tests {
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
         assert!(advised.rating(&request.call).is_none());
         assert!(advised.why_unrated(&request.call).is_some());
+    }
+
+    /// A score past the top of the rubric is no position on it, and is not a rating either.
+    ///
+    /// note: the rubric runs from `0` to the top level's index, `2`. Read as anything wider, a
+    /// score of `2.5` is drawn as the top band with full confidence - a reading the question
+    /// never offered, taken as the advisor's word.
+    #[tokio::test]
+    async fn a_score_past_the_top_of_the_rubric_is_not_a_rating() {
+        struct Off(f64);
+
+        #[async_trait]
+        impl SystemOne for Off {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+                Ok(nachalnik_providers::system1::Answers::read(json!({
+                    "model": "off",
+                    "answers": { RATING: { "type": "score", "score": self.0, "confidence": 0.99 } },
+                })))
+            }
+
+            fn named(&self) -> String {
+                "off".to_owned()
+            }
+        }
+
+        // the top of the rubric is a rating, so the bound itself is what is being checked
+        let top = Advised::new(Arc::new(Careful::new()), Arc::new(Off(2.0)));
+        let request = asking("shell", Capability::exec("run"));
+        assert_eq!(top.evaluate(&request).await, Verdict::Ask);
+        assert_eq!(
+            top.rating(&request.call).map(|r| r.shown()),
+            Some(Rating::Grave)
+        );
+
+        let past = Advised::new(Arc::new(Careful::new()), Arc::new(Off(2.5)));
+        let request = asking("shell", Capability::exec("run"));
+        assert_eq!(past.evaluate(&request).await, Verdict::Ask);
+        assert!(past.rating(&request.call).is_none());
+        assert!(past.why_unrated(&request.call).is_some());
     }
 
     /// A claim that is no probability is not an answer either.
