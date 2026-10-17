@@ -2332,6 +2332,34 @@ fn a_served_port_is_closed_to_a_command_allowed_the_network() {
     assert!(said.contains("refused"), "{said}");
 }
 
+/// Under a refused network a served port is closed and nothing else is granted: a command may not
+/// reach another port, since the ruleset refuses TCP outright and a port is only granted by the
+/// closing.
+///
+/// note: `Network::NoTcp` with a closed port is the one case where `closing` differs from
+/// `!refuses_tcp()` alone. A permission error is Landlock's refusal; a refused connection to a port
+/// nothing listens on is the kernel letting the connect through, which is what a closing that
+/// granted every other port would do. No listener is needed to tell them apart.
+#[test]
+fn a_refused_network_grants_no_other_port_when_one_is_served() {
+    if !enforced() {
+        return;
+    }
+    let served = 4242u16;
+    let mut refused = sandbox(common::workdir("refused-port"), true, Network::NoTcp);
+    refused.closed = vec![served];
+    let other = served + 1;
+    let connect = format!(
+        "python3 -c \"import socket\ntry:\n socket.create_connection(('127.0.0.1', {other}), timeout=5)\n print('reached')\nexcept PermissionError:\n print('refused')\nexcept OSError:\n print('allowed')\" 2>&1"
+    );
+
+    let (_, said) = run(&refused, &connect);
+    assert!(
+        said.contains("refused"),
+        "a port nobody served was granted: {said}"
+    );
+}
+
 /// Runs `argv` in a session whose controlling terminal is a new one, and returns what it wrote.
 ///
 /// note: `leading` runs it as the session's leader, which is also a group's; otherwise it is a
@@ -2643,4 +2671,76 @@ fn a_confinement_run_by_hand_signals_nothing_it_did_not_start() {
     assert!(by_hand.contains("outside=refused"), "{by_hand}");
     assert!(session.contains("own=reached"), "{session}");
     assert!(session.contains("outside=reached"), "{session}");
+}
+
+/// A signal scope the kernel takes is not reported as one it refused.
+///
+/// note: `scope_signals` confines the process that calls it for good, so it runs in this test's
+/// binary run again, as `a_link_swapped_in_for_the_scratch_directory_grants_nothing` does, and
+/// the child says what `weaker_here` reports after it. The kernel has the scope and takes it, so
+/// the one thing that must not be said is that it refused.
+#[test]
+fn a_signal_scope_the_kernel_takes_is_not_said_to_be_refused() {
+    const CHILD: &str = "KAMCHATKA_TEST_SCOPE_SAID";
+    if std::env::var_os(CHILD).is_some() {
+        kamchatka::sandbox::scope_signals();
+        println!("said: {:?}", kamchatka::sandbox::weaker_here());
+        std::process::exit(0);
+    }
+    if !enforced() {
+        return;
+    }
+    if !kamchatka::sandbox::confines_signals() {
+        eprintln!("skipped: no Landlock scope for a signal here, which is ABI 6");
+        return;
+    }
+
+    let output = Command::new(std::env::current_exe().expect("this test's binary"))
+        .args([
+            "--exact",
+            "a_signal_scope_the_kernel_takes_is_not_said_to_be_refused",
+            "--test-threads=1",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .output()
+        .expect("the child ran");
+    let said = String::from_utf8_lossy(&output.stdout).into_owned();
+    assert!(
+        said.contains("said: "),
+        "the child did not get as far as saying: {said}"
+    );
+    assert!(
+        !said.contains("would not put this session"),
+        "a scope the kernel took was said to be refused: {said}"
+    );
+}
+
+/// A command holds no descriptor on its own temporary directory.
+///
+/// note: the directory is held open from the moment it is made, so that the ruleset grants that
+/// one and not whatever the path names by then. Held open is not held *by the command*: the
+/// descriptor is close-on-exec, so the `exec` that replaces this process with the command's shell
+/// takes it away. Without that flag the command's own `/proc/self/fd` names the directory, and a
+/// command could reach it by number after the name is gone.
+///
+/// note: the control is that the directory is there to be held at all, so an empty answer cannot
+/// come from there being no directory.
+#[test]
+fn a_command_holds_no_descriptor_on_its_own_temporary_directory() {
+    if !enforced() {
+        return;
+    }
+    let (_, said) = run(
+        &sandbox(common::workdir("held-scratch"), true, Network::Open),
+        "python3 -c \"import os, sys\ntmp = os.environ['TMPDIR']\nprint('made' if os.path.isdir(tmp) else 'no tmp')\nheld = [f for f in os.listdir('/proc/self/fd') if os.path.realpath('/proc/self/fd/' + f) == os.path.realpath(tmp)]\nprint('held=%d' % len(held))\" 2>&1",
+    );
+    assert!(
+        said.contains("made"),
+        "there was no temporary directory to hold: {said}"
+    );
+    assert!(
+        said.contains("held=0"),
+        "the command holds its temporary directory: {said}"
+    );
 }
