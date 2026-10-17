@@ -1296,6 +1296,7 @@ mod tests {
             &json!({ "prompt_tokens": 1_000, "completion_tokens": 50, "total_tokens": 1_100 }),
         );
         assert_eq!(usage.output_tokens, Some(100), "{usage:?}");
+        assert_eq!(usage.reasoning_tokens, Some(50), "{usage:?}");
     }
 
     /// Reasoning inferred as the residual of nothing is no reasoning at all, and a count of zero
