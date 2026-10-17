@@ -40,6 +40,14 @@ minor bump may break you.
   it suggested otherwise. The `advise` feature stays, for `shell-advisor` and for library users
   of `endpoint::advise`.
 
+### fixed
+
+- **The network gate holds every socket that can leave the machine, not only the internet's.** It
+  held `AF_INET`, `AF_INET6`, `AF_SMC` and `AF_RDS` and let every other family through, so a
+  command under a shut network could open `AF_RXRPC` and send a UDP datagram to any address, or
+  open `AF_VSOCK` and reach the host from inside a virtual machine. It now lets through only unix
+  and netlink sockets, and holds the rest like an internet socket.
+
 ## [0.20.0] - 2026-10-14
 
 ### breaking

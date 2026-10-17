@@ -45,19 +45,20 @@ What changes to this workspace must keep true about what is and isn't enforced.
   during a directory walk is only caught for the files opened inside it.
 - **Network access is asked about when a command tries to use it, not based on the command's
   name.** The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
-  `socket()` call for `AF_INET` or `AF_INET6` (the first step of any network use, DNS lookups
-  included), and for `AF_SMC` and `AF_RDS`, which any process can open and which reach the internet
-  over TCP as well, and hands the decision to the parent process. The parent answers from
-  `net:reach`: `allow` lets it through, `deny` refuses it with `EACCES`, and `ask` asks the person,
-  once per command, while the call waits. The filter only reads the call's integer arguments (the low 32
-  bits of the address family, which is all the kernel reads), so there's no address the command
-  could change after the answer; decisions aren't made per destination. Where the gate works,
-  `Careful` stops looking for program names in commands, and an allowed `exec:run` runs without
-  asking until the command tries to use the network. The gate also covers 32-bit processes and x32
-  calls, and refuses `io_uring_setup` entirely, since an io_uring can open sockets without calling
-  `socket()`. It doesn't cover a socket inherited from, or passed over a unix socket by, a process
-  outside the sandbox (the unix socket rules below deal with that), or other address families such
-  as `AF_PACKET`, which need privileges a sandboxed command doesn't have. A network attempt by a
+  `socket()` call (the first step of any network use, DNS lookups included) and hands the decision
+  to the parent process. The exceptions are `AF_UNIX`, which the filesystem rules cover, and
+  `AF_NETLINK`, which reaches only this kernel. Every other family is paused: besides `AF_INET` and
+  `AF_INET6`, any process can open `AF_SMC`, `AF_RDS` and `AF_RXRPC`, which reach the internet over
+  TCP or UDP, `AF_VSOCK`, which reaches the host from inside a virtual machine, and
+  `AF_BLUETOOTH`. The parent answers from `net:reach`: `allow` lets it through, `deny` refuses it
+  with `EACCES`, and `ask` asks the person, once per command, while the call waits. The filter only
+  reads the call's integer arguments (the low 32 bits of the address family, which is all the
+  kernel reads), so there's no address the command could change after the answer; decisions aren't
+  made per destination. Where the gate works, `Careful` stops looking for program names in
+  commands, and an allowed `exec:run` runs without asking until the command tries to use the
+  network. The gate also covers 32-bit processes and x32 calls, and refuses `io_uring_setup`
+  entirely, since an io_uring can open sockets without calling `socket()`. It doesn't cover a socket inherited from, or passed over a unix socket by, a process
+  outside the sandbox (the unix socket rules below deal with that). A network attempt by a
   process a command left running, after the call has finished and with nothing decided, is refused
   without asking, since there's no command left to ask about. Where the gate can't be installed
   (under `--no-sandbox`, or on a kernel that can't pause calls), the question is based on the
@@ -186,7 +187,7 @@ cause harm, what stops them, and what doesn't.
   answer can contain instructions, and the model acts on what it reads, so the model is treated as
   something that may be manipulated. It can only act through tools the policy allows. The `shell`
   tool is sandboxed by Landlock on Linux (files outside the allowed paths, TCP `connect`, and from
-  Linux 7.1 unix sockets it couldn't write to), its internet sockets are paused by the gate where
+  Linux 7.1 unix sockets it couldn't write to), its network sockets are paused by the gate where
   available, and it doesn't get this program's keys. The `fs` tool enforces the same paths in its
   own code, and on Linux opens files relative to the directory they were allowed under. What the
   model can still do: send UDP where there's no gate, and use the network however a person allowed;

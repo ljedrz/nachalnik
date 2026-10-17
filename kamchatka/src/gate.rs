@@ -1,15 +1,14 @@
 //! The gate a confined command's network goes through: a seccomp filter that holds every attempt to
-//! open an internet socket until the process that spawned the command answers it.
+//! open a socket that can leave the machine until the process that spawned the command answers it.
 //!
 //! note: what it is for is knowing a command wants the network from its *trying*. Landlock refuses
 //! a `connect` and tells nobody unprivileged, so from outside a refused call looks like nothing at
 //! all - which left reading the command line for program names as the only way to know when to
-//! ask. `socket()` for `AF_INET` or `AF_INET6` is the first thing any use of the network does, a
-//! DNS lookup included, and seccomp user notification is the mechanism that lets another process
-//! see that call and answer it. `AF_SMC` and `AF_RDS` are held as well, since any process can open
-//! them and they reach the internet over TCP. The filter reads only the call's integer arguments,
-//! so there is no address a command could change after the answer, and nothing is decided per
-//! destination.
+//! ask. `socket()` is the first thing any use of the network does, a DNS lookup included, and
+//! seccomp user notification is the mechanism that lets another process see that call and answer
+//! it. Every family is held but the two that cannot leave the machine; see `LOCAL`. The filter
+//! reads only the call's integer arguments, so there is no address a command could change after
+//! the answer, and nothing is decided per destination.
 //!
 //! note: the one module in this crate that writes `unsafe`. `seccomp(2)` and the notification
 //! `ioctl`s have no safe wrapper that does not link the C `libseccomp`, which every target a
@@ -66,14 +65,16 @@ const X32: Option<u32> = None;
 const SOCKET: u32 = libc::SYS_socket as u32;
 const IO_URING_SETUP: u32 = libc::SYS_io_uring_setup as u32;
 
-/// The two families besides `AF_INET` and `AF_INET6` that reach the internet with no privilege.
+/// The families a socket is opened in without asking: the ones that cannot leave the machine.
 ///
-/// note: `AF_SMC` connects to an internet address and falls back to plain TCP when the other end
-/// does not speak SMC, and `AF_RDS` carries its datagrams over TCP once its TCP transport is
-/// asked for, which any process may do. Both are held as an internet socket is. `AF_SMC` is
-/// `linux/socket.h`'s, which `libc` does not carry
-const SMC: u32 = 43;
-const RDS: u32 = libc::AF_RDS as u32;
+/// note: a list of what is let through rather than of what is held, because the families that
+/// reach out keep being found. Any process can open `AF_SMC`, `AF_RDS` and `AF_RXRPC`, which carry
+/// their traffic over TCP or UDP to an internet address, `AF_VSOCK`, which reaches the host from
+/// inside a virtual machine, and `AF_BLUETOOTH` and `AF_CAN`, which reach devices. A family the
+/// kernel gains later is held without anybody adding it here. A unix socket is the filesystem's,
+/// and Landlock's to govern; netlink talks to this kernel and nothing past it, and `getifaddrs`
+/// opens one
+const LOCAL: [u32; 2] = [libc::AF_UNIX as u32, libc::AF_NETLINK as u32];
 
 /// `socket`, and `socketcall` where there is one, in the table of the 32-bit processes this
 /// kernel also runs.
@@ -112,19 +113,15 @@ enum Label {
     Native,
     NativeNext,
     Family,
-    Inet6,
-    Smc,
-    Rds,
+    Netlink,
     Foreign,
     ForeignNumber,
     ForeignFamily,
-    ForeignInet6,
-    ForeignSmc,
-    ForeignRds,
+    ForeignNetlink,
     ForeignCall,
     ForeignSocketcall,
     ForeignNext,
-    Inet,
+    Held,
     Enosys,
     Allow,
     Kill,
@@ -142,10 +139,10 @@ enum Op {
 
 /// The filter, as the classic BPF the kernel runs.
 ///
-/// note: every internet socket is held, whether the answer is going to be yes, no or a
-/// question, so that the process answering always knows an attempt was made. A refusal made
-/// in the kernel reaches nobody, and a command refused a name lookup says `Temporary failure in
-/// name resolution`, which reads as a network having trouble rather than a network refused.
+/// note: every socket that can leave the machine is held, whether the answer is going to be yes,
+/// no or a question, so that the process answering always knows an attempt was made. A refusal
+/// made in the kernel reaches nobody, and a command refused a name lookup says `Temporary failure
+/// in name resolution`, which reads as a network having trouble rather than a network refused.
 ///
 /// note: `io_uring_setup` is refused as though the kernel had none. A ring opens a socket with
 /// an operation of its own rather than a `socket()` call, so a gate that let rings through
@@ -173,13 +170,9 @@ fn program() -> Vec<libc::sock_filter> {
         Op::Is(IO_URING_SETUP, Enosys, Allow),
         Op::Mark(Family),
         Op::Load(ARG0),
-        Op::Is(libc::AF_INET as u32, Inet, Inet6),
-        Op::Mark(Inet6),
-        Op::Is(libc::AF_INET6 as u32, Inet, Smc),
-        Op::Mark(Smc),
-        Op::Is(SMC, Inet, Rds),
-        Op::Mark(Rds),
-        Op::Is(RDS, Inet, Allow),
+        Op::Is(LOCAL[0], Allow, Netlink),
+        Op::Mark(Netlink),
+        Op::Is(LOCAL[1], Allow, Held),
         // the architecture is still what was loaded: nothing on the way here loaded over it
         Op::Mark(Foreign),
         Op::Is(FOREIGN, ForeignNumber, Kill),
@@ -190,13 +183,9 @@ fn program() -> Vec<libc::sock_filter> {
         // jumps forward; a 32-bit call's arguments are the low halves of the same slots
         Op::Mark(ForeignFamily),
         Op::Load(ARG0),
-        Op::Is(libc::AF_INET as u32, Inet, ForeignInet6),
-        Op::Mark(ForeignInet6),
-        Op::Is(libc::AF_INET6 as u32, Inet, ForeignSmc),
-        Op::Mark(ForeignSmc),
-        Op::Is(SMC, Inet, ForeignRds),
-        Op::Mark(ForeignRds),
-        Op::Is(RDS, Inet, Allow),
+        Op::Is(LOCAL[0], Allow, ForeignNetlink),
+        Op::Mark(ForeignNetlink),
+        Op::Is(LOCAL[1], Allow, Held),
         Op::Mark(ForeignCall),
     ]);
     if let Some(socketcall) = FOREIGN_SOCKETCALL {
@@ -204,13 +193,13 @@ fn program() -> Vec<libc::sock_filter> {
             Op::Is(socketcall, ForeignSocketcall, ForeignNext),
             Op::Mark(ForeignSocketcall),
             Op::Load(ARG0),
-            Op::Is(SYS_SOCKET, Inet, Allow),
+            Op::Is(SYS_SOCKET, Held, Allow),
         ]);
     }
     ops.extend([
         Op::Mark(ForeignNext),
         Op::Is(FOREIGN_IO_URING_SETUP, Enosys, Allow),
-        Op::Mark(Inet),
+        Op::Mark(Held),
         Op::Return(libc::SECCOMP_RET_USER_NOTIF),
         Op::Mark(Enosys),
         Op::Return(libc::SECCOMP_RET_ERRNO | libc::ENOSYS as u32),
@@ -273,8 +262,8 @@ fn filter(code: u32, jt: u8, jf: u8, k: u32) -> libc::sock_filter {
     }
 }
 
-/// Holds every internet socket this process, and everything it runs, will ask for, and sends
-/// the listener that answers them down standard input.
+/// Holds every socket that can leave the machine this process, and everything it runs, will ask
+/// for, and sends the listener that answers them down standard input.
 ///
 /// note: for the child that confines itself, after the ruleset and before the command.
 ///
@@ -544,32 +533,48 @@ mod tests {
     const ALLOWED: u32 = libc::SECCOMP_RET_ALLOW;
     const ABSENT: u32 = libc::SECCOMP_RET_ERRNO | libc::ENOSYS as u32;
 
-    /// An internet socket is held, and nothing else is.
+    /// A socket that can leave the machine is held, and nothing else is.
     #[test]
-    fn an_internet_socket_is_held_and_nothing_else_is() {
+    fn a_socket_that_can_leave_the_machine_is_held_and_nothing_else_is() {
         let held = program();
 
         for family in [INET, INET6] {
             assert_eq!(run(&held, NATIVE, SOCKET, family), HELD, "{family}");
         }
-        // a unix socket is the filesystem's, and Landlock's to govern
-        assert_eq!(run(&held, NATIVE, SOCKET, UNIX), ALLOWED);
+        for family in LOCAL.map(u64::from) {
+            assert_eq!(run(&held, NATIVE, SOCKET, family), ALLOWED, "{family}");
+            assert_eq!(
+                run(&held, FOREIGN, FOREIGN_SOCKET, family),
+                ALLOWED,
+                "{family}"
+            );
+        }
         assert_eq!(run(&held, NATIVE, libc::SYS_close as u32, INET), ALLOWED);
         assert_eq!(run(&held, NATIVE, libc::SYS_connect as u32, INET), ALLOWED);
     }
 
-    /// A family that reaches the internet under another name is held as the internet is.
+    /// A family that reaches past the machine under another name is held as the internet is, and
+    /// so is one nobody has heard of.
     ///
-    /// note: found by a sweep and tried by hand. Any process can open an `AF_SMC` socket, and its
-    /// `connect` to an IPv4 address falls back to plain TCP when the other end does not speak
-    /// SMC - which a server anywhere does not - so a command that let these through had the
-    /// internet with nobody asked. `AF_RDS` is the same through its TCP transport, which a
-    /// process can load by asking for it. Neither needs the privilege `AF_PACKET` does.
+    /// note: `AF_SMC` falls back to plain TCP and `AF_RDS` and `AF_RXRPC` run over TCP and UDP to
+    /// an internet address, `AF_VSOCK` reaches the host from inside a virtual machine, and
+    /// `AF_BLUETOOTH` reaches devices, all from a process with no privilege. A filter naming the
+    /// families to hold let each of them through until somebody found it.
     #[test]
-    fn a_family_that_reaches_the_internet_another_way_is_held() {
+    fn a_family_that_reaches_out_another_way_is_held() {
         let held = program();
 
-        for family in [u64::from(SMC), u64::from(RDS)] {
+        for family in [
+            43, // AF_SMC, which `libc` does not carry
+            libc::AF_RDS,
+            libc::AF_RXRPC,
+            libc::AF_VSOCK,
+            libc::AF_BLUETOOTH,
+            libc::AF_CAN,
+            libc::AF_PACKET,
+            255,
+        ] {
+            let family = u64::try_from(family).expect("a family is positive");
             assert_eq!(run(&held, NATIVE, SOCKET, family), HELD, "{family}");
             assert_eq!(
                 run(&held, FOREIGN, FOREIGN_SOCKET, family),

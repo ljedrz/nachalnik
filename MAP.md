@@ -70,7 +70,7 @@ subject: `context/` (reading in `reads.rs`, changes and their history in `change
 
 **`sandbox/`** is the Landlock ruleset the shell runs under (`confinement.rs`) and `Reach`, what
 the in-process tools may open (`reach.rs`). Next to it, `gate.rs` is the seccomp filter that pauses
-a command's internet sockets until the program answers; it's the only module in the workspace with
+a command's network sockets until the program answers; it's the only module in the workspace with
 `unsafe` code. Read [SECURITY.md](SECURITY.md) before changing any of them.
 
 **`wiring/`** is `Setup`, which assembles a session (subscribing to events comes before wiring, and
