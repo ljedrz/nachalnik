@@ -270,6 +270,40 @@ async fn a_line_is_a_message_and_the_answer_is_printed() {
     assert!(run.names().contains(&"model.requested".to_owned()));
 }
 
+/// What the context and the trace list is what they hold: every item and every event, in order.
+///
+/// note: `listed` and `traced` are what the screen counts rows in, and in a build with no screen
+/// they are still what a caller of `App` reads. Without a screen nothing filters them, so both
+/// must return exactly what the kernel and the trace hold - not an empty list, and not a row the
+/// session never had.
+#[tokio::test]
+async fn the_context_and_trace_are_listed_whole_with_no_screen() {
+    let run = run("what is 2+2\n", vec![ModelResponse::text("4")], |_| {}).await;
+
+    let items = run.app.kernel.items();
+    assert!(!items.is_empty(), "the question is in the context");
+    let listed = run.app.listed();
+    assert_eq!(listed.len(), items.len(), "every item is listed");
+    assert!(
+        listed.iter().zip(&items).all(|(a, b)| a.id == b.id),
+        "and in the order the kernel holds them"
+    );
+
+    assert!(
+        !run.app.trace.is_empty(),
+        "the run left events in the trace"
+    );
+    let traced = run.app.traced();
+    assert_eq!(traced.len(), run.app.trace.len(), "every event is listed");
+    assert!(
+        traced
+            .iter()
+            .zip(run.app.trace.iter())
+            .all(|(a, b)| a.name == b.name && a.detail == b.detail),
+        "and in the order the trace holds them"
+    );
+}
+
 /// A provider's retry is said while it waits, above the answer it held up.
 ///
 /// note: nothing the kernel emits carries the notice, so a loop that read it only when the turn
