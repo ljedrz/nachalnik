@@ -6,7 +6,7 @@
 //! confinement travels as on a command line, what the scratch directory is allowed to be made
 //! through, and which errors `Sandbox::note_for` will claim - all of it arithmetic over paths.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, process::Command, sync::Arc};
 
 use kamchatka::{
     sandbox::Sandbox,
@@ -331,6 +331,80 @@ fn a_directory_turned_into_a_link_out_is_not_made_through() {
     std::fs::remove_file(inside.join("d")).expect("the link");
     reach.make_parents(&written).expect("they are made");
     assert!(inside.join("d/new").is_dir());
+}
+
+/// A directory a write is to go in under is made when the one it is in can be searched but not
+/// read, as `replace` already requires for the file itself.
+///
+/// note: the directory is opened to be held and made under, and it is opened without reading it -
+/// a directory something else writes into and nobody lists is the case this is for.
+#[test]
+fn a_directory_made_under_one_that_may_only_be_searched() {
+    use kamchatka::sandbox::{Access, Reach};
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = common::workdir("made-searchable")
+        .canonicalize()
+        .expect("it exists");
+    let reach = Reach {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+    let written = reach
+        .allows("d/new/notes.txt", Access::Writing)
+        .expect("it is inside");
+
+    // search and write, but no read
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o333)).expect("search only");
+    let made = reach.make_parents(&written);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("put back");
+
+    made.expect("the directories are made where it may only be searched");
+    assert!(dir.join("d/new").is_dir());
+}
+
+/// A directory the write would go in under that is there but cannot be searched is left for the
+/// write to be refused by, with the kernel's own reason, rather than made into an error here.
+///
+/// note: `make_parents` only makes what is not there. Where a part of the path cannot be looked
+/// at, its absence is not known, so it is not made - the write is what says why.
+#[test]
+fn a_directory_that_cannot_be_searched_is_left_to_the_write() {
+    use kamchatka::sandbox::{Access, Reach};
+    use std::os::unix::fs::PermissionsExt;
+
+    let base = common::scratch("unsearchable")
+        .canonicalize()
+        .expect("it exists");
+    let inside = base.join("w");
+    std::fs::create_dir_all(inside.join("locked")).expect("a directory that cannot be searched");
+    let reach = Reach {
+        workdir: inside.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+    let written = reach
+        .allows("locked/sub/notes.txt", Access::Writing)
+        .expect("it is inside");
+
+    // read and write, but no search: `sub` cannot be looked for from here
+    std::fs::set_permissions(
+        inside.join("locked"),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .expect("no search");
+    let made = reach.make_parents(&written);
+    std::fs::set_permissions(
+        inside.join("locked"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .expect("put back");
+
+    made.expect("nothing is made, and no error is said here");
+    assert!(!inside.join("locked/sub").exists());
 }
 
 /// A refusal names everywhere the session reaches, not only the directory it started in.
@@ -693,6 +767,44 @@ fn the_scratch_directory_is_never_somebody_elses() {
         std::fs::read_dir(&path).expect("a directory").count(),
         0,
         "the leftovers of the last run were handed to this one"
+    );
+}
+
+/// The scratch directory is made and held under a umask that takes the owner's reading away.
+///
+/// note: it is held by an `O_PATH` descriptor, which needs no permission on the directory at all,
+/// so a directory its owner cannot list is held like any other. The umask is the process's, so it
+/// is set in a child: this test's own binary run again.
+#[test]
+fn the_scratch_directory_is_made_under_a_umask_without_reading() {
+    use kamchatka::sandbox::make_scratch;
+
+    const CHILD: &str = "KAMCHATKA_TEST_SCRATCH_UMASK";
+    if let Some(path) = std::env::var_os(CHILD) {
+        let path = PathBuf::from(path);
+        // SAFETY: `umask` takes a number and cannot fail
+        unsafe { libc::umask(0o400) };
+        std::process::exit(match make_scratch(&path) {
+            Some(made) if made.path() == path => 0,
+            _ => 1,
+        });
+    }
+
+    let path = common::scratch("scratch-umask").join("kamchatka-0");
+    let child = Command::new(std::env::current_exe().expect("this test's binary"))
+        .args([
+            "--exact",
+            "the_scratch_directory_is_made_under_a_umask_without_reading",
+            "--test-threads=1",
+        ])
+        .env(CHILD, &path)
+        .output()
+        .expect("the child ran");
+    assert_eq!(
+        child.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&child.stderr)
     );
 }
 
@@ -1339,6 +1451,58 @@ fn what_this_program_says_about_a_scope_is_what_the_kernel_says() {
             "{what} is scoped here or nowhere, and this program says {said} where the kernel says \
              {kernel}"
         );
+    }
+}
+
+/// What the probes say on a kernel with no Landlock at all is that nothing is confined, and the
+/// warning says so.
+///
+/// note: on a kernel that has every right the probes answer `true` whatever they do, so this runs
+/// in a child refused the system call they all make, as a kernel without Landlock refuses it. A
+/// probe that said `true` there, or a warning that was missing or empty, is a sandbox claiming a
+/// right the kernel does not have.
+#[test]
+fn a_kernel_without_landlock_is_said_to_confine_nothing() {
+    const CHILD: &str = "KAMCHATKA_TEST_WITHOUT_LANDLOCK";
+    if std::env::var_os(CHILD).is_some() {
+        if common::without_landlock().is_err() {
+            std::process::exit(77);
+        }
+        assert!(
+            !kamchatka::sandbox::confines_unix_sockets(),
+            "a pathname socket is said to be confined without Landlock"
+        );
+        assert!(
+            !kamchatka::sandbox::confines_abstract_sockets(),
+            "an abstract socket is said to be confined without Landlock"
+        );
+        assert!(
+            !kamchatka::sandbox::confines_signals(),
+            "a signal is said to be confined without Landlock"
+        );
+        let said = kamchatka::sandbox::weaker_here()
+            .expect("a kernel without Landlock is told what its sandbox leaves out");
+        assert!(said.contains("no Landlock"), "{said}");
+        return;
+    }
+
+    let out = Command::new(std::env::current_exe().expect("this test's binary"))
+        .args([
+            "--exact",
+            "a_kernel_without_landlock_is_said_to_confine_nothing",
+            "--test-threads=1",
+        ])
+        .env(CHILD, "1")
+        .output()
+        .expect("the child ran");
+    match out.status.code() {
+        Some(0) => {}
+        Some(77) => eprintln!("skipped: the child could not be refused Landlock"),
+        other => panic!(
+            "the child ended with {other:?}: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
     }
 }
 
