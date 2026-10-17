@@ -512,6 +512,23 @@ mod tests {
         }
     }
 
+    /// A model the address does not list is said with up to three of the names it does, and an
+    /// ellipsis only where there are more.
+    #[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
+    #[test]
+    fn a_model_not_listed_is_said_with_some_of_the_listing() {
+        let listed = |names: &[&str]| names.iter().map(|it| (*it).to_owned()).collect::<Vec<_>>();
+
+        assert_eq!(
+            unlisted("m", &listed(&["a", "b", "c"])).as_deref(),
+            Some("m is not one of the 3 models this address lists (a, b, c)")
+        );
+        assert_eq!(
+            unlisted("m", &listed(&["a", "b", "c", "d"])).as_deref(),
+            Some("m is not one of the 4 models this address lists (a, b, c, …)")
+        );
+    }
+
     /// A listed name is the model under either decoration a listing puts on it, each on its own.
     ///
     /// note: each decoration is the whole difference for one kind of endpoint - Google lists every
