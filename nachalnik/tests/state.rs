@@ -422,6 +422,33 @@ async fn the_request_budget_ends_a_turn_without_losing_the_thread() {
     );
 }
 
+/// A turn with a budget of no requests sends none, and says nothing about pausing: a turn that
+/// made no request has nothing to pause.
+#[tokio::test]
+async fn a_zero_request_budget_pauses_nothing() {
+    let kernel = Kernel::new(Config {
+        max_requests_per_turn: Some(0),
+        ..Default::default()
+    });
+    kernel.push(ContextItem::user("go"));
+
+    let state = kernel.turn().await.expect("a turn with no budget");
+
+    assert!(matches!(state, State::Idle));
+    let paused: Vec<usize> = kernel
+        .history()
+        .iter()
+        .filter_map(|record| match record.event {
+            Event::TurnPaused { requests } => Some(requests),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        paused.is_empty(),
+        "nothing was sent, so nothing was paused: {paused:?}"
+    );
+}
+
 /// A session finished with calls waiting says which, ahead of `session.finished`.
 ///
 /// note: the calls were asked for and will never be answered in this session, and without this
