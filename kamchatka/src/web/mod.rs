@@ -1128,4 +1128,176 @@ mod tests {
         assert!(foreign(&from("cross-site")).is_some());
         assert!(foreign(&from("same-site")).is_some());
     }
+
+    /// A session on a loopback port that answers each attach in turn with the next of `answers`,
+    /// and then closes every attach it is sent without answering. What each attach asked for is
+    /// kept, in the order they came.
+    async fn scripted(
+        answers: Vec<serde_json::Value>,
+    ) -> (String, Arc<Mutex<Vec<serde_json::Value>>>) {
+        // a socket file, which `connect` takes as well as a port
+        let path = std::env::temp_dir().join(format!("web-attach-{}", fresh_key().expect("a key")));
+        let _ = std::fs::remove_file(&path);
+        let listener = tokio::net::UnixListener::bind(&path).expect("a socket file");
+        let address = format!("unix:{}", path.display());
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let seen = asked.clone();
+        tokio::spawn(async move {
+            let mut answers = answers.into_iter();
+            loop {
+                let Ok((socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let (read, mut write) = socket.into_split();
+                let mut line = String::new();
+                if BufReader::new(read).read_line(&mut line).await.is_err() {
+                    continue;
+                }
+                seen.lock()
+                    .expect("not poisoned")
+                    .push(serde_json::from_str(&line).expect("an attach"));
+                if let Some(answer) = answers.next() {
+                    let mut said = answer.to_string();
+                    said.push('\n');
+                    let _ = write.write_all(said.as_bytes()).await;
+                }
+            }
+        });
+        (address, asked)
+    }
+
+    /// A request head of exactly `total` bytes: a request line, one header padding it out, and the
+    /// blank line that ends it.
+    fn head_of(total: usize) -> Vec<u8> {
+        let request = "GET / HTTP/1.1\r\n";
+        let blank = "\r\n";
+        let pad = total - request.len() - blank.len() - "X-Pad: \r\n".len();
+        format!("{request}X-Pad: {}\r\n{blank}", "a".repeat(pad)).into_bytes()
+    }
+
+    /// A resume that the session refuses for its watermark is attached again without it, once,
+    /// and the browser is told only the answer to the second attach.
+    #[tokio::test]
+    async fn a_refused_resume_is_retried_once_without_its_watermark() {
+        let (address, asked) = scripted(vec![
+            serde_json::json!({"is": "failed", "about": "attach", "error": "no such record"}),
+            serde_json::json!({"is": "done"}),
+        ])
+        .await;
+        let named: Named = Arc::new(Mutex::new(Some("old".to_owned())));
+        let mut written = Vec::new();
+        let attached = attach(&address, Some(7), &named, &mut written).await;
+        match attached {
+            Ok(Some(Upstream { first, .. })) => assert_eq!(first["is"], "done"),
+            _ => panic!("the second attach should be the one answered"),
+        }
+        let asked = asked.lock().expect("not poisoned");
+        assert_eq!(asked.len(), 2, "{asked:?}");
+        assert_eq!(asked[0]["since"], 7);
+        assert_eq!(asked[0]["session"], "old");
+        assert!(asked[1]["since"].is_null(), "{asked:?}");
+        assert!(asked[1]["session"].is_null(), "{asked:?}");
+    }
+
+    /// Only a refusal of an attach is retried: a message that is not a refusal, and a refusal about
+    /// anything else such as the version, are both passed on as the answer.
+    #[tokio::test]
+    async fn only_a_refusal_of_the_attach_is_retried() {
+        for answer in [
+            serde_json::json!({"is": "done", "about": "attach"}),
+            serde_json::json!({"is": "failed", "about": "version", "error": "too old"}),
+        ] {
+            let (address, asked) = scripted(vec![answer.clone()]).await;
+            let named: Named = Arc::default();
+            let mut written = Vec::new();
+            let attached = attach(&address, Some(7), &named, &mut written).await;
+            match attached {
+                Ok(Some(Upstream { first, .. })) => assert_eq!(first, answer),
+                _ => panic!("{answer} should be passed on"),
+            }
+            assert_eq!(asked.lock().expect("not poisoned").len(), 1, "{answer}");
+        }
+    }
+
+    /// A refusal to a resume that had no watermark is passed on, because attaching again with none
+    /// would be refused for the same reason.
+    #[tokio::test]
+    async fn a_refusal_with_no_watermark_is_passed_on() {
+        let refused = serde_json::json!({"is": "failed", "about": "attach", "error": "no"});
+        let (address, asked) = scripted(vec![refused.clone()]).await;
+        let named: Named = Arc::default();
+        let mut written = Vec::new();
+        match attach(&address, None, &named, &mut written).await {
+            Ok(Some(Upstream { first, .. })) => assert_eq!(first, refused),
+            _ => panic!("a refusal with no watermark should be passed on"),
+        }
+        assert_eq!(asked.lock().expect("not poisoned").len(), 1);
+    }
+
+    /// The session names itself on its `attached` message, and on nothing else: the name is what
+    /// the next attach resumes under.
+    #[tokio::test]
+    async fn the_session_is_named_by_its_attached_message_only() {
+        let named: Named = Arc::default();
+        let mut written = Vec::new();
+        let record = serde_json::json!({"is": "record", "seq": 4, "session": "other"});
+        assert!(
+            forward(&mut written, &record, &named)
+                .await
+                .expect("written")
+        );
+        assert_eq!(named.lock().expect("not poisoned").clone(), None);
+
+        let attached = serde_json::json!({"is": "attached", "session": "mine", "seq": 5});
+        assert!(
+            forward(&mut written, &attached, &named)
+                .await
+                .expect("written")
+        );
+        assert_eq!(
+            named.lock().expect("not poisoned").clone(),
+            Some("mine".to_owned())
+        );
+    }
+
+    /// Every message the session sends is passed on, not only the first, until the session stops.
+    #[tokio::test]
+    async fn the_relay_passes_on_every_message_until_the_session_stops() {
+        let wire: &[u8] = b"{\"is\":\"record\",\"seq\":1}\n{\"is\":\"record\",\"seq\":2}\n";
+        let named: Named = Arc::default();
+        let mut up = protocol::Frames::new(BufReader::new(wire));
+        let mut written = Vec::new();
+        relay(&mut written, &mut up, &named).await.expect("relayed");
+        let said = String::from_utf8(written).expect("utf8");
+        assert!(
+            said.contains("id: 1\n") && said.contains("id: 2\n"),
+            "{said}"
+        );
+    }
+
+    /// A head of exactly the allowance is read whole, and one byte more is refused.
+    #[tokio::test]
+    async fn the_head_is_read_to_its_allowance_and_no_further() {
+        let fits = head_of(MAX_HEAD);
+        assert!(
+            head(&mut BufReader::new(&fits[..]))
+                .await
+                .expect("read")
+                .is_some()
+        );
+        let over = head_of(MAX_HEAD + 1);
+        assert!(head(&mut BufReader::new(&over[..])).await.is_err());
+    }
+
+    /// A header longer than an even share of the allowance is still read whole.
+    #[tokio::test]
+    async fn a_long_header_is_read_whole() {
+        let wire = head_of(3_000);
+        let request = head(&mut BufReader::new(&wire[..]))
+            .await
+            .expect("read")
+            .expect("a request");
+        let around = "GET / HTTP/1.1\r\nX-Pad: \r\n\r\n".len();
+        assert_eq!(request.header("x-pad").map(str::len), Some(3_000 - around));
+    }
 }
