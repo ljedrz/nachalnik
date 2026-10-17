@@ -76,17 +76,16 @@ when deciding where a new capability belongs.
 
 ## where things are
 
-`nachalnik/src`: `kernel/` is the state machine and every public operation, and next to it is one
-file per extension point or per kind of data the kernel keeps: `context/`, `model/`,
-`projection.rs`, `tool.rs`, `permissions.rs`, `tokens.rs`, `compaction.rs`, `event.rs`,
-`session.rs`. `test.rs` (feature `test`) has the scripted provider, fake tools and table policy;
-use those instead of writing new mocks.
+`nachalnik/src`: `kernel/` is the state machine and every public operation. Next to it is one file
+per extension point or per kind of data the kernel keeps: `context/`, `model/`, `projection.rs`,
+`tool.rs`, `permissions.rs`, `tokens.rs`, `compaction.rs`, `event.rs`, `session.rs`. `test.rs`
+(feature `test`) has the scripted provider, fake tools and table policy; use those instead of
+writing new mocks.
 
-`kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem,
-the shell, the permission policy and the compactor, `introspect/` is the tools an agent uses to
-inspect and manage its own session, `wiring/` assembles a session, `args.rs` combines flags and the
-settings file, and `main.rs` picks the loop and reports where the session was saved. Keep it that
-way.
+`kamchatka/src`: `app/` is the state. `ui/` draws and decides nothing. `tools/` is the filesystem,
+the shell, the permission policy and the compactor. `introspect/` is the tools an agent uses to
+inspect and manage its own session. `wiring/` assembles a session. `args.rs` combines flags and the
+settings file. `main.rs` picks the loop and reports where the session was saved. Keep it that way.
 
 The file-by-file map is in [MAP.md](MAP.md).
 

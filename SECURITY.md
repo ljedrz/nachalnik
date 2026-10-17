@@ -180,78 +180,73 @@ What changes to this workspace must keep true about what is and isn't enforced.
 
 ## who `kamchatka` is defending against
 
-The points above are each about one mechanism. This section covers the same ground by who could
-cause harm, what stops them, and what doesn't.
-
 - **The model, and anyone who wrote something it read.** A file, a command's output or a tool's
-  answer can contain instructions, and the model acts on what it reads, so the model is treated as
-  something that may be manipulated. It can only act through tools the policy allows. The `shell`
-  tool is sandboxed by Landlock on Linux (files outside the allowed paths, TCP `connect`, and from
-  Linux 7.1 unix sockets it couldn't write to), its network sockets are paused by the gate where
-  available, and it doesn't get this program's keys. The `fs` tool enforces the same paths in its
-  own code, and on Linux opens files relative to the directory they were allowed under. What the
-  model can still do: send UDP where there's no gate, and use the network however a person allowed;
-  read anything inside the allowed paths and put it into the context, which is sent to the
-  provider; and spend the session's budget, including on `fork` drafts. Under `--no-sandbox` the
-  shell isn't sandboxed at all, and the permission question is the only safeguard.
+  answer can contain instructions, and the model acts on what it reads, so it is treated as
+  manipulable. It can only act through tools the policy allows. The `shell` tool is sandboxed by
+  Landlock on Linux: files outside the allowed paths, TCP `connect`, and from Linux 7.1 unix sockets
+  it could not write to are blocked; its network sockets are paused by the gate where available; it
+  does not get this program's keys. The `fs` tool enforces the same paths in its own code, and on
+  Linux opens files relative to the directory they were allowed under. The model can still send UDP
+  where there is no gate; use the network however a person allowed; read anything inside the allowed
+  paths and put it into the context, which is sent to the provider; and spend the session's budget,
+  including on `fork` drafts. Under `--no-sandbox` the shell is not sandboxed at all, and the
+  permission question is the only safeguard.
 - **Anyone who reaches a served session.** The protocol can use the `shell` tool, so reaching it
   means running commands as the person who started it. `--serve` binds to loopback only and makes
-  its socket `0600`, and there is no other authentication. `--web` serves a page for the session,
-  whose only credential is a random key in its address, printed at startup; whoever has the address
-  controls the session like the person at the keyboard. The key is 32 bits, so that it can be
-  typed on a phone, and after 100 wrong keys the page refuses everything for a minute, which puts
-  guessing it at about 40 years for even odds. A connection has 10 seconds to send its request, and
-  at most 64 may be waiting at once, so a device that can reach the port without the key can keep
-  the page from loading for as long as it keeps trying, but can't use up the file descriptors the
-  session needs for its record and its commands. It listens on loopback, or on an IP address
-  in a private range, in which case every device on that network can read the session's traffic, and
-  any that learns the address can control it, and `kamchatka` warns about this at startup and in
-  each session. A host name is taken only where it resolves to this machine, as `localhost` does;
-  one that resolves elsewhere, wildcards and public addresses are refused. From further away, use a
-  tunnel that authenticates. Other web pages open in a browser on the same machine are refused: the
-  page only accepts same-origin JSON requests addressed to an IP address or `localhost`. That rests
-  on the browser saying where a request came from, with `Origin` or `Sec-Fetch-Site`, and where one
-  is too old to send either, on the key: every route is beneath it, and a page that was never shown
-  the address can't guess it in time. Clients can answer permission questions, so the session's own commands
+  its socket `0600`; there is no other authentication. `--web` serves a page for the session whose
+  only credential is a random key in its address, printed at startup; whoever has the address
+  controls the session like the person at the keyboard. The key is 32 bits so it can be typed on a
+  phone; after 100 wrong keys the page refuses everything for a minute, which puts guessing it at
+  about 40 years for even odds. A connection has 10 seconds to send its request, and at most 64 may
+  be waiting at once, so a device that can reach the port without the key can keep the page from
+  loading for as long as it keeps trying, but cannot use up the file descriptors the session needs
+  for its record and its commands. It listens on loopback or on an IP address in a private range;
+  then every device on that network can read the session's traffic, and any device that learns the
+  address can control it. `kamchatka` warns about this at startup and in each session. A host name
+  is taken only where it resolves to this machine, as `localhost` does; one that resolves elsewhere,
+  wildcards and public addresses are refused. From further away, use a tunnel that authenticates.
+  Other web pages open in a browser on the same machine are refused: the page only accepts
+  same-origin JSON requests addressed to an IP address or `localhost`. That rests on the browser
+  saying where a request came from, with `Origin` or `Sec-Fetch-Site`, and where one is too old to
+  send either, on the key: every route is beneath it, and a page that was never shown the address
+  cannot guess it in time. Clients can answer permission questions, so the session's own commands
   are kept out too: ports the session or its page are served on are closed to every command
-  sandboxed while they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel
+  sandboxed while they are open. That uses Landlock's TCP rules, from Linux 6.7; on an older kernel
   the ruleset is `Partial` and a port is closed only where the network is shut or asked about, which
-  the gate holds, so with TCP allowed or refused by Landlock alone, a command can reach a session
+  the gate holds, so with TCP allowed or refused by Landlock alone a command can reach a session
   served over TCP and answer its questions. That is not worked around, and the startup warning says
   so. A socket file can be reached by every sandboxed command below Linux 7.1, and from 7.1 by any
   that may write where it is, so connections are refused when the other end is in the session of a
   command this process sandboxed (each runs in its own session), which covers anything it left
   running. What gets through: a process a command started with `setsid`, the `gateway` example's
-  page (a separate process, so it can't close its port to the session's commands), and any *other*
-  served session on the machine. A session only closes its own ports, and a TCP connection doesn't
+  page (a separate process, so it cannot close its port to the session's commands), and any *other*
+  served session on the machine. A session only closes its own ports, and a TCP connection does not
   identify the process behind it, so one process's sandboxed command is an ordinary client to a
   session in another, and that session's addresses are up to whoever started it. A command allowed
   on the network can reach all three.
-- **An MCP server.** It's a program the person chose, running unconfined with the person's
-  environment and access to everything the person can read. What `kamchatka` controls is what its
-  answers can do: its tools are judged under the server's name, and what it returns goes into the
-  context like any other tool result, where the model reads it, which brings us back to the first
-  point.
+- **An MCP server.** It is a program the person chose, running unconfined with the person's
+  environment and access to everything the person can read. `kamchatka` controls what its answers
+  can do: its tools are judged under the server's name, and what it returns goes into the context
+  like any other tool result, where the model reads it.
 - **Whoever wrote the directory `kamchatka` is run in.** Without `--config-file`, `kamchatka` reads
-  `./kamchatka.json`, and that file can set every setting the command line can: `mcp`, which starts
-  unconfined programs before the first message, `no-sandbox`, `auto-allow`, `auto-allow-server`,
-  `on-ask` and the sandbox paths. So running `kamchatka` in someone else's repository would run it
-  with their settings: their MCP servers would start as you, and a file that turns off the sandbox
-  and allows `exec` would leave nothing between that repository's instructions and your machine. So
-  the file isn't read until someone at a terminal approves it: the question lists which of those
-  settings it changes, and anything but yes runs without it. A run without a terminal to ask at is
-  refused, with a message saying to pass the file with `--config-file`. The file in your own config
-  directory is read without asking, since nobody else writes there.
+  `./kamchatka.json`, which can set every setting the command line can: `mcp` (starts unconfined
+  programs before the first message), `no-sandbox`, `auto-allow`, `auto-allow-server`, `on-ask` and
+  the sandbox paths. Running `kamchatka` in someone else's repository would run it with their
+  settings: their MCP servers would start as you, and a file that turns off the sandbox and allows
+  `exec` would leave nothing between that repository's instructions and your machine. So the file is
+  not read until someone at a terminal approves it; the question lists which settings it changes,
+  and anything but yes runs without it. A run without a terminal to ask at is refused, with a
+  message saying to pass the file with `--config-file`. The file in your own config directory is
+  read without asking, because nobody else writes there.
 - **The provider.** Everything in a request is sent to it, and a request is the context: the
   conversation, tool results, and any file the model was allowed to read. Nothing here prevents
   that, and nothing can; that's what using a model means.
 - **Other users on the machine.** The automatic session record is written under a `0700` directory
-  in the temporary directory, and not at all if whatever has that name isn't a directory only you
-  can read. A served unix socket is made `0600` right after the bind, and putting it in a directory
-  of your own covers the moment before that. A served loopback port isn't protected: every account
-  on the machine can connect to it, and a connection can run the `shell` tool as the person
-  serving. So on shared machines, use `--serve unix:PATH`.
-- **Size.** What a tool keeps from one call is capped at `tools::KEPT`, for each of a command's two
-  output streams, so a command that never stops writing, or a huge file, can't exhaust memory, the
-  archive or a saved session.
-  Output from MCP server tools is up to the server to limit.
+  in the temporary directory, and not at all if whatever has that name is not a directory only you
+  can read. A served unix socket is made `0600` right after the bind; putting it in a directory of
+  your own covers the moment before that. A served loopback port is not protected: every account on
+  the machine can connect to it, and a connection can run the `shell` tool as the person serving. On
+  shared machines, use `--serve unix:PATH`.
+- **Size.** What a tool keeps from one call is capped at `tools::KEPT` for each of a command's two
+  output streams, so a command that never stops writing, or a huge file, cannot exhaust memory, the
+  archive or a saved session. Output from MCP server tools is up to the server to limit.

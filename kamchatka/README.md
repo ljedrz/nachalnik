@@ -28,31 +28,31 @@ OpenAI's Responses API. [Running it][running] has the details.
 
 ## ❓ who this is for
 
-You're likely to find `kamchatka` compelling if any of these apply to you:
-- you hate when the agent forgets an important piece of information, or can't trace its reasoning
-  back to earlier points in the discussion
-- you're dissatisfied with token accounting and auto-compaction being imprecise and unpredictable
+You may want `kamchatka` if any of these apply:
+- you hate when the agent forgets important information or can't trace its reasoning back to earlier
+  points in the discussion
+- you find token accounting and auto-compaction imprecise and unpredictable
 - you worry about the supply-chain attack surface of large codebases
 - you distrust generic community tools hosted by `npm`
-- you want clear, fine-grained control over all the decisions taken by the agent
-- you want the agent's shell sandboxed by the kernel rather than by a list of forbidden commands:
-  it writes only where you let it, reads nothing private outside the working directory, and reaches
-  the network only when you say so
-- you want a minimalistic agent with negligible OS footprint and a transparent configuration
-- you like to keep detailed, auditable, and local transcripts of past conversations
+- you want fine-grained control over the agent's decisions
+- you want the shell sandboxed by the kernel, not by a list of forbidden commands: it writes only
+  where you let it, reads nothing private outside the working directory, and reaches the network
+  only when you say so
+- you want a minimal agent with a small OS footprint and transparent configuration
+- you want detailed, auditable, local transcripts of past conversations
 
 ## 🖼️ what a session looks like
 
-Asked to pin a budget and a deadline, the model writes the note itself with its `context` tool,
-and the result it reads back says what the note did to its next request:
+Asked to pin a budget and a deadline, the model writes the note itself with its `context` tool. The
+result it reads back says what the note did to its next request:
 
 ![The chat tab. Asked to pin a budget and a deadline, the model calls `context` to write a note;
 the result says the note is pinned, goes into every request from then on, and what the next request
 now costs.][shot-chat]
 
 The context tab shows the same session from your side: every item, what it adds to the next request
-and what it leaves out, with one item opened to show why it's there (in the model's words, since the
-model added it) and that it's pinned:
+and what it leaves out. One item is opened to show why it is there (in the model's words, since the
+model added it) and that it is pinned:
 
 ![The context tab. Five items with what each sends and holds back; the pinned note is selected and
 open, showing why it is there and what it says.][shot-context]
@@ -68,30 +68,29 @@ Apart from the context, the model only receives the tool definitions, and `/budg
 cost.
 
 **See the request before it's sent.** <kbd>ctrl+p</kbd> prints the next request as the runtime
-builds it, listing every item left out and why; `/payload` prints exactly what the provider will
-send; `/raw` shows the last response as it arrived.
+builds it, listing every item left out and why. `/payload` prints exactly what the provider will
+send. `/raw` shows the last response as it arrived.
 
-**Compaction you can see and undo.** No model is asked to summarize your history. A tool result
-the model has already used is replaced by a one-line placeholder, and once the context is full, the
-oldest exchanges are removed entirely. Every removed item is still listed on the context tab with a
-note explaining why, `/restore` brings it back, and pinned items are never removed. `/compact`
-shows what it would do and waits for your answer.
+**Compaction you can see and undo.** No model is asked to summarize your history. A tool result the
+model has already used is replaced by a one-line placeholder. Once the context is full, the oldest
+exchanges are removed entirely. Every removed item is still listed on the context tab with a note
+explaining why, `/restore` brings it back, and pinned items are never removed. `/compact` shows what
+it would do and waits for your answer.
 
-**A token count that admits it's an estimate.** `kamchatka` doesn't have the model's tokenizer, so
-the figure is shown as `~2,460`, and the percentage next to it says what limit it's a percentage
-of. Once a response arrives, the figure is based on what the provider actually charged, and the
-counter adjusts itself from every response it can fully price. When something in the context can't
-be priced, the context tab marks that item's figure with a `+`, and `/budget` says its totals are a
-minimum.
+**An estimated token count.** `kamchatka` does not have the model's tokenizer, so the figure is
+shown as `~2,460`, and the percentage next to it says which limit it is a percentage of. Once a
+response arrives, the figure is based on what the provider actually charged, and the counter adjusts
+from every response it can fully price. When something in the context cannot be priced, the context
+tab marks that item's figure with a `+`, and `/budget` says its totals are a minimum.
 
-**No telemetry, no update check.** It only talks to the endpoint you configure, and to things you
+**No telemetry, no update check.** It talks only to the endpoint you configure and to things you
 explicitly ask for: an MCP server you name, a session you serve, the advisor you turn on. Commands
 run by the shell are paused at the network gate until you answer.
 
 ## 📦 installing
 
-Download one of the binaries from [releases](https://github.com/ljedrz/nachalnik/releases), or
-install the latest release using `cargo`:
+Download a binary from [releases](https://github.com/ljedrz/nachalnik/releases), or install the
+latest release with `cargo`:
 
 ```console
 $ cargo install kamchatka                     # from the registry
@@ -132,60 +131,56 @@ $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 
 Those tools arrive through [`nachalnik-mcp`][nachalnik-mcp] and only declare `mcp:call`, whatever
 their annotations claim. Which server they came from is a separate permission: `--auto-allow-server
-files` covers that one server and no other, which is why it's worth giving each server a `name=`.
-The command is split on whitespace and nothing is unquoted, so an argument can't hold a space: a
-path with one in it is two arguments, and a script that starts the server is the way round that.
+files` covers that one server and no other, so give each server a `name=`. The command is split on
+whitespace and nothing is unquoted, so an argument cannot hold a space. A path with a space is two
+arguments; a script that starts the server works around that.
 
-`fs`'s `grep` and `glob` use ripgrep's libraries directly instead of running `rg`, and they exist
-for the sake of permissions: without them, searching for a symbol would need `exec:run`, which
-implies every other permission. As `fs:grep` and `fs:glob`, limited by the same path rules as
-reading files, they let the model explore a repository without that all-powerful permission
-([what they cut and what they skip][guide-find]).
+`fs`'s `grep` and `glob` use ripgrep's libraries directly instead of running `rg`. Without them,
+searching for a symbol would need `exec:run`, which implies every other permission. `fs:grep` and
+`fs:glob` are limited by the same path rules as reading files, so they let the model explore a
+repository without that all-powerful permission ([what they cut and what they skip][guide-find]).
 
 Four tools are about the session itself: `context` reads and changes the context, `log` reads the
 session record, `setup` shows the session's configuration, and `fork` asks a copy of the session a
-question. Each operation in them is a public function the screen already used
-([what each does][guide-introspect]).
+question. Each operation is a public function the screen already used ([what each
+does][guide-introspect]).
 
 Tools can be changed during a session: `/tools toggle shell` stops offering a tool from the next
-request on, and toggling again brings it back, without a restart. `/limit` changes how much of a
-call's output the model sees, per permission, and the full version of a cut result is kept so it
-can be sent instead. When a model has gone completely off track, <kbd>d</kbd> at the permission
-prompt drops *every* call it's waiting on, and the model is told.
+request, and toggling again brings it back without a restart. `/limit` changes how much of a call's
+output the model sees, per permission, and the full version of a cut result is kept so it can be
+sent instead. When a model goes off track, <kbd>d</kbd> at the permission prompt drops every call it
+is waiting on, and the model is told.
 
 ## 🐢 one transition at a time
 
-The loop is a state machine, and `/step` runs one transition at a time instead of a whole turn.
-That lets you stop in `ready`, the point where the model has said what it wants and **nothing has
-happened yet**:
+The loop is a state machine. `/step` runs one transition at a time instead of a whole turn, so you
+can stop in `ready`: the model has said what it wants and nothing has happened yet:
 
 ```text
 /step how many lines are in ledger.py?
 ```
 
 If the model answers with a tool call (say, `shell` running `wc -l`), the session stops in `ready`:
-the command has been decided and permitted, but isn't running. From here you can read it,
-exclude things from the context, drop it, or `/step` again to run it. Most agents have an "approve
-this command?" prompt bolted onto the loop; here, stopping is part of the loop itself.
+the command has been decided and permitted, but isn't running. From here you can read it, exclude
+things from the context, drop it, or `/step` again to run it.
 
-Use `/step` again for each transition (the tool runs, then the next request is sent), or
-`/continue` for the rest of the turn. While stepping, answering a permission question doesn't
-resume the turn automatically, since you chose to step through it.
+Use `/step` again for each transition (the tool runs, then the next request is sent), or `/continue`
+for the rest of the turn. While stepping, answering a permission question doesn't resume the turn
+automatically, since you chose to step through it.
 
 ## 🎛️ features
 
 - `mcp` (default): `--mcp`, for tools from MCP servers.
 - `tui` (default): the screen and the keys. Without it, the program runs headless and none of the
   crates that draw it are built.
-- `webui` (default): `--web`, the session as a web page, served on loopback or on a local network
-  address you give it.
-- `advise`: a client for System One models, which answer typed questions with probabilities
-  instead of writing text. It only adds `kamchatka::endpoint::advise` to the library; the program
-  itself uses it through `shell-advisor`.
-- `shell-advisor`: adds `--rate-shell-commands`, which colours each shell command you are asked
-  about green, yellow or red by the advisor's reading of it. The rating decides nothing. It is off
-  by default because it sends command lines off the machine; [running it][advise] says exactly what
-  leaves.
+- `webui` (default): `--web`, the session as a web page on loopback or a local network address you
+  give it.
+- `advise`: a client for System One models that answer typed questions with probabilities instead of
+  writing text. It only adds `kamchatka::endpoint::advise` to the library; the program uses it
+  through `shell-advisor`.
+- `shell-advisor`: adds `--rate-shell-commands`, colouring each shell command you are asked about
+  green, yellow or red by the advisor's reading. The rating decides nothing. It is off by default
+  because it sends command lines off the machine; [running it][advise] says exactly what leaves.
 
 ## 📚 the rest of it
 

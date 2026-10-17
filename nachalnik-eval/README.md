@@ -8,23 +8,21 @@
 itself.**
 
 Built on [`nachalnik`][nachalnik]. A model makes a claim about its own context (*this note is what
-my answer is based on*, *removing it would change nothing*), and the harness changes what the claim
-is about in a copy of the context and compares. Only what was actually observed is scored.
+my answer is based on*, *removing it would change nothing*). The harness changes what the claim is
+about in a copy of the context and compares. Only what was actually observed is scored.
 
 Then **the same operation is given to the model as a tool.** It forks its own context, removes an
 item, sees what the copy says, and answers from a measurement instead of a guess. The difference
-between those two answers shows the value of a context you can manipulate, rather than a fixed
-wall of text.
+between those answers measures the value of a manipulable context.
 
 > A model's account of what its answer depends on isn't self-knowledge; it's ordinary reasoning
 > about the task, phrased in the first person. So instead of asking for the account, let it run
 > the experiment.
 
-**This crate is the measuring tool, not a study.** A study keeps its own material,
-preregistration, results and write-up in its own repository
-([deleting-a-memory](https://github.com/ljedrz/deleting-a-memory) is one); this crate holds the
-machinery all studies share, so a new study starts from a working harness instead of a copy of an
-old one.
+**This crate is the measuring tool, not a study.** A study keeps its own material, preregistration,
+results and write-up in its own repository
+([deleting-a-memory](https://github.com/ljedrz/deleting-a-memory) is one). This crate holds the
+shared machinery, so a new study starts from a working harness instead of copying an old one.
 
 ```console
 $ export NACHALNIK_API_KEY=sk-or-...
@@ -40,9 +38,8 @@ tokens.
 
 ### 🔬 why any of this is measurable
 
-Introspection is normally impossible to verify. A model tells you a story about itself after the
-fact, and all you can do is believe it or not. Three features of the runtime change that, and none
-of them was added for this:
+Introspection is normally impossible to verify. A model's self-report after the fact cannot be
+checked. Three runtime features change that, and none of them was added for this:
 
 | the question | the operation |
 | --- | --- |
@@ -50,9 +47,9 @@ of them was added for this:
 | what would it say without that? | `Kernel::snapshot` + `set_state` + `Kernel::resume` |
 | what did that cost? | the session log, item by item |
 
-So *"would removing item 5 change your answer?"* can be checked. Take a snapshot, mark item 5
-excluded, resume it as a throwaway agent with no tools, ask again, and compare. Same model, same
-everything, one variable changed: an ablation, in the laboratory sense.
+The question "would removing item 5 change your answer?" can be checked. Take a snapshot, mark item
+5 excluded, resume it as a throwaway agent with no tools, ask again, and compare. Same model, same
+everything, one variable changed: an ablation.
 
 ---
 
@@ -65,35 +62,33 @@ parses it; anything that doesn't parse is counted as `Answer::Unreadable` instea
 into a score. There is no judge model, so no figure depends on one model's opinion of another's
 writing.
 
-**The control is a copy too, and the question says so.** "Did the answer change?" compares the
-modified copies with copies of the same context where nothing was changed, not with what the subject
-said in the live session, which it said with tools, at a different point in a different
-conversation. `Intervention::Nothing` is that control. It's also why every counterfactual asks
-about *two copies* ("one with your context as it is, one with that note excluded: will they answer
-differently?") rather than "would your answer change": the live session and a copy of it can
-disagree.
+**The control is a copy too, and the question says so.** "Did the answer change?" compares modified
+copies with unchanged copies of the same context, not with the live session, where the subject used
+tools at a different point in a different conversation. `Intervention::Nothing` is that control.
+Every counterfactual asks about two copies ("one with your context as it is, one with that note
+excluded: will they answer differently?") rather than "would your answer change", because a live
+session and a copy can disagree.
 
 Both copies also have the exchange where the subject already answered hidden from them
-(`Ablation::blind_to`), because a copy that can see its earlier answer just above the repeated
-question may simply repeat it instead of working from the notes. Both copies are treated the same
-way, so this can't be what causes a difference.
+(`Ablation::blind_to`), because a copy that sees its earlier answer may repeat it instead of working
+from the notes. Both copies are treated the same way, so this cannot cause a difference.
 
 **Noise is measured, not assumed.** With more than one replicate, `Change::instability` is the
-fraction of *control* copies that disagreed with each other, and a changed answer only counts if it
-beats that. With one replicate it reports `0.0`, meaning *nothing was measured*, not that the model
-is stable. `--temperature 0` doesn't solve this and isn't meant to.
+fraction of control copies that disagreed with each other, and a changed answer only counts if it
+beats that. With one replicate it reports `0.0`, meaning nothing was measured, not that the model is
+stable. `--temperature 0` doesn't solve this and isn't meant to.
 
 **Accuracy is shown next to what guessing would score.** `Scores::majority` is what a subject that
 always gave the most common answer would get; `Scores::skill` is how much of the gap between that
-and a perfect score the subject closed. In a battery where nothing ever changes, always answering
-*no* scores 100%, and the report shows that instead of congratulating anybody.
+and a perfect score the subject closed. In a battery where nothing ever changes, always answering no
+scores 100%, and the report shows that instead of congratulating anybody.
 
 ---
 
 ### 📊 what comes out
 
-Every comparison is one `Resolution`: the claim, the observation, and enough information to score
-it again later. `Scores` is computed over a set of them:
+Every comparison is one `Resolution`: the claim, the observation, and enough information to score it
+again later. `Scores` is computed over a set of them:
 
 | figure | what it says |
 | --- | --- |
@@ -106,8 +101,8 @@ it again later. `Scores` is computed over a set of them:
 | `Depths` | all of the above at each remove of self-reference |
 
 Claims are grouped by what they're about, because a model can do well on one kind and badly on
-another. It can be right about *why* its answer came out the way it did but wrong about which
-numbered item the note is, and averaging the two would hide the more interesting result.
+another. It can be right about why its answer came out the way it did but wrong about which numbered
+item the note is, and averaging the two would hide the more interesting result.
 
 | family | the claim is about |
 | --- | --- |
@@ -145,9 +140,9 @@ answer, because the harness wrote the record.
 
 Read `repair` first. A false note is planted and the subject answers wrongly. It is asked a second
 time, and then given `inspect` and `amend` with no hint that anything is wrong. Asked which note is
-false, it **names it correctly**; asked the question again, it's *still wrong*; asked to put it
-right, it removes the note with `amend` and gets it right. Spotting an error isn't the same as
-being unaffected by it, and the only thing that helped was editing the context.
+false, it names it correctly; asked the question again, it is still wrong; asked to put it right, it
+removes the note with `amend` and gets it right. Spotting an error is not the same as being
+unaffected by it; only editing the context helped.
 
 `conflict` is `lie` without a way to decide. The same contradiction is planted, but both sides are
 `records/...` and the brief says the records are accurate, so nothing in the context says which to
@@ -163,10 +158,9 @@ side is removed in turn: one of them determines the answer, and the subject has 
 They live in `suite`, which holds all of the crate's prompt text except two lines in the harness
 itself (the preamble every copy gets, and the line specifying the answer format). That includes the
 two tool descriptions in `suite::handles`, which the model reads, so they are hashed into the
-measurement like all other prompt text. A benchmark *is* its questions, and questions go stale: once
-the material ends up in a model's training data, this suite can't measure that model, and replacing
-the suite shouldn't mean replacing the harness. A study's own methods, procedures and threats to
-validity belong in its own repository.
+measurement like all other prompt text. Once the material ends up in a model's training data, this
+suite can't measure that model, and replacing the suite shouldn't mean replacing the harness. A
+study's own methods, procedures and threats to validity belong in its own repository.
 
 | experiment | the claim | the check | ~requests |
 | --- | --- | --- | --- |
@@ -186,13 +180,13 @@ five in `suite::PLANTED`, which is why they make up most of it; `instrumented` i
 subject chose to run, so its count varies by model.
 
 The material is deliberately invented. It must not be in any training set, so the answer has to be
-worked out rather than remembered; it needs a designed cause-and-effect structure, so *which note is
-this answer based on* has a known answer before any model is asked; and it must need no tools, so a
+worked out rather than remembered; it needs a designed cause-and-effect structure, so which note is
+this answer based on has a known answer before any model is asked; and it must need no tools, so a
 run can be reproduced on another machine without depending on a filesystem.
 
-**Every claim is collected before any copy is run.** A subject that had seen one ablation before
-its next claim would be reasoning from evidence rather than about itself, which is different and
-much easier. `tests/harness.rs` checks the ordering.
+**Every claim is collected before any copy is run.** A subject that had seen one ablation before its
+next claim would be reasoning from evidence rather than about itself, which is different and much
+easier. `tests/harness.rs` checks the ordering.
 
 ---
 
@@ -207,8 +201,8 @@ level 2  "what will a copy of you say to level 1?"      ← a copy, asked the le
 level 3  "what will a copy of you say to level 2?"      ← a copy, asked the level-2 question
 ```
 
-The recursion is only in the questions; the answers are all observed. What's worth looking at is
-how accuracy changes across levels, not any single level.
+The recursion is only in the questions; the answers are all observed. What's worth looking at is how
+accuracy changes across levels, not any single level.
 
 ---
 
@@ -228,13 +222,13 @@ The word *introspection* suggests more than this measures.
   `Observation::repairs`, and a change measured with a non-empty repairs list may not mean what it
   seems to. `Intervention::Elided` is more precise.
 - **Whether an item was *useless*.** An ablation that doesn't change the answer only shows the
-  answer didn't *depend* on that item, because it could be reached from other things in the
-  context. Those are different findings, and telling them apart is exactly what introspection can't
-  do on its own.
-- **Anything about how models work internally.** This only measures behaviour. It says whether a
-  model's account of itself predicts its own behaviour, and nothing about what happens inside it.
+  answer didn't *depend* on that item, because it could be reached from other things in the context.
+  Being useless and not being depended on are different findings, and introspection can't tell them
+  apart on its own.
+- **Anything about how models work internally.** It measures whether a model's account of itself
+  predicts its own behaviour, and says nothing about what happens inside it.
 - **Introspection in general.** A handful of experiments over invented dossiers, with fixed answer
-  options. A model that's good at this is good at *this*.
+  options. A model that's good at this is good at these experiments, nothing more.
 
 [nachalnik]: https://crates.io/crates/nachalnik
 

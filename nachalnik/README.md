@@ -10,14 +10,12 @@ reported to you afterwards.
 
 > The agent is not the boss. You are.
 
-It is a library, not a program: it has no UI, no editor, no model, no tools and no prompt. What it
-has is the loop, the context, and a record of everything that happened. The rest of the
-[workspace][workspace] — a terminal agent, an MCP bridge, an introspection benchmark — is what
-gets built on top.
+A library, not a program: no UI, editor, model, tools or prompt. It has the loop, the context, and a
+record of everything that happened. The rest of the [workspace][workspace] — a terminal agent, an
+MCP bridge, an introspection benchmark — is built on top.
 
-**Looking for an agent to run rather than one to build?** That is [`kamchatka`][kamchatka], a
-terminal agent on this runtime that shows you everything in its context and lets you change it,
-and the [transcripts][writeup] are what its sessions look like.
+[`kamchatka`][kamchatka] is a terminal agent on this runtime: it shows everything in its context and
+lets you change it, and the [transcripts][writeup] show what its sessions look like.
 
 ---
 
@@ -82,18 +80,16 @@ included, `goose` and `codex` are good and also Rust. `nachalnik` is what you bu
 
 ### ⚡ why?
 
-* **Nothing is hidden.** Every context item has an identity, a size, a source, a state and a
-  reason for being there, and every transition the loop makes is an event. The request you
-  previewed is the request that goes out.
-* **Nothing is sacred.** That 17,000-token tool output can be excluded, and it goes. No
-  "the agent has determined that this information is relevant".
-* **Nothing is assumed.** No system prompt, no personality, no planning ritual, no mandatory
-  subagents, no MCP, no default tools, no filesystem or network code, no permission table, no
-  `/context` renderer, no background activity. There is not one line of prompt text in this
-  crate.
-* **Everything is an event.** The whole session is an append-only log of typed events, so a
-  client is `subscribe()` + render, and changing the UI does not invalidate sessions.
-* **Small.** A handful of dependencies, no `unsafe`, and a codebase you can read in an afternoon.
+* **Nothing is hidden.** Every context item has an identity, a size, a source, a state and a reason
+  for being there, and every loop transition is an event. The request you previewed is the request
+  that goes out.
+* **Nothing is sacred.** A 17,000-token tool output can be excluded.
+* **Nothing is assumed.** No system prompt, personality, planning ritual, mandatory subagents, MCP,
+  default tools, filesystem or network code, permission table, `/context` renderer, or background
+  activity. The crate contains no prompt text.
+* **Everything is an event.** The session is an append-only log of typed events, so a client is
+  `subscribe()` plus render, and changing the UI does not invalidate sessions.
+* **Small.** A handful of dependencies and no `unsafe`.
 
 ---
 
@@ -107,16 +103,16 @@ included, `goose` and `codex` are good and also Rust. `nachalnik` is what you bu
     └── decide ── Deciding <──(calls, one to ask about)
 ```
 
-`Kernel::step` performs exactly one of those transitions and returns the `State` it produced;
-`Kernel::turn` repeats until the model ends its turn or somebody has to decide something.
+`Kernel::step` performs exactly one transition and returns the `State` it produced. `Kernel::turn`
+repeats until the model ends its turn or a decision is needed.
 
-* `Requesting` and `Executing` mean the loop is already being driven; a second `step` is
+* `Requesting` and `Executing` mean the loop is already being driven; a second `step` returns
   `Error::Busy`, not a second request. If the future driving a transition is dropped, the kernel
   returns to `Idle` instead of wedging.
-* Every other state is a resting state, and whatever you change while the kernel rests is what
-  the next request will contain.
-* `Ready` exists for exactly that reason: the model has said which tools it wants, nothing has
-  run yet, and you can look first (`pending_calls`) — or refuse (`cancel_pending_calls`).
+* Every other state is a resting state, and whatever you change while the kernel rests is what the
+  next request will contain.
+* `Ready` exists for that reason: the model has said which tools it wants, nothing has run yet, and
+  you can look first (`pending_calls`) or refuse (`cancel_pending_calls`).
 
 ---
 
@@ -158,8 +154,8 @@ kernel.undo()?;
 
 ### 🧩 architecture
 
-The kernel provides the loop and the bookkeeping; you provide the parts. Each of these is a
-trait object you can set, swap at runtime, and inspect:
+The kernel provides the loop and bookkeeping; you provide the parts. Each is a trait object you can
+set, swap at runtime, and inspect.
 
 | trait | you provide | the kernel provides |
 | --- | --- | --- |
@@ -174,21 +170,21 @@ Each of them can also say what it is, so a client can put the parts a session is
 screen.
 
 Model parameters are an opaque `serde_json` map carried to the provider verbatim, so `thinking`,
-`safety_settings` and `reasoning_effort` are exactly as first-class as `temperature` — and the
-kernel cannot send anything you did not ask for.
+`safety_settings` and `reasoning_effort` are as first-class as `temperature`. The kernel cannot send
+anything you did not ask for.
 
-The kernel has no wire format, so its own guarantee ends at `preview_request`. A provider that
-implements `render` covers the rest: `preview_payload` then shows the actual payload, and
-`Config::record_payloads` puts it in the log. That payload is the provider's own claim, like a
-tool's declared capabilities, and the kernel can't verify it. So providers should render once and
-send exactly what they rendered; a preview that no longer matches what is sent is worse than none.
+The kernel has no wire format, so its guarantee ends at `preview_request`. A provider that
+implements `render` covers the rest: `preview_payload` shows the actual payload, and
+`Config::record_payloads` puts it in the log. The payload is the provider's own claim, and the
+kernel cannot verify it. Providers should render once and send exactly what they rendered; a preview
+that no longer matches what is sent is worse than none.
 
-A reasoning model's thinking is kept too. It is recorded on the turn that produced it, counted
-like everything else, and passed back to the provider in `Message::reasoning`, since some APIs
-check a signed thinking block against the turn it came from and reject requests without it. It
-always stays with its turn, and `LinearProjector::send_reasoning` decides whether it is sent back.
-`ToolCall::extra` does the same for individual calls: whatever a provider attaches to a call is
-sent back with that call, unchanged and uninterpreted.
+A reasoning model's thinking is kept. It is recorded on its turn, counted like everything else, and
+passed back to the provider in `Message::reasoning`, since some APIs check a signed thinking block
+against the turn it came from and reject requests without it. It always stays with its turn, and
+`LinearProjector::send_reasoning` decides whether it is sent back. `ToolCall::extra` does the same
+for individual calls: whatever a provider attaches to a call is sent back with that call, unchanged
+and uninterpreted.
 
 ---
 
@@ -216,9 +212,9 @@ What it does not protect you from, by design:
 * **A `Capability` is a declaration, not a verified property.** A tool that declares `fs:read` and
   opens a socket is lying, and the kernel has nothing to check it against. The defence is that you
   chose to register it.
-* **`exec:run` subsumes every other one.** A command can read, write and reach the network, so a
-  policy that allows it has allowed all of it whatever it answers about the rest — unless something
-  outside the runtime is confining the command.
+* **`exec:run` subsumes every other capability.** A command can read, write and reach the network,
+  so a policy that allows it has allowed all of it, whatever it answers about the rest — unless
+  something outside the runtime is confining the command.
 * **Context can be hostile.** A fetched page, a file, an MCP server's output: anything in the
   context is something a model reads, and it can carry instructions. What this runtime offers
   against that is not a cleverer model but the two things it is built on — a policy that nothing
@@ -243,7 +239,7 @@ Both are off by default, because neither is part of the runtime:
 
 * `selectors` — a small language for naming context items (`17`, `tool:grep:latest`,
   `all:tool_results`, `state:elided`, `file:src/foo.rs`) that resolves to the identifiers a client
-  then acts on.
+  acts on.
 * `test` — a scripted provider, dummy tools, off-the-shelf permission policies and a mechanical
   compactor, so an agent built on the kernel can be tested without a network.
 
@@ -257,28 +253,27 @@ Three offline, and API-key-free:
   permission prompt, a tool that floods the context, and excluding it. It also contains the
   permission policy and the `/context` renderer the library deliberately does not:
   `cargo run --example transparency --features selectors`
-* **[compaction][ex-compaction]** — a compactor that summarizes what it drops, and the user
-  putting it back anyway: `cargo run --example compaction`
-* **[pricing_a_picture][ex-pricing]** — one context counted three ways, and what `Blob::meta` and
-  `TokenCounter::uncounted` are for: a counter that knows a vendor's tiling formula, and the same
-  counter handed a payload nobody measured. `cargo run --example pricing_a_picture`
+* **[compaction][ex-compaction]** — a compactor that summarizes what it drops, and the user putting
+  it back anyway: `cargo run --example compaction`
+* **[pricing_a_picture][ex-pricing]** — one context counted three ways, using `Blob::meta` and
+  `TokenCounter::uncounted`: a counter that knows a vendor's tiling formula, and the same counter
+  given a payload nobody measured. `cargo run --example pricing_a_picture`
 
 Two that talk to a model:
 
-* **[compare_models][ex-compare]** — the same prompt to several models at once, with proof that it
-  *was* the same prompt. Every model gets a `Kernel` of its own, the same `ContextItem`s are
-  pushed into each, and the fingerprint is of the whole serialized `preview_request()`. Ask
-  a follow-up and it goes on comparing, but stops claiming the requests are identical, because by
-  then they are not. `EST` against `IN` puts the kernel's estimate beside what the provider
-  charged.
-* **[panel][ex-panel]** — several models arguing about one question, in rounds, ending in a ruling
-  with a tally behind it. Each round *supersedes* the last round's opinions rather than piling on
-  top of them, so the context carries one item per peer however long the panel runs, and each
-  panelist states its position through a tool — so the ending is arithmetic rather than a vibe.
+* **[compare_models][ex-compare]** — the same prompt to several models at once, proving it was the
+  same prompt. Every model gets a `Kernel` of its own, the same `ContextItem`s are pushed into each,
+  and the fingerprint is of the whole serialized `preview_request()`. A follow-up keeps comparing
+  but stops claiming the requests are identical, because they are not. `EST` against `IN` puts the
+  kernel's estimate beside what the provider charged.
+* **[panel][ex-panel]** — several models answer one question in rounds, ending in a ruling with a
+  tally. Each round supersedes the last round's opinions rather than adding to them, so the context
+  carries one item per peer however long the panel runs, and each panelist states its position
+  through a tool, so the ruling is arithmetic.
 
-Both talk through [`nachalnik-providers`][nachalnik-providers] to anything that speaks the OpenAI
-dialect, local models included, configured by `NACHALNIK_API_KEY`, `NACHALNIK_BASE_URL` and the
-models named on the command line:
+Both talk through [`nachalnik-providers`][nachalnik-providers] to anything using the OpenAI dialect,
+local models included, configured by `NACHALNIK_API_KEY`, `NACHALNIK_BASE_URL` and the models named
+on the command line:
 
 ```console
 $ cargo run --example compare_models -- -m <model> -m <another model> "the biggest downside of Rust's orphan rule?"
@@ -288,9 +283,9 @@ $ cargo run --example compare_models -- -m <model> -m <another model> "the bigge
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs the offline suite. The live suite, skipped without a key, is the
-only way to check what a mock cannot — that a real API accepts the requests this crate builds, and
-that a real model's answers survive the round trip through the context:
+`cargo test -p nachalnik` runs the offline suite. The live suite, skipped without a key, is the only
+way to check that a real API accepts the requests this crate builds, and that a real model's answers
+survive the round trip through the context:
 
 ```console
 $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --nocapture
@@ -309,8 +304,8 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 | **[`nachalnik-eval`][nachalnik-eval]** | a benchmark for model introspection: the model commits to a claim about its own context, the harness moves the thing the claim was about on a forked copy, and the two are compared. |
 | **[`nachalnik-providers`][nachalnik-providers]** | the three APIs this workspace talks — OpenAI chat-completions (and its Responses API), Google's `generateContent` and Anthropic's Messages API — as `Provider`s, streamed, retried and interruptible. |
 
-None of them needed any change to this crate, which shows that its six traits really are
-replaceable. See the [workspace readme][workspace].
+None of them needed any change to this crate, which shows that its six traits are replaceable. See
+the [workspace readme][workspace].
 
 ---
 
