@@ -157,8 +157,10 @@ async fn a_search_that_found_nothing_says_it_did_not_read_the_turn_asking() {
         said[0]
     );
     assert!(
-        said[0].contains("the turn you asked from was not read"),
-        "{}",
+        said[0].contains(
+            "the turn you asked from was not read - 2 item(s), the message that started it included"
+        ),
+        "the two items of the turn, counted up and not down: {}",
         said[0]
     );
 }
