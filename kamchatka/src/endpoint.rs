@@ -989,4 +989,27 @@ mod tests {
             assert!(!checks_a_key(checks_none), "{checks_none}");
         }
     }
+
+    /// Only Anthropic's own address is Anthropic's: the one `ANTHROPIC_API_KEY` is read for, and
+    /// nowhere else, whatever the port and whoever is named before the `@`.
+    #[test]
+    fn only_anthropics_own_address_is_anthropics() {
+        for anthropic in [
+            ANTHROPIC_BASE_URL,
+            "https://api.anthropic.com:443/v1",
+            "https://user:pw@api.anthropic.com/v1",
+        ] {
+            assert!(is_anthropic(anthropic), "{anthropic}");
+        }
+
+        for not in [
+            "https://openrouter.ai/api/v1",
+            "https://api.openai.com/v1",
+            "https://generativelanguage.googleapis.com/v1beta",
+            "http://localhost:11434/v1",
+            "https://api.anthropic.com.example.com/v1",
+        ] {
+            assert!(!is_anthropic(not), "{not}");
+        }
+    }
 }
