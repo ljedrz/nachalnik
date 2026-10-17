@@ -68,3 +68,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   neither to an ordinary key, so supporting OpenRouter alone would show a cost on some endpoints
   and nothing on the rest. Unblocked by providers settling on a common way to report a request's
   price and a key's balance, or by deciding an OpenRouter-only figure is worth having.
+
+- **`system1::Client::url` keeps a Workers AI address that names a different model.** On Workers AI
+  an address is used as it is when it already ends in the model's name, whole or short. Every
+  address the docs describe that ends in the short name also ends in the whole one, so the short
+  name matters only for an address like `.../ai/run/@cf/meta/clef` used with the model
+  `@cf/cloudflare/clef`, and then the request goes to meta's model. The check for the short name
+  could go, so that the model is added to such an address, or stay and be tested. Unblocked by
+  deciding which.
