@@ -84,3 +84,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   taken and nothing can test them. Either the arms and their comment go, or a server rule that
   names no configured server is refused as well, and the arms are tested with it. Unblocked by
   deciding whether such a rule should be refused.
+
+- **An MCP call whose future is dropped is never cancelled at the server.** `McpTool::invoke` sends
+  MCP's `notifications/cancelled` when the call is interrupted or runs out of time, but a caller
+  that drops the step future while the call is with the server, rather than interrupting it, sends
+  nothing, and the server goes on with work whose answer is thrown away. kamchatka stops a call by
+  interrupting it, so it is not affected. A guard that spawns the cancellation when it is dropped
+  would close it, given a runtime to spawn on. Unblocked by a caller that drops step futures, and a
+  test server that can say whether it was told to stop.
