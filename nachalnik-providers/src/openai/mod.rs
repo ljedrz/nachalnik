@@ -96,6 +96,8 @@ pub struct OpenAiCompatible {
     /// Whether to read thinking a model wrote into its own content back out of it; see
     /// [`Self::thinking_in_content`].
     thinking_in_content: bool,
+    /// Whether an assistant turn's thinking goes back out with it; see [`Self::send_reasoning`].
+    send_reasoning: bool,
     /// Whether to ask the Responses API rather than chat completions; see [`Self::responses`].
     responses: bool,
     /// Every request this was asked to send, in order, when [`Self::recording`] is on.
@@ -137,6 +139,7 @@ impl OpenAiCompatible {
             label: "openai-compatible".to_owned(),
             stream: true,
             thinking_in_content: true,
+            send_reasoning: false,
             responses: false,
             requests: Mutex::new(Vec::new()),
             recording: false,
@@ -232,6 +235,28 @@ impl OpenAiCompatible {
     #[must_use]
     pub fn thinking_in_content(mut self, on: bool) -> Self {
         self.thinking_in_content = on;
+        self
+    }
+
+    /// Whether to send an assistant turn's thinking back with it, as `reasoning` beside its
+    /// content. Off unless turned on.
+    ///
+    /// note: for a model that refuses a request whose tool-calling turns come back without the
+    /// thinking that produced them, and answers `400` to every request after the first call.
+    /// Off by default because most endpoints speaking this dialect reject a message carrying a
+    /// field they do not know, and because the thinking then costs its tokens on every request.
+    /// `reasoning` is OpenRouter's name for it and the one this dialect reads first; an endpoint
+    /// that wants `reasoning_content` back does not get it from this.
+    ///
+    /// note: [`Dialect::projection`] follows it, so the budget counts the thinking exactly when it
+    /// is sent. A turn the projector elided goes without its thinking either way, and a turn whose
+    /// thinking is empty goes without the field.
+    ///
+    /// note: does not apply with [`Self::responses`], which sends back the sealed thinking that
+    /// API hands out and nothing else.
+    #[must_use]
+    pub fn send_reasoning(mut self, on: bool) -> Self {
+        self.send_reasoning = on;
         self
     }
 
@@ -785,7 +810,7 @@ impl Dialect for OpenAiCompatible {
                 ..Default::default()
             },
             false => nachalnik::LinearProjector {
-                send_reasoning: false,
+                send_reasoning: self.send_reasoning,
                 ..Default::default()
             },
         }

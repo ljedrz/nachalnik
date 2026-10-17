@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **`OpenAiCompatible::send_reasoning` sends an assistant turn's thinking back with it**, as
+  `reasoning` beside its content, and the projection it asks for then counts that thinking. Off by
+  default. Some models refuse every request after their first tool call when the call comes back
+  without the thinking that produced it, and this dialect never sent thinking back, so a session
+  with one of them failed at its second request. Empty thinking is not sent.
+
 ## [0.10.0] - 2026-10-14
 
 ### added

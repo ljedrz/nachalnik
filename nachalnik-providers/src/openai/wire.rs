@@ -118,7 +118,11 @@ impl Provider for OpenAiCompatible {
         }
         let mut body = json!({
             "model": *self.model.lock(),
-            "messages": request.messages.iter().map(to_wire).collect::<Vec<_>>(),
+            "messages": request
+                .messages
+                .iter()
+                .map(|message| to_wire(message, self.send_reasoning))
+                .collect::<Vec<_>>(),
         });
         // note: only when one is wanted, because an endpoint asked for a whole answer and handed a
         // `stream` it did not want is being asked a different question
@@ -884,8 +888,9 @@ pub(super) fn filename(blob: &Blob) -> String {
     }
 }
 
-/// Translates a kernel message into the wire format.
-fn to_wire(message: &Message) -> Value {
+/// Translates a kernel message into the wire format, its thinking with it where `reasoning` says
+/// so; see [`OpenAiCompatible::send_reasoning`].
+fn to_wire(message: &Message, reasoning: bool) -> Value {
     let mut wire = json!({ "role": message.role.as_str() });
 
     if let Some(content) = &message.content {
@@ -898,6 +903,12 @@ fn to_wire(message: &Message) -> Value {
             Some(parts) => parts,
             None => json!(content.to_text()),
         };
+    }
+    if reasoning
+        && let Some(thought) = message.reasoning.as_ref().map(Content::to_text)
+        && !thought.is_empty()
+    {
+        wire["reasoning"] = json!(thought);
     }
     // `calls()` rather than the field: a turn projected as ordered blocks keeps its calls in
     // its content, and reading the field would send the words of a turn with none of the calls
@@ -1755,19 +1766,36 @@ mod tests {
     /// out with no `tool_calls` at all - not an empty one.
     #[test]
     fn calls_go_out_where_the_model_asked_for_them_and_nowhere_else() {
-        let words = to_wire(&Message::assistant(
-            Some(Content::text("reading it")),
-            Vec::new(),
-        ));
+        let words = to_wire(
+            &Message::assistant(Some(Content::text("reading it")), Vec::new()),
+            false,
+        );
         assert!(words.get("tool_calls").is_none(), "{words}");
 
         let call = ToolCall::new("c1", "fs", json!({ "path": "a.txt" }));
-        let asked = to_wire(&Message::assistant(
-            Some(Content::text("reading it")),
-            vec![call],
-        ));
+        let asked = to_wire(
+            &Message::assistant(Some(Content::text("reading it")), vec![call]),
+            false,
+        );
         assert_eq!(asked["tool_calls"][0]["id"], "c1");
         assert_eq!(asked["tool_calls"][0]["function"]["name"], "fs");
+    }
+
+    /// Thinking goes back only where there is some: a turn whose thinking is empty carries no
+    /// `reasoning`, which a model that wants it back refuses as readily as a missing one.
+    #[test]
+    fn empty_thinking_is_not_sent_back() {
+        let turn = |thought: &str| {
+            Message::assistant(None, vec![ToolCall::new("c1", "fs", json!({}))])
+                .with_reasoning(Some(Content::text(thought)))
+        };
+
+        assert_eq!(
+            to_wire(&turn("read it first"), true)["reasoning"],
+            "read it first"
+        );
+        let wire = to_wire(&turn(""), true);
+        assert!(wire.get("reasoning").is_none(), "{wire}");
     }
 
     /// A call's own provider state goes back on it as it arrived, and a call with none carries no
@@ -1776,7 +1804,7 @@ mod tests {
     fn a_calls_own_state_goes_back_on_it_and_nowhere_else() {
         let signed = ToolCall::new("c1", "fs", json!({})).with_extra(json!({ "sig": "abc" }));
         let plain = ToolCall::new("c2", "fs", json!({}));
-        let wire = to_wire(&Message::assistant(None, vec![signed, plain]));
+        let wire = to_wire(&Message::assistant(None, vec![signed, plain]), false);
 
         assert_eq!(
             wire["tool_calls"][0]["extra_content"],
