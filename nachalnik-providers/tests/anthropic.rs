@@ -14,8 +14,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Block, Config, Content, ContextItem, Kernel, LinearProjector, ModelResponse, Part, Provider,
-    StopReason, ToolCall, ToolCallId,
+    Block, Config, Content, ContextItem, Delta, Event, Kernel, LinearProjector, ModelResponse,
+    Part, Provider, StopReason, ToolCall, ToolCallId,
 };
 use nachalnik_providers::{Anthropic, Endpoint};
 use serde_json::{Value, json};
@@ -103,6 +103,50 @@ async fn answered(body: &'static str) -> (Kernel, Arc<Anthropic>, Arc<ModelRespo
 
     let response = kernel.last_response().expect("the model answered");
     (kernel, provider, response)
+}
+
+/// Asks once, and hands back what the provider made of the answer and what it handed on as it
+/// came, in order.
+async fn shown(body: &'static str) -> (Arc<ModelResponse>, Vec<Delta>) {
+    let (kernel, mut events) = {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(Anthropic::new(
+            "claude-test",
+            server(body).await,
+            "no key needed",
+        )));
+        kernel.set_projector(Arc::new(LinearProjector {
+            send_blocks: true,
+            ..Default::default()
+        }));
+        kernel.push(ContextItem::user("read notes.md"));
+        let events = kernel.subscribe();
+        (kernel, events)
+    };
+    kernel.step().await.expect("the request is answered");
+
+    let mut deltas = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let Event::ModelDelta { delta } = event {
+            deltas.push(delta);
+        }
+    }
+    (kernel.last_response().expect("the model answered"), deltas)
+}
+
+/// What answering failed with.
+async fn failed(body: &'static str) -> String {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Anthropic::new(
+        "claude-test",
+        server(body).await,
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("read notes.md"));
+    match kernel.step().await {
+        Ok(state) => panic!("answered: {state:?}"),
+        Err(e) => e.to_string(),
+    }
 }
 
 /// A turn that thought and then asked for a tool, as the API streamed it.
@@ -423,6 +467,141 @@ async fn a_turn_stopped_after_it_asked_says_it_was_stopped() {
     assert_eq!(response.stop, StopReason::Other("interrupted".to_owned()));
 }
 
+/// Each block keeps what it brought besides its words, and nothing else; and what a block opened
+/// with is handed on, as what grew it is.
+#[tokio::test]
+async fn a_block_keeps_what_it_brought_and_hands_on_what_it_opened_with() {
+    const WHOLE: &str = concat!(
+        "{\"type\":\"message\",\"content\":[",
+        "{\"type\":\"thinking\",\"thinking\":\"Thought.\",\"signature\":\"S1\"},",
+        "{\"type\":\"text\",\"text\":\"Said.\"}],",
+        "\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":5,\"output_tokens\":3}}",
+    );
+
+    let (response, deltas) = shown(THOUGHT_THEN_CALLED).await;
+    assert_eq!(
+        deltas,
+        [
+            Delta::Reasoning("The user wants me to read".to_owned()),
+            Delta::Reasoning(" a file.".to_owned()),
+            Delta::ToolArgs {
+                call: ToolCallId::from("toolu_01EhmRMhoGZgGpjbopaNeBQm"),
+                fragment: "{\"path\": \"notes.md".to_owned()
+            },
+            Delta::ToolArgs {
+                call: ToolCallId::from("toolu_01EhmRMhoGZgGpjbopaNeBQm"),
+                fragment: "\"}".to_owned()
+            },
+        ]
+    );
+    let blocks = response
+        .content
+        .as_ref()
+        .and_then(Content::as_blocks)
+        .expect("blocks");
+    let Block::Reasoning(thought) = &blocks[0] else {
+        panic!("{blocks:?}")
+    };
+    assert_eq!(*thought.extra, json!({ "signature": "EpwDCtgBCBIYAipA" }));
+    let call = blocks[1].call().expect("the call");
+    assert_eq!(*call.extra, json!({ "caller": { "type": "direct" } }));
+
+    let (_, deltas) = shown(WHOLE).await;
+    assert_eq!(
+        deltas,
+        [
+            Delta::Reasoning("Thought.".to_owned()),
+            Delta::Text("Said.".to_owned()),
+        ]
+    );
+}
+
+/// Thinking that came redacted is kept as it came, and a citation as the text it was given for.
+#[tokio::test]
+async fn redacted_thinking_and_a_citation_are_kept() {
+    const CITED: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{",
+        "\"type\":\"redacted_thinking\",\"data\":\"EmwKAhgB\"}}\n\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{",
+        "\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{",
+        "\"type\":\"text_delta\",\"text\":\"The notes say so.\"}}\n\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{",
+        "\"type\":\"citations_delta\",\"citation\":{\"type\":\"char_location\",",
+        "\"cited_text\":\"so\",\"document_index\":0,\"start_char_index\":0,",
+        "\"end_char_index\":2}}}\n\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},",
+        "\"usage\":{\"output_tokens\":9}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    let response = answered(CITED).await.2;
+    let blocks = response
+        .content
+        .as_ref()
+        .and_then(Content::as_blocks)
+        .expect("blocks");
+    assert_eq!(
+        blocks[0],
+        Block::Reasoning(
+            Part::new("").with_extra(json!({ "type": "redacted_thinking", "data": "EmwKAhgB" }))
+        )
+    );
+    let Block::Text(said) = &blocks[1] else {
+        panic!("{blocks:?}")
+    };
+    assert_eq!(said.content.to_text(), "The notes say so.");
+    assert_eq!(
+        *said.extra,
+        json!({ "citations": [{
+            "type": "char_location",
+            "cited_text": "so",
+            "document_index": 0,
+            "start_char_index": 0,
+            "end_char_index": 2,
+        }] })
+    );
+}
+
+/// What a turn cost is read from whichever figures came, and a turn reports how it ended whether the
+/// stream said so in its last event or not at all.
+#[tokio::test]
+async fn a_stream_is_read_to_its_end_whichever_of_its_ends_arrived() {
+    const UNSTOPPED: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":",
+        "{\"type\":\"text\",\"text\":\"Done.\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},",
+        "\"usage\":{\"output_tokens\":2}}\n\n",
+    );
+    const UNREASONED: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":",
+        "{\"type\":\"text\",\"text\":\"Done.\"}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    let response = answered(UNSTOPPED).await.2;
+    assert_eq!(response.stop, StopReason::EndTurn);
+    let usage = response.usage.expect("what it cost");
+    assert_eq!((usage.input_tokens, usage.output_tokens), (None, Some(2)));
+
+    assert_eq!(
+        answered(UNREASONED).await.2.stop,
+        StopReason::Other("unreported".to_owned())
+    );
+}
+
+/// A body that is not a stream has to be a message with blocks in it to be read as one.
+#[tokio::test]
+async fn a_body_that_is_not_a_message_is_no_answer() {
+    let said = failed("{\"type\":\"message\",\"id\":\"msg_1\"}").await;
+    assert!(
+        said.starts_with("the provider failed: the stream carried no data"),
+        "{said}"
+    );
+}
+
 /// Where the model's own entry says nothing, what it takes is read off the listing, from its own
 /// entry there.
 #[tokio::test]
@@ -685,6 +864,43 @@ fn a_tool_result_comes_first_in_the_turn_that_carries_it() {
     assert_eq!(turn.len(), 2, "{body}");
     assert_eq!(turn[0]["type"], "tool_result");
     assert_eq!(turn[1]["type"], "text");
+
+    // and so it does in a request that has the note first, as one built by hand can
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Anthropic::new(
+        "claude-test",
+        "http://127.0.0.1:1",
+        "no key",
+    ));
+    kernel.set_projector(Arc::new(LinearProjector {
+        send_blocks: true,
+        ..Default::default()
+    }));
+    kernel.push_all(vec![
+        ContextItem::user("go"),
+        ContextItem::assistant(
+            Content::blocks([Block::Call(ToolCall::new("c1", "read", json!({})))]),
+            Vec::new(),
+        ),
+        ContextItem::memory("note", "the codename is kotelnaya"),
+        ContextItem::tool_result(ToolCallId::from("c1"), "read", "the notes", false),
+    ]);
+    let mut request = kernel.preview_request().expect("a request");
+    let last = request.messages.len() - 1;
+    assert!(
+        request.messages[last].tool_call_id.is_none(),
+        "the note is last"
+    );
+    request.messages.swap(last - 1, last);
+
+    let body = provider
+        .render(&request)
+        .expect("this provider always renders");
+    let turn = body["messages"][2]["content"]
+        .as_array()
+        .expect("one user turn");
+    assert_eq!(turn[0]["type"], "tool_result", "{body}");
+    assert_eq!(turn[1]["type"], "text", "{body}");
 }
 
 /// What another provider attached to a turn does not reach this one.
@@ -743,14 +959,14 @@ fn a_call_s_identifier_is_one_this_api_takes_on_both_halves_of_the_pair() {
         ContextItem::user("go"),
         ContextItem::assistant(
             Content::blocks([Block::Call(ToolCall::new(
-                "functions.read:0",
+                "functions.read-0:x",
                 "read",
                 json!({}),
             ))]),
             Vec::new(),
         ),
         ContextItem::tool_result(
-            ToolCallId::from("functions.read:0"),
+            ToolCallId::from("functions.read-0:x"),
             "read",
             "the notes",
             false,
@@ -759,7 +975,7 @@ fn a_call_s_identifier_is_one_this_api_takes_on_both_halves_of_the_pair() {
 
     let asked = &body["messages"][1]["content"][0]["id"];
     let answered = &body["messages"][2]["content"][0]["tool_use_id"];
-    assert_eq!(*asked, "functions_read_0");
+    assert_eq!(*asked, "functions_read-0_x");
     assert_eq!(asked, answered);
 }
 
@@ -772,6 +988,8 @@ fn a_result_is_text_or_the_blocks_it_is_made_of() {
             Content::blocks([
                 Block::Call(ToolCall::new("c1", "count", json!({}))),
                 Block::Call(ToolCall::new("c2", "look", json!({}))),
+                Block::Call(ToolCall::new("c3", "read", json!({}))),
+                Block::Call(ToolCall::new("c4", "touch", json!({}))),
             ]),
             Vec::new(),
         ),
@@ -787,6 +1005,13 @@ fn a_result_is_text_or_the_blocks_it_is_made_of() {
             Content::blob("image/png", "iVBORw0KGgo="),
             false,
         ),
+        ContextItem::tool_result(ToolCallId::from("c3"), "read", "the notes", false),
+        ContextItem::tool_result(
+            ToolCallId::from("c4"),
+            "touch",
+            Content::blocks([Block::text(Content::text(""))]),
+            false,
+        ),
     ]);
 
     let results = body["messages"][2]["content"].as_array().expect("results");
@@ -797,6 +1022,38 @@ fn a_result_is_text_or_the_blocks_it_is_made_of() {
             "type": "image",
             "source": { "type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo=" },
         }])
+    );
+    assert_eq!(results[2]["content"], "the notes");
+    assert!(results[3].get("content").is_none(), "{body}");
+}
+
+/// A field a block carries that says nothing - null, empty, or an empty list or object - is not put
+/// on it, and thinking signed with nothing is not sent.
+#[test]
+fn a_field_that_says_nothing_is_not_sent() {
+    let body = rendered(vec![
+        ContextItem::user("go"),
+        ContextItem::assistant(
+            Content::blocks([
+                Block::Text(Part::new("x").with_extra(json!({ "citations": null }))),
+                Block::Text(Part::new("y").with_extra(json!({ "citations": [] }))),
+                Block::Reasoning(Part::new("t").with_extra(json!({ "signature": "" }))),
+                Block::Call(
+                    ToolCall::new("c1", "read", json!({})).with_extra(json!({ "caller": {} })),
+                ),
+            ]),
+            Vec::new(),
+        ),
+        ContextItem::tool_result(ToolCallId::from("c1"), "read", "the notes", false),
+    ]);
+
+    assert_eq!(
+        body["messages"][1]["content"],
+        json!([
+            { "type": "text", "text": "x" },
+            { "type": "text", "text": "y" },
+            { "type": "tool_use", "id": "c1", "name": "read", "input": {} },
+        ])
     );
 }
 
