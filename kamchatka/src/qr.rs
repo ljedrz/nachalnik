@@ -506,15 +506,128 @@ mod tests {
         }
     }
 
-    /// Mask 0 is the standard's `(i + j) mod 2 = 0`: it flips the modules where row and column add
-    /// up to an even number, and leaves the rest.
+    /// Each of the eight masks flips the modules the standard's table of mask patterns says, at
+    /// every module of a version 6 grid, and nothing else.
+    ///
+    /// note: the conditions are the table's, in its own terms: `i` is the row and `j` the column.
+    /// Version 6 is large enough for the products and quotients to part company with what another
+    /// operator would make of them.
     #[test]
-    fn mask_0_flips_where_row_and_column_add_up_to_even() {
-        let mut grid = Grid::new(1);
-        grid.apply_mask(0);
-        for (x, y, flipped) in [(0, 0, true), (1, 0, false), (1, 1, true), (2, 5, false)] {
-            assert_eq!(grid.dark[y * grid.size + x], flipped, "({x}, {y})");
+    fn each_mask_flips_the_modules_the_standard_says() {
+        let table = |mask: usize, i: usize, j: usize| match mask {
+            0 => (i + j).is_multiple_of(2),
+            1 => i.is_multiple_of(2),
+            2 => j.is_multiple_of(3),
+            3 => (i + j).is_multiple_of(3),
+            4 => (i / 2 + j / 3).is_multiple_of(2),
+            5 => (i * j) % 2 + (i * j) % 3 == 0,
+            6 => ((i * j) % 2 + (i * j) % 3).is_multiple_of(2),
+            7 => ((i + j) % 2 + (i * j) % 3).is_multiple_of(2),
+            _ => unreachable!(),
+        };
+        for mask in 0..8 {
+            // all light and nothing reserved, so a module is dark where the mask flipped it
+            let mut grid = Grid::new(6);
+            grid.apply_mask(mask);
+            for i in 0..grid.size {
+                for j in 0..grid.size {
+                    assert_eq!(
+                        grid.dark[i * grid.size + j],
+                        table(mask, i, j),
+                        "mask {mask} at row {i}, column {j}"
+                    );
+                }
+            }
         }
+    }
+
+    /// A grid `size` modules square, dark where the row and the column add up to an even number,
+    /// with its top row drawn as `top` gives it (`#` dark) where there is one. A checkerboard has
+    /// no run, no block of one colour and nothing like a finder, and it is half dark, so it scores
+    /// nothing by any of the four rules; what a test changes in it is all it scores.
+    fn checkerboard(size: usize, top: Option<&str>) -> Grid {
+        let mut grid = Grid {
+            version: 1,
+            size,
+            dark: vec![false; size * size],
+            function: vec![false; size * size],
+        };
+        for y in 0..size {
+            for x in 0..size {
+                grid.dark[y * size + x] = (x + y) % 2 == 0;
+            }
+        }
+        for (x, module) in top.into_iter().flat_map(str::chars).enumerate() {
+            grid.dark[x] = module == '#';
+        }
+        grid
+    }
+
+    /// A checkerboard scores nothing, and a run of five or more modules of one colour in a line
+    /// scores three, and one more for each module past five: at the start of a line and at its end.
+    #[test]
+    fn a_run_of_five_or_more_scores_three_and_one_for_each_past_five() {
+        assert_eq!(checkerboard(16, None).penalty(), 0);
+
+        // seven dark to begin with, five light to end with: 5 + 3
+        let grid = checkerboard(16, Some("#######.#.#....."));
+        assert_eq!(grid.penalty(), 8);
+    }
+
+    /// A block of two by two modules of one colour scores three. One module turned in a
+    /// checkerboard makes, around it, a block with each of three of its modules alike in turn, and
+    /// none of those scores.
+    #[test]
+    fn a_block_of_one_colour_scores_three_and_three_alike_nothing() {
+        // (3, 3) made light: the blocks it is in have three alike and one not
+        let mut grid = checkerboard(8, None);
+        grid.dark[3 * 8 + 3] = false;
+        assert_eq!(grid.penalty(), 0);
+
+        // (2, 2) and (3, 3) made light: the block from (2, 2) to (3, 3) is all light
+        let mut grid = checkerboard(8, None);
+        grid.dark[2 * 8 + 2] = false;
+        grid.dark[3 * 8 + 3] = false;
+        assert_eq!(grid.penalty(), 3);
+    }
+
+    /// `#.###.#`, a finder's 1:1:3:1:1, scores forty where four light modules are on either side of
+    /// it, a side past the edge of the code counted light, and nothing where neither side is.
+    #[test]
+    fn a_finder_with_four_light_beside_it_scores_forty() {
+        for (top, score) in [
+            // light after, dark just before
+            (".#.#.###.#....#.", 40),
+            // light before and dark before that, dark just after
+            (".#....#.###.#.#.", 40),
+            // dark on both sides
+            ("#.#.#.###.#.#.#.", 0),
+            // one module from the edge, and that module dark
+            ("##.###.#.#.#.#.#", 0),
+        ] {
+            assert_eq!(checkerboard(16, Some(top)).penalty(), score, "{top}");
+        }
+    }
+
+    /// Ten for each whole step of five percent the share of dark modules is from half.
+    #[test]
+    fn each_step_of_five_percent_from_half_dark_scores_ten() {
+        // 24 of 64 dark is 37.5 percent: two whole steps from half. The eight made light are two
+        // modules apart at least, so no run or block of light comes of it.
+        let mut grid = checkerboard(8, None);
+        for (x, y) in [
+            (0, 0),
+            (4, 0),
+            (2, 2),
+            (6, 2),
+            (0, 4),
+            (4, 4),
+            (2, 6),
+            (6, 6),
+        ] {
+            grid.dark[y * 8 + x] = false;
+        }
+        assert_eq!(grid.penalty(), 20);
     }
 
     /// The format bits for level `M` with mask 0 are the standard's `101010000010010`.
