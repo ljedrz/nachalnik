@@ -1357,3 +1357,28 @@ async fn look_accounts_for_the_numbers_it_skips() {
         answered(&whole)
     );
 }
+
+/// A call whose arguments never parsed is answered with the advice the context tool gives for its
+/// own layout, where there is advice to give.
+///
+/// note: a raw line break typed inside a string is the fault `advice` names, and the wording of it
+/// is the tool's own, so the answer must carry it - not an empty line, not a placeholder, and not
+/// nothing.
+#[tokio::test]
+async fn an_unparsed_call_is_answered_with_the_tools_own_advice() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![nachalnik::ToolCall::unparsed(
+        "c1",
+        "context",
+        "{\"call\": {\"action\": \"look\", \"ids\": \"1\n\"}}",
+    )]));
+    kernel.push(ContextItem::user("look at the context"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("not a JSON object"), "{said}");
+    assert!(
+        said.contains("Write it with a line break inside a string written as `\\n`."),
+        "the context tool's advice is not in the answer: {said}"
+    );
+}
