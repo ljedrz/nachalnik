@@ -350,6 +350,13 @@ partway through the nested object, and the call can't be read; offered flat, the
 that the schema can no longer say which arguments belong to which operation except in their
 descriptions, so it's off by default. Tools from an MCP server are offered as the server wrote them.
 
+`--send-reasoning` (`"send-reasoning": true` in a settings file) sends each of the model's turns
+back with the thinking that produced it, as `reasoning`, with `--api chat-completions`. Some models
+need it: without it they answer the first request and refuse every request after a tool call with a
+`400`. It's off by default because most endpoints refuse a field they don't know, and the thinking
+costs its tokens on every request. `--api responses` and `--api anthropic` send back only the
+thinking those APIs sealed or signed, and aren't changed by it.
+
 ## 📏 the number in the status line is an estimate, and says which kind
 
 `kamchatka` doesn't have the model's tokenizer, so the main figure in the status line is an

@@ -65,6 +65,8 @@ pub struct Settings {
     /// Whether this program's own tools are offered with every argument at the top level of a
     /// call, as `--flat-tool-arguments` does, rather than inside one `call` object.
     pub flat_tool_arguments: Option<bool>,
+    /// Whether the model's turns go back with their thinking, as `--send-reasoning` does.
+    pub send_reasoning: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.
     ///
     /// note: a key with no argument behind it, for the reason `border-color` is one: which tools a

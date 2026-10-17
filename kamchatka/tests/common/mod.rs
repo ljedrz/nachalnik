@@ -157,8 +157,18 @@ pub fn builtin_under(
 /// point of these tests is the path the program actually takes. `[DONE]` is appended here so that
 /// a case reads as what the model said rather than as protocol.
 pub async fn endpoint(answers: Vec<String>) -> String {
+    hearing(answers).await.0
+}
+
+/// [`endpoint`], and the body of every request for an answer it was sent, in order.
+///
+/// note: a request is read whole, to the length its headers give, since the body can arrive in a
+/// read of its own after them.
+pub async fn hearing(
+    answers: Vec<String>,
+) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering::SeqCst},
     };
 
@@ -168,15 +178,30 @@ pub async fn endpoint(answers: Vec<String>) -> String {
     let at = listener.local_addr().expect("its address");
     let answers = Arc::new(answers);
     let nth = Arc::new(AtomicUsize::new(0));
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let log = heard.clone();
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
-            let (answers, nth) = (answers.clone(), nth.clone());
+            let (answers, nth, log) = (answers.clone(), nth.clone(), log.clone());
             tokio::spawn(async move {
                 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
-                let mut buf = vec![0u8; 65536];
-                let read = socket.read(&mut buf).await.unwrap_or(0);
-                let head = String::from_utf8_lossy(&buf[..read]).into_owned();
+                let mut buf = Vec::new();
+                let mut chunk = vec![0u8; 65536];
+                while let Ok(read) = socket.read(&mut chunk).await
+                    && read > 0
+                {
+                    buf.extend_from_slice(&chunk[..read]);
+                    if whole(&buf) {
+                        break;
+                    }
+                }
+                let head = String::from_utf8_lossy(&buf).into_owned();
+                if !head.contains("/models")
+                    && let Some((_, body)) = head.split_once("\r\n\r\n")
+                {
+                    log.lock().expect("not poisoned").push(body.to_owned());
+                }
 
                 let (kind, body) = match head.contains("/models") {
                     true => (
@@ -213,7 +238,24 @@ pub async fn endpoint(answers: Vec<String>) -> String {
         }
     });
 
-    format!("http://{at}/v1")
+    (format!("http://{at}/v1"), heard)
+}
+
+/// Whether `request` holds its headers and as many bytes of body as they say it has.
+fn whole(request: &[u8]) -> bool {
+    let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
+        return false;
+    };
+    let length = String::from_utf8_lossy(&request[..end])
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    request.len() - (end + 4) >= length
 }
 
 /// A refusal for [`endpoint`] to hand out in place of an answer: busy, and asking for a second's
