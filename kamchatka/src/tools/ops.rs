@@ -1031,6 +1031,129 @@ mod tests {
         assert!(rule.contains("`{\"action\": \"glob\", ...}`"), "{rule}");
     }
 
+    /// A flat schema offers each argument name once, and only one that has a schema: an argument
+    /// that is read but not offered is left out rather than given a property of its own.
+    #[test]
+    fn a_flat_argument_is_offered_once_and_only_where_it_has_a_schema() {
+        // one name taken by two operations that both need it is one property, and one `required`
+        let shared = vec![
+            Op::new(
+                "read",
+                "reads one",
+                vec![Arg::text("path", "which").needed()],
+            ),
+            Op::new(
+                "grep",
+                "searches",
+                vec![Arg::text("path", "which").needed()],
+            ),
+        ];
+        let flat = schema(&shared, Layout::Flat);
+        assert_eq!(flat["required"], json!(["action", "path"]), "{flat}");
+
+        // a tolerated argument is read, not offered, so it has no property and makes no taker
+        let read_only = vec![
+            Op::new(
+                "read",
+                "reads one",
+                vec![Arg::text("path", "which").needed(), Arg::tolerated("label")],
+            ),
+            Op::new("grep", "searches", vec![Arg::text("path", "which")]),
+        ];
+        let flat = schema(&read_only, Layout::Flat);
+        assert!(flat["properties"]["label"].is_null(), "{flat}");
+        // `path` is needed by `read` alone, so it is not required of the call
+        assert_eq!(flat["required"], json!(["action"]), "{flat}");
+    }
+
+    /// Where the operations that take one argument give it one schema and one need, it is offered
+    /// as that schema, said once. Where they differ, each says its own, and a keyword only some of
+    /// them give is not carried over to the others.
+    #[test]
+    fn a_flat_argument_is_described_per_taker_only_where_they_disagree() {
+        // the same schema, needed by both: one property, the schema itself
+        let same = vec![
+            Op::new(
+                "read",
+                "reads one",
+                vec![Arg::text("path", "which").needed()],
+            ),
+            Op::new(
+                "grep",
+                "searches",
+                vec![Arg::text("path", "which").needed()],
+            ),
+        ];
+        let flat = schema(&same, Layout::Flat);
+        assert_eq!(
+            flat["properties"]["path"],
+            json!({ "type": "string", "description": "which" }),
+            "{flat}"
+        );
+        assert_eq!(flat["required"], json!(["action", "path"]), "{flat}");
+
+        // the same schema, needed by one and not the other: both say which
+        let needed_by_one = vec![
+            Op::new(
+                "read",
+                "reads one",
+                vec![Arg::text("path", "which").needed()],
+            ),
+            Op::new("grep", "searches", vec![Arg::text("path", "which")]),
+        ];
+        let flat = schema(&needed_by_one, Layout::Flat);
+        let path = flat["properties"]["path"]["description"].as_str().unwrap();
+        assert!(
+            path.contains("`read` (required): which") && path.contains("`grep`: which"),
+            "{path}"
+        );
+        assert_eq!(flat["required"], json!(["action"]), "{flat}");
+
+        // a different schema for the same name, needed by both: each says its own
+        let differ = vec![
+            Op::new(
+                "read",
+                "reads one",
+                vec![Arg::text("path", "which").needed()],
+            ),
+            Op::new(
+                "grep",
+                "searches",
+                vec![Arg::text("path", "where").needed()],
+            ),
+        ];
+        let flat = schema(&differ, Layout::Flat);
+        let path = flat["properties"]["path"]["description"].as_str().unwrap();
+        assert!(
+            path.contains("`read` (required): which") && path.contains("`grep` (required): where"),
+            "{path}"
+        );
+        assert_eq!(flat["required"], json!(["action"]), "{flat}");
+
+        // a list of exactly one, beside a list of any length: the `minItems` and `maxItems` only
+        // one of them gives are not said for the argument as a whole
+        let ranged = vec![
+            Op::new(
+                "revise",
+                "changes",
+                vec![Arg::one_of("ids", "integer", "which").needed()],
+            ),
+            Op::new(
+                "grep",
+                "searches",
+                vec![Arg::list("ids", "integer", "what")],
+            ),
+        ];
+        let flat = schema(&ranged, Layout::Flat);
+        let ids = &flat["properties"]["ids"];
+        assert_eq!(ids["type"], "array", "{flat}");
+        assert_eq!(ids["items"], json!({ "type": "integer" }), "{flat}");
+        assert!(
+            ids.get("minItems").is_none() && ids.get("maxItems").is_none(),
+            "{flat}"
+        );
+    }
+
     /// Every branch is its own operation, and carries its own arguments and nobody else's.
     ///
     /// note: a flat schema would have `read` and `grep` share one property bag, with only a
@@ -1351,6 +1474,42 @@ mod tests {
             .with_schema(std::sync::Arc::new(json!({ "type": "object" })))
             .with_capabilities(spec.capabilities.clone());
         assert_eq!(unnamed_operation(&flat, &asking(json!({}))), None);
+    }
+
+    /// A flat tool, which has no `call` to put arguments in, is told so when its call names no
+    /// operation, and when a `call` it was never given arrives anyway.
+    #[test]
+    fn a_flat_tool_says_a_call_named_no_operation() {
+        let ops = ops();
+        let spec = ToolSpec::new("fs", "the filesystem")
+            .with_schema(std::sync::Arc::new(schema(&ops, Layout::Flat)))
+            .with_capabilities(
+                actions(&ops)
+                    .into_iter()
+                    .map(Capability::fs)
+                    .collect::<Vec<_>>(),
+            );
+        let asking = |args| PermissionRequest {
+            id: nachalnik::PermissionId(1),
+            call: nachalnik::ToolCallId("c1".to_owned()),
+            tool: "fs".to_owned(),
+            capabilities: spec.capabilities.clone(),
+            args: std::sync::Arc::new(args),
+        };
+
+        let said = unnamed_operation(&spec, &asking(json!({ "path": "x" })))
+            .expect("a flat call that names no operation is one nobody can place");
+        assert!(said.contains("names no operation"), "{said}");
+        assert!(said.contains("`fs:read`"), "{said}");
+
+        // a `call` that is text and not an object is told to go at the top level, not inside `call`
+        let written = "{\"action\": \"read\", \"path";
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: written })))
+            .expect("a wrapper that does not parse places nothing");
+        assert!(
+            said.contains("with every argument at the top level, since this tool takes no `call`"),
+            "{said}"
+        );
     }
 
     /// The wrapper is asked for, understood without, and refused in both places at once.
