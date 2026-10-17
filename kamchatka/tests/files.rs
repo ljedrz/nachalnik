@@ -1420,6 +1420,30 @@ async fn a_write_refused_for_anything_else_is_not_told_to_make_a_directory() {
     );
 }
 
+/// A directory a test left with its permissions taken away, by stopping before it put them back,
+/// does not stop the next run of that test: it is emptied all the same.
+#[test]
+fn a_scratch_directory_left_shut_is_emptied_by_the_next_run() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch("files-left-shut");
+    let outer = dir.join("outer");
+    std::fs::create_dir_all(outer.join("inner")).expect("directories");
+    std::fs::write(outer.join("inner/kept.txt"), "x").expect("a file");
+    std::fs::set_permissions(outer.join("inner"), std::fs::Permissions::from_mode(0o000))
+        .expect("its mode");
+    std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o000)).expect("its mode");
+
+    let again = scratch("files-left-shut");
+
+    assert_eq!(again, dir);
+    assert_eq!(
+        std::fs::read_dir(&dir).expect("it is there").count(),
+        0,
+        "and empty"
+    );
+}
+
 /// An edit of a file that is not there says nothing was changed and what makes a new one.
 ///
 /// note: the system's `No such file or directory` was the whole answer, and it names neither.
