@@ -12,18 +12,16 @@ let files = Server::spawn("files", Command::new("mcp-server-filesystem")).await?
 let installed = files.install(&kernel).await?;
 ```
 
-That's the whole integration. An MCP tool is a `Tool` that forwards calls to a server, so the
-runtime didn't need any changes for this.
+An MCP tool is a `Tool` that forwards calls to a server. The runtime needed no changes.
 
 ---
 
 ### 🔒 what a tool is allowed to do
 
-MCP tools carry *hints* about themselves (`readOnlyHint`, `destructiveHint`, `openWorldHint`), and
-the specification explicitly says a client "should never make tool use decisions based on
-annotations received from untrusted servers". A permission policy that relied on them would be
-trusting the very thing it's supposed to check: a server that wants to avoid being asked about would
-only have to claim to be read-only.
+MCP tools carry hints about themselves (`readOnlyHint`, `destructiveHint`, `openWorldHint`). The
+specification says a client "should never make tool use decisions based on annotations received from
+untrusted servers". A policy that relied on them would trust a server's claim instead of checking
+it; a server could claim to be read-only to avoid being asked.
 
 So by default, `Trust` believes none of them. Every tool from a server declares `mcp:call` and
 nothing else, whatever its annotations say. Which server a tool *came from* is a fact, not a claim,
@@ -44,12 +42,11 @@ which is why it has to be chosen explicitly.
 ### 📛 what a tool is called
 
 Two servers may both offer `read`, and a kernel holds one tool per name, so names get the server's
-name as a prefix: `files__read`. Names are also rewritten to fit what model providers accept
-(`[a-zA-Z0-9_-]`, 64 characters, starting with a letter or `_`, so `7zip__list` is sent as
-`_7zip__list`), and rewriting can cause collisions, so `Installed::replaced` says
-which tools were displaced. `without_prefix()` turns the prefix off, which is fine with a single
-server, but with two, one server's `read` replaces the other's, and only `Installed::replaced` says
-so.
+name as a prefix: `files__read`. Names are rewritten to fit what model providers accept
+(`[a-zA-Z0-9_-]`, 64 characters, starting with a letter or `_`; `7zip__list` is sent as
+`_7zip__list`). Rewriting can cause collisions, so `Installed::replaced` says which tools were
+displaced. `without_prefix()` turns the prefix off. With one server that is fine; with two, one
+server's `read` replaces the other's, and only `Installed::replaced` says so.
 
 When the prefix and name together are too long, the *prefix* is shortened, because the tool's own
 name is what tells a server's tools apart.
@@ -80,18 +77,18 @@ without text is named the same way, instead of silently leaving the list one ite
 ### 🔌 the SDK
 
 `rmcp` is re-exported. `Server::connect` is generic over its transports and `Server::info` returns
-one of its types, so callers need those types, from the *same* version this crate uses, which a
-separate dependency can't guarantee. `Server::spawn` takes a `tokio::process::Command`, which isn't
-re-exported, since anything using this runtime already depends on `tokio`.
+one of its types, so callers need those types from the same version this crate uses; a separate
+dependency cannot guarantee that. `Server::spawn` takes a `tokio::process::Command`, which is not
+re-exported because anything using this runtime already depends on `tokio`.
 
 ---
 
 ### 🧪 tests
 
-`cargo test -p nachalnik-mcp` talks to real MCP servers rather than mocks: one inside the test
-process, and one written in Python and started as a child process, which is how most servers are
-run (that test is skipped without `python3`). One test offers those tools to a real model, since
-only a real provider can show whether a tool name passes its character rules.
+`cargo test -p nachalnik-mcp` talks to real MCP servers, not mocks: one inside the test process, and
+one Python child process (most servers run this way; that test is skipped without `python3`). One
+test offers those tools to a real model, because only a real provider can show whether a tool name
+passes its character rules.
 
 ---
 

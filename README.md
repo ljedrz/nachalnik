@@ -10,21 +10,22 @@ reported to you afterwards.
 
 > The agent is not the boss. You are.
 
-If you want an agent to run, that is [`kamchatka`](kamchatka), just below. If you want to build
-one, the runtime is [`nachalnik`](nachalnik), with a [readme of its own](nachalnik/README.md);
-everything else in this workspace is built on top of it.
+To run an agent, use [`kamchatka`](kamchatka). To build one, use the runtime
+[`nachalnik`](nachalnik), which has its own [readme](nachalnik/README.md); everything else in this
+workspace is built on it.
 
 ---
 
 ### 🖥️ the agent you can run
 
-`kamchatka` is a terminal agent that shows you everything it is carrying, and lets you change it.
-Its **context** tab lists every item in the context: what it costs, whether it goes into the next
-request, and — where it does not — why. <kbd>space</kbd> changes how much of an item the model gets,
-<kbd>p</kbd> pins it so compaction cannot take it, <kbd>e</kbd> rewrites what it says, and
-<kbd>u</kbd> undoes any of it. Nothing runs before you have been asked, reading a file included.
-It sends no system prompt of its own and no telemetry: what reaches the model is the context that
-tab lists and the tool definitions, and <kbd>ctrl+p</kbd> prints the whole request before it goes.
+`kamchatka` is a terminal agent that shows you everything it carries and lets you change it. Its
+context tab lists every item in the context: what it costs, whether it goes into the next request,
+and, where it does not, why. <kbd>space</kbd> changes how much of an item the model gets,
+<kbd>p</kbd> pins it so compaction cannot remove it, <kbd>e</kbd> rewrites the item, and
+<kbd>u</kbd> undoes any of these changes. Nothing runs before you are asked, including reading a
+file. It sends no system prompt of its own and no telemetry. What reaches the model is the context
+the tab lists and the tool definitions. <kbd>ctrl+p</kbd> prints the whole request before it is
+sent.
 
 ```console
 $ cargo install kamchatka # or download a released binary
@@ -32,12 +33,12 @@ $ export KAMCHATKA_API_KEY=sk-or-...
 $ kamchatka -m qwen/qwen3-coder "what does this repository do?"
 ```
 
-**Any model, hosted or local.** OpenRouter is only the default address: anything that speaks
-OpenAI's chat completions is one `KAMCHATKA_BASE_URL` away, and that includes a model running on
-your own machine under ollama, vLLM or LM Studio, which needs no key at all. `--api gemini` speaks
-Google's own API, `--api anthropic` Anthropic's own Messages API and `--api responses` OpenAI's
-Responses API, all of which keep a turn's thinking, text and calls in the order they came and send
-the signed or sealed thinking back.
+**Any model, hosted or local.** OpenRouter is only the default address. Anything that speaks
+OpenAI's chat completions works by setting `KAMCHATKA_BASE_URL`, including a model running on your
+own machine under ollama, vLLM or LM Studio, which needs no key. `--api gemini` uses Google's API,
+`--api anthropic` uses Anthropic's Messages API, and `--api responses` uses OpenAI's Responses API.
+These keep a turn's thinking, text and calls in the order they came and send the signed or sealed
+thinking back.
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka -m qwen3-coder "what does this repository do?"
@@ -45,35 +46,35 @@ $ ANTHROPIC_API_KEY=sk-ant-... kamchatka --api anthropic -m claude-haiku-4-5 "wh
 ```
 
 **A shell sandboxed by the kernel, not by a list of forbidden commands.** Landlock confines what a
-command can touch: it writes only where you let it and reads nothing private outside the working
-directory. A seccomp filter catches the moment a command reaches for the network, a DNS lookup
-included, and holds it there until it has an answer, which by default is yours: you're asked when
-a command actually tries, not based on what it's called. [SECURITY.md](SECURITY.md) says where each of them
-stops. A released binary reproduces byte for byte and carries a provenance attestation and its own
-dependency list; [its readme](kamchatka/README.md#-installing) says how to check all three.
+command can touch. It writes only where you allow it and reads nothing private outside the working
+directory. A seccomp filter catches a command when it reaches for the network, including a DNS
+lookup, and holds it until it has an answer. By default the answer is yours: you are asked when a
+command actually tries, not based on its name. [SECURITY.md](SECURITY.md) says where each stops. A
+released binary reproduces byte for byte and carries a provenance attestation and its dependency
+list. [Its readme](kamchatka/README.md#-installing) says how to check all three.
 
 ![The context tab: five items with what each sends and holds back, and a pinned note opened to show
 why it is there.][shot-context]
 
-`/step` runs the loop one transition at a time, so you can stop in `Ready`, where the model has
-said which calls it wants to make and none of them has run yet. The model gets
-tools for its own session too, so it can read what it is carrying, drop what it no longer needs
-and correct what turned out to be wrong — the five transcripts below are what that looks like.
-[Its readme](kamchatka/README.md) has the sandbox, the keys and the rest.
+`/step` runs the loop one transition at a time, so you can stop in `Ready`, where the model has said
+which calls it wants to make and none have run yet. The model gets tools for its own session too, so
+it can read what it carries, drop what it no longer needs and correct what is wrong. The five
+transcripts show what that looks like. [Its readme](kamchatka/README.md) has the sandbox, the keys
+and the rest.
 
-**The screen is optional.** `--headless` drives a session from lines on stdin instead of keys — the
-session log to stdout, one JSON record a line, what the model says to stderr — and it is implied
-when stdout is not a terminal. Everything a run nobody is watching needs is a flag: answers given in
-advance with `--auto-allow`/`--auto-deny`, a `--max-run-seconds`, and a `--max-spend-tokens` ceiling
-in tokens.
+**The screen is optional.** `--headless` drives a session from lines on stdin instead of keys. The
+session log goes to stdout, one JSON record a line, and what the model says goes to stderr.
+`--headless` is implied when stdout is not a terminal. Everything an unwatched run needs is a flag:
+answers given in advance with `--auto-allow`/`--auto-deny`, a `--max-run-seconds`, and a
+`--max-spend-tokens` ceiling in tokens.
 
 ---
 
 ### 📝 what it looks like when it runs
 
-Five transcripts, at **<https://ljedrz.github.io/nachalnik/>**, quoted verbatim from the sessions
-they describe. They read in order, and the machinery turns around halfway through: in the first
-three the model is the one editing its context, and from the fourth on it is not.
+Five transcripts at <https://ljedrz.github.io/nachalnik/>, quoted verbatim from the sessions they
+describe. They read in order. The machinery changes halfway through: in the first three the model
+edits its context, and from the fourth on it does not.
 
 1. **[a lie in its own notes](https://ljedrz.github.io/nachalnik/a-lie-in-its-own-notes/)** — two
    notes go in labelled as carried over from an earlier session, one of them false. It lists what
@@ -122,7 +123,7 @@ describes, which is what an append-only log of typed events is for.
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
 | [POSTPONED.md](POSTPONED.md) | known issues and ideas deliberately left for later, each with what would unblock it. |
 
-Each crate's own readme says what it is and how to start; the longer material sits beside it —
+Each crate's readme says what it is and how to start. Longer material:
 [`kamchatka`'s guide](kamchatka/GUIDE.md) and [running it](kamchatka/RUNNING.md),
 [`nachalnik`'s concepts](nachalnik/CONCEPTS.md), and
 [`nachalnik-eval`'s running notes](nachalnik-eval/RUNNING.md).
@@ -131,23 +132,22 @@ Each crate's own readme says what it is and how to start; the longer material si
 
 ### 🧩 do the seams hold?
 
-The obvious question about a runtime this abstract is whether its six replaceable parts really
-can be replaced. Three crates in this workspace show they can, and none of them needed a change
-to the runtime.
+Three crates in this workspace show that the runtime's six replaceable parts can be replaced, and
+none needed a change to the runtime.
 
-**[`nachalnik-mcp`](nachalnik-mcp)** is deliberately *not* in the core: speaking MCP means spawning
-processes and reading notifications in the background, which the runtime promises not to do. An
-MCP tool is a `Tool` that forwards to a server, and tools arriving and leaving are `add_tool` and
-`remove_tool`. It believes none of a server's tool annotations by default, because the
-specification calls them hints from an untrusted party.
+**[`nachalnik-mcp`](nachalnik-mcp)** is not in the core: speaking MCP means spawning processes and
+reading notifications in the background, which the runtime promises not to do. An MCP tool is a
+`Tool` that forwards to a server. Tools arriving and leaving use `add_tool` and `remove_tool`. No
+server tool annotation is trusted by default, because the specification calls them hints from an
+untrusted party.
 
-**[`kamchatka`](kamchatka)** hands the model four tools about its own session — `context`, `fork`,
-`log` and `setup` — and every operation in them is a public function the screen was already
-calling. None of them can touch what a person pinned.
+**[`kamchatka`](kamchatka)** gives the model four tools for its own session — `context`, `fork`,
+`log` and `setup` — and each operation is a public function the screen already calls. None can touch
+what a person pinned.
 
-**[`nachalnik-eval`](nachalnik-eval)** turns the same handles around and uses them to *test* a model
-rather than to serve one: forking a context is `snapshot` and `resume`, what a copy will read is
-`project`, excluding and eliding are `set_state`.
+**[`nachalnik-eval`](nachalnik-eval)** uses the same handles to test a model instead of serving one:
+forking a context is `snapshot` and `resume`, what a copy reads is `project`, and excluding and
+eliding are `set_state`.
 
 ---
 

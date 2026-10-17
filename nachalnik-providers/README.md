@@ -45,7 +45,7 @@ signature attached to its part, which Gemini requires on the next request.
 The Anthropic client does the same for Anthropic's Messages API, where a turn is a list of typed
 blocks. Its thinking is signed, and a turn that thought before calling a tool must send that
 thinking back, signature included, with the tool result. Each block is sent back with its own
-fields, and only fields Anthropic defines, so a session that started with another provider doesn't
+fields, and only fields Anthropic defines, so a session that started with another provider does not
 send a `thoughtSignature` that Anthropic would reject. Prompt caching is on by default, because the
 API caches nothing unless asked; the `cache_control` parameter changes that, and `false` turns it
 off.
@@ -64,16 +64,16 @@ turn there starts reasoning from scratch; here it is sent back with the tool res
 
 ### ⏳ telling different kinds of waiting apart
 
-A stream that has gone quiet, a request refused with a `Retry-After`, and one the user interrupted
-need different answers to *should we send it again?*, and getting it wrong costs either a turn or
-money. All three are handled separately, the same way for every client:
+Three cases need different retry decisions: a stream that has gone quiet, a request refused with a
+`Retry-After`, and one the user interrupted. Getting it wrong costs either a turn or money. All
+three are handled separately, the same way for every client:
 
 - **A stalled stream can be interrupted**, so a server that accepts a connection and then goes
-  silent doesn't hang the program.
+  silent does not hang the program.
 - **Silence is reported** through `Endpoint::take_notice`, and the attempt is abandoned after 150
   seconds, or the patience a caller gives with `with_patience` or `Dialect::set_patience`. If the
   stream had already sent something, that part is kept as an interrupted turn. A request that
-  reached the server isn't sent again, since the server may still be working on it and a second
+  reached the server is not sent again, since the server may still be working on it and a second
   attempt would be billed again.
 - **A busy server is retried; an exhausted quota is not.** A `Retry-After` longer than a minute
   means a daily limit, not a busy server.
@@ -115,16 +115,16 @@ It **prints nothing**. Streamed fragments are reported through `nachalnik::Delta
 screen belongs to whoever owns it.
 
 It **adds no parameters**. Whatever the caller set is sent unchanged, alongside the conversation and
-never instead of it: a parameter with the same name as a field the request is built from
-(`model`, `messages` or `tools`) is left out.
+never instead of it. A parameter with the same name as a field the request is built from (`model`,
+`messages` or `tools`) is left out.
 
 ---
 
 ### 🧪 tests
 
 `cargo test -p nachalnik-providers --all-features` uses a real socket wherever the code under test
-is inside `respond`, and every client must pass one shared conformance suite, so a case added once
-applies to all of them. Each case is a response some real endpoint actually sent.
+is inside `respond`. Every client must pass one shared conformance suite, so a case added once
+applies to all of them. Each case is a response a real endpoint sent.
 
 ---
 

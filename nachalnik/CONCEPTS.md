@@ -1,15 +1,15 @@
 # the parts that are not obvious
 
-What this runtime does differently from a simple agent loop, and why. [The README](README.md) says
-what the crate is and how to start; read this before building something that depends on it.
+[The README](README.md) says what the crate is and how to start. Read this document before building
+something that depends on the crate.
 
 ---
 
 ## 🔍 context as a data structure
 
-Items are public data — an id, a kind, a source, a label, content, a size, a state, a note, why it
-is there and whatever metadata you attach — so a client can render `/context` however it likes. One
-method covers every state change, and each call is one undoable operation:
+Items are public data: an id, a kind, a source, a label, content, a size, a state, a note, why it is
+there, and whatever metadata you attach. A client can render `/context` however it likes. One method
+covers every state change, and each call is one undoable operation:
 
 ```rust
 kernel.set_state(ids, ContextState::Excluded, Some("an enormous test output".into()));
@@ -26,9 +26,9 @@ kernel.redo()?;
 "there is no item 12" and "item 12 was already excluded" are different answers. `set_states` is the
 same with a state and a note for each item, for one move that doesn't land everything in one place.
 
-`annotate` is the exception: it doesn't create its own undo step. Metadata belongs to the operation
-it describes, so `undo` removes an annotation together with the operation before it. It still
-counts as new work, though, so it clears anything `redo` could have restored.
+`annotate` is the exception: it does not create its own undo step. Metadata belongs to the operation
+it describes, so `undo` removes an annotation with the operation before it. It still counts as new
+work, so it clears anything `redo` could have restored.
 
 Excluding an item removes it from the *projection* (the request), not from the record. It keeps its
 identifier, stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a
@@ -90,20 +90,20 @@ It is a variant of `Content` rather than a field on `Message` because content is
 `ModelResponse`, a `ContextItem` and a `Message` all carry — so the order survives from the wire,
 into the context where it is counted, excluded and elided like anything else, and back out again.
 
-A turn is recorded *either* that way *or* in the three conventional slots, never both, so nothing
-can hold two accounts of it; `calls()` and `thinking()` on an item or a response read whichever is
-in use. `LinearProjector::send_blocks` decides which shape goes out, and flattening reports what it
-cost in `Projection::repairs` rather than doing it quietly.
+A turn is recorded either in that form or in the three conventional slots, never both, so nothing
+can hold two accounts of it. `calls()` and `thinking()` on an item or a response read whichever form
+is in use. `LinearProjector::send_blocks` decides which shape goes out. Flattening reports its cost
+in `Projection::repairs` instead of doing it quietly.
 
 ---
 
 ## 🎯 a budget that corrects itself, and admits what it cannot reach
 
-Every token figure the kernel reports comes from a `TokenCounter`. The default one estimates text
-as `bytes / 4`, which is only an estimate, and how far off it is depends on what you send: short
-requests with many tool definitions come out well below the real count, long conversations a few
-percent below. It can't see per-message overhead or the tokens a reasoning model spends thinking.
-Embedding a tokenizer would tie the crate to particular models, which it won't do.
+Every token figure the kernel reports comes from a `TokenCounter`. The default counter estimates
+text as `bytes / 4`; it is only an estimate. The error depends on what you send: short requests with
+many tool definitions come out well below the real count, and long conversations a few percent
+below. It cannot see per-message overhead or the tokens a reasoning model spends thinking. The crate
+does not embed a tokenizer, because that would tie it to particular models.
 
 Instead, it learns from the provider. A provider that reports usage says, after each response,
 what the request actually cost, and the kernel knows what it estimated for the same request, so it
@@ -151,16 +151,16 @@ That counts one context three ways: with the default counter, with one that appl
 formula using `meta`, and with that same formula given a blob without dimensions. A formula is no
 use without the dimensions, so the third reports the image as unpriced, like the default counter.
 
-One rule follows: a request containing anything unpriced is never passed to `observe`.
-`Calibrating` uses a single multiplier, so it would spread the unpriced image's cost over the text
-it can see, making the text look too expensive while the image still counted as nothing.
+A request containing anything unpriced is never passed to `observe`. `Calibrating` uses a single
+multiplier, so it would spread the unpriced image's cost over the visible text, making the text look
+too expensive while the image still counts as nothing.
 
 ---
 
 ## 🛑 stopping
 
-`interrupt()` can be called from any thread, and stops the loop in three places, each needing a
-little more cooperation than the last:
+`interrupt()` can be called from any thread and stops the loop in three places, each needing more
+cooperation than the last:
 
 | where | what happens | who has to agree |
 | --- | --- | --- |
@@ -168,14 +168,14 @@ little more cooperation than the last:
 | during a request | a provider that checks `DeltaSink::is_interrupted` stops reading and hands back what it has | the provider |
 | during tool calls | the kernel does not start the serial calls that had not begun; a tool that checks `OutputSink::is_interrupted` can stop the one that had | the tool |
 
-The kernel can't stop a `Provider` itself, since it doesn't own the socket, the runtime or the
-future, so it signals the interrupt and lets the provider act on it. A provider that ignores it
-isn't broken, just slower to stop.
+The kernel cannot stop a `Provider` itself because it does not own the socket, runtime, or future.
+It signals the interrupt and lets the provider act on it. A provider that ignores it is not broken,
+just slower to stop.
 
 Stopping never throws work away. A half-finished answer and a tool that returned early are recorded
-as ordinary items, so *you* decide what to do with them. There is also a blunter option: drop the
-future driving `step`, and the request is abandoned and the kernel returns to `Idle` instead of
-getting stuck, but you lose whatever had been streamed.
+as ordinary items, so you decide what to do with them. Or drop the future driving `step`: the
+request is abandoned, the kernel returns to `Idle` instead of getting stuck, and you lose whatever
+had been streamed.
 
 ---
 
@@ -200,30 +200,30 @@ removed and the ones it reverted. A request names the items it left out, and why
 component names both the old one and the new one, because "the projector was replaced" doesn't
 tell you which projector built the requests before and after, which is exactly what a log is for.
 
-`Kernel::subscribe` is the live stream; `Kernel::history` is the append-only session log (both
-written under one lock, so their order agrees), which keeps `model.delta` and `tool.output` only
+`Kernel::subscribe` is the live stream; `Kernel::history` is the append-only session log. Both are
+written under one lock, so their order agrees. History keeps `model.delta` and `tool.output` only
 when `Config::record_progress` is on. Records are plain `serde` types, so persisting a session is
-one line per event. The record a session begins with carries `FORMAT`, and so does a snapshot. An
-event a reader's version does not know reads as `Event::Unknown` rather than failing the log. And
+one line per event. The first record of a session carries `FORMAT`, as does a snapshot. An event a
+reader's version does not know reads as `Event::Unknown` rather than failing the log.
 `tests/records/` holds one of every event and a snapshot, per format, as the shapes to read against.
 
-The log stays small by *referring* to things rather than copying them: `model.requested` records
-the context ids a request was built from, not the messages. The only event that carries content is
-`context.replaced`, because the log records what can't be recovered any other way: an added item is
-still in the context, but overwritten text is gone. Item metadata is copied too, into
+The log stays small by referring to things rather than copying them: `model.requested` records the
+context ids a request was built from, not the messages. `context.replaced` is the only event that
+carries content, because the log records what cannot be recovered any other way: an added item is
+still in the context, but overwritten text is gone. Item metadata is also copied into
 `context.added` and `context.annotated`, because compactors make decisions based on it and nothing
-else keeps the value an annotation replaced. `model.payload` holds the rendered request, and is only
-written when `Config::record_payloads` is on. The log is deliberately unbounded (a capped log isn't
-append-only), and `drain_history` keeps long sessions manageable: you take the records, write them
-somewhere, and the kernel releases them. Nothing disappears without you doing it.
+else keeps the value that an annotation replaced. `model.payload` holds the rendered request and is
+written only when `Config::record_payloads` is on. The log is unbounded because a capped log is not
+append-only. `drain_history` keeps long sessions manageable: you take the records, write them
+somewhere, and the kernel releases them. Nothing is removed unless you drain it.
 
 ---
 
 ## 💾 sessions outlive processes
 
 The log and a snapshot serve different purposes, and you want both. The log says what happened and
-stays small, because events refer to items instead of carrying their contents, which is also why
-it can't rebuild a context. A `Snapshot` can:
+stays small, because events refer to items instead of carrying their contents, so it cannot rebuild
+a context. A `Snapshot` can:
 
 ```rust
 let snapshot = kernel.snapshot(); // items, ids, states, notes, params, used call ids, calibration
@@ -233,9 +233,8 @@ std::fs::write("session.json", serde_json::to_vec(&snapshot)?)?;
 let kernel = Kernel::resume(Config::default(), snapshot);
 ```
 
-Everything that is easy to lose comes back: pins, the reasons items were excluded, a turn's
-reasoning, the signature attached to a tool call, what the token counter had learned about the real
-cost of a request, and the identifiers already used, so a resumed session can't reuse one. You
-supply the provider, policy and tools again, because they aren't part of the session. Setting
-`Config::session_name` resumes under a new name, which is how a session gets forked rather than
-continued.
+Everything easy to lose is restored: pins, the reasons items were excluded, a turn's reasoning, the
+signature attached to a tool call, what the token counter learned about the real cost of a request,
+and the identifiers already used, so a resumed session cannot reuse one. You supply the provider,
+policy and tools again, because they are not part of the session. Setting `Config::session_name`
+resumes under a new name, so the session is forked rather than continued.

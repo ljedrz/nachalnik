@@ -178,10 +178,10 @@ bump and release commits; **`pre-push`** reviews a branch against the convention
   `kamchatka::gate`, for seccomp calls that no crate wraps safely.
 - **Comments explain decisions, not mechanics.** If a line needs a comment saying what it does,
   rewrite the line.
-- **Dependencies are kept to a minimum.** `nachalnik` doesn't gain one without a reason worth
-  writing down. A dependency more than one crate uses is declared in the workspace manifest so
-  members can't drift apart; one only a single crate uses, as most of `kamchatka`'s are, is declared
-  there. Any dependency whose purpose isn't obvious has a comment.
+- **Dependencies are kept to a minimum.** `nachalnik` gains one only with a reason worth writing
+  down. A dependency used by more than one crate goes in the workspace manifest so members can't
+  drift apart; one used by a single crate goes in that crate. Any dependency whose purpose isn't
+  obvious has a comment.
 - **`#[non_exhaustive]`** on every public enum that may gain variants; adding a variant is then not
   a breaking change, but forgetting the attribute on a new enum is. An enum that covers every
   possible case (`Grant`, `Verdict`) goes without it. For structs, the question is **"does anything
@@ -193,8 +193,8 @@ bump and release commits; **`pre-push`** reviews a branch against the convention
   naming the new one. That applies to what the program *accepts* as well as what it says: a command
   that changes the session has one name, and a tool's schema accepts no alternative spelling. Only
   housekeeping commands have aliases (`/quit` is also `/exit` and `/q`, `/help` is `/?`).
-- **Extension points identify themselves** with a `name()`, which defaults to the type's path; it's
-  for showing to people, not for matching on.
+- **Extension points identify themselves** with a `name()`, defaulting to the type's path; it's for
+  showing to people, not for matching on.
 - **Check that tests catch something.** Break the code a test is about, run
   `cargo test --workspace --all-features --no-fail-fast`, and look at *which* tests failed: the
   question is whether anything **other** than the new test caught it.
@@ -204,8 +204,8 @@ bump and release commits; **`pre-push`** reviews a branch against the convention
   necessarily useless, but know whether it's redundant before the changelog says otherwise.
 - **Before writing a test, look for an existing one.** The source's comments are a good way to find
   an invariant but a bad way to find out whether it's already tested.
-- **Property tests keep no seed file.** A failure is turned into a named test case with a note; a
-  file of opaque hashes is a regression suite nobody can read.
+- **Property tests keep no seed file.** Turn a failure into a named test case with a note; a file
+  of opaque hashes is a regression suite nobody can read.
 - **Changelogs** are per crate, follow Keep a Changelog, and are kept up to date before a release
   rather than reconstructed after.
 - **Which version number changes depends on the public API.** In `0.x.y`, `x` is the compatibility
@@ -219,8 +219,8 @@ bump and release commits; **`pre-push`** reviews a branch against the convention
 - **Bump a version as soon as a crate above it needs API that isn't on the registry yet.**
   `cargo package --workspace` resolves each member against the registry, so `kamchatka` would
   build against the published `nachalnik` and, through the MCP bridge, a second copy as well. Bump
-  in a separate commit that names the reason; CI's `package` job is the only thing that notices. A
-  *minor* bump raises the minimum version `nachalnik-mcp` requires, so it has to be released again;
+  in a separate commit naming the reason; CI's `package` job is the only thing that notices. A
+  *minor* bump raises the minimum version `nachalnik-mcp` requires, so it must be released again;
   a *patch* bump doesn't.
 - **At a release**, every crate with a non-empty `[unreleased]` section gets a version bump in its
   own commit, then **the release commit only dates the changelogs** and is the one that's tagged,
