@@ -354,6 +354,30 @@ mod tests {
         }
     }
 
+    /// What `fs` adds to an answer about arguments that did not parse is the advice its own layout
+    /// gives for the fault, and nothing where the layout gives none.
+    ///
+    /// note: the kernel puts this text straight into the answer, so both halves are what a model
+    /// reads. A raw line break inside a string is a fault `ops` has advice for; an invalid escape
+    /// is one it measured as not helped by advice, and must get none.
+    #[test]
+    fn unparsed_arguments_get_the_advice_the_layout_gives_and_no_more() {
+        let tool = tool();
+
+        let newline = "{\"call\": {\"action\": \"grep\", \"pattern\": \"a\nb\"}}";
+        assert_eq!(
+            tool.unparsed(newline).as_deref(),
+            Some("Write it with a line break inside a string written as `\\n`."),
+        );
+
+        let escape = "{\"call\": {\"pattern\": \"f\\(x\"}}";
+        assert_eq!(
+            tool.unparsed(escape),
+            None,
+            "advice about backslashes sent models astray"
+        );
+    }
+
     /// A call with no `action` says so, rather than naming a word nobody sent.
     ///
     /// note: from a session driven by a model, which sent `{"glob": "**/Cargo.toml"}` and was told
