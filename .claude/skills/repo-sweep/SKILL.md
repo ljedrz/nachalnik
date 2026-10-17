@@ -545,7 +545,10 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
 
 ## gotchas
 
-- `pkill -f PATTERN` matches the shell running it; kill by pid.
+- `pkill -f PATTERN` matches the shell running it; kill by pid. So does `kill $(pgrep -f PATTERN)`,
+  and it also takes every other shell whose command line names the pattern - a watch loop looking
+  for the same process, say. Kill the pid a script wrote down when it started the process, or one
+  read off `ps -o pid,args --ppid` and checked by eye.
 - **A mutants run longer than a tool's time limit is run detached** (`nohup setsid ... &`),
   and watched with checks that end. A run of several crates, or of `kamchatka` alone, is many
   hours, and a background task with a time limit is killed with the run inside it.
