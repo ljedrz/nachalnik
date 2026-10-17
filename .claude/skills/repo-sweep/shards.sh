@@ -36,6 +36,12 @@ for i in $(seq 1 "$n"); do
     [ -e "$wt" ] || git -C "$REPO" worktree add --detach "$wt" HEAD > /dev/null || exit 1
     git -C "$wt" checkout --detach -q -f "$(git -C "$REPO" rev-parse HEAD)"
     git -C "$wt" reset -q --hard
+    # emptied too: a directory a test took the permissions off and was stopped before it put
+    # them back fails that test, and so "catches" every mutant, in every later run here
+    if [ -d "$wt/target/tmp" ]; then
+        chmod -R u+rwx "$wt/target/tmp"
+        find "$wt/target/tmp" -mindepth 1 -delete || exit 1
+    fi
     o=$MUTANTS/out/$out-$i
     if [ ! -d "$o" ] && [ -n "${SEED:-}" ]; then cp -r "$MUTANTS/out/$SEED" "$o"; fi
     (
