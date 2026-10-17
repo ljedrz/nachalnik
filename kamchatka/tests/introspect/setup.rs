@@ -901,3 +901,33 @@ async fn setup_tools_says_what_each_tool_is() {
         "the whole first sentence, not a clipped one and not a blank: {said}"
     );
 }
+
+/// Arguments that do not parse are answered with the advice `setup` gives about them, which says
+/// how to write what the model meant.
+///
+/// note: the kernel answers an unparsed call itself and asks the tool only for the advice beside
+/// the error, so this is `setup`'s `unparsed` as a model sees it. The fault here is a raw line
+/// break inside a string, which the advice names as the thing to write as `\n`.
+#[tokio::test]
+async fn setup_says_how_to_write_arguments_that_did_not_parse() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![nachalnik::ToolCall::unparsed(
+        "c1",
+        "setup",
+        "{\"call\": {\"action\": \"model\", \"note\": \"a\nb\"}}",
+    )]));
+    kernel.push(ContextItem::user("who are you?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.starts_with("the arguments of this call to `setup` (`c1`) are not a JSON object"),
+        "it is answered as arguments that are not JSON: {said}"
+    );
+    assert!(
+        said.ends_with(
+            "Send the call again with its arguments as one JSON object. Write it with a line \
+             break inside a string written as `\\n`."
+        ),
+        "the advice is the last thing the model reads, and it is exactly what `setup` gave: {said}"
+    );
+}
