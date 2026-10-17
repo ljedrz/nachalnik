@@ -735,3 +735,30 @@ async fn a_fork_after_an_earlier_turn_reads_that_turns_results() {
         "the copy must read the result of the turn before it: {text}"
     );
 }
+
+/// A call to `fork` whose arguments do not parse is answered with how to write them, and the fork's
+/// own advice is what says so.
+///
+/// note: the action written bare where its object goes is the fault `advice` exists for, and the
+/// kernel only reads the advice for a call that never parsed, so this is the only way to reach it.
+#[tokio::test]
+async fn a_fork_call_whose_arguments_did_not_parse_is_told_how_to_write_them() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![nachalnik::ToolCall::unparsed(
+            "c1",
+            "fork",
+            r#"{"call": read, "path": "x"}"#,
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("ask a copy of yourself"));
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    assert!(said.contains("not a JSON object"), "{said}");
+    assert!(
+        said.contains("Write it with `call` holding an object that names the action"),
+        "the fork tool's advice is given: {said}"
+    );
+}
