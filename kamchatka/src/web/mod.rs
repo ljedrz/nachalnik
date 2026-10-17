@@ -979,4 +979,40 @@ mod tests {
             );
         }
     }
+
+    /// A parameter is the value of the pair with exactly its name, and a name that is not there is
+    /// nothing at all, not an empty value.
+    #[test]
+    fn a_parameter_is_the_value_of_its_own_name() {
+        assert_eq!(param("tab=first&since=7", "tab"), Some("first"));
+        assert_eq!(param("tab=first&since=7", "since"), Some("7"));
+        assert_eq!(param("since=7&tab=first", "tab"), Some("first"));
+        assert_eq!(param("since=7", "tab"), None);
+        assert_eq!(param("", "tab"), None);
+        assert_eq!(
+            param("tab", "tab"),
+            None,
+            "a pair without an equals sign is not one"
+        );
+    }
+
+    /// A body longer than the most a command can be is refused; one exactly that long is read.
+    #[tokio::test]
+    async fn a_body_is_read_up_to_the_most_a_command_can_be() {
+        let request = |length: usize| Request {
+            method: "POST".to_owned(),
+            target: "/do".to_owned(),
+            headers: vec![("content-length".to_owned(), length.to_string())],
+        };
+        let over = vec![b'x'; MAX_BODY + 1];
+        let refused = body(&mut over.as_slice(), &request(MAX_BODY + 1)).await;
+        let refused = refused.expect_err("a body one byte over the limit is refused");
+        assert!(refused.contains("not a command"), "{refused}");
+
+        let exact = vec![b'x'; MAX_BODY];
+        let read = body(&mut exact.as_slice(), &request(MAX_BODY))
+            .await
+            .expect("a body exactly at the limit is read");
+        assert_eq!(read.len(), MAX_BODY);
+    }
 }
