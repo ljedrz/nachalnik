@@ -13,6 +13,9 @@
 - `not-pinned`: observable only at the exact edge of a private threshold, or in a tuning value
 - `no-caller`: the code is dead; a POSTPONED entry rather than a test
 - `unsettled`: sessions tried and found no test; `mutants_tasks.py --retry-unsettled` asks again
+- `feature-gated`: in code the run's `--all-features` build leaves out, such as a
+  `#[cfg(not(feature = ...))]` arm, so it survives whatever the tests are; checked by hand in a
+  build without the feature, and `why` names the test that catches it there
 
 A mutant is keyed by what survives the code around it moving: the file, the enclosing function,
 the kind of mutation and its replacement, and the text of the line it starts on with where in that
@@ -26,7 +29,7 @@ import os
 import re
 
 LEDGER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verdicts.jsonl")
-VERDICTS = ("equivalent", "not-pinned", "no-caller", "unsettled")
+VERDICTS = ("equivalent", "not-pinned", "no-caller", "unsettled", "feature-gated")
 
 
 def line_at(diff, number):
