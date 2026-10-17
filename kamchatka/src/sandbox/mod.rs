@@ -18,11 +18,11 @@
 //! UDP rights in ABI 10, which is Linux 7.2, but the crate stops at ABI 9 and `AccessNet` is
 //! `#[non_exhaustive]` over a sealed trait, so those two bits cannot be handed to a ruleset from
 //! out here. The rest of the network is the gate's: [`crate::gate`] stops a confined command's
-//! `socket()` for `AF_INET` and `AF_INET6`, and for the two families that reach the internet the
-//! same way, which covers UDP and everything else an internet socket is for, and either refuses it
-//! or holds it while the person is asked. Where the gate cannot be installed a UDP datagram still
-//! goes out, which is enough to put bytes in a DNS query, and [`Network::NoTcp`] is how that case
-//! is written everywhere it is shown rather than rounded up.
+//! `socket()` in every family but unix and netlink, which covers UDP and everything else a socket
+//! can leave the machine by, and either refuses it or holds it while the person is asked. Where
+//! the gate cannot be installed a UDP datagram still goes out, which is enough to put bytes in a
+//! DNS query, and [`Network::NoTcp`] is how that case is written everywhere it is shown rather
+//! than rounded up.
 //! What still holds against the rest is the filesystem: a command that cannot read a file has
 //! nothing to send.
 //!
@@ -97,7 +97,8 @@ pub const SESSION_FLAG: &str = "--in-a-session";
 /// the system directories are always readable and the interesting question is what is *writable*
 /// and whether the network is reachable - which are the two stances a person actually changes.
 ///
-/// note: "the network" is every internet socket where the gate holds, and TCP where it does not.
+/// note: "the network" is every socket that can leave the machine where the gate holds, and TCP
+/// where it does not.
 /// See [`Network`], and the note at the top of this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sandbox {
@@ -145,9 +146,9 @@ pub enum Network {
     Open,
     /// TCP is refused by Landlock, and nothing else is: there is no gate here.
     NoTcp,
-    /// Every internet socket is refused by the gate, and TCP by Landlock as well.
+    /// Every network socket is refused by the gate, and TCP by Landlock as well.
     Shut,
-    /// Every internet socket is held by the gate until the person is asked, once per command.
+    /// Every network socket is held by the gate until the person is asked, once per command.
     ///
     /// note: Landlock leaves TCP alone here, but for [`Sandbox::closed`], because a ruleset cannot
     /// be lifted and a `yes` has to be able to let the connection through. What stands in the way is the gate alone, which is

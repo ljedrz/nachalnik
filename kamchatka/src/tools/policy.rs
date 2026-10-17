@@ -389,7 +389,7 @@ impl Careful {
         }
     }
 
-    /// Says that a confined command's attempt to open an internet socket is held by the gate, so
+    /// Says that a confined command's attempt to open a network socket is held by the gate, so
     /// that the network is asked about when a command tries rather than from what it is called.
     ///
     /// note: told by whoever builds the shell, once the probe has found that the gate holds - see

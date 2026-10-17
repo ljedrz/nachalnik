@@ -1,4 +1,4 @@
-//! The questions a running command is waiting on: it tried to open an internet socket, the gate
+//! The questions a running command is waiting on: it tried to open a network socket, the gate
 //! held the call, and somebody has to say whether it goes on.
 //!
 //! note: a queue of its own rather than a question the kernel raises, because the kernel asks

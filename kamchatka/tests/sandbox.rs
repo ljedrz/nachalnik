@@ -714,34 +714,50 @@ else:
     assert!(said.contains("refused"), "{said}");
 }
 
-/// An IPv6 socket and an `AF_RDS` one are refused by a shut gate, as an IPv4 one is.
+/// A socket in any family that can leave the machine is refused by a shut gate, as an IPv4 one is,
+/// and a netlink one is opened.
 ///
 /// note: through a command, since the filter's own tests run the program against the call's
 /// numbers and not a process under it. `EACCES` is the gate's answer, where a kernel without the
 /// family says `EAFNOSUPPORT`; and each family is opened unconfined first, so one this machine
 /// cannot open at all is skipped rather than passing for the wrong reason.
+///
+/// note: `AF_RXRPC` sent a datagram to an internet address past a gate that held only the families
+/// it named, and `AF_VSOCK` reaches the host from inside a virtual machine; any process can open
+/// either. Netlink is the other side of the same list: `getifaddrs` opens one, and it reaches
+/// nothing past this kernel.
 #[test]
-fn an_ipv6_or_rds_socket_is_refused_by_a_shut_gate() {
+fn a_socket_that_can_leave_the_machine_is_refused_by_a_shut_gate() {
     if !enforced() || !gated() {
         return;
     }
-    let opening = |family: i32, kind: i32| {
+    let opening = |family: i32, kind: i32, protocol: i32| {
         format!(
             "python3 -c \"
 import socket
 try:
-    socket.socket({family}, {kind}, 0)
+    socket.socket({family}, {kind}, {protocol})
     print('opened')
 except OSError as e:
     print('refused', e.errno)
 \" 2>&1"
         )
     };
-    for (name, family, kind) in [
-        ("IPv6", libc::AF_INET6, libc::SOCK_DGRAM),
-        ("RDS", libc::AF_RDS, libc::SOCK_SEQPACKET),
+    for (name, family, kind, protocol, opens) in [
+        ("IPv6", libc::AF_INET6, libc::SOCK_DGRAM, 0, false),
+        ("RDS", libc::AF_RDS, libc::SOCK_SEQPACKET, 0, false),
+        (
+            "RxRPC",
+            libc::AF_RXRPC,
+            libc::SOCK_DGRAM,
+            libc::AF_INET,
+            false,
+        ),
+        ("vsock", libc::AF_VSOCK, libc::SOCK_STREAM, 0, false),
+        ("Bluetooth", libc::AF_BLUETOOTH, libc::SOCK_STREAM, 0, false),
+        ("netlink", libc::AF_NETLINK, libc::SOCK_RAW, 0, true),
     ] {
-        let cmd = opening(family, kind);
+        let cmd = opening(family, kind, protocol);
         let here = Command::new("sh")
             .arg("-c")
             .arg(&cmd)
@@ -756,10 +772,13 @@ except OSError as e:
             &sandbox(common::workdir("gate-families"), true, Network::Shut),
             &cmd,
         );
-        assert!(
-            said.contains(&format!("refused {}", libc::EACCES)),
-            "{name}: a shut gate let the socket open: {said}"
-        );
+        match opens {
+            false => assert!(
+                said.contains(&format!("refused {}", libc::EACCES)),
+                "{name}: a shut gate let the socket open: {said}"
+            ),
+            true => assert!(said.contains("opened"), "{name}: {said}"),
+        }
     }
 }
 
@@ -1916,7 +1935,7 @@ async fn an_allowed_network_lets_a_confined_command_connect_over_tcp() {
     assert_eq!(answers.asked(), 1, "{said}");
 }
 
-/// A no refuses every internet socket the command asks for, and the model is told it was an answer.
+/// A no refuses every network socket the command asks for, and the model is told it was an answer.
 #[tokio::test]
 async fn a_no_refuses_every_socket_the_command_asks_for() {
     if !gated() {

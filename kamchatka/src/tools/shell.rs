@@ -926,7 +926,7 @@ impl Tool for Shell {
         // permissions produce, and a refused name lookup is `Temporary failure in name
         // resolution`, which reads as a network having trouble. A model that does not know it was
         // refused goes looking for another way out rather than asking
-        let refused = "so every internet socket it asked for was refused with `Permission \
+        let refused = "so every network socket it asked for was refused with `Permission \
                        denied`, and a name it tried to look up failed with `Temporary failure in \
                        name resolution`";
         //
@@ -949,7 +949,7 @@ impl Tool for Shell {
                  Work without it, or say what you need it for and ask for it to be allowed.]\n"
             ),
             Some(Reached::Ungated) => "[the network gate could not be set up for this command, so \
-                                       any internet socket it asked for failed with `Function \
+                                       any network socket it asked for failed with `Function \
                                        not implemented`, and a name it tried to look up failed \
                                        the same way. That is this program failing, not a refusal: \
                                        say so rather than trying another way round.]\n"

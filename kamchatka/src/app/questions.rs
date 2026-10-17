@@ -158,7 +158,7 @@ impl App {
     ///
     /// note: the other kind of question a tool waits on, and the one the kernel knows nothing
     /// about: it is asked while the call runs rather than before, by the gate holding the
-    /// command's first attempt at an internet socket. See [`crate::gate`] and
+    /// command's first attempt at a network socket. See [`crate::gate`] and
     /// [`App::decide_reach`].
     pub fn reached(&self) -> Option<crate::tools::Reached> {
         self.policy.reaching().first()
