@@ -200,7 +200,10 @@ cause harm, what stops them, and what doesn't.
   whose only credential is a random key in its address, printed at startup; whoever has the address
   controls the session like the person at the keyboard. The key is 32 bits, so that it can be
   typed on a phone, and after 100 wrong keys the page refuses everything for a minute, which puts
-  guessing it at about 40 years for even odds. It listens on loopback, or on an IP address
+  guessing it at about 40 years for even odds. A connection has 10 seconds to send its request, and
+  at most 64 may be waiting at once, so a device that can reach the port without the key can keep
+  the page from loading for as long as it keeps trying, but can't use up the file descriptors the
+  session needs for its record and its commands. It listens on loopback, or on an IP address
   in a private range, in which case every device on that network can read the session's traffic, and
   any that learns the address can control it, and `kamchatka` warns about this at startup and in
   each session. A host name is taken only where it resolves to this machine, as `localhost` does;

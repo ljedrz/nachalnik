@@ -50,7 +50,7 @@ use tokio::{
         ReadHalf, WriteHalf,
     },
     net::{TcpListener, TcpStream},
-    sync::mpsc,
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
 };
 
 use crate::remote::{
@@ -73,6 +73,22 @@ const MAX_HEAD: usize = 16 * 1024;
 
 /// The longest body, which is one command.
 const MAX_BODY: usize = 1024 * 1024;
+
+/// How long a connection has to send its request head before it is closed.
+///
+/// note: the head is read before the key is checked, so anybody who can reach the port can open a
+/// connection and send nothing. Each one holds a file descriptor, and a process out of them can no
+/// longer write the session's record or start a command. A browser sends its head as soon as it
+/// has connected.
+const HEAD_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How many connections may be waiting for their request head at once. One more is closed as soon
+/// as it is accepted.
+///
+/// note: [`HEAD_WAIT`] alone doesn't keep a peer without the key from using up the file
+/// descriptors: it only has to open them faster than they time out. A browser opens a few at a
+/// time, and a tab's stream has sent its head and no longer counts.
+const WAITING: usize = 64;
 
 /// Where every attached tab's commands go.
 type Tabs = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<Command>>>>;
@@ -278,15 +294,51 @@ impl Web {
         let tabs: Tabs = Arc::default();
         let named: Named = Arc::default();
         let guesses: Guesses = Arc::default();
+        let waiting = Arc::new(Semaphore::new(WAITING));
+        let mut resting = None;
+        let mut full = false;
         loop {
-            // reported, or nothing would explain why pages stop loading (e.g. out of descriptors)
-            let browser = match self.listener.accept().await {
-                Ok((browser, _)) => browser,
+            // note: a failure is said once and then waited out, as `remote::Server::arrived` does
+            // and for the same reason: out of file descriptors, the connection that could not be
+            // taken stays in the backlog and the next `accept` fails at once
+            if let Some(until) = resting {
+                tokio::time::sleep_until(until).await;
+            }
+            let accepted = self.listener.accept().await;
+            let now = tokio::time::Instant::now();
+            let over = crate::remote::server::run_is_over(resting, now);
+            let browser = match accepted {
+                Ok((browser, _)) => {
+                    if over {
+                        resting = None;
+                    }
+                    browser
+                }
                 Err(e) => {
-                    said(format!("a browser could not be accepted: {e}"));
+                    // reported, or nothing would explain why pages stop loading
+                    if over {
+                        said(format!(
+                            "a browser could not be accepted: {e}; waiting a moment between \
+                             attempts from here on, and saying nothing more until they have \
+                             stopped failing"
+                        ));
+                    }
+                    resting = Some(now + crate::remote::server::RESTING);
                     continue;
                 }
             };
+            let Ok(permit) = waiting.clone().try_acquire_owned() else {
+                if !full {
+                    said(format!(
+                        "{WAITING} connections to the page are open without having sent a \
+                         request, so new ones are closed until they have. If they are not \
+                         yours, something on the network is holding them open"
+                    ));
+                }
+                full = true;
+                continue;
+            };
+            full = false;
             let _ = browser.set_nodelay(true);
             let (session, tabs, named, said, key, guesses) = (
                 self.session.clone(),
@@ -303,7 +355,7 @@ impl Web {
                     guesses: &guesses,
                     said: &said,
                 };
-                if let Err(e) = serve(browser, served, tabs, named).await {
+                if let Err(e) = serve(browser, permit, served, tabs, named).await {
                     said(format!("a browser connection failed: {e}"));
                 }
             });
@@ -328,8 +380,11 @@ struct Served<'a> {
 }
 
 /// One browser connection: read a request, answer it, and for a stream stay as long as it lasts.
+///
+/// `waiting` is the connection's place among the ones waiting for a head; see [`WAITING`].
 async fn serve(
     browser: TcpStream,
+    waiting: OwnedSemaphorePermit,
     served: Served<'_>,
     tabs: Tabs,
     named: Named,
@@ -342,7 +397,13 @@ async fn serve(
     } = served;
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
-    let Some(request) = head(&mut reader).await? else {
+    // a connection that sends nothing in time is one that went away without a request, and is not
+    // reported: a browser opens connections ahead of the requests it may make, and leaves some idle
+    let Ok(request) = tokio::time::timeout(HEAD_WAIT, head(&mut reader)).await else {
+        return Ok(());
+    };
+    drop(waiting);
+    let Some(request) = request? else {
         return Ok(());
     };
     let (path, query) = match request.target.split_once('?') {
@@ -994,6 +1055,91 @@ mod tests {
         assert!(status("/favicon.ico").await.contains("429"), "closed");
         let said = telling.try_recv().expect("the closing is said");
         assert!(said.contains("wrong keys have been tried"), "{said}");
+
+        running.abort();
+    }
+
+    /// A connection that sends nothing is closed once [`HEAD_WAIT`] has gone by, and nothing is
+    /// said about it.
+    ///
+    /// note: on tokio's own clock, which `start_paused` moves on when every task is waiting.
+    #[tokio::test(start_paused = true)]
+    async fn a_connection_that_sends_nothing_is_closed_in_time() {
+        let web = Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
+            .await
+            .expect("it listens");
+        let at = web.listener.local_addr().expect("its address");
+        let (told, mut telling) = tokio::sync::mpsc::unbounded_channel();
+        let running = tokio::spawn(web.run(move |said| {
+            let _ = told.send(said);
+        }));
+
+        let started = tokio::time::Instant::now();
+        let mut silent = TcpStream::connect(at).await.expect("it answers");
+        let read = tokio::time::timeout(HEAD_WAIT * 2, silent.read(&mut [0; 1]))
+            .await
+            .expect("closed within the wait, not left open")
+            .unwrap_or_default();
+
+        assert_eq!(read, 0, "the connection is closed rather than answered");
+        assert!(started.elapsed() >= HEAD_WAIT, "{:?}", started.elapsed());
+        assert!(
+            telling.try_recv().is_err(),
+            "a silent connection is not reported"
+        );
+
+        running.abort();
+    }
+
+    /// Once [`WAITING`] connections are open without a request, the next one is closed as it
+    /// arrives and that is said once; a request is served again as soon as they have sent theirs.
+    #[tokio::test]
+    async fn connections_waiting_for_a_request_are_capped() {
+        let web = Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
+            .await
+            .expect("it listens");
+        let at = web.listener.local_addr().expect("its address");
+        let (told, mut telling) = tokio::sync::mpsc::unbounded_channel();
+        let running = tokio::spawn(web.run(move |said| {
+            let _ = told.send(said);
+        }));
+        let request = format!("GET /favicon.ico HTTP/1.1\r\nHost: {at}\r\n\r\n");
+
+        let mut waiting = Vec::new();
+        for _ in 0..WAITING {
+            waiting.push(TcpStream::connect(at).await.expect("it answers"));
+        }
+        for _ in 0..2 {
+            let mut turned_away = TcpStream::connect(at).await.expect("it accepts");
+            let _ = turned_away.write_all(request.as_bytes()).await;
+            let mut answer = Vec::new();
+            let closed =
+                tokio::time::timeout(HEAD_WAIT / 2, turned_away.read_to_end(&mut answer)).await;
+            assert!(closed.is_ok(), "closed at once rather than left waiting");
+            assert!(answer.is_empty(), "{}", String::from_utf8_lossy(&answer));
+        }
+        let said = telling.try_recv().expect("the cap is said");
+        assert!(said.contains("without having sent a request"), "{said}");
+        assert!(telling.try_recv().is_err(), "and said once");
+
+        // each answer is written after the connection has stopped counting as waiting
+        for mut browser in waiting {
+            browser
+                .write_all(request.as_bytes())
+                .await
+                .expect("the request");
+            let mut answer = String::new();
+            let _ = browser.read_to_string(&mut answer).await;
+            assert!(answer.starts_with("HTTP/1.1 403"), "{answer}");
+        }
+        let mut browser = TcpStream::connect(at).await.expect("it answers");
+        browser
+            .write_all(request.as_bytes())
+            .await
+            .expect("the request");
+        let mut answer = String::new();
+        let _ = browser.read_to_string(&mut answer).await;
+        assert!(answer.starts_with("HTTP/1.1 403"), "served again: {answer}");
 
         running.abort();
     }

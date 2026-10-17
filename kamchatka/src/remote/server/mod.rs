@@ -63,7 +63,7 @@ const PARTING: Duration = Duration::from_secs(2);
 /// note: the usual failure is this process out of file descriptors, and the listener stays
 /// readable while the connection that could not be taken waits in the backlog - so a loop that
 /// asked again at once would fail again at once, as fast as it could go, and say so every time.
-const RESTING: Duration = Duration::from_secs(1);
+pub(crate) const RESTING: Duration = Duration::from_secs(1);
 
 /// A session, and the socket somebody reaches it on.
 pub struct Server {
@@ -553,7 +553,10 @@ impl Server {
 
 /// Whether a run of failed arrivals is over by `now`, given when the listener was next to be tried
 /// after the last of them; see [`Server::arrived`].
-fn run_is_over(resting: Option<tokio::time::Instant>, now: tokio::time::Instant) -> bool {
+pub(crate) fn run_is_over(
+    resting: Option<tokio::time::Instant>,
+    now: tokio::time::Instant,
+) -> bool {
     resting.is_none_or(|until| now >= until + RESTING)
 }
 
