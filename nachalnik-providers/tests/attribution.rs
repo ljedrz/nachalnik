@@ -10,7 +10,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use nachalnik::{Config, ContextItem, Kernel};
-use nachalnik_providers::{OpenAiCompatible, install_crypto};
+use nachalnik_providers::{Attribution, OpenAiCompatible, install_crypto};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -129,6 +129,29 @@ async fn an_app_that_asked_to_stay_off_the_listings_says_so() {
         seen.contains("x-openrouter-app-visibility: hidden"),
         "{seen}"
     );
+}
+
+/// An attribution built once, to be handed to every client, says all that the client's own
+/// builders would.
+#[tokio::test]
+async fn an_attribution_handed_over_whole_is_sent_whole() {
+    let seen = overheard(|address| {
+        as_if_openrouter(address).attributed_to(
+            Attribution::new("https://internal.invalid", "telemetry")
+                .filed_under(["cli-agent"])
+                .unlisted(true),
+        )
+    })
+    .await;
+
+    for header in [
+        "referer: https://internal.invalid",
+        "x-openrouter-title: telemetry",
+        "x-openrouter-categories: cli-agent",
+        "x-openrouter-app-visibility: hidden",
+    ] {
+        assert!(seen.contains(header), "{header} is not in: {seen}");
+    }
 }
 
 #[tokio::test]
