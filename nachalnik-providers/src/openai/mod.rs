@@ -855,6 +855,24 @@ mod tests {
 
     use super::*;
 
+    /// The Responses API is asked once it is turned on, and a client that was given no name of its
+    /// own is named for it.
+    #[test]
+    fn the_responses_api_is_asked_once_turned_on_and_named_for() {
+        let plain = OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+        assert!(!plain.asks_responses());
+        assert_eq!(plain.info().provider, "openai-compatible");
+
+        let responses = plain.responses(true);
+        assert!(responses.asks_responses());
+        assert_eq!(responses.info().provider, "openai-responses");
+
+        let named = OpenAiCompatible::new("m", "https://example.invalid/v1", "k")
+            .labelled("ours")
+            .responses(true);
+        assert_eq!(named.info().provider, "ours");
+    }
+
     /// The client this crate offers gives up on a silent server when a whole answer's time is up,
     /// and not before.
     ///
