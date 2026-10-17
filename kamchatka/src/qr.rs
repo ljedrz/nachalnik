@@ -487,6 +487,36 @@ mod tests {
         );
     }
 
+    /// Version 1 has no alignment pattern, and version 2 has one, centred six modules in from
+    /// the bottom right: a dark centre, a light ring and a dark ring around it.
+    #[test]
+    fn the_alignment_pattern_is_where_the_standard_puts_it() {
+        let mut one = Grid::new(1);
+        one.draw_functions();
+        let at = |grid: &Grid, x: usize, y: usize| y * grid.size + x;
+        assert!(!one.function[at(&one, 14, 14)], "version 1 has none");
+
+        let mut two = Grid::new(2);
+        two.draw_functions();
+        for (x, dark) in [(18, true), (17, false), (16, true), (15, false)] {
+            assert_eq!(two.function[at(&two, x, 18)], x >= 16, "({x}, 18)");
+            if x >= 16 {
+                assert_eq!(two.dark[at(&two, x, 18)], dark, "({x}, 18)");
+            }
+        }
+    }
+
+    /// Mask 0 is the standard's `(i + j) mod 2 = 0`: it flips the modules where row and column add
+    /// up to an even number, and leaves the rest.
+    #[test]
+    fn mask_0_flips_where_row_and_column_add_up_to_even() {
+        let mut grid = Grid::new(1);
+        grid.apply_mask(0);
+        for (x, y, flipped) in [(0, 0, true), (1, 0, false), (1, 1, true), (2, 5, false)] {
+            assert_eq!(grid.dark[y * grid.size + x], flipped, "({x}, {y})");
+        }
+    }
+
     /// The format bits for level `M` with mask 0 are the standard's `101010000010010`.
     #[test]
     fn the_format_is_the_standards() {
