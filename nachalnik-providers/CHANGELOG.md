@@ -15,6 +15,12 @@ minor bump may break you.
   without the thinking that produced it, and this dialect never sent thinking back, so a session
   with one of them failed at its second request. Empty thinking is not sent.
 
+### fixed
+
+- **`Endpoint::host` no longer shows the credentials of an address with no host.** For
+  `http://user:secret@/v1` it found no host and fell back to the whole address, `user:secret`
+  included. It falls back to the address without them now.
+
 ## [0.10.0] - 2026-10-14
 
 ### added

@@ -43,17 +43,17 @@ pub trait Endpoint: Send + Sync {
         // the query and the fragment too, and not only the path: a key passed as `?key=` would
         // otherwise be drawn on the status line of an endpoint given with no path - and for the
         // same reason not a `user:password@` before the host, which is a credential too
-        after_scheme
+        let authority = after_scheme
             .split(['/', '?', '#'])
             .next()
-            .map(|authority| {
-                authority
-                    .rsplit_once('@')
-                    .map_or(authority, |(_, host)| host)
-            })
-            .filter(|host| !host.is_empty())
-            .unwrap_or(&endpoint)
-            .to_owned()
+            .unwrap_or_default();
+        match authority.rsplit_once('@') {
+            Some((_, host)) if !host.is_empty() => host.to_owned(),
+            // no host to show, so the address it was not found in, without the credential
+            Some((credentials, _)) => endpoint.replacen(&format!("{credentials}@"), "", 1),
+            None if !authority.is_empty() => authority.to_owned(),
+            None => endpoint,
+        }
     }
 
     /// What this endpoint serves, which is what [`Endpoint::set_model`] takes.
