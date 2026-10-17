@@ -174,6 +174,29 @@ async fn a_provider_that_empties_a_calls_arguments_does_not_conform() {
     }
 }
 
+/// A provider that passes an error on without what caused it fails the case of a body that ended
+/// before any of it arrived, whose error is only a category without its cause.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_provider_that_drops_an_errors_cause_does_not_conform() {
+    let failed = failures(rewritten(|answer| {
+        answer.map_err(|error| {
+            let said = error.to_string();
+            said.split(": ")
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+                .into()
+        })
+    }))
+    .await;
+
+    assert!(
+        failed.contains("a body that ends before any of it arrived says why"),
+        "{failed}"
+    );
+}
+
 /// A provider that files a call under an identifier the model did not give it fails the case
 /// that numbers a call from one.
 ///
