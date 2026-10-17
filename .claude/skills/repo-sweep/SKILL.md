@@ -474,7 +474,14 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   unmutated, the pty test this machine refuses and the `.gitignore` one, and `shards.sh` skips
   just those.
 - `tainted.py` looks for EAGAIN as `os error 11` exactly: tests make `os error 111`, a refused
-  connection, on purpose.
+  connection, on purpose. EAGAIN is also a socket read's timeout, and kamchatka's served-session
+  tests read with one: a failed `Command::spawn` and a `stream.read` print the same
+  `Os { code: 11, kind: WouldBlock, ... }`. So it takes a line for a fork's when the lines around
+  it say `fork` or `spawn`, and for a socket's only when it is a panic at a read; those it lists as
+  `wouldblock` and leaves alone. In the run since the last mutants sweep three timeouts and a
+  catch were flagged by socket reads alone: the timeouts failed other tests on assertions about the
+  mutated code, and the catch, `web::forward` made to relay nothing, is a read that waits for an
+  answer the mutant never sends.
 - A whole-workspace copy is about 3 GB. Put the copies in the repository's `target/agents`
   (`mutants.sh` does), not in a temporary directory with a quota.
 - **A mutant can spawn without end** and fill the user's process limit, and then this session
