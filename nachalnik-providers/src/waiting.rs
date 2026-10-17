@@ -718,6 +718,8 @@ mod tests {
             ("Thu, 29 Feb 2024 00:00:00 GMT", 1_709_164_800),
             ("Wed, 31 Dec 2025 23:59:59 GMT", 1_767_225_599),
             ("Mon, 01 Mar 2100 12:00:00 GMT", 4_107_585_600),
+            // a leap second, which an HTTP date may name
+            ("Wed, 31 Dec 2025 23:59:60 GMT", 1_767_225_600),
         ] {
             assert_eq!(
                 retry_after(date, at(instant - 30)),
@@ -742,6 +744,8 @@ mod tests {
             "Sun, 32 Nov 1994 08:49:37 GMT",
             "Sun, 06 Nob 1994 08:49:37 GMT",
             "Sun, 06 Nov 1994 25:49:37 GMT",
+            "Sun, 06 Nov 1994 08:60:37 GMT",
+            "Sun, 06 Nov 1994 08:49:61 GMT",
             // a year no date has, which the arithmetic below overflowed on: a panic, or a wait of
             // nothing asked for again at once
             "Mon, 01 Jan -9223372036854775808 08:49:37 GMT",
