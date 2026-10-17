@@ -1870,6 +1870,28 @@ mod tests {
         assert_eq!((collected.len(), full, dropped), (KEPT, false, 0));
     }
 
+    /// A line whose own bytes fill the ceiling leaves no room for the newline it is kept with, so
+    /// its last byte goes and the newline takes its place.
+    ///
+    /// note: the ceiling is against the newline too, which is what an empty line is all of. A line
+    /// of `KEPT` bytes with no newline of its own fills the ceiling as it arrived but not as it is
+    /// kept, and keeping it whole puts `KEPT + 1` bytes under a budget of `KEPT` - one byte more
+    /// than every other path through this file holds a caller to.
+    #[test]
+    fn a_line_that_fills_the_ceiling_without_its_newline_is_cut() {
+        let line = vec![b'x'; KEPT];
+        let (mut collected, mut full, mut dropped) = (String::new(), false, 0);
+        keep(
+            &line,
+            &mut collected,
+            &OutputSink::disconnected(),
+            &mut full,
+            &mut dropped,
+        );
+
+        assert_eq!((collected.len(), full, dropped), (KEPT, true, 1));
+    }
+
     /// A command stopped while it is being waited for, having closed its output, answers at
     /// once and says it was stopped.
     ///
