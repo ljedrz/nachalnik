@@ -1501,6 +1501,35 @@ fn an_anthropic_session_with_no_key_is_told_which_one_to_set() {
     assert!(said.contains("api.anthropic.com"), "{said}");
 }
 
+/// `ANTHROPIC_API_KEY` is the key an Anthropic session starts with, when it is set to something;
+/// set to nothing it is no key, and the session is refused as one with none.
+///
+/// note: no `KAMCHATKA_API_KEY` in either run, so the only key a session can have is the one under
+/// test - `keyed` is false, which removes the other names and leaves this one as given.
+#[test]
+fn an_anthropic_key_is_read_only_when_it_is_something() {
+    let (ok, said) = spawn(
+        elsewhere(),
+        &["--api", "anthropic"],
+        "",
+        &[("ANTHROPIC_API_KEY", "sk-ant-a-key")],
+        false,
+        false,
+    );
+    assert!(ok, "a set ANTHROPIC_API_KEY was not taken: {said}");
+
+    let (ok, said) = spawn(
+        elsewhere(),
+        &["--api", "anthropic"],
+        "",
+        &[("ANTHROPIC_API_KEY", "")],
+        false,
+        false,
+    );
+    assert!(!ok, "an empty ANTHROPIC_API_KEY was taken as a key: {said}");
+    assert!(said.contains("ANTHROPIC_API_KEY"), "{said}");
+}
+
 /// `compact-context-at` is a fraction, from the command line or from a file, and a percentage is
 /// refused.
 #[test]
