@@ -1890,6 +1890,16 @@ async fn a_switch_typed_into_a_turn_waits_for_the_end_of_it() {
     assert!(harness.app.busy, "the turn is running");
     harness.send("/model something-else").await;
     harness.send("and after it").await;
+    // what waits behind a held switch is said as waiting for it, not as going in when the turn stops
+    let screen = harness.flat();
+    assert!(
+        screen.contains("this waits for the switch before it"),
+        "{screen}"
+    );
+    assert!(
+        !screen.contains("this goes in when the turn stops"),
+        "{screen}"
+    );
     // which the loops do on every pass, the turn's included
     harness.app.release().await;
 
@@ -1935,6 +1945,12 @@ async fn two_switches_typed_into_a_turn_are_made_in_order() {
     harness.send("go").await;
     harness.send("/model the-first").await;
     harness.send("/model the-second").await;
+    // the second waits behind the first, and is said to
+    let screen = harness.flat();
+    assert!(
+        screen.contains("this waits for the switch before it"),
+        "{screen}"
+    );
 
     // the turn, then each switch coming back
     for _ in 0..3 {
