@@ -523,6 +523,17 @@ mod tests {
         assert_eq!(lines.len(), side.div_ceil(2));
         assert!(lines.iter().all(|line| line.chars().count() == side));
         assert!(lines[0].chars().all(|c| c == '█'), "{}", lines[0]);
+        // the finder patterns' top edge, dark all across, over their next row, dark only at its
+        // ends: two modules in from either side, with a light separator inside each
+        let finder = " ▄▄▄▄▄ ";
+        assert!(
+            lines[1].starts_with(&format!("██{finder}█")),
+            "{}",
+            lines[1]
+        );
+        assert!(lines[1].ends_with(&format!("█{finder}██")), "{}", lines[1]);
+        // and a side is always odd, so the last line is the quiet zone's last row over nothing
+        assert_eq!(lines[lines.len() - 1], "▀".repeat(side));
         assert!(lines.iter().all(|line| Code::is_line(line)));
         assert!(!Code::is_line("   "));
         assert!(!Code::is_line("█ a"));
