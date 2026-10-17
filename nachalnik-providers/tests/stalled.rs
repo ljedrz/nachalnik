@@ -5,7 +5,7 @@
 //! ever arrives, and the key somebody pressed to stop it does nothing whatever. From the outside
 //! it looks identical to a program that is working.
 
-#![cfg(any(feature = "openai", feature = "gemini"))]
+#![cfg(any(feature = "openai", feature = "gemini", feature = "anthropic"))]
 
 use std::{sync::Arc, time::Duration};
 
@@ -457,6 +457,46 @@ async fn a_patient_provider_waits_as_long_as_it_was_told() {
         .expect_err("an answer that never came is a failure")
         .to_string();
     assert!(said.contains("300s"), "{said}");
+}
+
+/// The other dialects, given their patience as every dialect is, wait as long too.
+#[cfg(any(feature = "gemini", feature = "anthropic"))]
+#[tokio::test(start_paused = true)]
+async fn every_dialect_waits_as_long_as_it_was_told() {
+    use nachalnik_providers::Dialect as _;
+
+    async fn waits_for_300s(provider: Arc<dyn nachalnik::Provider>) {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(provider);
+        kernel.push(ContextItem::user("are you there?"));
+
+        let mut turn = Box::pin(kernel.turn());
+        assert!(
+            tokio::time::timeout(Duration::from_secs(200), &mut turn)
+                .await
+                .is_err(),
+            "it gave up before the patience it was given"
+        );
+        let said = tokio::time::timeout(Duration::from_secs(3600), turn)
+            .await
+            .expect("it gave up")
+            .expect_err("an answer that never came is a failure")
+            .to_string();
+        assert!(said.contains("300s"), "{said}");
+    }
+
+    #[cfg(feature = "gemini")]
+    {
+        let gemini = nachalnik_providers::Gemini::new("deaf", deaf_server().await, "k");
+        gemini.set_patience(Duration::from_secs(300));
+        waits_for_300s(Arc::new(gemini)).await;
+    }
+    #[cfg(feature = "anthropic")]
+    {
+        let anthropic = nachalnik_providers::Anthropic::new("deaf", deaf_server().await, "k");
+        anthropic.set_patience(Duration::from_secs(300));
+        waits_for_300s(Arc::new(anthropic)).await;
+    }
 }
 
 /// A client whose DNS never answers, so that every attempt fails before a connection is made.
