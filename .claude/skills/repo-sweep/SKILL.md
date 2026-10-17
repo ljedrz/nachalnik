@@ -408,7 +408,7 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    pinned.
 5. **Record what survives** in `$SKILL/verdicts.jsonl`, so that the next sweep does not spend a
    session on it again: every mutant left equivalent, not pinned, dead (`no-caller`, with its
-   POSTPONED entry) or unsettled, with the reason:
+   POSTPONED entry), unsettled or compiled out (`feature-gated`), with the reason:
    `python3 $SKILL/ledger.py add target/agents/out/X-merged/mutants.out equivalent "<why>" "<name>"...`,
    the names as `outcomes.json` gives them. `ledger.py` says how an entry is keyed - the
    file, the function, the mutation and the text of its line, never the line number - and
@@ -542,6 +542,15 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
 - `--iterate` rewrites `outcomes.json`, `missed.txt` and `mutants.json` with the current run's
   mutants only, and `mutants_tasks.py` reads `outcomes.json`. Copy the output directory aside
   before each further run over it, and make tasks from every copy that still has a miss.
+- **A mutant in code a feature leaves out survives whatever the tests are.** The runs build with
+  `--all-features`, which compiles out every `#[cfg(not(feature = ...))]` arm and function, so a
+  mutant there builds, every test passes and it is counted missed. CI runs kamchatka's suite with
+  `--no-default-features` too, where that code is built. Before making tasks, find these misses
+  (the nearest `cfg` above each line), and check each by hand: `cargo test -p <crate>
+  --no-default-features --no-fail-fast` in a worktree, unmutated and with the mutant's patch,
+  and see which tests fail only with it. A `Default` replacement may not build there at all. Write
+  each into the ledger as `feature-gated`, naming the test. In the run since PR #65 there were
+  five, in `args.rs` and `app/views.rs`.
 
 ## gotchas
 
