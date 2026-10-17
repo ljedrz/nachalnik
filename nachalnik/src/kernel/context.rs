@@ -34,13 +34,13 @@ impl Kernel {
 
     /// Adds several items as one undoable operation, returning their identifiers.
     ///
-    /// note: Separate [`Kernel::push`]es are a checkpoint each, so opening a project file by file
-    /// can spend the whole undo history before the user has done anything. Putting a set of files
-    /// in the context is one thing the user did, so it is one thing to undo.
+    /// note: Separate [`Kernel::push`] calls are a checkpoint each, so opening a project file by
+    /// file can spend the whole undo history before the user has done anything. A set of files is
+    /// one thing the user did, so it is one thing to undo.
     ///
-    /// note: under one lock. Taken item by item, a turn recorded on another thread halfway through
-    /// would land inside this checkpoint - and one `undo` would take back the turn and the tail of
-    /// the files and leave their head.
+    /// note: Under one lock. Item by item, a turn recorded on another thread halfway through would
+    /// land inside this checkpoint, and one `undo` would take back the turn and the tail of the
+    /// files and leave their head.
     pub fn push_all(&self, items: impl IntoIterator<Item = ContextItem>) -> Vec<ContextId> {
         let mut items = items.into_iter().peekable();
         if items.peek().is_none() {
@@ -57,19 +57,17 @@ impl Kernel {
             .collect()
     }
 
-    /// Adds an item in place of an existing one, excluding the old one with a note naming the
-    /// new, as one undoable operation.
+    /// Adds an item in place of an existing one, excluding the old one with a note naming the new,
+    /// as one undoable operation.
     ///
-    /// note: not [`Kernel::replace`], which changes what an item says where it stands and keeps
-    /// its identifier. This puts a new item at the end of the context - of any kind, under any
-    /// label - and takes the old one out, which is the shape for a caller whose next round
-    /// replaces the last. It is explicit because the kernel cannot tell whether a second read of
-    /// a file replaces the first or stands beside it. The old item keeps its identifier and its
-    /// contents, and comes back with a [`Kernel::set_state`] or a [`Kernel::undo`] like anything
-    /// else.
+    /// note: not [`Kernel::replace`], which changes an item in place and keeps its identifier. This
+    /// puts a new item at the end of the context, of any kind under any label, and takes the old
+    /// one out. It is explicit because the kernel cannot tell whether a second read of a file
+    /// replaces the first or stands beside it. The old item keeps its identifier and contents, and
+    /// comes back with [`Kernel::set_state`] or [`Kernel::undo`].
     pub fn supersede(&self, old: ContextId, item: ContextItem) -> Result<ContextId> {
-        // one lock for the check and both changes, so that an `undo` on another thread cannot take
-        // `old` away in between and leave this answering `Ok` having superseded nothing
+        // one lock for the check and both changes, so an `undo` on another thread cannot take `old`
+        // away in between and leave this answering `Ok` having superseded nothing
         let held = self.0.counter.read();
         let counter = &**held;
         let mut context = self.0.context.write();
@@ -94,13 +92,13 @@ impl Kernel {
 
     /// Replaces an item's metadata, which is otherwise write-once.
     ///
-    /// note: [`ContextItem::meta`] exists so that a [`Compactor`] or a [`Projector`] can be given
-    /// hints, and a hint you can only set before the item exists is not much use - by the time
-    /// you know a tool result was worthless, it has already been recorded.
+    /// note: [`ContextItem::meta`] exists so a [`Compactor`] or [`Projector`] can be given hints. A
+    /// hint you can only set before the item exists is not much use: by the time a tool result is
+    /// known worthless, it has already been recorded.
     ///
-    /// note: no checkpoint of its own. Metadata belongs to the operation it describes, so an
-    /// undo takes an annotation back with the operation before it. It still clears what a redo
-    /// could have put back.
+    /// note: no checkpoint of its own. Metadata belongs to the operation it describes, so undo
+    /// takes an annotation back with the operation before it. It still clears what a redo could
+    /// have put back.
     ///
     /// [`Compactor`]: crate::Compactor
     /// [`Projector`]: crate::Projector
@@ -179,8 +177,8 @@ impl Kernel {
 
         let mut announcements = Vec::new();
         {
-            // the whole operation happens under one lock, so that the checkpoint it takes is a
-            // snapshot of the context the changes are actually applied to
+            // the whole operation happens under one lock, so the checkpoint is a snapshot of the
+            // context the changes are applied to
             let mut context = self.0.context.write();
             let mut targets = Vec::new();
             for (id, state, note) in changes {
@@ -193,9 +191,9 @@ impl Kernel {
                 }
             }
 
-            // an operation that changes nothing does not get a checkpoint: spending one would
-            // make the next `undo` put back what is already there, and the operation somebody
-            // wanted reverted would need a second one
+            // an operation that changes nothing does not get a checkpoint: spending one would make
+            // the next `undo` put back what is already there, and the operation somebody wanted
+            // reverted would need a second one
             if targets.is_empty() {
                 return outcome;
             }
@@ -228,8 +226,8 @@ impl Kernel {
     /// note: a replacement with what the item already says is not an operation. Nothing observable
     /// changes, so nothing is announced and no checkpoint is taken - the same rule
     /// [`Kernel::set_state`] follows through `Context::would_change`. A checkpoint for it would be
-    /// an undo that puts back a state identical to the one it was asked from, and the operation
-    /// somebody actually wanted reverted would need a second one.
+    /// an undo that puts back an identical state, and the operation somebody actually wanted
+    /// reverted would need a second one.
     pub fn replace(&self, id: ContextId, content: impl Into<Content>) -> Result<()> {
         let content = content.into();
         let held = self.0.counter.read();
@@ -282,8 +280,8 @@ impl Kernel {
         if Self::holds_calls(&machine.state) {
             return Err(Error::Busy);
         }
-        // the counter between the two, for the lock order: what comes back was counted on the
-        // scale in force when its checkpoint was taken, and is counted again on this one
+        // the counter between the two, for the lock order: what comes back was counted on the scale
+        // in force when its checkpoint was taken, and is counted again on this one
         let held = self.0.counter.read();
         let mut context = self.0.context.write();
         let before = context.items().to_vec();
@@ -322,10 +320,9 @@ impl Kernel {
 
     /// Puts back what the last [`Kernel::undo`] took away, returning whether there was any.
     ///
-    /// note: A stack, not a toggle: undoing three operations and redoing them puts all three
-    /// back, in order. Any new context operation makes what was undone unreachable, because a
-    /// redo that reached across work done since would be overwriting it rather than restoring
-    /// anything.
+    /// note: A stack, not a toggle: undoing three operations and redoing them puts all three back,
+    /// in order. Any new context operation makes what was undone unreachable, because redoing
+    /// across later work would overwrite it rather than restore it.
     ///
     /// note: [`Error::Busy`] while a turn holds calls, for the reason [`Kernel::undo`] gives.
     pub fn redo(&self) -> Result<bool> {
@@ -386,8 +383,8 @@ impl Kernel {
 
     /// Returns how much room the next request would take, and how much there is.
     pub fn budget(&self) -> Budget {
-        // one counter for both halves, as a request is priced: a `set_counter` landing between
-        // them would otherwise price the tools and the context by two different ones
+        // one counter for both halves, as a request is priced: a `set_counter` between them would
+        // otherwise price the tools and context by two different counters
         let counter = self.counter();
         let tool_tokens = tool_tokens(&self.tool_specs(), &*counter);
         let limit = self.model_info().and_then(|i| i.context_limit);
@@ -414,14 +411,13 @@ impl Kernel {
     /// Builds the request that the next [`Kernel::step`] would send - every message, every tool
     /// definition, every parameter.
     ///
-    /// note: There is no step between this and the wire where the kernel adds something of its
-    /// own.
+    /// note: The kernel adds nothing of its own between this and the wire.
     ///
-    /// note: What can still change the request is a [`Compactor`], which runs at the start of
-    /// the next [`Kernel::step`] - and says exactly what it did - and with it the caller's full
-    /// notice, placed or retired as the compactor finds the context full or not; see
-    /// [`Kernel::set_full_notice`]. Each is an ordinary change to the context, with its own event,
-    /// and neither is the kernel's own words.
+    /// note: What can still change the request is a [`Compactor`], which runs at the start of the
+    /// next [`Kernel::step`] and says exactly what it did. With it goes the caller's full notice,
+    /// placed or retired as the compactor finds the context full or not; see
+    /// [`Kernel::set_full_notice`]. Each is an ordinary context change with its own event, and
+    /// neither is the kernel's own words.
     ///
     /// [`Compactor`]: crate::Compactor
     pub fn preview_request(&self) -> Result<ModelRequest> {
@@ -451,20 +447,19 @@ impl Kernel {
 
     /// Applies a compaction plan, returning (and broadcasting) a report of what it did.
     ///
-    /// note: Pinned items in the plan are refused, and listed in [`CompactionReport::refused`].
-    /// So is a removal of the call or the result a pinned item is paired with, because the pair
-    /// goes out together or not at all.
+    /// note: Pinned items in the plan are refused, and listed in [`CompactionReport::refused`]. So
+    /// is removing the call or result paired with a pinned item, because the pair goes out together
+    /// or not at all.
     ///
-    /// note: a pass that turns out to move nothing takes no checkpoint, like every other
-    /// operation here. That is not a nicety about a hand-written plan: a [`Compactor`] is asked
-    /// before every request, and one whose every candidate is pinned or already elided answers
-    /// with a plan on every one of them - so a checkpoint spent here would cost an undo per
-    /// request, and [`Kernel::redo`] would be unreachable for the rest of the session.
+    /// note: A pass that moves nothing takes no checkpoint, like every other operation here. A
+    /// [`Compactor`] is asked before every request, and one whose every candidate is pinned or
+    /// already elided answers with a plan every time, so a checkpoint here would cost an undo per
+    /// request and make [`Kernel::redo`] unreachable for the rest of the session.
     ///
     /// [`Compactor`]: crate::Compactor
     pub fn apply_compaction(&self, plan: CompactionPlan) -> CompactionReport {
-        // both taken before the context lock, because that is the lock order and neither of these
-        // may be reached for once it is held
+        // both are taken before the context lock, because that is the lock order and neither can be
+        // reached once it is held
         let projector = self.projector();
         let held = self.0.counter.read();
         let counter = &**held;
@@ -482,28 +477,27 @@ impl Kernel {
         let mut added = None;
 
         // the whole pass happens under one lock. Taking it item by item would let a push land
-        // between the checkpoint and the removals, and the next `undo` would then restore a
-        // context that never existed - one without the item somebody had just added
+        // between the checkpoint and the removals, and the next `undo` would restore a context that
+        // never existed - one without the item somebody had just added
         {
             let mut context = self.0.context.write();
-            // the projected total rather than the sum of the items, which is what the report says
-            // it is and what a pass is judged by. Summing the items credits an elision with the
-            // whole of what it took away and charges nothing for the marker left in its place -
-            // so a pass could report a decrease having made the request bigger. Projecting is a
-            // walk over the items that moves `Content` by pointer, and it happens once a request
-            // at most
+            // the projected total, not the sum of the items: that is what the report says and what
+            // a pass is judged by. Summing credits an elision with the whole of what it took away
+            // and nothing for the marker left in its place, so a pass could report a decrease
+            // having made the request bigger. Projecting walks the items, moving `Content` by
+            // pointer, and happens once a request at most
             let before = projector.project(context.items());
             let cost_before = projection_cost(&before, counter);
-            // what a pass may take is what the request is carrying, and the projection is the
-            // only thing that knows. An item the projector repaired away - a second result for a
-            // call that already has one - is `Active`, holds everything it holds, and is
-            // contributing nothing: taking it recovers nothing, reports the whole of it as
-            // recovered, and moves something that was never being sent
+            // what a pass may take is what the request is carrying, and the projection is the only
+            // thing that knows. An item the projector repaired away - a second result for a call
+            // that already has one - is `Active`, holds everything, and contributes nothing: taking
+            // it recovers nothing, reports the whole of it as recovered, and moves something that
+            // was never being sent
             let carrying: HashSet<ContextId> = before.included.iter().copied().collect();
             // a call and its result go out together or not at all, so excluding one half of a
-            // pinned pair takes the pinned half out of the request with it - reaching for the pin
-            // through the item beside it. Elision is not in this, because an elided item keeps
-            // its place in the pair
+            // pinned pair takes the pinned half out of the request with it, reaching for the pin
+            // through the item beside it. Elision is not in this, because an elided item keeps its
+            // place in the pair
             let pinned_calls: HashSet<&ToolCallId> = context
                 .items()
                 .iter()
@@ -511,12 +505,12 @@ impl Kernel {
                 .flat_map(|item| named_calls(item))
                 .collect();
 
-            // what the plan comes to is worked out before anything moves, because the checkpoint
-            // has to be taken before the first change and must not be taken at all if there is
-            // not going to be one. An id named twice, or in both lists, is moved once and reported
-            // once: removal wins, since it is the larger of the two. A pin is refused once per list
-            // that names it, however many times that list does: the report says what each list
-            // asked for, and a pin in both lists asked for two things
+            // The plan is worked out before anything moves, because the checkpoint must be taken
+            // before the first change and not at all if there is no change. An id named twice, or
+            // in both lists, is moved once and reported once: removal wins, since it is the larger
+            // of the two. A pin is refused once per list that names it, however many times that
+            // list does: the report says what each list asked for, and a pin in both lists asked
+            // for two things
             let mut planned = HashSet::new();
             let mut removing = Vec::new();
             let mut refused_removal = HashSet::new();
@@ -590,14 +584,13 @@ impl Kernel {
                 }
             }
 
-            // note: the note is set from the pass's reason rather than kept, as the removals
-            // above do - a note says why an item is in the state it is in, and the one it may
-            // already be carrying explains the state it is leaving, which would be a strange
-            // thing to hand the model as the reason it cannot see this any more
+            // note: the note is set from the pass's reason rather than kept, as the removals above
+            // do. A note says why an item is in the state it is in; the note it may already carry
+            // explains the state it is leaving, not the reason the model can no longer see it
             for entry in eliding {
-                // the reason as it was written, with no `compaction:` in front of it: unlike a
-                // removal's note this one is read by the model, in the brackets the projector
-                // puts round it, and a client showing it has already said `elided` in the row
+                // the reason as written, with no `compaction:` prefix: unlike a removal's note,
+                // this one is read by the model, in the brackets the projector puts round it, and
+                // the client row already says `elided`
                 let note = Some(reason.clone());
                 if let Some(from) = context.set_state(entry.id, ContextState::Elided, note.clone())
                 {

@@ -100,9 +100,9 @@ impl Compactor for Summarizer {
             tools: Vec::new(),
             params: Params::new(),
         };
-        // note: a summarizer that fails is not a reason to leave the context over its limit. The
-        // results are elided without one, and the reason says so - elided is not destroyed, so
-        // nothing is lost that a `set_state` cannot bring back
+        // note: if the summarizer fails, elide the results without a summary instead of leaving the
+        // context over its limit. The reason says the summary is missing. Elided items are not
+        // destroyed, so `set_state` can bring them back.
         let (summary, missing) = match self
             .provider
             .respond(request, DeltaSink::disconnected())

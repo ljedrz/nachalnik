@@ -1,9 +1,8 @@
-//! Something the model can invoke: what it declares, what it produces, and the trait that runs it.
+//! Tools the model can invoke: what they declare, what they produce, and the trait that runs them.
 //!
-//! note: three types and no implementations. The kernel executes nothing itself - no filesystem,
-//! no process spawning, no network - so this is the whole of what it knows about tools, and
-//! [`ToolSpec`]'s capability list is the part a [`PermissionPolicy`](crate::PermissionPolicy)
-//! reads before anything runs.
+//! note: three types and no implementations. The kernel executes nothing itself: no filesystem, no
+//! process spawning, no network. This is all it knows about tools. [`ToolSpec`]'s capability list
+//! is the part [`PermissionPolicy`](crate::PermissionPolicy) reads before anything runs.
 
 use std::sync::Arc;
 
@@ -22,8 +21,8 @@ use crate::{
 /// A tool's definition: its stable identity, its schema, and the capabilities it needs.
 ///
 /// note: The capability list is the tool's own permission declaration, visible to the user before
-/// anything runs. What the [`PermissionPolicy`] is asked about is the part of it one call needs -
-/// [`Tool::needs`], which is the whole list unless the tool says otherwise.
+/// anything runs. [`PermissionPolicy`] is asked about the part one call needs: [`Tool::needs`],
+/// which is the whole list unless the tool says otherwise.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSpec {
     /// The tool's stable identifier; this is the name the model calls.
@@ -115,38 +114,37 @@ impl ToolOutput {
 /// Something the model can invoke.
 ///
 /// note: The kernel ships no tools. It defines this trait, hands out the arguments the model
-/// produced, enforces the permission decision and the output limit, and records everything in
-/// the event stream. What a tool *does* is entirely the user's business - which is why there is
-/// no filesystem, no process spawning and no network code anywhere in this crate.
+/// produced, enforces the permission decision and the output limit, and records everything in the
+/// event stream. What a tool does is the user's business, so there is no filesystem, no process
+/// spawning and no network code in this crate.
 #[async_trait::async_trait]
 pub trait Tool: Send + Sync {
     /// Returns the tool's definition.
     ///
-    /// note: This is called every time a request is built, so it should be cheap. A tool whose
-    /// spec changes between calls is legal (and visible in [`Kernel::preview_request`]), but the
-    /// `id` is expected to be stable.
+    /// note: Called every time a request is built, so it should be cheap. A tool whose spec changes
+    /// between calls is legal and visible in [`Kernel::preview_request`], but its `id` is expected
+    /// to be stable.
     ///
-    /// note: called with the kernel's tool registry locked, so it must not call back into the
+    /// note: Called with the kernel's tool registry locked, so it must not call back into the
     /// [`Kernel`] it is registered with. [`Tool::invoke`] runs with no lock held and may.
     ///
-    /// note: and it must not panic. A panic in [`Tool::invoke`], [`Tool::needs`], [`Tool::limit`]
-    /// or [`Tool::unparsed`] - the ones that read what a model wrote - is caught and answers the
-    /// call; this one reads nothing the model wrote, and is asked wherever a tool is described,
+    /// note: It must not panic. A panic in [`Tool::invoke`], [`Tool::needs`], [`Tool::limit`] or
+    /// [`Tool::unparsed`] - the ones that read what a model wrote - is caught and answers the call.
+    /// This one reads nothing the model wrote, is asked wherever a tool is described, and is
     /// outside any catch.
     fn spec(&self) -> ToolSpec;
 
-    /// What *this* call needs, which is at most what the spec declares.
+    /// What *this* call needs, at most what the spec declares.
     ///
     /// note: a tool that does one thing declares it once and never implements this. A tool that
     /// does several - `fs`, whose `action` picks between reading a file and writing one - is the
-    /// only thing that can say which of them a given call is, because it is the only thing that
-    /// knows its own arguments. A policy reading the `action` argument itself would have to guess
-    /// from a string's shape whether `<name>:<name>` was an operation or a tool that happened to
-    /// have a colon in its name.
+    /// only thing that can say which of them a given call is, because only it knows its own
+    /// arguments. A policy reading the `action` argument would have to guess from a string's shape
+    /// whether `<name>:<name>` was an operation or a tool with a colon in its name.
     ///
-    /// note: the default is the whole of [`ToolSpec::capabilities`], which is right for a tool
-    /// with one operation and safe for any other: the strictest of everything consulted wins, so
-    /// a tool that declines to narrow is judged against all of it.
+    /// note: the default is the whole of [`ToolSpec::capabilities`], right for a tool with one
+    /// operation and safe for any other: the strictest of everything consulted wins, so a tool that
+    /// declines to narrow is judged against all of it.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         let _ = call;
         self.spec().capabilities
@@ -154,15 +152,14 @@ pub trait Tool: Send + Sync {
 
     /// How much of *this* call's output the model is shown, where that differs per call.
     ///
-    /// note: the sibling of [`Tool::needs`] and for the same reason. A tool that does one thing
-    /// has one natural answer size and sets it on the spec; a tool that reads a file and also
-    /// searches a directory has two, and thousands of bytes is a reasonable answer to one of
-    /// those and not to the other. Only the tool knows which call it was handed.
+    /// note: the sibling of [`Tool::needs`] and for the same reason. A tool that does one thing has
+    /// one natural answer size and sets it on the spec. A tool that reads a file and searches a
+    /// directory has two, and thousands of bytes is reasonable for one but not the other. Only the
+    /// tool knows which call it was handed.
     ///
     /// note: what it decides is what the *model* is shown, never what is kept. Unless
-    /// [`Config::keep_truncated_output`] is turned off, the kernel keeps the whole of anything
-    /// this shortens, excluded, so a tool narrowing its own answer is not a tool throwing part
-    /// of it away.
+    /// [`Config::keep_truncated_output`] is off, the kernel keeps the whole of anything this
+    /// shortens, excluded, so a tool narrowing its own answer is not throwing part of it away.
     fn limit(&self, call: &ToolCall) -> Option<usize> {
         let _ = call;
         self.spec().output_limit
@@ -171,13 +168,13 @@ pub trait Tool: Send + Sync {
     /// What to add to the kernel's answer to a call of this tool whose arguments were not a JSON
     /// object, given what the model wrote; see [`ToolCall::unparsed`].
     ///
-    /// note: the kernel answers such a call itself - the policy is not asked about it and the tool
-    /// is not handed it, since there are no arguments to read - and says which tool, that the
-    /// arguments did not parse, where, and what was written there. What it cannot say is what the
-    /// model should have written instead, which depends on the tool's arguments: a tool whose
-    /// arguments are laid out its own way knows the faults a model makes writing them. The default
-    /// adds nothing, and nothing is often the better answer: advice about escaping, measured, sent
-    /// models to escape what was already right.
+    /// note: the kernel answers such a call itself: the policy is not asked, and the tool is not
+    /// handed it, since there are no arguments to read. It says which tool, that the arguments did
+    /// not parse, where, and what was written there. What it cannot say is what the model should
+    /// have written instead; that depends on the tool's arguments. A tool whose arguments are laid
+    /// out its own way knows the faults a model makes writing them. The default adds nothing, and
+    /// nothing is often better: measured, advice about escaping sent models to escape what was
+    /// already right.
     fn unparsed(&self, written: &str) -> Option<String> {
         let _ = written;
         None
@@ -185,11 +182,11 @@ pub trait Tool: Send + Sync {
 
     /// Executes the call.
     ///
-    /// note: Returning `Err` is not a kernel failure; the error is turned into an error tool
-    /// result, recorded in the context, and handed to the model. Use [`ToolOutput::error`] when
-    /// the failure is expected and part of the tool's normal output.
+    /// note: Returning `Err` is not a kernel failure. The error becomes an error tool result,
+    /// recorded in the context and handed to the model. Use [`ToolOutput::error`] when the failure
+    /// is expected and part of the tool's normal output.
     ///
-    /// note: A tool that takes a while should report through `output` as it goes, so that its
-    /// progress is on the event stream instead of being invisible until it returns.
+    /// note: A tool that takes a while should report through `output` as it goes, so its progress
+    /// is on the event stream instead of invisible until it returns.
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError>;
 }

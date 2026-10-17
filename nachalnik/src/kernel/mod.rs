@@ -1,10 +1,10 @@
 //! The runtime: the state machine, the context it owns, and every operation a caller has on them.
 //!
 //! note: construction, resuming and observation, with the types the rest share. The state machine
-//! and the operations that move it are in `machine`, and what a turn is *made of* is next door in
-//! `request` and `calls`, because somebody reading this file wants to know what the kernel offers
-//! rather than how a stream of fragments is read; and what a caller can do to the context is in
-//! `context`, public still, because the surface is too long to read at once with it.
+//! and the operations that move it are in `machine`. What a turn is made of is in `request` and
+//! `calls`, because a reader of this file wants to know what the kernel offers rather than how a
+//! stream of fragments is read. What a caller can do to the context is in `context`, public still,
+//! because the surface is too long to read at once with it.
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -85,9 +85,8 @@ pub enum State {
     },
     /// Every call the model asked for is decided; the next step runs them.
     ///
-    /// note: This is a resting state on purpose. It is the moment at which the model has said
-    /// what it wants to do and nothing has happened yet, which is exactly when a user may want
-    /// to look (see [`Kernel::pending_calls`]).
+    /// note: this is a resting state: the model has said what it wants to do and nothing has
+    /// happened yet, so a user may want to look (see [`Kernel::pending_calls`]).
     Ready {
         /// The calls that are about to run, in order.
         calls: Vec<ToolCallId>,
@@ -103,12 +102,11 @@ pub enum State {
         item: ContextId,
         /// Why the model stopped.
         ///
-        /// note: This is here because "finished" and "finished *well*" are different things, and
-        /// a client that only matched on the variant would not be able to tell them apart. A
-        /// turn that ran out of output tokens ends in `Finished` with
-        /// [`StopReason::Length`] - and quite possibly no content at all, since a reasoning
-        /// model can spend its whole budget before saying anything. Whether to continue, warn or
-        /// shrug is the client's call; the kernel's job is not to let it pass unnoticed.
+        /// note: "finished" and "finished well" are different things, and a client that only
+        /// matched on the variant could not tell them apart. A turn that ran out of output tokens
+        /// ends in `Finished` with [`StopReason::Length`], possibly with no content at all, because
+        /// a reasoning model can spend its whole budget before saying anything. Whether to
+        /// continue, warn or shrug is the client's call; the kernel does not let it pass unnoticed.
         stop: StopReason,
     },
 }
@@ -181,9 +179,9 @@ impl StateChange {
 
 /// A run of recorded items that one [`Kernel::undo`] takes back whole; see [`Context::fold_since`].
 ///
-/// note: `None` until the first of them is added, which takes the checkpoint the rest belong to.
-/// Joining a checkpoint already taken - the answer to a call nobody can run joins the turn that
-/// asked for it - is being handed the same batch, already holding its number.
+/// note: `None` until the first item is added, which takes the checkpoint the rest belong to.
+/// Joining a checkpoint already taken hands you the same batch, already holding its number; the
+/// answer to a call nobody can run joins the turn that asked for it.
 #[derive(Default)]
 struct Batch(Option<u64>);
 
@@ -191,13 +189,13 @@ struct Batch(Option<u64>);
 ///
 /// note: a reader that needs several of these to agree holds them together, in this order:
 /// `machine`, then `tools`, `projector`, `params` and `counter`, then `context`, then `session`.
-/// Nothing takes one while holding one after it, which is what keeps two readers and a writer from
-/// waiting on each other. Each setter holds only its own lock and then `session`, to announce; a
-/// reader holding a component's lock across the sequence it reads is what makes the two agree.
+/// Nothing takes one while holding one after it, which keeps two readers and a writer from waiting
+/// on each other. Each setter holds only its own lock and then `session`, to announce; a reader
+/// holds a component's lock across the sequence it reads, which makes the two agree.
 ///
-/// note: so a figure the context keeps is counted with `counter` held across `context`, and not
-/// with a clone taken first. [`Kernel::set_counter`] recounts after it swaps, and an item measured
-/// with the clone of a counter swapped out in between would keep that counter's figure for good.
+/// note: a figure the context keeps is counted with `counter` held across `context`, not with a
+/// clone taken first. [`Kernel::set_counter`] recounts after it swaps; an item measured with a
+/// clone of a counter swapped out in between would keep that counter's figure permanently.
 struct InnerKernel {
     config: Config,
     machine: Mutex<Machine>,
@@ -238,34 +236,33 @@ struct InnerKernel {
 
 /// The agent runtime: a state machine, a context, and nothing else.
 ///
-/// A kernel is a cheaply clonable handle to shared state, so clients, tools and policies can
-/// hold on to it without ceremony.
+/// A kernel is a cheaply clonable handle to shared state, so clients, tools and policies can hold
+/// one.
 ///
-/// note: A kernel does nothing on its own. [`Kernel::step`] and [`Kernel::turn`] run on the
-/// caller's task, for as long as the caller lets them; between two steps, nothing is happening.
-/// It spawns no tasks either, with one opted-in exception: [`Config::parallel_tool_calls`] gives
-/// each of a turn's tool calls a task of its own, for the length of the step that started them
-/// and no longer.
+/// note: a kernel does nothing on its own. [`Kernel::step`] and [`Kernel::turn`] run on the
+/// caller's task, for as long as the caller lets them; between steps, nothing runs. It spawns no
+/// tasks, with one opted-in exception: [`Config::parallel_tool_calls`] gives each of a turn's tool
+/// calls a task of its own, for the length of the step that started them and no longer.
 ///
-/// note: One agent is one kernel. A fleet of them shares nothing except whatever you hand to
-/// both - a [`Tool`], a [`Provider`] - and needs no coordination, because a kernel's state is its
-/// own. Several threads driving *one* kernel is also fine: reading is cheap and every mutation is
-/// atomic, so a client can render, exclude and preview while a turn is running. What it cannot do
-/// is drive the loop twice at once, which is [`Error::Busy`] rather than a second request.
+/// note: one agent is one kernel. A fleet of them shares nothing except whatever you hand to both -
+/// a [`Tool`], a [`Provider`] - and needs no coordination, because a kernel's state is its own.
+/// Several threads driving one kernel is also fine: reading is cheap and every mutation is atomic,
+/// so a client can render, exclude and preview while a turn is running. It cannot drive the loop
+/// twice at once; that is [`Error::Busy`], not a second request.
 ///
-/// note: A kernel is not `Drop`-safe against reference cycles: if you store a `Kernel` inside a
-/// [`Tool`], a [`Provider`] or a [`PermissionPolicy`] that the same kernel holds, the cycle
-/// keeps everything alive. Either store a [`std::sync::Weak`] to your own state, or drop the
-/// components ([`Kernel::remove_tool`], [`Kernel::clear_provider`]) when you are done.
+/// note: a kernel is not `Drop`-safe against reference cycles: if you store a `Kernel` inside a
+/// [`Tool`], a [`Provider`] or a [`PermissionPolicy`] that the same kernel holds, the cycle keeps
+/// everything alive. Either store a [`std::sync::Weak`] to your own state, or drop the components
+/// ([`Kernel::remove_tool`], [`Kernel::clear_provider`]) when you are done.
 #[derive(Clone)]
 pub struct Kernel(Arc<InnerKernel>);
 
 impl fmt::Debug for Kernel {
-    /// note: A summary, not a dump. Everything here has an accessor that returns the real thing;
-    /// this is for the line of a log that says which kernel is being talked about.
+    /// note: a summary, not a dump. Everything here has an accessor that returns the real thing;
+    /// this is for a log line that says which kernel is being talked about.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // gathered before the context is read, so that a `{kernel:?}` cannot be the thing that
-        // orders two locks the wrong way round
+        // gathered before the context is read, so that `{kernel:?}` cannot order two locks the
+        // wrong way round
         let session = self.session_name();
         let state = self.state();
         let tools = self.tool_ids();
@@ -289,15 +286,14 @@ impl Kernel {
     /// Creates a kernel with the given [`Config`], and broadcasts [`Event::SessionStarted`].
     ///
     /// The kernel starts out in [`State::Idle`] with no provider, no tools, an [`AskAlways`]
-    /// permission policy, a [`LinearProjector`], a [`Calibrating<BytesPerToken>`] token counter,
-    /// no compactor, no parameters, and an empty context: it will not talk to anything, or agree
-    /// to anything, until it is told to.
+    /// permission policy, a [`LinearProjector`], a [`Calibrating<BytesPerToken>`] token counter, no
+    /// compactor, no parameters, and an empty context: it will not talk to anything or agree to
+    /// anything until told.
     ///
-    /// note: The counter is wrapped rather than bare because [`Calibrating`] costs nothing until
-    /// it is told something: it corrects by `1.0` until a provider has reported what a request
-    /// actually cost, so it *is* [`BytesPerToken`] until there is something better to be. Unwrap
-    /// it with [`Kernel::set_counter`] where a measurement needs a counter that never changes its
-    /// mind.
+    /// note: the counter is wrapped rather than bare because [`Calibrating`] costs nothing until it
+    /// is told something: it corrects by `1.0` until a provider has reported what a request
+    /// actually cost, so it is [`BytesPerToken`] until there is something better. Unwrap it with
+    /// [`Kernel::set_counter`] where a measurement needs a counter that never changes its mind.
     ///
     /// [`Calibrating<BytesPerToken>`]: Calibrating
     pub fn new(config: Config) -> Self {
@@ -423,21 +419,20 @@ impl Kernel {
     /// many of them it had not already been told about.
     ///
     /// note: [`Kernel::resume`] does this from [`Snapshot::used_calls`], which covers a session
-    /// picked back up in another process. This is for the other way of reading a snapshot: a
-    /// client that merges one *into* a session it is already running keeps the kernel it has, so
-    /// the turns it pushes arrive carrying identifiers this kernel never issued.
-    /// Without this the next response is free to hand one of them back, the repair has nothing to
-    /// compare it against, and the request that follows carries the same `tool_call_id` twice -
-    /// which most providers reject, and which is very hard to see afterwards. See
-    /// [`Event::ToolCallRepaired`].
+    /// picked back up in another process. This is for the other way of reading a snapshot: a client
+    /// that merges one into a session it is already running keeps the kernel it has, so the turns
+    /// it pushes arrive carrying identifiers this kernel never issued. Without this the next
+    /// response is free to hand one of them back, the repair has nothing to compare it against, and
+    /// the request that follows carries the same `tool_call_id` twice, which most providers reject
+    /// and which is very hard to see afterwards. See [`Event::ToolCallRepaired`].
     ///
-    /// note: a snapshot of this same session names identifiers this kernel *did* issue, and
-    /// reserving them changes nothing: the originals are still in the context. A client merging
-    /// one renames the colliding calls, and the results answering them, before pushing.
+    /// note: a snapshot of this same session names identifiers this kernel did issue, and reserving
+    /// them changes nothing: the originals are still in the context. A client merging one renames
+    /// the colliding calls, and the results answering them, before pushing.
     ///
-    /// note: identifiers and nothing else. What they belonged to is not the kernel's business,
-    /// and one reserved for an item that is later excluded stays reserved, because an identifier is
-    /// never reused - not even by an item [`Kernel::undo`] took away.
+    /// note: identifiers and nothing else. What they belonged to is not the kernel's business, and
+    /// one reserved for an item that is later excluded stays reserved, because an identifier is
+    /// never reused, not even by an item [`Kernel::undo`] took away.
     pub fn reserve_calls(&self, calls: impl IntoIterator<Item = ToolCallId>) -> usize {
         let mut seen = self.0.seen_calls.lock();
         let before = seen.len();
@@ -453,13 +448,13 @@ impl Kernel {
 
     /// Returns everything a later [`Kernel::resume`] needs to carry on from here.
     ///
-    /// note: Cheap enough to take after every turn, and worth it: this is the only thing that
-    /// can rebuild a context. The event log cannot, by design - an event names an item rather
-    /// than carrying its contents, which is what makes the log affordable to keep.
+    /// note: cheap enough to take after every turn, and worth it: this is the only thing that can
+    /// rebuild a context. The event log cannot, by design: an event names an item rather than
+    /// carrying its contents, which is what makes the log affordable to keep.
     ///
     /// note: the context is read before the used call identifiers, not after. A turn reserves a
     /// call's identifier before it records the item carrying the call, and an identifier is never
-    /// given back - so identifiers read afterwards cover every call in the items read before. Read
+    /// given back, so identifiers read afterwards cover every call in the items read before. Read
     /// the other way round, a turn recorded between the two would leave a call in `items` whose
     /// identifier `used_calls` does not have, for a resumed session to hand out again.
     pub fn snapshot(&self) -> Snapshot {
@@ -552,10 +547,10 @@ impl Kernel {
 
     // ---------------------------------------------------------------- session and observation
 
-    /// Returns the kernel's configuration, as it was built with.
+    /// Returns the kernel's configuration as it was built.
     ///
-    /// note: [`Config::max_requests_per_turn`] and [`Config::default_tool_output_limit`] here are
-    /// where the kernel started; [`Kernel::max_requests_per_turn`] and
+    /// note: [`Config::max_requests_per_turn`] and [`Config::default_tool_output_limit`] are where
+    /// the kernel started; [`Kernel::max_requests_per_turn`] and
     /// [`Kernel::default_tool_output_limit`] are what it holds to now.
     pub fn config(&self) -> &Config {
         &self.0.config
@@ -568,28 +563,28 @@ impl Kernel {
 
     /// Subscribes to the event stream.
     ///
-    /// note: A subscriber that cannot keep up with [`Config::event_queue_depth`] starts missing
-    /// events (`tokio`'s broadcast semantics). The event stream is the live view; the session
-    /// log, via [`Kernel::history`], is the complete one.
+    /// note: a subscriber that cannot keep up with [`Config::event_queue_depth`] starts missing
+    /// events (`tokio`'s broadcast semantics). The event stream is the live view; the session log,
+    /// via [`Kernel::history`], is the complete one.
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
         self.0.events.subscribe()
     }
 
     /// Returns the session's records, oldest first.
     ///
-    /// note: A copy of the whole log, which on a long session - and longer still with
-    /// [`Config::record_payloads`] on - is not free. [`Kernel::history_since`] is the one to
-    /// reach for when a client is following along, and [`Kernel::with_history`] when the answer
-    /// is a count or a search rather than the records themselves.
+    /// note: this returns a copy of the whole log, which is not free on a long session and bigger
+    /// still with [`Config::record_payloads`] on. Use [`Kernel::history_since`] when a client is
+    /// following along, and [`Kernel::with_history`] when the answer is a count or a search rather
+    /// than the records themselves.
     pub fn history(&self) -> Vec<Record> {
         self.0.session.lock().records().cloned().collect()
     }
 
     /// Runs a closure against the session log, copying nothing.
     ///
-    /// note: The mirror of [`Kernel::with_context`], and it carries a sharper version of the same
-    /// warning: the log is locked for the duration, so the closure must not call back into the
-    /// kernel - every emit on this kernel is waiting on it.
+    /// note: the mirror of [`Kernel::with_context`], with a sharper version of its warning: the log
+    /// is locked for the duration, so the closure must not call back into the kernel. Every emit on
+    /// this kernel waits on that lock.
     pub fn with_history<R>(&self, f: impl FnOnce(&Session) -> R) -> R {
         f(&self.0.session.lock())
     }
@@ -606,29 +601,28 @@ impl Kernel {
 
     /// Removes and returns the records up to and including `through`, oldest first.
     ///
-    /// note: The log is unbounded because a capped append-only log is not one. This is the other
-    /// way to keep a long session from growing forever: take the records, write them somewhere,
-    /// and the kernel stops holding on to them. Nothing goes missing behind anybody's back: every
-    /// record the kernel lets go of is handed to the caller who asked.
+    /// note: the log is unbounded; capping it would stop it being append-only. This is the other
+    /// way to stop a long session growing forever: take the records, write them somewhere, and the
+    /// kernel stops holding them. No record goes missing; every record the kernel drops is handed
+    /// to the caller who asked.
     pub fn drain_history(&self, through: u64) -> Vec<Record> {
         self.0.session.lock().drain_through(through)
     }
 
-    /// Returns the most recent response, in full - including the token counts the provider
-    /// reported and its raw payload.
+    /// Returns the most recent response in full, including the token counts the provider reported
+    /// and its raw payload.
     ///
-    /// note: The tool call identifiers here are the ones the kernel settled on (see
-    /// [`Event::ToolCallRepaired`]); [`ModelResponse::raw`] still holds whatever the provider
-    /// actually sent.
+    /// note: the tool call identifiers here are the ones the kernel settled on (see
+    /// [`Event::ToolCallRepaired`]); [`ModelResponse::raw`] still holds whatever the provider sent.
     pub fn last_response(&self) -> Option<Arc<ModelResponse>> {
         self.0.last_response.read().clone()
     }
 
-    /// Broadcasts [`Event::SessionFinished`], after [`Event::TurnUnfinished`] if the turn had
-    /// calls waiting to run.
+    /// Broadcasts [`Event::SessionFinished`], after [`Event::TurnUnfinished`] if the turn had calls
+    /// waiting to run.
     ///
-    /// note: This is a marker for whoever is reading the log, not a shutdown: the kernel owns no
-    /// tasks and remains perfectly usable afterwards - the waiting calls are still waiting.
+    /// note: this is a marker for whoever reads the log, not a shutdown. The kernel owns no tasks
+    /// and remains usable afterwards; the waiting calls are still waiting.
     pub fn finish(&self) {
         let machine = self.0.machine.lock();
         let waiting: Vec<ToolCallId> = machine.pending.iter().map(|p| p.call.id.clone()).collect();
@@ -640,25 +634,23 @@ impl Kernel {
 
     /// Records an event in the session log and broadcasts it.
     ///
-    /// note: The log is written and the event is broadcast under the same lock, so what a
-    /// subscriber sees is in the same order as what the log ends up holding, even when several
-    /// threads are driving the same kernel.
+    /// note: the log is written and the event broadcast under the same lock, so subscribers see
+    /// events in the order the log holds them, even when several threads drive the same kernel.
     ///
-    /// note: Callers emit while still holding the lock that made the change - the machine lock
-    /// for a transition, the context lock for everything the context does. Releasing first and
-    /// announcing afterwards looks tidier and is wrong: two threads excluding the same item can
-    /// then apply in one order and be logged in the other, and the log's last word on that item
-    /// contradicts the item. The order is machine, then context, then session, and nothing goes
-    /// back up it - `emit` takes the session lock and nothing else, and `send` on a broadcast
-    /// channel runs no subscriber code, so holding a lock across it costs a memcpy and blocks
-    /// nobody.
+    /// note: callers emit while still holding the lock that made the change: the machine lock for a
+    /// transition, the context lock for everything the context does. Releasing first and announcing
+    /// afterwards is wrong: two threads excluding the same item can then apply in one order and be
+    /// logged in the other, and the log's last word on that item contradicts the item. The lock
+    /// order is machine, then context, then session, and nothing goes back up it. `emit` takes the
+    /// session lock and nothing else, and `send` on a broadcast channel runs no subscriber code, so
+    /// holding a lock across it costs a memcpy and blocks nobody.
     ///
-    /// note: the component setters hold their own lock the same way, which is what stops two
-    /// clients swapping the same component from applying in one order and being logged in the
-    /// other - and the log's last word on the provider naming the one that is not installed. What
-    /// this asks of a component is that [`Provider::info`] and the `name` of a policy, projector,
-    /// counter or compactor do not reach back into the kernel: each is called while the lock
-    /// holding that component is held, to say what was replaced.
+    /// note: the component setters hold their own lock the same way, which stops two clients
+    /// swapping the same component from applying in one order and being logged in the other, with
+    /// the log's last word on the provider naming the one that is not installed. A component's
+    /// [`Provider::info`] and the `name` of a policy, projector, counter or compactor must not
+    /// reach back into the kernel: each is called while the lock holding that component is held, to
+    /// say what was replaced.
     pub(crate) fn emit(&self, event: Event) {
         let mut session = self.0.session.lock();
 
@@ -672,8 +664,8 @@ impl Kernel {
 
     // -------------------------------------------------------------------------------- internals
 
-    /// Adds an item as part of a batch that is one operation for [`Kernel::undo`]: the first of
-    /// them takes the checkpoint, and every later one folds whatever was checkpointed since into it.
+    /// Adds an item as part of a batch that is one operation for [`Kernel::undo`]: the first takes
+    /// the checkpoint, and every later one folds whatever was checkpointed since into it.
     fn add_in(&self, item: ContextItem, batch: &mut Batch) -> ContextId {
         let held = self.0.counter.read();
         let counter = &**held;
@@ -749,7 +741,7 @@ impl Kernel {
 
 /// Whether two versions of an item differ in nothing but the counter's two figures.
 ///
-/// note: every field named, so that one added to [`ContextItem`] has to be placed on one side of
+/// note: every field is named, so a field added to [`ContextItem`] must be placed on one side of
 /// that line or the other before this compiles.
 fn alike(a: &ContextItem, b: &ContextItem) -> bool {
     let ContextItem {
@@ -779,8 +771,8 @@ fn alike(a: &ContextItem, b: &ContextItem) -> bool {
 
 /// The event announcing an item that has just been added.
 ///
-/// note: one function for both places an item comes in - an ordinary push and a compaction's
-/// summary - so that what the record says about a new item cannot differ by which one added it.
+/// note: one function serves both an ordinary push and a compaction's summary, so the record about
+/// a new item cannot differ by which one added it.
 fn addition(item: &ContextItem) -> Event {
     Event::ContextAdded {
         id: item.id,
@@ -793,19 +785,18 @@ fn addition(item: &ContextItem) -> Event {
     }
 }
 
-/// The change announcing an item that was added in a state other than [`ContextState::Active`].
+/// The event for an item added in a state other than [`ContextState::Active`].
 ///
-/// note: `context.added` says what an item is and does not say what state it is in, because every
-/// state change is an event of its own and a state is not a change. An item that arrives pinned,
-/// or arrives elided because a loaded session left it that way, therefore reached the log as
-/// active - which is the opposite of the truth about it. A second event, saying from `Active` to
-/// what the item actually is, is what a later `set_state` would have said and what a log replayed
-/// needs to read the context back. `None` for an item that arrives active, whose state the
-/// addition already accounts for.
+/// note: `context.added` reports what an item is, not its state, because every state change is its
+/// own event. An item that arrives pinned or elided, because a loaded session left it that way,
+/// would otherwise reach the log as active when it is not. The second event, from `Active` to the
+/// item's actual state, is what a later `set_state` would emit and what a replayed log needs to
+/// rebuild the context. Returns `None` for an item that arrives active, whose state the addition
+/// already records.
 ///
-/// note: a field on `context.added` would say it in one record, and `Event` is
-/// `#[non_exhaustive]` - which says nothing about its variants, and a field on one of them is a
-/// break to every pattern and every struct literal written against it.
+/// note: a field on `context.added` would report the state in one record. `Event` is
+/// `#[non_exhaustive]`, which does not cover its variants, and a field on one variant breaks every
+/// pattern and struct literal written against it.
 fn arriving(item: &ContextItem) -> Option<Event> {
     (item.state != ContextState::Active).then(|| Event::ContextChanged {
         id: item.id,

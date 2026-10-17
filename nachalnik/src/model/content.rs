@@ -1,5 +1,5 @@
-//! What a message is made of: [`Content`], the [`Blob`] a picture or a document is carried in,
-//! and the [`Part`]s and [`Block`]s an ordered turn is written in.
+//! A message is made of [`Content`], the [`Blob`] that carries a picture or a document, and the
+//! [`Part`]s and [`Block`]s an ordered turn is written in.
 
 use std::{borrow::Cow, fmt, sync::Arc};
 
@@ -34,32 +34,29 @@ pub enum Content {
     Json(Arc<Value>),
     /// An ordered sequence of typed [`Block`]s.
     ///
-    /// note: this is what an assistant turn is in a dialect where the *order* is part of the
-    /// message - thinking, a sentence, a tool call, more thinking, another call. It is here
-    /// rather than as a field on [`Message`] because content is the one thing a
-    /// [`ModelResponse`], a [`ContextItem`](crate::ContextItem) and a [`Message`] all carry, so
-    /// putting the order in it carries the order the whole way from the wire to the context and
-    /// back out again. A field on `Message` would be a shape the context could not hold, and so
-    /// one no projector could project out of it.
+    /// note: in a dialect where the *order* is part of the message, an assistant turn is written
+    /// this way - thinking, a sentence, a tool call, more thinking, another call. The order is here
+    /// rather than on [`Message`] because content is the one thing a [`ModelResponse`], a
+    /// [`ContextItem`](crate::ContextItem) and a [`Message`] all carry, so the order travels the
+    /// whole way from the wire to the context and back. A field on `Message` would be a shape the
+    /// context could not hold and no projector could project.
     ///
     /// note: an assistant turn is recorded *either* this way *or* the conventional way - content
     /// here, reasoning and calls in their own slots - and never both, so there is never a second
-    /// account of the same turn to disagree with the first. [`Message::calls`],
-    /// [`ModelResponse::calls`] and [`ContextItem::calls`](crate::ContextItem::calls) read
-    /// whichever one is in use, and are what the kernel, the projector and a provider should
-    /// reach for.
+    /// account of the same turn. [`Message::calls`], [`ModelResponse::calls`] and
+    /// [`ContextItem::calls`](crate::ContextItem::calls) read whichever is in use, and the kernel,
+    /// the projector and a provider should use them.
     ///
     /// note: a [`Block`] holds a [`Content`], so this nests and nothing here stops it. Nothing
-    /// produces a nested one - a turn is a flat sequence in every dialect there is - and everything
-    /// in this crate treats it as flat. A sequence deep enough to matter would recurse through
+    /// produces a nested one (a turn is a flat sequence in every dialect) and everything in this
+    /// crate treats it as flat. A sequence deep enough to matter would recurse through
     /// [`Content::to_text`] and through `Drop`, and that is on whoever hand-wrote the snapshot.
     Blocks(Arc<[Block]>),
     /// Bytes that are not text: an image, a document, a recording.
     ///
-    /// note: the runtime does not look inside it. What it does is carry it, count it and hand it
-    /// to a [`Provider`], the same as everything else here - and *name* it wherever it has to be
-    /// turned into text, because a gap where a picture was is worse than a sentence saying there
-    /// was one.
+    /// note: the runtime does not look inside it. It carries it, counts it and hands it to a
+    /// [`Provider`] like everything else here, and *names* it wherever it has to be turned into
+    /// text, because a gap where a picture was is worse than a sentence saying there was one.
     Blob(Arc<Blob>),
 }
 
@@ -83,26 +80,23 @@ pub struct Blob {
     pub data: Arc<str>,
     /// Whatever the producer knows about the payload that a byte length does not say.
     ///
-    /// note: The kernel never reads this, and the bargain is the one
-    /// [`ContextItem::meta`](crate::ContextItem::meta) already strikes: somewhere to put a fact
-    /// the runtime has no business having an opinion about. Here the fact that matters is what a
-    /// [`TokenCounter`](crate::TokenCounter) would need to price a payload, because a byte length
-    /// cannot reach it - `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document,
-    /// `{"seconds": 184, "fps": 30}` for a recording. Every vendor's formula is over figures like
-    /// those and each vendor's is different, so the crate carries none of them and carries the
-    /// place to put the inputs instead.
+    /// note: the kernel never reads this. Like [`ContextItem::meta`](crate::ContextItem::meta), it
+    /// is a place for a fact the runtime does not interpret. The fact that matters here is what a
+    /// [`TokenCounter`](crate::TokenCounter) needs to price a payload, which a byte length cannot
+    /// reach: `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document,
+    /// `{"seconds": 184, "fps": 30}` for a recording. Each vendor prices from figures like these,
+    /// and each differently, so the crate carries no formula, only the place to put its inputs.
     ///
-    /// note: on the blob rather than on the item, because a budget is counted over the
-    /// *projected messages*, and a [`Message`] carries an item's [`Content`] and not its
-    /// metadata. A fact left on `ContextItem::meta` reaches
-    /// [`TokenCounter::count_item`](crate::TokenCounter::count_item) and never reaches the figure
-    /// a [`Compactor`](crate::Compactor) acts on.
+    /// note: on the blob rather than on the item because a budget is counted over the *projected
+    /// messages*, and a [`Message`] carries an item's [`Content`] and not its metadata. A fact left
+    /// on `ContextItem::meta` reaches [`TokenCounter::count_item`](crate::TokenCounter::count_item)
+    /// but never the figure a [`Compactor`](crate::Compactor) acts on.
     ///
-    /// note: a counter is the reason this exists and not the only thing entitled to read it. A
-    /// [`Provider`] may too, and one does: the conventional dialect's attachment part will not go
-    /// out without a filename, so `nachalnik-providers` reads `name` here and derives one from the
-    /// media type when nobody set it. That is a convention between a caller and a provider rather
-    /// than anything this crate enforces - there is no key here the kernel knows the meaning of.
+    /// note: a counter is the reason this exists, not the only reader. A [`Provider`] may read it,
+    /// and one does: the conventional dialect's attachment part needs a filename, so
+    /// `nachalnik-providers` reads `name` here and derives one from the media type when it is
+    /// unset. That is a convention between caller and provider; no key here has a meaning the
+    /// kernel knows.
     #[serde(default = "null", skip_serializing_if = "is_null")]
     pub meta: Arc<Value>,
 }
@@ -129,23 +123,22 @@ impl Blob {
         self.data.len()
     }
 
-    /// How large the whole blob is on the wire: the payload and the media type naming it.
+    /// How large the whole blob is on the wire: the payload and the media type.
     ///
-    /// note: [`Blob::meta`] is not in it, because it is not sent. A dialect may *read* one of its
-    /// keys and derive a field of its own, as `nachalnik-providers` does with `name` to fill the
-    /// filename an attachment part will not go out without, but what a dialect wraps around the
-    /// payload is the dialect's to count - the same reason the envelope of the message carrying
-    /// it is not in here either.
+    /// note: [`Blob::meta`] is not counted, because it is not sent. A dialect may read a key and
+    /// derive a field of its own, as `nachalnik-providers` does with `name` for the attachment
+    /// filename, but what a dialect wraps around the payload is the dialect's to count, as is the
+    /// envelope of the message carrying the blob.
     pub fn wire_len(&self) -> usize {
         self.byte_len() + self.media_type.len()
     }
 }
 
 impl fmt::Display for Blob {
-    /// Names it, for the places something has to be text.
+    /// The blob as text, for the places something has to be text.
     ///
-    /// note: bracketed, as `nachalnik-mcp` names a tool result it could not carry, and holding the
-    /// two facts that are useful in its place: what it was, and how much of it there was.
+    /// note: bracketed, as `nachalnik-mcp` names a tool result it could not carry, and giving the
+    /// two facts useful in its place: what it was, and how much of it there was.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}, {}]", self.media_type, sized(self.byte_len()))
     }
@@ -225,18 +218,16 @@ impl Content {
 
     /// Returns the content as text, serializing it first if it is [`Content::Json`].
     ///
-    /// note: for [`Content::Blocks`] this is what the turn *said* - the text blocks, joined with
-    /// a newline - and not what it costs to send: the thinking and the tool calls are not text
-    /// the model uttered, and a provider that put them in a `content` field would be sending the
-    /// model its own reasoning as if it had said it out loud. [`Content::byte_len`] is the other
-    /// question, and it counts all of them. The newline is there because two text blocks were
-    /// separated by *something* - a call, a thought - and running them together would make a word
-    /// that was never in the output.
+    /// note: for [`Content::Blocks`] this is what the turn said - the text blocks joined with a
+    /// newline - not what it costs to send. Thinking and tool calls are left out: a provider that
+    /// put them in a `content` field would send the model its own reasoning as if it had said it
+    /// out loud. [`Content::byte_len`] counts all of them. The newline is there because two text
+    /// blocks were separated by something - a call, a thought - and running them together would
+    /// form a word that was never in the output.
     ///
-    /// note: for [`Content::Blob`] there is no faithful answer, so this names it rather than
-    /// giving one - `[image/png, 12.05kB]`. An empty string would make a picture vanish from a
-    /// transcript with nothing to say it was there. Anything that wants the payload asks
-    /// [`Content::as_blob`] for it.
+    /// note: for [`Content::Blob`] there is no faithful answer, so this names it:
+    /// `[image/png, 12.05kB]`. An empty string would make a picture vanish from a transcript with
+    /// nothing to say it was there. Anything that wants the payload asks [`Content::as_blob`].
     pub fn to_text(&self) -> Cow<'_, str> {
         match self {
             Self::Text(s) => Cow::Borrowed(s),
@@ -540,17 +531,17 @@ impl<C: Into<Content>> From<C> for Part {
     }
 }
 
-/// One piece of an assistant turn, in the position the model produced it in.
+/// One piece of an assistant turn, in the order the model produced it.
 ///
-/// note: three variants, because three things interleave in a turn: what the model thought, what
-/// it said, and what it asked for. A dialect that keeps their order - Anthropic's content blocks,
-/// Gemini's `parts`, a reasoning model that thinks again between two calls - cannot be expressed
-/// by a message with one content slot, one reasoning slot and a flat list of calls, however
-/// cleverly it is projected. The order is itself the information, and this is where it goes.
+/// note: there are three variants because a turn interleaves what the model thought, what it said,
+/// and what it asked for. Some dialects keep that order: Anthropic's content blocks, Gemini's
+/// `parts`, and a reasoning model that thinks again between two calls. A message with one content
+/// slot, one reasoning slot, and a flat list of calls cannot express that order, no matter how it
+/// is projected. The order carries information; this enum stores it.
 ///
-/// note: nothing here is new *state*. A [`Block::Call`] is the same [`ToolCall`] a conventional
-/// turn carries, with the same `extra`; a [`Part`] is that `extra` for the two variants that are
-/// not calls. What is new is that they are in a list, in order.
+/// note: this adds no new state. A [`Block::Call`] is the same [`ToolCall`] a conventional turn
+/// carries, with the same `extra`. A [`Part`] is that `extra` for the two variants that are not
+/// calls. What is new is the ordered list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -593,9 +584,9 @@ impl Block {
 
     /// Returns what the model uttered, if this is [`Block::Text`].
     ///
-    /// note: not [`Block::Reasoning`], which is the thing the model did *not* say out loud. The
-    /// difference is what keeps [`Content::to_text`] from handing a provider the model's own
-    /// thinking to send back as content.
+    /// note: it does not return [`Block::Reasoning`], which is what the model did not say out loud.
+    /// This distinction keeps [`Content::to_text`] from sending a provider the model's own thinking
+    /// as content.
     pub fn said(&self) -> Option<&Part> {
         match self {
             Self::Text(part) => Some(part),

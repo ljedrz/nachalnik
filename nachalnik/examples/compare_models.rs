@@ -1,4 +1,4 @@
-//! Ask several models the same thing at once, and prove that it *was* the same thing.
+//! Ask several models the same thing at once, and prove that it was the same thing.
 //!
 //! ```text
 //! export NACHALNIK_API_KEY=...
@@ -12,20 +12,19 @@
 //!   cargo run --example compare_models -- -m llama3.2 -m granite4.2:3b "is this sound?"
 //! ```
 //!
-//! A comparison is only worth anything if the only thing that differed was the model, and that
-//! is normally taken on trust: the harness assembles a prompt somewhere inside itself, per
-//! model, and you get the answers. Here each model gets a [`Kernel`] of its own, the *same*
-//! [`ContextItem`]s are pushed into every one of them, and the tool prints the fingerprint of
-//! the exact request each is about to receive. When they match, they match byte for byte, and
-//! you can see that they do before anything is sent.
+//! A comparison is worth something only if the model was the only thing that differed, and that
+//! is usually taken on trust. Here each model gets its own [`Kernel`]. The same [`ContextItem`]s
+//! are pushed into every one, and the tool prints the fingerprint of the exact request each is
+//! about to receive. When they match, they match byte for byte, and you can see that before
+//! anything is sent.
 //!
 //! ```text
 //! compare_models [-m MODEL].. [-f FILE].. [-s SYSTEM] [--seq] [--payload] [--save DIR] [-i] [prompt...]
 //! ```
 //!
-//! With no prompt on the command line it asks for one, and keeps asking. From the second round
-//! on, each context also holds that model's own answers, and the tool says so rather than
-//! quietly comparing different things.
+//! With no prompt on the command line it asks for one, and keeps asking. From the second round on,
+//! each context also holds that model's own answers, and the tool says so rather than quietly
+//! comparing different things.
 
 use std::{
     collections::HashMap,
@@ -75,10 +74,9 @@ struct Answer {
 
 /// A 64-bit FNV-1a digest of a request.
 ///
-/// note: This is here so that "they were sent the same thing" can be *checked* rather than
-/// asserted. It is not a cryptographic hash and does not need to be - nobody is attacking their
-/// own prompt - it only has to notice a difference, and the bytes it runs over are the serialized
-/// messages themselves.
+/// note: This exists so that "they were sent the same thing" can be checked rather than asserted.
+/// It is not a cryptographic hash and does not need to be: nobody is attacking their own prompt, so
+/// it only has to notice a difference. It runs over the serialized messages themselves.
 fn fingerprint(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in bytes {
@@ -130,11 +128,11 @@ fn prompt(text: &str) -> Option<String> {
 
 /// Reports what each model is about to be sent, and whether it is the same thing.
 ///
-/// note: The claim is checked twice, and neither check takes the runtime's word for it: the
-/// first fingerprint runs over the whole of [`Kernel::preview_request`] serialized - messages,
-/// tools and parameters, which is the next request - and the second over only the items the user
-/// put there. The first stops matching as soon as the models have said anything, because by then
-/// the contexts differ, and the report says so rather than hiding it.
+/// note: The claim is checked twice, and neither check takes the runtime's word for it. The first
+/// fingerprint runs over the whole of [`Kernel::preview_request`] serialized: messages, tools and
+/// parameters, which is the next request. The second runs over only the items the user put there.
+/// The first stops matching as soon as the models have said anything, because the contexts differ
+/// by then; the report says so rather than hiding it.
 fn report_inputs(contenders: &[Contender], payloads: bool) -> Result<(), BoxError> {
     heading("INPUTS · what each model is about to be sent");
     println!(
@@ -232,9 +230,9 @@ async fn ask(contenders: &[Contender], sequential: bool) -> Vec<Answer> {
         return answers;
     }
 
-    // one task per kernel: the kernels share nothing, so there is nothing to coordinate. Note
-    // that this is the *example* spawning tasks, not the kernel - a kernel spawns none unless
-    // `Config::parallel_tool_calls` says so
+    // One task per kernel: the kernels share nothing, so there is nothing to coordinate. The
+    // example spawns the tasks, not the kernel; a kernel spawns none unless
+    // `Config::parallel_tool_calls` says so.
     let mut running = tokio::task::JoinSet::new();
     for (index, contender) in contenders.iter().enumerate() {
         let kernel = contender.kernel.clone();
@@ -383,8 +381,8 @@ async fn main() -> Result<(), BoxError> {
         });
     }
 
-    // the same items, pushed into every context. That is not a feature of the runtime: a context
-    // is a list the caller owns, so "give them all the same one" is a `for` loop
+    // The same items, pushed into every context. That is not a runtime feature: a context is a list
+    // the caller owns, so giving them all the same items is a `for` loop.
     let mut shared = Vec::new();
     if let Some(text) = system {
         shared.push(ContextItem::instruction("system", text));
@@ -396,8 +394,8 @@ async fn main() -> Result<(), BoxError> {
                     .because("the user named it on the command line")
                     .pinned(),
             ),
-            // refused rather than skipped: a comparison run without a file somebody named is one
-            // that paid for every model's answer to a different question
+            // Refused rather than skipped: a comparison run without a named file is one that paid
+            // for every model's answer to a different question.
             Err(e) => bail(&format!("could not read {path}: {e}")),
         }
     }

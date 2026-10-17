@@ -1,10 +1,10 @@
 //! Who may run what: the capabilities a tool declares, the policy asked about a call, and the
 //! answer it gives.
 //!
-//! note: a decision point with a paper trail rather than a boundary. Exactly one thing is
-//! enforced - a refused call is never handed to [`Tool::invoke`](crate::Tool::invoke) - and every
-//! type below is a label the kernel compares and reports rather than a property it can check.
-//! Containment belongs inside a tool or around the whole process.
+//! note: a decision point with a paper trail, not a boundary. Exactly one thing is enforced: a
+//! refused call is never handed to [`Tool::invoke`](crate::Tool::invoke). Every type below is a
+//! label the kernel compares and reports, not a property it can check. Containment belongs inside a
+//! tool or around the whole process.
 
 use std::{fmt, sync::Arc};
 
@@ -17,10 +17,10 @@ use crate::{Kernel, Tool};
 
 /// The family of side effect an operation belongs to: what a rule is written about.
 ///
-/// note: three the runtime can name and everything else by its own name. `nachalnik` ships no
-/// tools, so it can vouch for the domains any agent has - a filesystem, a process, a socket - and
-/// cannot know that a client has one of its own called `context`. Those arrive as
-/// [`Domain::Other`], and the client that invented them is the one with names for them.
+/// note: the runtime can name three domains, and everything else arrives by its own name.
+/// `nachalnik` ships no tools, so it can vouch for the domains any agent has - a filesystem, a
+/// process, a socket - but cannot know that a client has one of its own, such as `context`. Those
+/// arrive as [`Domain::Other`], and the client that invented them names them.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum Domain {
@@ -62,32 +62,29 @@ impl From<&str> for Domain {
 
 /// What a [`Tool`] does, as one operation in one domain: `fs:read`, `context:revise`.
 ///
-/// note: two levels and no more. A domain is a thing that can be acted on and an operation is an
-/// act on it, so a rule is either about the thing (`fs`) or about one act (`fs:read`) and there
-/// is no third question to ask. A flat list of tool-shaped names - `read` the capability,
-/// declared by `read` the tool - reads as a tautology on the screen and makes the granularity a
-/// tool happens to offer the granularity a rule can have.
+/// note: two levels and no more. A domain is a thing acted on; an operation is an act on it, so a
+/// rule is either about the thing (`fs`) or about one act (`fs:read`). A flat list of tool-shaped
+/// names - `read` the capability, declared by `read` the tool - reads as a tautology and makes a
+/// tool's granularity the granularity a rule can have.
 ///
 /// note: these are labels the kernel compares and reports; it cannot verify them. A tool that
-/// declares `fs:read` and then opens a socket is lying, and the only defence is that the user
-/// chose to register it.
+/// declares `fs:read` and then opens a socket is lying, and the only defence is that the user chose
+/// to register it.
 ///
-/// note: `exec:run` subsumes every other one, and a list of capabilities invites being read as a
-/// list of boundaries. A command can read, write, and reach the network; a policy that allows
-/// `exec` has allowed all of it, whatever it answers about the rest. That is not a flaw in the
-/// labels - it is what a shell *is* - but a client that showed `exec: allow` beside `net: deny`
-/// without saying so would be reporting a restriction that does not exist. What closes the gap is
-/// the arguments: a [`PermissionPolicy`] is handed the call the model actually made
-/// ([`PermissionRequest::args`]), so it can judge `curl https://…` against whatever it thinks of
-/// the network. See `kamchatka`'s `Careful` for one that does, and its `reaches_the_network` for
-/// an honest account of what a heuristic over a command line is and is not worth.
+/// note: `exec:run` subsumes every other capability, and a list of capabilities is not a list of
+/// boundaries. A command can read, write, and reach the network, so a policy that allows `exec` has
+/// allowed all of it, whatever it answers about the rest; that is what a shell is, not a flaw in
+/// the labels. A client that showed `exec: allow` beside `net: deny` without saying so would report
+/// a restriction that does not exist. The arguments close the gap: a [`PermissionPolicy`] is handed
+/// the call the model actually made ([`PermissionRequest::args`]), so it can judge `curl https://…`
+/// against whatever it thinks of the network. See `kamchatka`'s `Careful` for one that does, and
+/// its `reaches_the_network` for what a heuristic over a command line is and is not worth.
 ///
-/// note: `net` still earns its place, though a session that also has a shell can reach the
-/// network through it whatever this says. That objection is not about the domain: `fs:read` is
-/// exactly as unverifiable, and every one of these is a label rather than a boundary. Where there
-/// is no shell - an agent whose tools all come from MCP servers, an editor integration that
-/// reads, writes and fetches - refusing `net` refuses every way the registered tools have of
-/// reaching the network.
+/// note: `net` still earns its place, though a session that also has a shell can reach the network
+/// through it whatever this says. The objection is not about the domain: `fs:read` is exactly as
+/// unverifiable, and every one of these is a label rather than a boundary. Where there is no shell
+/// - an agent whose tools all come from MCP servers, an editor integration that reads, writes and
+/// fetches - refusing `net` refuses every way the registered tools have of reaching the network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 #[non_exhaustive]
@@ -104,9 +101,9 @@ impl Capability {
     /// note: neither half may hold a colon, and nothing here enforces it. A capability is written
     /// as `domain:op` - by [`fmt::Display`], and by serde, which is declared `into = "String"` -
     /// and [`Capability::parse`] reads exactly one colon back. So `Capability::of(Domain::Fs,
-    /// "read:all")` serializes to text that its own deserializer refuses, and a log record
-    /// carrying it cannot be read back. The operation is a client's own vocabulary and the
-    /// constructor does not police it; a name with a colon in it is naming two things.
+    /// "read:all")` serializes to text that its own deserializer refuses, and a log record carrying
+    /// it cannot be read back. The operation is a client's own vocabulary and the constructor does
+    /// not police it; a name with a colon in it is naming two things.
     pub fn of(domain: Domain, op: impl Into<String>) -> Self {
         Self {
             domain,
@@ -331,11 +328,11 @@ pub trait PermissionPolicy: Send + Sync {
         None
     }
 
-    /// What this is, for a client that wants to say which one is installed.
+    /// The policy's name, for a client that wants to say which one is installed.
     ///
-    /// note: The default is the implementing type's own path, which costs an implementor nothing
-    /// and is right often enough to be worth having. Override it to say something friendlier. It
-    /// is for showing a person, not for matching on: `type_name` makes no stability promise.
+    /// note: the default is the implementing type's own path, so an implementor writes nothing and
+    /// the result is usually good enough. Override it to say something friendlier. It is for
+    /// showing a person, not for matching on: `type_name` makes no stability promise.
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
@@ -375,10 +372,10 @@ mod tests {
         }
     }
 
-    /// A verdict is shown in the word it is stored in.
+    /// A verdict is displayed and serialized as the same word.
     ///
-    /// note: `Display` is what a client puts on a screen and serde is what the log keeps, so a
-    /// person reading one and a program reading the other are reading the same word.
+    /// note: `Display` is for a client's screen and serde is for logs, so a person and a program
+    /// read the same word.
     #[test]
     fn a_verdict_is_shown_in_the_word_it_is_stored_in() {
         for verdict in [Verdict::Allow, Verdict::Ask, Verdict::Deny] {

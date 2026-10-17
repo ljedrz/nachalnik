@@ -1,9 +1,8 @@
 //! The context: a list of identifiable items, what each one is, and what state it is in.
 //!
-//! note: the data structure the rest of this crate is about, and the only place identifiers are
-//! handed out. Undo and redo are here rather than in the kernel that calls them, because what a
-//! checkpoint has to restore is this structure's own invariants - every item still listed, every
-//! identifier still its own, and nothing destroyed by having been taken out of a request.
+//! note: the only place identifiers are handed out. Undo and redo are here rather than in the
+//! kernel because a checkpoint restores this structure's invariants: every item still listed, every
+//! identifier still its own, and nothing destroyed by removal from a request.
 
 use std::{collections::VecDeque, sync::Arc};
 
@@ -20,15 +19,14 @@ pub use item::{ContextId, ContextItem, ContextKind, ContextState};
 
 /// The set of context items, in the order they were added.
 ///
-/// note: This is the state the model request is *derived* from, not the request itself. Nothing
-/// here is ever silently dropped: removal is a state change, so a removed item can be listed,
-/// inspected and restored.
+/// note: The state a model request is derived from, not the request itself. Nothing is silently
+/// dropped: removal is a state change, so a removed item can be listed, inspected and restored.
 ///
-/// note: The mutating operations are `pub(crate)` on purpose - they all go through [`Kernel`],
-/// which is what turns them into [`Event`]s. Reading is unrestricted.
+/// note: Mutating operations are `pub(crate)` because they all go through [`Kernel`], which turns
+/// them into [`Event`]s. Reading is unrestricted.
 ///
-/// note: The items are in insertion order, which - because identifiers are handed out in that
-/// order and never reused - is also identifier order. [`Context::item`] relies on it.
+/// note: Items are in insertion order, which is also identifier order because identifiers are
+/// handed out in that order and never reused. [`Context::item`] relies on it.
 #[derive(Debug, Clone)]
 pub struct Context {
     items: Vec<Arc<ContextItem>>,
@@ -61,8 +59,8 @@ impl Context {
 
     /// Returns every item, in insertion order, regardless of state.
     ///
-    /// note: Items are behind an [`Arc`] so that the context (and its undo snapshots) can be
-    /// cloned without copying content; treat them as the immutable records they are.
+    /// note: Items are behind an [`Arc`] so the context and its undo snapshots can be cloned
+    /// without copying content. Treat them as immutable records.
     pub fn items(&self) -> &[Arc<ContextItem>] {
         &self.items
     }
@@ -101,13 +99,11 @@ impl Context {
         self.items.iter().filter(|i| i.is_projected())
     }
 
-    /// Returns the estimated number of tokens the items sending their content occupy.
+    /// Returns the estimated number of tokens for items sending their content.
     ///
-    /// note: an elided item is projected but is not sending what it says, so its own size is not
-    /// here - it is in [`Context::tokens_withheld`] with the rest of what the model is not being
-    /// shown. What the marker in its place costs is small, and is counted where it is spent: in
-    /// [`Budget::context_tokens`](crate::Budget::context_tokens), over the messages that came out
-    /// of the projector.
+    /// note: An elided item is projected but not sending its content, so its size is in
+    /// [`Context::tokens_withheld`], not here. The marker in its place costs little and is counted
+    /// in [`Budget::context_tokens`](crate::Budget::context_tokens), over the projector's messages.
     pub fn tokens(&self) -> usize {
         self.items
             .iter()
@@ -139,8 +135,8 @@ impl Context {
     /// Adds an item, assigning it an identifier and counting its tokens.
     pub(crate) fn add(&mut self, mut item: ContextItem, counter: &dyn TokenCounter) -> ContextId {
         let id = ContextId(self.next_id);
-        // saturating rather than overflowing: a snapshot numbered at the top is refused by
-        // `Snapshot::problems`, and one resumed regardless should not be a panic
+        // Uses saturating add rather than overflowing: a snapshot numbered at the top is refused
+        // by `Snapshot::problems`, and resuming one must not panic.
         self.next_id = self.next_id.saturating_add(1);
         item.id = id;
         measure(&mut item, counter);
@@ -149,11 +145,11 @@ impl Context {
         id
     }
 
-    /// Returns whether moving an item to this state, with this note, would change anything.
+    /// Returns whether moving an item to this state with this note would change anything.
     ///
-    /// note: The note counts. "Excluded because it was enormous" and "excluded because the user
-    /// said so" are different facts about the same item, and one quietly overwriting the other
-    /// is exactly the kind of unannounced edit this crate exists not to make.
+    /// note: The note counts: 'excluded because it was enormous' and 'excluded because the user
+    /// said so' are different facts about the same item. One quietly overwriting the other is the
+    /// unannounced edit this crate exists not to make.
     pub(crate) fn would_change(
         &self,
         id: ContextId,
@@ -205,14 +201,14 @@ impl Context {
 
     /// Replaces the contents with the items of a [`Snapshot`](crate::Snapshot), recounting them.
     ///
-    /// note: The items are sorted by identifier and the next one is taken past the highest of
-    /// them, so that a snapshot somebody edited by hand cannot quietly break the ordering the
-    /// lookups depend on, or hand out an identifier that is already in use.
+    /// note: Items are sorted by identifier and the next identifier is past the highest, so a
+    /// hand-edited snapshot cannot break the ordering lookups depend on or hand out an identifier
+    /// already in use.
     ///
-    /// note: and an identifier two items share, or the `0` that means none was given, is given
-    /// the next free one - the first to hold a number keeps it - because a lookup by identifier
-    /// finds one of two at random, and an operation on it moves whichever that was. It is a repair
-    /// of a snapshot that should not exist; `Snapshot::problems` is how to refuse one instead.
+    /// note: An identifier shared by two items, or the `0` meaning none, gets the next free one;
+    /// the first to hold a number keeps it. A lookup by identifier finds one of two at random, and
+    /// an operation on it moves whichever that was. This repairs a snapshot that should not exist;
+    /// `Snapshot::problems` refuses one instead.
     pub(crate) fn restore(
         &mut self,
         mut items: Vec<ContextItem>,
@@ -266,7 +262,7 @@ impl Context {
 
     /// Recounts every item's tokens.
     ///
-    /// note: priced before it is touched, because `Arc::make_mut` copies an item the undo history
+    /// note: Priced before it is touched, because `Arc::make_mut` copies an item the undo history
     /// shares, and a copy is what [`Kernel::undo`](crate::Kernel::undo) reads as a change. A
     /// recount that moves no figure is not one. Returns whether any figure moved.
     pub(crate) fn recount(&mut self, counter: &dyn TokenCounter) -> bool {
@@ -300,9 +296,9 @@ impl Context {
 
     /// Puts back what the last [`Context::undo`] took away, returning whether there was any.
     ///
-    /// note: A stack, not a toggle: undoing three operations and redoing them puts all three
-    /// back, in order. Doing anything new makes the redone future unreachable, which is why
-    /// [`Context::checkpoint`] discards it.
+    /// note: A stack, not a toggle: undoing three operations and redoing them puts all three back,
+    /// in order. Doing anything new makes the redone future unreachable, so [`Context::checkpoint`]
+    /// discards it.
     pub(crate) fn redo(&mut self) -> bool {
         match self.redo.pop() {
             Some(items) => {
@@ -319,14 +315,14 @@ impl Context {
         }
     }
 
-    /// Records the current state of the items, so that the operation that follows can be
-    /// reverted by [`Kernel::undo`].
+    /// Records the current state of the items, so that the operation that follows can be reverted
+    /// by [`Kernel::undo`].
     ///
-    /// note: One checkpoint per *operation*, not per item: removing eight tool results is one
-    /// thing the user did, and one `undo` puts all eight back.
+    /// note: One checkpoint per operation, not per item: removing eight tool results is one thing
+    /// the user did, and one `undo` puts all eight back.
     pub(crate) fn checkpoint(&mut self) {
-        // whatever was undone is now a future that did not happen, and keeping it reachable
-        // would let a redo silently overwrite work done since
+        // Whatever was undone is now a future that did not happen; keeping it reachable would let a
+        // redo silently overwrite work done since.
         self.redo.clear();
         self.taken += 1;
 
@@ -346,18 +342,18 @@ impl Context {
         self.taken
     }
 
-    /// Makes every checkpoint taken after the one numbered `taken` part of that one, so that one
-    /// undo takes back all of what happened since.
+    /// Makes every checkpoint taken after the one numbered `taken` part of that one, so one undo
+    /// takes back everything since.
     ///
-    /// note: what a batch of results is for when something else lands between two of them - a
-    /// tool that changed the context while it ran, or a client that did. Left as checkpoints of
-    /// their own, the first undo took back the change and the results recorded after it, and left
-    /// the ones before: a turn half answered. The kernel refuses an undo while a batch runs, so
-    /// nothing is popped between the two numbers but what was pushed.
+    /// note: A batch groups results when something else lands between them: a tool that changed the
+    /// context while it ran, or a client. As separate checkpoints, the first undo would take back
+    /// the change and later results, leaving the earlier ones and a turn half answered. The kernel
+    /// refuses an undo during a batch, so nothing is popped between the two numbers but what was
+    /// pushed.
     ///
-    /// note: where more was checkpointed than the undo depth holds, the batch's own checkpoint went
-    /// with the oldest of them, and folding leaves nothing of the batch to undo to rather than a
-    /// point in the middle of it.
+    /// note: If more was checkpointed than the undo depth holds, the batch's checkpoint went with
+    /// the oldest, so folding leaves nothing of the batch to undo to instead of a point in the
+    /// middle of it.
     pub(crate) fn fold_since(&mut self, taken: u64) {
         for _ in 0..self.taken.saturating_sub(taken) {
             if self.undo.pop_back().is_none() {
@@ -368,13 +364,13 @@ impl Context {
     }
 }
 
-/// Puts the counter's two figures on an item: what it costs, and how much of it the counter
-/// would not price.
+/// Puts the counter's two figures on an item: what it costs, and how much of it the counter would
+/// not price.
 ///
-/// note: one function for every path that counts an item, because the two fields have to move
-/// together and nothing in the type system says so. An `uncounted` left behind by a path that
-/// recounted `tokens` is worse than no field at all: it reads as a definite "everything here is
-/// priced" while the tokens beside it have just been rewritten by a different counter.
+/// note: one function for every path that counts an item, because `tokens` and `uncounted` must
+/// move together and the type system does not enforce it. A stale `uncounted` after a `tokens`
+/// recount is worse than no field: it reads as "everything here is priced" while the tokens beside
+/// it were rewritten by another counter.
 fn measure(item: &mut ContextItem, counter: &dyn TokenCounter) {
     (item.tokens, item.uncounted) = figures(item, counter);
 }

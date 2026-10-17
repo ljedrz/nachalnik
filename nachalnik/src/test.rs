@@ -22,12 +22,11 @@ use crate::{
     tool::{Tool, ToolOutput, ToolSpec},
 };
 
-/// A [`Provider`] that answers with a prepared list of responses, and remembers what it was
-/// asked.
+/// A [`Provider`] that answers with prepared responses and remembers what it was asked.
 ///
-/// note: what it streams is the whole of a response's content, as text, in one delta - never
-/// reasoning, never a call's arguments, however the response is shaped. A test about what a
-/// stream looks like needs a provider of its own.
+/// note: It streams a whole response's content as text in one delta: never reasoning, never a
+/// call's arguments, whatever the response's shape. A test of what a stream looks like needs its
+/// own provider.
 pub struct ScriptedProvider {
     info: ModelInfo,
     script: Mutex<VecDeque<ModelResponse>>,
@@ -322,11 +321,10 @@ impl PermissionPolicy for Table {
     }
 }
 
-/// A [`Compactor`] that excludes the largest tool results once the context passes a fraction of
-/// the model's limit, and leaves a note in their place.
+/// A [`Compactor`] that excludes the largest tool results once the context passes a fraction of the
+/// model's limit, and leaves a note in their place.
 ///
-/// note: It is purely mechanical - it never asks a model to summarize anything - which makes it
-/// predictable enough to test against.
+/// note: it never asks a model to summarize, so it is predictable enough to test against.
 pub struct LargestFirstCompactor {
     /// The fraction of the context limit at which it starts working.
     pub threshold: f64,
@@ -380,8 +378,8 @@ impl Compactor for LargestFirstCompactor {
         }
 
         Some(CompactionPlan {
-            // this one *removes* rather than elides, so that the crate's own tests keep
-            // exercising the orphan repair that removal needs; `kamchatka`'s compactor elides
+            // this removes rather than elides, so the crate's tests keep exercising the orphan
+            // repair that removal needs; `kamchatka`'s compactor elides
             elide: Vec::new(),
             summary: Some(ContextItem::summary(format!(
                 "{} tool result(s) worth ~{freed} tokens were removed from the context",
@@ -479,11 +477,11 @@ mod tests {
         assert_eq!(plan.remove, vec![taken.id]);
     }
 
-    /// A pass takes the largest results until the context is down to the target, stops there,
-    /// and its summary says how much it took.
+    /// A pass takes the largest results until the context is down to the target, stops there, and
+    /// its summary says how much it took.
     ///
-    /// note: every result taken is content the model no longer sees, so one taken past the
-    /// target is a loss nothing asked for. The summary is what the model reads in its place.
+    /// note: every result taken is content the model no longer sees, so taking one past the target
+    /// is an unrequested loss. The summary is what the model reads in its place.
     #[tokio::test]
     async fn a_pass_takes_until_the_target_and_stops_there() {
         let big = result(1, 300);

@@ -1,9 +1,8 @@
-//! Everything the kernel does, as it happens - and the two channels that report what is still
-//! arriving.
+//! The kernel's events as they happen, and the two channels that report what is still arriving.
 //!
-//! note: one enum carries the whole observability story. No state change skips it and there is no
-//! logging a user cannot see, so a variant added here is a promise that something will be
-//! announced, and one taken away is a client's screen going quiet about it.
+//! note: one enum carries the whole observability story. No state change skips it, and there is no
+//! logging a user cannot see. Adding a variant promises something will be announced; removing one
+//! means clients no longer see it.
 
 use std::sync::Arc;
 
@@ -39,12 +38,12 @@ pub enum Delta {
     },
 }
 
-/// Everything the kernel does, as it happens.
+/// The kernel's events as they happen.
 ///
-/// note: This enum is the whole observability story: there is no logging the user cannot see,
-/// and no state change that skips it. Clients subscribe with [`Kernel::subscribe`] and render
-/// what they like; the same events form the session log, minus the streaming fragments unless
-/// [`Config::record_progress`] is on.
+/// note: this enum is the whole observability story: no logging the user cannot see, and no state
+/// change skips it. Clients subscribe with [`Kernel::subscribe`] and render what they like; the
+/// same events form the session log, minus streaming fragments unless [`Config::record_progress`]
+/// is on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
 #[non_exhaustive]
@@ -57,9 +56,9 @@ pub enum Event {
     },
     /// A session was rebuilt from a [`Snapshot`](crate::Snapshot).
     ///
-    /// note: One event, not one `context.added` per item. Those describe things happening; this
-    /// describes a session that already happened being picked back up, and a log that replayed a
-    /// thousand additions to say so would be telling a story that is not true.
+    /// note: one event, not one `context.added` per item. Those describe things happening; this
+    /// describes a session that already happened being picked back up. A log that replayed a
+    /// thousand additions to say so would describe things that did not happen.
     #[serde(rename = "session.resumed")]
     SessionResumed {
         /// The session's name.
@@ -68,11 +67,11 @@ pub enum Event {
         items: usize,
         /// The estimated cost of the items that send their content, summed from their own figures.
         ///
-        /// note: the items' own figures, not *the projected total* - which in this crate means
-        /// what [`Projection::messages`](crate::Projection::messages) costs, the figure
+        /// note: the items' own figures, not the projected total - what
+        /// [`Projection::messages`](crate::Projection::messages) costs, the figure
         /// [`Budget::context_tokens`](crate::Budget::context_tokens) carries. The two differ by
         /// whatever the projector adds or takes away: a reference gains its label, and an elided
-        /// item is a marker in the projection and nothing at all in this sum.
+        /// item is a marker in the projection and nothing in this sum.
         tokens: usize,
     },
     /// A session was declared finished by its owner.
@@ -134,8 +133,8 @@ pub enum Event {
         /// note: copied, where the rest of the item is named, for the reason
         /// [`Event::ContextReplaced`] copies what it overwrote: a hint is what a
         /// [`Compactor`](crate::Compactor) decides by, and an item's first one is otherwise only in
-        /// a snapshot taken before the next [`Event::ContextAnnotated`] replaced it. `serde(default)`
-        /// so a log written before this reads as an item added with none.
+        /// a snapshot taken before the next [`Event::ContextAnnotated`] replaced it.
+        /// `serde(default)` so a log written before this reads as an item added with none.
         #[serde(default)]
         meta: Value,
     },
@@ -164,19 +163,19 @@ pub enum Event {
         tokens_after: usize,
         /// What it said before.
         ///
-        /// note: This is the one event that carries content without being asked to -
+        /// note: this is the only event that carries content without being asked for -
         /// [`Config::record_payloads`] and [`Config::record_progress`] are how a caller asks for
-        /// more - and the rule it follows is: the log records what nothing else can recover. A
-        /// [`Event::ContextAdded`] needs no content, because the item is still in the context and
-        /// in any [`Snapshot`](crate::Snapshot). A replacement is different - it is the only
-        /// operation that overwrites an item's content, and without this the old text would exist
-        /// nowhere once it fell out of the undo window.
+        /// more - and the log records what nothing else can recover. A [`Event::ContextAdded`]
+        /// needs no content because the item is still in the context and in any
+        /// [`Snapshot`](crate::Snapshot). A replacement is the only operation that overwrites an
+        /// item's content, and without this the old text would exist nowhere once it fell out of
+        /// the undo window.
         ///
-        /// note: It is also what keeps [`Event::ModelRequested`] honest. That names the items a
+        /// note: this is also why [`Event::ModelRequested`] is accurate. It names the items a
         /// request was built from rather than copying their contents, which is what makes the log
-        /// affordable; but a reference is only worth as much as the thing it points at holding
-        /// still. With this, a snapshot and the log can be wound back to reconstruct exactly what
-        /// any past request contained.
+        /// affordable; but a reference is only useful if the thing it points at stays the same.
+        /// With this, a snapshot and the log can be wound back to reconstruct exactly what any past
+        /// request contained.
         was: Content,
     },
     /// A context change was undone.
@@ -208,9 +207,9 @@ pub enum Event {
     },
     /// An item's metadata was replaced.
     ///
-    /// note: The kernel never reads [`ContextItem::meta`](crate::ContextItem::meta), but a
-    /// [`Compactor`](crate::Compactor) does, and a hint that decides what gets dropped is not
-    /// the sort of thing that should be able to change without anybody seeing it.
+    /// note: the kernel never reads [`ContextItem::meta`](crate::ContextItem::meta), but a
+    /// [`Compactor`](crate::Compactor) does, and a hint that decides what gets dropped should not
+    /// change without anybody seeing it.
     #[serde(rename = "context.annotated")]
     ContextAnnotated {
         /// The item's identifier.
@@ -223,9 +222,9 @@ pub enum Event {
     },
     /// Every item's token count was recomputed, e.g. after the token counter was replaced.
     ///
-    /// note: the two figures are summed over the items that send their content, which is what
-    /// this event is about - the items' own numbers are the ones that moved. They are not *the
-    /// projected total*; see [`Event::SessionResumed`] for the difference.
+    /// note: the two figures are summed over the items that send their content - the items' own
+    /// numbers are the ones that moved. They are not the projected total; see
+    /// [`Event::SessionResumed`] for the difference.
     #[serde(rename = "context.recounted")]
     ContextRecounted {
         /// What the items sending their content cost before.
@@ -263,22 +262,20 @@ pub enum Event {
         items: Vec<ContextId>,
         /// The items the projector left out of it, and why.
         ///
-        /// note: "Why was that file not in the request?" is the question this whole crate is
-        /// for, and a log that recorded only what *was* sent could not answer it afterwards.
+        /// note: this crate exists to answer why a file was not in the request, and a log that
+        /// recorded only what was sent could not answer it afterwards.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         skipped: Vec<Skipped>,
         /// What the projector had to take out to keep the request valid.
         ///
-        /// note: Dropping a tool call whose result has been excluded is the kernel changing what
-        /// the model is told. It is the right thing to do and it is still an alteration, so it
-        /// goes on the record rather than only into a [`Projection`](crate::Projection) that
-        /// nobody kept.
+        /// note: dropping a tool call whose result has been excluded is the kernel changing what
+        /// the model is told. It is the right thing to do and still an alteration, so it goes on
+        /// the record rather than only into a [`Projection`](crate::Projection) that nobody kept.
         ///
         /// note: [`Projection::reordered`](crate::Projection::reordered) is deliberately not here.
-        /// A move takes nothing out, and a client's honest use of this field is to put it where
-        /// somebody will see it. Carrying the moves as well would put something nobody has to act
-        /// on in front of them on every request where an item landed between a call and its
-        /// result.
+        /// A move takes nothing out, and a client uses this field to put it where somebody will see
+        /// it. Carrying the moves as well would show something nobody has to act on in every
+        /// request where an item landed between a call and its result.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         repairs: Vec<String>,
     },
@@ -330,17 +327,17 @@ pub enum Event {
     },
     /// A [`Kernel::step`] could not get as far as a request, and gave up.
     ///
-    /// note: Without this, a step that cannot build a request - an empty projection, a provider
-    /// that went away between the claim and the call - would show up on the stream as nothing
-    /// but a pair of state changes to [`State::Requesting`](crate::State::Requesting) and back,
-    /// with no account of what went wrong. The error is the same one [`Kernel::step`] returns.
+    /// note: without this, a step that cannot build a request - an empty projection, or a provider
+    /// that went away between the claim and the call - would appear on the stream only as a pair of
+    /// state changes to [`State::Requesting`](crate::State::Requesting) and back, with no account
+    /// of what went wrong. The error is the same one [`Kernel::step`] returns.
     #[serde(rename = "step.failed")]
     StepFailed {
         /// How long the request was, where the step gave up because it is longer than the model
         /// will read.
         ///
         /// note: the same field [`Event::ModelFailed`] carries, because it is the same fact
-        /// arriving one step earlier - the kernel's own arithmetic instead of the endpoint's
+        /// arriving one step earlier: the kernel's own arithmetic instead of the endpoint's
         /// verdict. It is a field rather than an event of its own so that a client saying how much
         /// has to go says it the same way for both.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -394,8 +391,8 @@ pub enum Event {
         tool: String,
         /// The arguments, verbatim.
         ///
-        /// note: Shared with the call recorded in the context, rather than a copy of it. The log
-        /// should not be a second place the same bytes live.
+        /// note: shared with the call recorded in the context rather than copied, so the log is not
+        /// a second place the same bytes live.
         args: Arc<Value>,
     },
     /// The model asked for a tool that is not registered.
@@ -412,7 +409,7 @@ pub enum Event {
     /// note: what the model wrote is here as well as on the call, because it is what
     /// [`Event::ToolRequested`] carries for any other call - its arguments - and those are empty
     /// for this one. A log read without the snapshot beside it would otherwise not say what the
-    /// model wrote at all.
+    /// model wrote.
     #[serde(rename = "tool.unparsed")]
     ToolUnparsed {
         /// The call's identifier.
@@ -426,9 +423,9 @@ pub enum Event {
     },
     /// The kernel had to give one of the model's tool calls a usable identifier.
     ///
-    /// note: Nothing else in the loop can work if a call cannot be told apart from its
-    /// neighbour, so this is a repair rather than a refusal - and it is announced, because a
-    /// provider that does this is worth knowing about.
+    /// note: nothing else in the loop can work if a call cannot be told apart from its neighbour,
+    /// so this is a repair rather than a refusal. It is announced because a provider that does this
+    /// is worth knowing about.
     #[serde(rename = "tool.repaired")]
     ToolCallRepaired {
         /// The identifier the call has now.
@@ -473,11 +470,11 @@ pub enum Event {
     },
     /// A tool panicked while running a call, and the call is answered as a failure.
     ///
-    /// note: a panic is the most a `Tool` can fail by, and it is answered the way any other
-    /// failure is - an error result the model is shown, and the [`Event::ToolFinished`] that
-    /// follows it - rather than unwinding through [`Kernel::step`](crate::Kernel::step). This is
-    /// the one thing that says it was a panic, since `is_error` cannot. What the panic said is in
-    /// the result and not here, because the log names things rather than copying them.
+    /// note: a panic is the most a `Tool` can fail by. It is answered the way any other failure is:
+    /// an error result the model is shown, and the [`Event::ToolFinished`] that follows it, rather
+    /// than unwinding through [`Kernel::step`](crate::Kernel::step). This is the one thing that
+    /// says it was a panic, since `is_error` cannot. What the panic said is in the result and not
+    /// here, because the log names things rather than copying them.
     ///
     /// note: a panic still runs the process's panic hook, which by default writes to standard
     /// error, and a build with `panic = "abort"` is ended by one before anything here happens.
@@ -505,8 +502,8 @@ pub enum Event {
         item: ContextId,
         /// The excluded item holding the whole output, when it had to be shortened.
         ///
-        /// note: An output limit decides what the model is shown; it is not permission to throw
-        /// the rest away. See [`Config::keep_truncated_output`].
+        /// note: an output limit decides what the model is shown; it is not permission to throw the
+        /// rest away. See [`Config::keep_truncated_output`].
         #[serde(default, skip_serializing_if = "Option::is_none")]
         whole: Option<ContextId>,
     },
@@ -541,10 +538,10 @@ pub enum Event {
     },
     /// The [`PermissionPolicy`](crate::PermissionPolicy) was replaced.
     ///
-    /// note: the four seam-changed events name what went out and what came in, because a session
-    /// log that recorded only *that* one was swapped would leave a reader of it unable to say what
-    /// had been deciding, projecting, counting or compacting for the requests either side of the
-    /// line. The names are the seams' own `name()`s.
+    /// note: the four seam-changed events name what went out and what came in, because a log that
+    /// recorded only that one was swapped would leave a reader unable to say what had been
+    /// deciding, projecting, counting or compacting for the requests either side of the line. The
+    /// names are the seams' own `name()`s.
     #[serde(rename = "policy.changed")]
     PolicyChanged {
         /// What was deciding before.
@@ -563,7 +560,7 @@ pub enum Event {
     /// The [`TokenCounter`](crate::TokenCounter) was replaced.
     ///
     /// note: followed by a [`Event::ContextRecounted`], because every figure the old one produced
-    /// is now the wrong one and the kernel says so rather than leaving them to be read.
+    /// is now wrong and the kernel says so rather than leaving them to be read.
     #[serde(rename = "counter.changed")]
     CounterChanged {
         /// What was estimating before.
@@ -579,13 +576,13 @@ pub enum Event {
         /// What makes room now; `None` means nothing will ever be dropped to make it.
         to: Option<String>,
     },
-    /// An event this version does not know, read from a log a later one wrote.
+    /// An event this version does not know, read from a log written by a later version.
     ///
-    /// note: the kernel never emits it. It is what a reader gets instead of an error, so that one
-    /// new event in a log a newer runtime wrote costs that record rather than the whole log. What
-    /// the event was called and what it held are not kept - the line it was read from still has
-    /// both - and a record that names an event this version *does* know and does not fit it is
-    /// still an error, because that is a log that is wrong rather than one that is newer.
+    /// note: the kernel never emits it. A reader gets it instead of an error, so one new event in a
+    /// log from a newer runtime costs that record rather than the whole log. The event's name and
+    /// contents are not kept; the line it was read from still has both. A record that names an
+    /// event this version does know but does not fit it is still an error: that log is wrong, not
+    /// newer.
     #[serde(rename = "unknown", other)]
     Unknown,
 }
@@ -642,9 +639,9 @@ impl Event {
 
 /// The channel a [`Provider`] reports streaming fragments through.
 ///
-/// note: A sink handed to a provider by the kernel turns every fragment into an
-/// [`Event::ModelDelta`]. [`DeltaSink::disconnected`] produces one that drops them, which is
-/// handy when a provider is exercised on its own.
+/// note: a sink handed to a provider by the kernel turns every fragment into an
+/// [`Event::ModelDelta`]. [`DeltaSink::disconnected`] produces one that drops them, for exercising
+/// a provider on its own.
 #[derive(Clone)]
 pub struct DeltaSink(Option<Kernel>);
 
@@ -680,19 +677,19 @@ impl DeltaSink {
         self.send(Delta::Reasoning(fragment.into()));
     }
 
-    /// Returns whether somebody has asked the loop to stop.
+    /// Returns whether someone has asked the loop to stop.
     ///
-    /// note: This is how a request in flight is cancelled. The kernel cannot reach into a
-    /// [`Provider`](crate::Provider) and stop it - it does not own the socket, the runtime or
-    /// the future - so it offers the fact and the provider decides. A streaming provider that
+    /// note: this is how a request in flight is cancelled. The kernel cannot reach into a
+    /// [`Provider`](crate::Provider) and stop it, because it does not own the socket, the runtime
+    /// or the future; it exposes that fact and the provider decides. A streaming provider that
     /// checks this between fragments can return the text it has, with whatever
-    /// [`StopReason`](crate::StopReason) it thinks fits, and the kernel records that turn like
-    /// any other: partial, but real, and in the context where it can be seen and excluded.
+    /// [`StopReason`](crate::StopReason) it thinks fits, and the kernel records that turn like any
+    /// other: partial, but real, and in the context where it can be seen and excluded.
     ///
-    /// note: A provider that ignores it is not broken, only slower to stop - the interrupt is
-    /// still honoured before the next request. Dropping the future driving
-    /// [`Kernel::step`](crate::Kernel::step) remains the blunt instrument, and costs whatever
-    /// had been streamed.
+    /// note: a provider that ignores it is not broken, only slower to stop; the interrupt is still
+    /// honoured before the next request. Dropping the future driving
+    /// [`Kernel::step`](crate::Kernel::step) is the blunter way to stop, and costs whatever had
+    /// been streamed.
     pub fn is_interrupted(&self) -> bool {
         self.0
             .as_ref()

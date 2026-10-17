@@ -1,22 +1,22 @@
-//! Teaching the budget what a picture costs, without the runtime learning a price list.
+//! Shows how to price a picture for the context budget without the runtime carrying vendor
+//! formulas.
 //!
-//! `BytesPerToken` refuses to put a figure on a [`Content::Blob`]. Its payload is base64, and
-//! base64 over four is a number about an encoding rather than about a model: a 400 KB screenshot
-//! would arrive as a hundred thousand tokens and send a compactor after a context that is nowhere
-//! near full. What a picture really costs is a formula over its *dimensions*, every vendor
-//! publishes one, and each publishes a different one - so the runtime carries none of them.
+//! `BytesPerToken` does not price a [`Content::Blob`]. Its payload is base64, and base64 length
+//! divided by four measures the encoding, not the model: a 400 KB screenshot would arrive as a
+//! hundred thousand tokens and trigger compaction of a context that is nowhere near full. A picture
+//! is priced by a formula over its dimensions. Every vendor publishes one, and each publishes a
+//! different one, so the runtime carries none.
 //!
-//! What it carries instead are the two halves that let you supply one:
+//! The runtime instead carries two halves that let you supply a formula:
 //!
-//! - [`Blob::meta`], a free-form value the kernel never reads, for whatever a counter would need
-//!   in order to price the payload. The caller who encoded the PNG had it decoded a moment
-//!   earlier, so they are the one who knows.
-//! - [`TokenCounter::uncounted`], so that a counter which *cannot* price something says so out
-//!   loud instead of returning `0` and letting it read as free.
+//! - [`Blob::meta`], a free-form value the kernel never reads, for whatever a counter needs to
+//!   price the payload. The caller who encoded the PNG already decoded it, so they know the values.
+//! - [`TokenCounter::uncounted`], so a counter that cannot price something says so instead of
+//!   returning `0` and letting the item read as free.
 //!
-//! This program uses them. It counts the same context three ways - with the default counter,
-//! with one that knows a vendor formula, and with one that knows the formula but is handed a
-//! blob nobody measured - and prints what each of them makes of it.
+//! This program uses both. It counts the same context three ways: with the default counter, with
+//! one that knows a vendor formula, and with one that knows the formula but is handed an unmeasured
+//! blob. It prints what each counter makes of the context.
 //!
 //! ```text
 //! cargo run --example pricing_a_picture
@@ -29,16 +29,16 @@ use serde_json::json;
 
 const WIDTH: usize = 78;
 
-/// A counter that prices a picture from its dimensions, and text the way the default one does.
+/// Prices pictures from their dimensions and counts text like the default counter.
 ///
-/// note: the formula is one real vendor's, written out rather than abstracted, because the point
-/// of this example is that *you* write it. Another vendor charges width times height over 750,
-/// and a third charges a flat 258 a tile; there is no shape all three share, which is why this
-/// lives in an example instead of in the crate.
+/// note: the formula is one real vendor's, written out rather than abstracted, because the point of
+/// this example is that you write it. Another vendor charges width times height over 750, and a
+/// third charges a flat 258 per tile; there is no shape all three share, so this lives in an
+/// example rather than in the crate.
 ///
-/// note: it wraps `BytesPerToken` rather than replacing it. Everything that is not a picture is
-/// a problem the default counter already solves, and a counter that reimplemented text counting
-/// to add image counting would be two decisions in one type.
+/// note: it wraps `BytesPerToken` rather than replacing it. The default counter already solves
+/// everything that is not a picture; reimplementing text counting to add image counting would put
+/// two decisions in one type.
 struct Tiled {
     /// What the vendor charges just for being shown an image.
     base: usize,
@@ -71,11 +71,11 @@ impl Tiled {
         self.base + self.per_tile * across * down
     }
 
-    /// The dimensions the producer recorded, if it recorded any.
+    /// Returns the dimensions the producer recorded, if it recorded any.
     ///
-    /// note: `None` is the case that matters, and it is why `uncounted` below is not simply
-    /// "how many blobs are there". A blob nobody measured cannot be priced by any formula, and
-    /// this counter is in exactly the position the default one is always in: it has to say so.
+    /// note: `None` is the case that matters, and it is why `uncounted` below is not simply "how
+    /// many blobs are there". An unmeasured blob cannot be priced by any formula; this counter is
+    /// then in the position the default counter is always in, and must say so.
     fn measured(blob: &Blob) -> Option<(u32, u32)> {
         let w = blob.meta.get("w")?.as_u64()? as u32;
         let h = blob.meta.get("h")?.as_u64()? as u32;
@@ -97,8 +97,8 @@ impl TokenCounter for Tiled {
             .map(|(w, h)| self.tiles(w, h))
             .sum();
 
-        // the text side is the default counter's answer, which already subtracts every blob's
-        // bytes before dividing - so this adds the pictures to prose rather than to base64
+        // The text count from the default counter already subtracts every blob's bytes before
+        // dividing, so this adds pictures to prose rather than to base64.
         self.text.count(content) + pictures
     }
 
@@ -111,8 +111,8 @@ impl TokenCounter for Tiled {
     }
 }
 
-/// A 48x48 PNG, base64, as a caller would hand one over. It stands in for the screenshot: the
-/// counter prices the dimensions recorded in `meta`, and never decodes the payload to check them.
+/// A 48x48 base64 PNG, as a caller would supply it. It stands in for a screenshot; the counter
+/// prices the dimensions recorded in `meta` and never decodes the payload to check them.
 const SQUARE: &str = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAPElEQVR42u3OsQkAAAgEsd9/ad1BLAQ\
                       DVx9JJacKEBAQEBAQEBAQEBAQ0Gy0dQICAgICAgICAgICAvoFamNX93l2WWcMAAAAAElFTkSuQmCC";
 

@@ -1,9 +1,8 @@
 //! A small language for naming context items, behind the `selectors` feature.
 //!
-//! note: This is not part of the runtime - the kernel takes [`ContextId`]s and knows nothing
-//! about selectors. It lives here because every client ends up wanting the same thing: a way to
-//! turn `tool:grep:latest` into a list of identifiers, and to show the user what it resolved to
-//! before anything happens.
+//! note: the kernel takes [`ContextId`]s and knows nothing about selectors. It lives here because
+//! clients need to turn `tool:grep:latest` into a list of identifiers and show the user what it
+//! resolved to before anything happens.
 //!
 //! ```
 //! use nachalnik::{ContextItem, Kernel, Config, ContextState, selectors::Selector};
@@ -191,9 +190,9 @@ impl Selector {
 
     /// Returns whether the selector matches a single item.
     ///
-    /// note: `first` and `latest` are not answered here, because they are about a list and one
-    /// item cannot say where it stands in one: `tool:grep:latest` matches every `grep` result.
-    /// [`Selector::matches`] is what applies them.
+    /// note: `first` and `latest` are not answered here, because they are about a list and one item
+    /// cannot say where it stands in it: `tool:grep:latest` matches every `grep` result.
+    /// [`Selector::matches`] applies them.
     pub fn matches_item(&self, item: &ContextItem) -> bool {
         match self {
             Self::Id(id) => item.id == *id,
@@ -303,8 +302,8 @@ mod tests {
         assert_eq!(parse("source:helix"), Selector::Source("helix".into()));
 
         // every bare word, singular or plural, is the source a constructor in `ContextItem` names.
-        // A word left out would still parse, as a label, and `user` or `system` as a label still
-        // finds the item those constructors made - so it is the parse that tells the two apart
+        // A word left out would still parse as a label and still find the item those constructors
+        // made, so the parse is what tells a source from a label
         for (word, source) in [
             ("user", "user"),
             ("users", "user"),
