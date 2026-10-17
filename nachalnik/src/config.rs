@@ -11,8 +11,8 @@ use crate::{Event, Kernel, TokenCounter, ToolSpec};
 /// (see [`Kernel::push`]).
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// A user-friendly identifier of the session. It shows up in [`Event::SessionStarted`] and
-    /// in exported session logs, where it allows sessions to be told apart.
+    /// A user-friendly identifier of the session. It appears in [`Event::SessionStarted`] and
+    /// exported session logs, where it distinguishes sessions.
     ///
     /// note: If set to `None`, the session is given a sequential, zero-based numeric identifier,
     /// counted across every kernel in the process.
@@ -31,8 +31,8 @@ pub struct Config {
     pub record_progress: bool,
     /// How many context snapshots are retained for [`Kernel::undo`]; `0` disables undo.
     pub context_undo_depth: usize,
-    /// The maximum number of requests a turn may send before it hands control back; `None` means
-    /// it keeps going until the model stops asking for tools.
+    /// The maximum number of requests a turn may send before it hands control back; `None` means it
+    /// keeps going until the model stops asking for tools.
     ///
     /// note: a turn, and not a call to [`Kernel::turn`]: the call that carries on after a question
     /// is answered carries on counting too. See the note on [`Kernel::turn`].
@@ -40,28 +40,26 @@ pub struct Config {
     /// note: This is a stop, not a policy: reaching it just ends the turn, and calling
     /// [`Kernel::turn`] again resumes exactly where it left off.
     ///
-    /// note: where the kernel starts; [`Kernel::set_max_requests_per_turn`] changes it while the
-    /// session runs.
+    /// note: The kernel starts with this value; [`Kernel::set_max_requests_per_turn`] changes it
+    /// while the session runs.
     pub max_requests_per_turn: Option<usize>,
-    /// Whether a request the kernel can already see is longer than the model will read is
-    /// refused here instead of being sent.
+    /// Whether a request the kernel can already see is longer than the model will read is refused
+    /// here instead of being sent.
     ///
-    /// note: on by default, because the round trip buys nothing: the endpoint answers a request
-    /// over the limit with an error, having read the whole of it first. What comes back is
-    /// [`Error::TooLong`](crate::Error::TooLong), carrying the same two numbers a provider's own
-    /// refusal does, and [`Event::StepFailed`] carries them too - so a client says how much has
-    /// to go without having to tell the two kinds of refusal apart.
+    /// note: On by default: the round trip buys nothing, because the endpoint answers an over-limit
+    /// request with an error after reading the whole of it. The error is
+    /// [`Error::TooLong`](crate::Error::TooLong), carrying the same two numbers as a provider's
+    /// refusal, and [`Event::StepFailed`] carries them too. A client can then say how much to
+    /// remove without telling the two refusals apart.
     ///
-    /// note: it acts on an *estimate*, which is the reason it is a knob rather than a rule. The
-    /// counter says so itself - [`TokenCounter`] is an estimator and this crate holds no
-    /// tokenizer - so a counter that reads high for a particular model would refuse a request
-    /// that endpoint would have accepted, and the way out has to be something other than editing
-    /// the context until an estimate is happy. Turn it off and every request goes out; what is
-    /// lost is one round trip per refusal, and what is kept is the endpoint's own verdict.
+    /// note: It acts on an estimate, so it is a knob rather than a rule. [`TokenCounter`] is an
+    /// estimator and this crate holds no tokenizer; a counter that reads high for a model would
+    /// refuse a request that endpoint would have accepted, and the fix is not to edit the context
+    /// until an estimate is happy. Turning it off sends every request: the cost is one round trip
+    /// per refusal, and what is kept is the endpoint's own verdict.
     ///
-    /// note: nothing is refused when the provider does not say what the model holds. The
-    /// comparison needs both halves, and inventing the second is how a limit that belongs to one
-    /// model gets applied to another.
+    /// note: Nothing is refused when the provider does not say what the model holds. The comparison
+    /// needs both halves; inventing the second applies one model's limit to another.
     pub refuse_oversized_requests: bool,
     /// The default limit (in bytes) applied to tool output, used for tools whose
     /// [`ToolSpec::output_limit`] is `None`; `None` means tool output is never truncated by
@@ -78,61 +76,54 @@ pub struct Config {
     /// Whether the whole of a truncated tool output is kept in the context, excluded, beside the
     /// shortened copy the model is shown.
     ///
-    /// note: On by default, because an output limit is a decision about what the *model* is
-    /// shown, and reading it as permission to destroy what the tool actually said would make
-    /// this the one place in the crate where something is removed and cannot be brought back.
-    /// With it on, the whole output is an
-    /// [`ContextState::Excluded`](crate::ContextState::Excluded) item, listed and inspectable
-    /// like any other, and restoring it is a [`Kernel::set_state`] like any other.
+    /// note: On by default: an output limit decides what the model sees, not whether to destroy
+    /// what the tool said. With it on, the whole output is an
+    /// [`ContextState::Excluded`](crate::ContextState::Excluded) item, listed and inspectable like
+    /// any other, and restoring it is a [`Kernel::set_state`] like any other.
     ///
-    /// note: Keeping it costs a pointer, not a copy - the excluded item shares the allocation
-    /// the tool already produced, and only the shortened copy is new. What it does cost is
-    /// *retention*: with this off, the whole output is dropped once it has been shortened. Turn
-    /// it off when a tool can produce more than you are willing to go on holding. The truncation
-    /// is still reported either way; what changes is whether it is reversible.
+    /// note: Keeping it costs a pointer, not a copy: the excluded item shares the tool's
+    /// allocation, and only the shortened copy is new. The real cost is retention: with this off,
+    /// the whole output is dropped once shortened. Turn it off when a tool can produce more than
+    /// you are willing to hold. Truncation is still reported either way; only reversibility
+    /// changes.
     pub keep_truncated_output: bool,
     /// Whether the payload a [`Provider`](crate::Provider) renders for each request is broadcast
     /// and recorded, as [`Event::ModelPayload`].
     ///
-    /// note: Off by default because of *memory*, which is the cost that cannot be worked around.
-    /// A stateless chat API is re-sent the whole conversation every time, so payload n contains
-    /// payload n-1: recording them all is quadratic in the number of requests, and the log is a
-    /// live structure in RAM that nothing can compress.
+    /// note: Off by default because of memory cost, which cannot be worked around. A stateless chat
+    /// API re-sends the whole conversation every time, so payload n contains payload n-1; recording
+    /// them all is quadratic in the number of requests, and the log is a live structure in RAM that
+    /// nothing can compress.
     ///
-    /// note: On *disk* it is much cheaper than that sounds, because a log whose entries repeat
-    /// each other's prefixes is the best case there is for an ordinary compressor such as `xz`.
-    /// If you want them, the pattern is [`Kernel::drain_history`] on a schedule: take the
-    /// records, compress them somewhere, and stop paying for them in memory.
+    /// note: On disk it is cheaper, because repeated prefixes compress well with `xz`. To keep
+    /// them, use [`Kernel::drain_history`] on a schedule: take the records, compress them
+    /// somewhere, and stop paying for them in memory.
     ///
-    /// note: With it off, [`Kernel::preview_payload`] still renders on demand, so nothing is
-    /// hidden - it is only not kept.
+    /// note: With it off, [`Kernel::preview_payload`] still renders on demand; nothing is hidden,
+    /// only not kept.
     pub record_payloads: bool,
-    /// Whether the tools a model asks for in one turn are run at the same time.
+    /// Whether the tools a model asks for in one turn run at the same time.
     ///
-    /// note: Off by default, and not because of performance. With it off the calls run one at a
-    /// time, in the order the model asked for them, and that order is something you can build
-    /// on: two edits to the same file apply in sequence. Turning it on gives that up. Nothing in
-    /// the kernel can tell whether a model's calls are independent of each other and nothing in a
-    /// [`Tool`](crate::Tool) declares it, so the judgement is yours and it has to be made on
-    /// purpose.
+    /// note: Off by default, and not because of performance. With it off, calls run one at a time
+    /// in the order the model asked for them, so two edits to the same file apply in sequence.
+    /// Turning it on gives that up. The kernel cannot tell whether a model's calls are independent,
+    /// and no [`Tool`](crate::Tool) declares it, so you must decide on purpose.
     ///
-    /// note: What does *not* change is the context. Results are recorded in the order the model
-    /// asked for them, once they have all finished, so a session looks the same whichever mode it
-    /// ran in. What varies is the order of [`Event::ToolStarted`] and [`Event::ToolOutput`],
-    /// which now interleave, and no [`Event::ToolFinished`] arrives until the slowest call is
-    /// done.
+    /// note: The context does not change. Results are recorded in the order the model asked for
+    /// them, once they have all finished, so a session looks the same in either mode. What varies
+    /// is the order of [`Event::ToolStarted`] and [`Event::ToolOutput`], which interleave, and no
+    /// [`Event::ToolFinished`] arrives until the slowest call is done.
     ///
-    /// note: This is the one place the kernel spawns tasks, and only for the length of the step
-    /// that spawned them. Dropping the future driving [`Kernel::step`] aborts them, so a
-    /// cancelled turn is cancelled here too.
+    /// note: This is the only place the kernel spawns tasks, and only for the length of the step
+    /// that spawned them. Dropping the future driving [`Kernel::step`] aborts them, so a cancelled
+    /// turn is cancelled here too.
     ///
-    /// note: what also changes is what an interrupt can still stop. Run one at a time, a batch
-    /// has a queue, and [`Kernel::interrupt`] empties it: every call that had not begun is
-    /// recorded as having been interrupted before it was made. Run together there is no queue -
-    /// they are all started before the first one has finished - so the only thing left for an
-    /// interrupt to reach is a [`Tool`](crate::Tool) that checks
-    /// [`OutputSink::is_interrupted`](crate::OutputSink::is_interrupted) itself - worth knowing
-    /// before a batch of them is `rm`.
+    /// note: What an interrupt can stop also changes. Run one at a time, a batch has a queue, and
+    /// [`Kernel::interrupt`] empties it: every call that had not begun is recorded as interrupted
+    /// before it was made. Run together, all calls start before the first finishes, so there is no
+    /// queue. The only thing an interrupt can reach is a [`Tool`](crate::Tool) that checks
+    /// [`OutputSink::is_interrupted`](crate::OutputSink::is_interrupted) itself. Keep that in mind
+    /// before running a batch of `rm` calls together.
     pub parallel_tool_calls: bool,
 }
 

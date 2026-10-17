@@ -85,8 +85,8 @@ struct Position {
 
 /// The panel's only tool: it records the caller's current position.
 ///
-/// note: One instance per panelist, each closing over its own slot, which is why the tool never
-/// has to ask who is calling it. A `Tool` is an object you construct, not a name in a registry.
+/// note: one instance per panelist, each closing over its own slot, so the tool never has to ask
+/// who is calling. A `Tool` is an object you construct, not a name in a registry.
 struct Ballot {
     slot: Arc<Mutex<Option<Position>>>,
 }
@@ -126,8 +126,8 @@ impl Tool for Ballot {
             .as_str()
             .filter(|v| !v.trim().is_empty())
         else {
-            // the panelist reads this at the start of the next round, and this round shows no
-            // position for it; nothing is invented on its behalf
+            // the panelist reads this at the start of the next round; this round shows no position
+            // for it, and nothing is invented on its behalf
             return Ok(ToolOutput::error("`verdict` is required, and was missing"));
         };
 
@@ -141,8 +141,8 @@ impl Tool for Ballot {
     }
 }
 
-/// The ballot needs nothing from the world, so it is allowed. Anything else is denied rather
-/// than asked about, because there is nobody at the terminal to ask.
+/// The ballot needs nothing from the world, so it is allowed. Anything else is denied rather than
+/// asked, because there is nobody at the terminal to ask.
 struct AllowTheBallot;
 
 #[async_trait]
@@ -176,13 +176,13 @@ struct Panelist {
 }
 
 impl Panelist {
-    /// Speaks once: one request, in which the model answers and casts its ballot, and the step
-    /// that runs the ballot.
+    /// Speaks once: one request in which the model answers and casts its ballot, and the step that
+    /// runs the ballot.
     ///
-    /// note: `step` rather than `turn`, because a turn would go back to the model with the
-    /// ballot's result, and there is nothing for it to do with that. The tool result stays in the
-    /// context and the next round's request carries it, so the panelist can see that its ballot
-    /// was accepted, or that it was rejected for want of a verdict.
+    /// note: `step` rather than `turn`, because a turn would go back to the model with the ballot's
+    /// result, and there is nothing for it to do with that. The tool result stays in the context
+    /// and the next round's request carries it, so the panelist can see that its ballot was
+    /// accepted, or rejected for want of a verdict.
     async fn speak(&self) -> Turn {
         let state = match self.kernel.step().await {
             Ok(state) => state,
@@ -303,10 +303,9 @@ fn report_positions(panel: &[Panelist], rounds: usize) {
 
 /// Groups the final positions, keeping abstentions apart from disagreement.
 ///
-/// note: The grouping is by the text, ignoring only case, deliberately: a tally that decides for
-/// itself that two differently-worded verdicts meant the same thing is a tally that can be wrong
-/// without anyone noticing. The ballot's schema asks for the same words each round for the same
-/// reason.
+/// note: the grouping is by the text, ignoring only case, deliberately. A tally that decides for
+/// itself that two differently-worded verdicts meant the same thing can be wrong without anyone
+/// noticing, so the ballot's schema asks for the same words each round.
 fn tally(panel: &[Panelist]) -> (Vec<(String, Vec<String>)>, Vec<String>) {
     let mut counted: Vec<(String, Vec<String>)> = Vec::new();
     let mut abstained = Vec::new();
@@ -402,8 +401,8 @@ async fn round(panel: &Arc<Vec<Panelist>>, sequential: bool) -> Vec<Duration> {
         return times;
     }
 
-    // one task per panelist: the kernels share nothing, so there is nothing to coordinate. Note
-    // that this is the *example* spawning tasks, not the kernel - a kernel spawns none unless
+    // one task per panelist: the kernels share nothing, so there is nothing to coordinate. This is
+    // the *example* spawning tasks, not the kernel - a kernel spawns none unless
     // `Config::parallel_tool_calls` says so
     let mut running = tokio::task::JoinSet::new();
     let mut spawned = HashMap::new();
@@ -413,10 +412,10 @@ async fn round(panel: &Arc<Vec<Panelist>>, sequential: bool) -> Vec<Duration> {
         spawned.insert(task.id(), index);
     }
 
-    // note: every task is waited for, and one that panicked is this round's failure for its
-    // panelist rather than a round it is missing. Stopping at the first would drop the set and
-    // abort everybody still speaking, and a panelist a round short has its later answers printed
-    // under the wrong round
+    // note: every task is waited for. A panicked task is this round's failure for its panelist
+    // rather than a round it is missing. Stopping at the first would drop the set and abort
+    // everybody still speaking, and a panelist a round short has its later answers printed under
+    // the wrong round
     let mut times = vec![Duration::ZERO; panel.len()];
     while let Some(joined) = running.join_next_with_id().await {
         match joined {
@@ -434,11 +433,11 @@ async fn round(panel: &Arc<Vec<Panelist>>, sequential: bool) -> Vec<Duration> {
 /// Gives every panelist the others' opinions from the round just finished, superseding the ones
 /// they replace.
 ///
-/// note: A peer's opinion is an item like any other - it has a source, a label, a size and a
-/// state - and when it is replaced, the kernel is told that it was replaced rather than being
-/// handed a longer list. The old one is still there, still listed, still restorable; it is simply
-/// not in the next request. Without that, every round would add another stale opinion per peer
-/// to every panelist's request.
+/// note: a peer's opinion is an item like any other, with a source, a label, a size and a state.
+/// When it is replaced, the kernel is told that it was replaced rather than being handed a longer
+/// list. The old one is still there, still listed, still restorable; it is simply not in the next
+/// request. Without that, every round would add another stale opinion per peer to every panelist's
+/// request.
 fn circulate(panel: &[Panelist], previous: usize) -> usize {
     let mut carried = 0;
 
@@ -509,8 +508,8 @@ async fn main() -> Result<(), BoxError> {
     let question = question.join(" ");
     let rounds = rounds.max(1);
 
-    // this is the example's opinion, not the runtime's: the crate ships no system prompt, so
-    // every word the panel is told to obey is right here, in the open
+    // this is the example's opinion, not the runtime's: the crate ships no system prompt, so every
+    // word the panel is told to obey is right here, in the open
     let rules = format!(
         "You are one of {} models on a panel answering a single question together.\n\
          Each round: say what you think in at most {words} words, then call `state_position` \
@@ -520,8 +519,8 @@ async fn main() -> Result<(), BoxError> {
         models.len()
     );
 
-    // read once and before anybody is asked anything: a file named on the command line and not
-    // read is a question the panel rules on without what it was meant to see
+    // read once and before anybody is asked anything: a file named on the command line and not read
+    // is a question the panel rules on without what it was meant to see
     let files: Vec<(String, String)> = files
         .into_iter()
         .map(|path| match std::fs::read_to_string(&path) {
@@ -564,8 +563,8 @@ async fn main() -> Result<(), BoxError> {
             peers: Mutex::new(HashMap::new()),
         });
     }
-    // before the rounds rather than after them, where a mistyped chair would have been noticed
-    // - or not - once every round had been paid for
+    // before the rounds rather than after them, where a mistyped chair would be noticed only once
+    // every round had been paid for, if at all
     if let Some(wanted) = &chair
         && !panel.iter().any(|panelist| &panelist.model == wanted)
     {
@@ -620,7 +619,7 @@ async fn main() -> Result<(), BoxError> {
     report_positions(&panel, rounds);
 
     // the tally is arithmetic done here, out in the open, and the chair is asked to write the
-    // ruling *given* it - rather than being asked to guess what everyone thought
+    // ruling *given* it, not to guess what everyone thought
     let (counted, abstained) = tally(&panel);
     heading("TALLY");
     println!();

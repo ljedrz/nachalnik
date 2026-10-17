@@ -1068,12 +1068,12 @@ mod tests {
         assert_eq!(content.to_text(), "hello");
     }
 
-    /// A cut lands on a character boundary, with room for the note and without it.
+    /// A cut lands on a character boundary, with or without room for the note.
     ///
-    /// note: on text where every index is a boundary neither walk down to one ever runs, so the
-    /// text is `każdy`, which has an index inside a character every six bytes. At a limit of 64
-    /// the note first fits beside a cut at 15, which is one of them. 21 is another, and too small
-    /// for the note at any cut: it is the walk that spends the budget on content alone.
+    /// note: on text where every index is a boundary, no walk down to a boundary ever runs; the
+    /// text is `każdy`, which has an index inside a character every six bytes. At a limit of 64,
+    /// the note first fits beside a cut at 15, which is inside a character. 21 is another, and too
+    /// small for the note at any cut: it is the walk that spends the budget on content alone.
     #[test]
     fn truncation_does_not_split_a_character() {
         let mut content = Content::text("każdy".repeat(50));
@@ -1093,11 +1093,11 @@ mod tests {
         assert_eq!(dropped, Some(300 - 20));
     }
 
-    /// Runs `f` on another thread, and answers `None` if it has not come back within five seconds.
+    /// Runs `f` on another thread and returns `None` if it does not return within five seconds.
     ///
-    /// note: a walk that never ends is a suite that never finishes rather than a test that fails;
-    /// bounding the wait is what turns one into the other. The thread is left to run rather than
-    /// killed, and the process ends with the suite.
+    /// note: a never-ending walk is a suite that never finishes, not a test that fails; bounding
+    /// the wait turns it into a failed test. The thread is left to run rather than killed, and the
+    /// process ends with the suite.
     fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
         let (sent, received) = std::sync::mpsc::channel();
         std::thread::spawn(move || {

@@ -1,8 +1,8 @@
 //! The state machine: the states a turn moves through, and every operation that moves it.
 //!
-//! note: the loop's own file, apart from what a turn is made of - `request` and `calls` - and from
-//! construction and observation in `mod.rs`. The other files still take the machine's lock where
-//! they must - to queue a turn's calls, to undo past a turn, to finish - and what they use from
+//! note: this file holds the loop. What a turn is made of is in `request` and `calls`, and
+//! construction and observation are in `mod.rs`. The other files still take the machine's lock
+//! where they must: to queue a turn's calls, to undo past a turn, and to finish. What they use from
 //! here is `pub(super)`.
 
 use std::sync::{Arc, atomic::Ordering::SeqCst};
@@ -34,12 +34,12 @@ pub(super) struct PreparedCall {
     pub(super) policy: Arc<dyn PermissionPolicy>,
 }
 
-/// The state machine and what it holds on to: the calls, and the turn's count.
+/// The state machine: the calls and the turn's count.
 ///
 /// note: the interrupt flag is not here, though everything that writes it holds this lock. A
-/// provider or a tool reads it through its sink while the turn runs, and a read that waited for
-/// this lock would stall a stream behind whoever holds it - an announcement can wait on the
-/// session log for as long as a `with_history` caller likes.
+/// provider or tool reads it through its sink while the turn runs. A read that waited for this lock
+/// would stall a stream behind whoever holds it; an announcement can wait on the session log for as
+/// long as a `with_history` caller likes.
 pub(super) struct Machine {
     pub(super) state: State,
     pub(super) pending: Vec<PreparedCall>,
@@ -104,9 +104,9 @@ impl Drop for Restore<'_> {
     fn drop(&mut self) {
         if self.armed {
             let mut machine = self.kernel.0.machine.lock();
-            // the transition this was guarding failed or was abandoned, so whatever it was asked
-            // to stop has stopped. Left set, the interrupt would be spent on the next turn instead
-            // - which transitions nothing, and the message somebody typed goes unanswered
+            // the guarded transition failed or was abandoned, so whatever it was asked to stop has
+            // stopped. If left set, the interrupt would be spent on the next turn instead,
+            // transitioning nothing and leaving the typed message unanswered
             self.kernel.0.interrupted.store(false, SeqCst);
             self.kernel.transition(&mut machine, State::Idle);
         }
@@ -114,41 +114,41 @@ impl Drop for Restore<'_> {
 }
 
 impl Kernel {
-    /// Asks [`Kernel::turn`] to stop at the next opportunity, and returns whether it had already
-    /// been asked.
+    /// Asks [`Kernel::turn`] to stop at the next opportunity. Returns whether it had already been
+    /// asked.
     ///
-    /// note: This does *not* abort a request that is already in flight, because the kernel does
-    /// not own the task making it - drop the future driving [`Kernel::step`] for that. What it
-    /// does is stop `turn` from starting anything else: the step in progress runs to the end,
-    /// its result is recorded like any other, and `turn` returns instead of going round again.
+    /// note: This does *not* abort a request already in flight, because the kernel does not own the
+    /// task making it - drop the future driving [`Kernel::step`] for that. It stops `turn` from
+    /// starting anything else: the step in progress runs to the end, its result is recorded like
+    /// any other, and `turn` returns instead of starting another.
     ///
-    /// note: How far it reaches depends on how much cooperates. Before a transition,
-    /// [`Kernel::step`] and [`Kernel::turn`] spend one attempt acknowledging it and do nothing
-    /// else. During a request, a [`Provider`] that checks [`crate::DeltaSink::is_interrupted`] can
-    /// stop reading and hand back what it has. During a tool call, a [`Tool`] that checks
-    /// [`crate::OutputSink::is_interrupted`] can do the same - and in the serial case the kernel
-    /// does not start the calls that had not begun.
+    /// note: How far it reaches depends on what cooperates. Before a transition, [`Kernel::step`]
+    /// and [`Kernel::turn`] make one attempt to acknowledge it and do nothing else. During a
+    /// request, a [`Provider`] that checks [`crate::DeltaSink::is_interrupted`] can stop reading
+    /// and hand back what it has. During a tool call, a [`Tool`] that checks
+    /// [`crate::OutputSink::is_interrupted`] can do the same. In the serial case, the kernel does
+    /// not start calls that had not begun.
     ///
     /// note: only in the serial case. With
-    /// [`Config::parallel_tool_calls`](crate::Config::parallel_tool_calls) on there is nothing
-    /// left to not-start: every call in the batch is spawned before the first one answers, so an
-    /// interrupt reaches only the tools that check the sink for themselves. Neither mode can stop
-    /// a tool that blocks without ever looking - the kernel does not own the thread it is on, and
-    /// there is no safe way to take it back. What it always does is record: every call gets an
-    /// output, even when that output is that it never ran.
+    /// [`Config::parallel_tool_calls`](crate::Config::parallel_tool_calls) on, every call in the
+    /// batch is spawned before the first one answers, so an interrupt reaches only the tools that
+    /// check the sink for themselves. Neither mode can stop a tool that blocks without ever
+    /// looking: the kernel does not own the thread it is on, and there is no safe way to take it
+    /// back. It always records: every call gets an output, even when that output is that it never
+    /// ran.
     ///
     /// note: The flag is spent by the transition attempt that acts on it - [`Kernel::step`],
-    /// including the one [`Kernel::turn`] is in the middle of making - and nothing else spends it.
-    /// It is also put down when a turn reaches [`State::Finished`] and when the transition it was
-    /// stopping fails or is abandoned, so it can never outlive the thing it was meant to stop. It
-    /// discards no work: a partial answer and a half-finished tool result are recorded like any
-    /// other. A step refused as [`Error::Busy`] acts on nothing and so clears nothing: the attempt
-    /// that spends the flag is the one that was in a position to transition, and the request in
-    /// flight keeps the stop its provider is reading.
+    /// including the one [`Kernel::turn`] is making - and nothing else spends it. It is also put
+    /// down when a turn reaches [`State::Finished`] and when the transition it was stopping fails
+    /// or is abandoned, so it can never outlive the thing it was meant to stop. It discards no
+    /// work: a partial answer and a half-finished tool result are recorded like any other. A step
+    /// refused as [`Error::Busy`] acts on nothing and clears nothing: the attempt that spends the
+    /// flag is the one in a position to transition, and the request in flight keeps the stop its
+    /// provider is reading.
     ///
-    /// note: set and announced under the machine lock, which is where every step reads it and
-    /// spends it. Outside it, a step could take the flag between the setting and the announcing,
-    /// and the log would place `turn.interrupted` after the transition that acted on it.
+    /// note: set and announced under the machine lock, where every step reads it and spends it.
+    /// Outside it, a step could take the flag between the setting and the announcing, and the log
+    /// would place `turn.interrupted` after the transition that acted on it.
     pub fn interrupt(&self) -> bool {
         let _machine = self.0.machine.lock();
         let already = self.0.interrupted.swap(true, SeqCst);
@@ -192,10 +192,10 @@ impl Kernel {
             .collect()
     }
 
-    /// Answers a permission request, returning the state that answer produced.
+    /// Answers a permission request and returns the state that answer produced.
     ///
-    /// note: The state becomes [`State::Ready`] once the last outstanding question is answered;
-    /// nothing runs until then, and nothing runs without a [`Kernel::step`] even then.
+    /// note: The state becomes [`State::Ready`] once the last outstanding question is answered.
+    /// Nothing runs until then, and nothing runs without a [`Kernel::step`].
     pub fn decide(&self, id: PermissionId, grant: Grant) -> Result<State> {
         let mut machine = self.0.machine.lock();
 
@@ -221,29 +221,26 @@ impl Kernel {
         Ok(to)
     }
 
-    /// Drops every prepared tool call, recording each as refused, and returns how many there
-    /// were.
+    /// Drops every prepared tool call, recording each as refused, and returns how many there were.
     ///
-    /// note: The model is told that the calls were refused, because a call without a result is
-    /// not something most providers accept. Whether it *sees* that is up to the
-    /// [`Projector`] - the record is kept either way.
+    /// note: The model is told the calls were refused, because most providers do not accept a call
+    /// without a result. Whether it sees that is up to [`Projector`]; the record is kept either
+    /// way.
     ///
-    /// note: one checkpoint for the batch, taken by the first result and joined by the rest -
-    /// the shape [`Kernel::push_all`] uses, for the reason it uses it. Dropping the calls is one
-    /// thing somebody did, so one `undo` puts the whole of it back; a checkpoint each would make
-    /// a single `undo` take back one refusal and leave the others, which is a turn where some of
-    /// the model's calls were answered and one was never mentioned. It also spares
-    /// [`Config::context_undo_depth`]: a model asking for sixteen tools and a person who says no
-    /// would otherwise spend the whole undo history on one keystroke.
+    /// note: One checkpoint for the batch, taken by the first result and joined by the rest - the
+    /// shape [`Kernel::push_all`] uses. Dropping the calls is one action, so one `undo` puts the
+    /// whole batch back. A checkpoint each would let one `undo` take back one refusal and leave the
+    /// others, so some calls would appear answered and one never mentioned. It also spares
+    /// [`Config::context_undo_depth`]: many refusals would otherwise spend the whole undo history
+    /// on one keystroke.
     ///
-    /// note: this is [`Kernel::decide`] refusing every call followed by a [`Kernel::step`]
-    /// running them, and it has the same shape. The refusals are announced as the machine is
-    /// claimed as [`State::Executing`], and the results are recorded before it returns to
-    /// [`State::Idle`]. Going straight to `Idle` would let a step in
-    /// before the results were there - a request carrying calls nobody had answered - and would
-    /// log the machine idle before the calls were refused. The results are not recorded *under*
-    /// the lock because recording one asks the tool what the call needed, and that is somebody
-    /// else's code.
+    /// note: This is [`Kernel::decide`] refusing every call followed by [`Kernel::step`] running
+    /// them, with the same shape. The refusals are announced as the machine is claimed as
+    /// [`State::Executing`], and the results are recorded before it returns to [`State::Idle`].
+    /// Going straight to `Idle` would let a step run before the results were there - a request
+    /// carrying calls nobody had answered - and would log the machine idle before the calls were
+    /// refused. The results are not recorded under the lock because recording one asks the tool
+    /// what the call needed, and that is somebody else's code.
     pub fn cancel_pending_calls(&self, reason: impl Into<String>) -> usize {
         let reason = reason.into();
         let prepared = {
@@ -285,7 +282,7 @@ impl Kernel {
         prepared.len()
     }
 
-    /// Performs one transition of the state machine, and returns the state it produced.
+    /// Performs one transition of the state machine and returns the state it produced.
     ///
     /// | from | what happens | to |
     /// | --- | --- | --- |
@@ -295,9 +292,9 @@ impl Kernel {
     /// | [`State::Requesting`], [`State::Executing`] | nothing; [`Error::Busy`] | - |
     /// | any resting state, with an interrupt outstanding | nothing; the interrupt is spent | the same state |
     ///
-    /// note: One step is one transition, so the model asking for a tool and that tool running
-    /// are two of them. That is deliberate: [`State::Ready`] is a resting state at which the
-    /// model has said what it wants and nothing has happened yet.
+    /// note: One step is one transition, so the model asking for a tool and that tool running are
+    /// two steps. That is deliberate: [`State::Ready`] is a resting state where the model has said
+    /// what it wants and nothing has happened yet.
     pub async fn step(&self) -> Result<State> {
         self.step_once(None).await.map(Attempt::state)
     }

@@ -1,11 +1,9 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
-//! **nachalnik** is a small, honest agent runtime: an execution loop around a language model in
-//! which the context, the tools, the permissions and the requests are explicit, inspectable
-//! state rather than hidden behaviour.
-//!
-//! The agent is not the boss. You are.
+//! **nachalnik** is a small agent runtime: an execution loop around a language model in which
+//! the context, the tools, the permissions and the requests are explicit, inspectable state
+//! rather than hidden behaviour.
 //!
 //! # The loop is a state machine
 //!

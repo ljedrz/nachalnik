@@ -1,11 +1,10 @@
-//! A walk through everything the kernel promises, with no network and no API key involved.
+//! A walk through everything the kernel promises, with no network and no API key.
 //!
-//! It ends in the situation every agent runtime meets sooner or later: a tool produces an
-//! enormous, useless output, and instead of silently summarizing it, the runtime shows what it
-//! costs and lets the user throw it out.
+//! It ends with a tool producing an enormous, useless output. The runtime shows what it costs and
+//! lets the user throw it out instead of silently summarizing it.
 //!
-//! Note what is *not* imported from the library: the permission policy and the `/context`
-//! renderer are both written here, because neither belongs in a kernel.
+//! The permission policy and the `/context` renderer are written here rather than imported from the
+//! library, because neither belongs in a kernel.
 //!
 //! ```text
 //! cargo run --example transparency --features selectors
@@ -51,8 +50,8 @@ impl Provider for Script {
     }
 }
 
-/// Reading is cheap and reversible; anything with a side effect gets a question. That is the
-/// whole policy, and it is here because a permission table is not the library's to ship.
+/// Reading is cheap and reversible; anything with a side effect gets a question. A permission table
+/// is not the library's to ship, so the policy is written here.
 struct AskAboutSideEffects;
 
 #[async_trait]
@@ -127,11 +126,11 @@ impl Tool for CargoTest {
     }
 }
 
-/// Renders `/context` from the items themselves - the kernel has no opinion about how this
-/// should look, and no code for it.
+/// Renders `/context` from the items themselves. The kernel has no opinion about how this should
+/// look and has no code for it.
 ///
-/// note: Every column is named, because a column of numbers whose meaning the reader has to
-/// infer is not transparency, it is decoration.
+/// note: every column is named, so the reader does not have to infer what a column of numbers
+/// means.
 fn render_context(kernel: &Kernel) {
     println!(
         "   {:<4}{:<13}{:<30}{:>8}",

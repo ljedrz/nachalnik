@@ -20,10 +20,10 @@ use super::Kernel;
 impl Kernel {
     /// Sets the provider, returning the previous one.
     ///
-    /// note: `from` is the model last announced rather than what the previous provider says it is
-    /// now, as in [`Kernel::provider_changed`]: one that switched in place unannounced, or that is
-    /// set again after switching, would otherwise be named as the model it became, and the record
-    /// would never say it had been the one before.
+    /// note: `from` is the last announced model, not what the provider now says it is, as in
+    /// [`Kernel::provider_changed`]. A provider that switched in place unannounced, or was set
+    /// again after switching, would otherwise be named as the model it became, and the record would
+    /// never say it had been the one before.
     pub fn set_provider(&self, provider: Arc<dyn Provider>) -> Option<Arc<dyn Provider>> {
         let mut held = self.0.provider.write();
         let previous = held.replace(provider);
@@ -47,13 +47,13 @@ impl Kernel {
         previous
     }
 
-    /// Says that the provider this kernel holds now answers as a different model, and announces it
-    /// as [`Event::ModelChanged`]; returns whether anything had changed.
+    /// Says the held provider now answers as a different model, announces [`Event::ModelChanged`],
+    /// and returns whether anything changed.
     ///
-    /// note: for a provider that switches its model in place, which is the only way a client can
-    /// switch one it shares with something else. [`Kernel::set_provider`] with the same provider
-    /// would ask it what it was *after* the switch and report `from` and `to` as the same model,
-    /// so the kernel remembers what it last announced and compares against that instead.
+    /// note: for a provider that switches its model in place, the only way a client can switch one
+    /// it shares with something else. [`Kernel::set_provider`] with the same provider would ask
+    /// what it is after the switch and report `from` and `to` as the same model, so the kernel
+    /// compares against what it last announced instead.
     pub fn provider_changed(&self) -> bool {
         // the component's lock, held while the change is announced, for the reason `emit` gives
         let held = self.0.provider.write();
@@ -106,8 +106,7 @@ impl Kernel {
         let id = tool.spec().id;
         let mut held = self.0.tools.write();
         let previous = held.insert(id, tool);
-        // the list is read off the guard rather than through `tool_ids`, which would ask for a
-        // read lock on the one this guard holds for writing
+        // Read from the guard: `tool_ids` would take a read lock on a lock already held for writing
         self.emit(Event::ToolsChanged {
             tools: held.keys().cloned().collect(),
         });
@@ -193,9 +192,9 @@ impl Kernel {
 
             previous
         };
-        // the recount waits until the lock is let go, because it reads the counter through it.
-        // What has to be under one lock is the change and the announcement of it; the figures
-        // the recount brings into line are announced as an event of their own
+        // the recount waits for the lock to be released, because it reads the counter through it.
+        // The change and its announcement must be under one lock; the figures the recount brings
+        // into line are announced as their own event
         self.recount();
 
         previous
@@ -231,9 +230,9 @@ impl Kernel {
     pub fn recalibrate(&self, calibration: Calibration) -> Option<Calibration> {
         let held = self.0.counter.read();
         let counter = &**held;
-        // the correction and the recount it causes under one lock, as a change and its
-        // announcement are: applied first and recounted after, a snapshot in between held the
-        // new scale beside figures counted on the old one
+        // the correction and its recount happen under one lock, as a change and its announcement
+        // do: applied first and recounted after, a snapshot in between would hold the new scale
+        // beside figures counted on the old one
         let mut context = self.0.context.write();
         let previous = counter.calibration()?;
         counter.recalibrate(calibration);
@@ -247,9 +246,9 @@ impl Kernel {
         Some(previous)
     }
 
-    /// Sets (or, with `None`, removes) the compactor, returning the previous one.
+    /// Sets or removes the compactor, returning the previous one.
     ///
-    /// note: With no compactor set, the context only ever changes because somebody asked it to.
+    /// note: with no compactor set, the context only changes when somebody asks it to.
     pub fn set_compactor(
         &self,
         compactor: Option<Arc<dyn Compactor>>,
@@ -270,20 +269,19 @@ impl Kernel {
         self.0.compactor.read().clone()
     }
 
-    /// Sets how many of one answer's tool calls are run, returning what it was; `None`, the
-    /// default, runs every one.
+    /// Sets how many of one answer's tool calls are run, returning the previous value; `None`, the
+    /// default, runs every call.
     ///
-    /// note: a model caught in a repetition loop can answer with thousands of calls, most of them
-    /// the same one, and every one is prepared, run and recorded, filling the context with copies.
-    /// The calls past the ceiling are answered with an error saying how many ran and to ask for
-    /// the rest in another answer, so every call still has its result, and nothing past it runs or
-    /// is asked about. A ceiling rather than one run of a call repeated in one answer, because a
-    /// model may mean a repetition - a read after a write - and a loop of distinct calls is still a
-    /// loop.
+    /// note: a model in a repetition loop can answer with thousands of calls, mostly the same one,
+    /// and every one is prepared, run and recorded, filling the context with copies. Calls past the
+    /// ceiling get an error saying how many ran and to ask for the rest in another answer; every
+    /// call still has its result, and nothing past the ceiling runs or is asked about. A ceiling
+    /// rather than one run of a repeated call, because a model may mean a repetition (a read after
+    /// a write), and a loop of distinct calls is still a loop.
     ///
-    /// note: a setter rather than a field of [`Config`](crate::Config), which a caller builds by
-    /// its fields and which would break every one of them; like a field of it, a setting and not
-    /// part of the session's state, so a snapshot does not carry it.
+    /// note: a setter rather than a field of [`Config`](crate::Config), which a caller builds from
+    /// its fields and which would break every one of them; it is a setting, not session state, so a
+    /// snapshot does not carry it.
     pub fn set_call_ceiling(&self, ceiling: Option<usize>) -> Option<usize> {
         std::mem::replace(&mut *self.0.call_ceiling.write(), ceiling)
     }
@@ -293,17 +291,17 @@ impl Kernel {
         *self.0.call_ceiling.read()
     }
 
-    /// Sets how many requests a turn may send before it hands control back, returning what it was;
-    /// `None` keeps going until the model stops asking for tools. It starts at
+    /// Sets the maximum number of requests a turn may send, returning the previous limit; `None`
+    /// means no limit, so the turn continues until the model stops asking for tools. It starts at
     /// [`Config::max_requests_per_turn`](crate::Config::max_requests_per_turn).
     ///
-    /// note: read before each request, so a change made while a turn runs holds from its next
-    /// request: raised, the turn goes on further; lowered to what it has already sent or less, it
-    /// pauses there. A turn that already paused stays paused until [`Kernel::turn`] is called
-    /// again, which carries on counting from where it stopped.
+    /// note: read before each request, so a change made during a turn applies from the next
+    /// request. Raising it lets the turn continue; lowering it to the number already sent or fewer
+    /// pauses the turn. A paused turn stays paused until [`Kernel::turn`] is called again, which
+    /// resumes counting from where it stopped.
     ///
-    /// note: a setting and not part of the session's state, as [`Kernel::set_call_ceiling`] is, so
-    /// a snapshot does not carry it and a resumed kernel starts from its own `Config`.
+    /// note: like [`Kernel::set_call_ceiling`], it is a setting and not session state, so a
+    /// snapshot does not carry it and a resumed kernel starts from its own `Config`.
     pub fn set_max_requests_per_turn(&self, max: Option<usize>) -> Option<usize> {
         std::mem::replace(&mut *self.0.max_requests.write(), max)
     }
@@ -313,19 +311,18 @@ impl Kernel {
         *self.0.max_requests.read()
     }
 
-    /// Sets how large a picture in a tool's output may be and still be kept whole, beside text
-    /// cut to the tool's output limit, returning what it was; `None`, the default, measures a
-    /// picture with the rest of the output, so that one over the limit is named instead.
+    /// Sets the maximum size of a picture in a tool's output that is kept whole beside text cut to
+    /// the output limit, returning the previous value; `None`, the default, measures the picture
+    /// with the rest of the output, so a picture over the limit is named instead.
     ///
-    /// note: an output limit is a number of bytes the model reads, and a picture is not read by
-    /// the byte - a screenshot from an MCP server is a few megabytes of base64, over any limit a
-    /// tool's text is held to, and without this the model was shown its name and never the picture.
-    /// Set it to the most the APIs in use take in one picture. See
-    /// [`Content::truncate_around_pictures`](crate::Content::truncate_around_pictures) for what is
-    /// kept and what is cut.
+    /// note: an output limit is bytes the model reads; a picture is not read by the byte. An MCP
+    /// screenshot is a few megabytes of base64, over any text limit, and without this the model saw
+    /// only the picture's name. Set it to the most the APIs in use take in one picture.
+    /// [`Content::truncate_around_pictures`](crate::Content::truncate_around_pictures) shows what
+    /// is kept and what is cut.
     ///
     /// note: a setting rather than a field of [`Config`](crate::Config), as
-    /// [`Kernel::set_call_ceiling`] is, and for the same reasons.
+    /// [`Kernel::set_call_ceiling`] is, for the same reasons.
     pub fn set_picture_limit(&self, bytes: Option<usize>) -> Option<usize> {
         std::mem::replace(&mut *self.0.picture_limit.write(), bytes)
     }
@@ -336,18 +333,18 @@ impl Kernel {
         *self.0.picture_limit.read()
     }
 
-    /// Sets what the output of a tool that says nothing about its own limit is cut at, in bytes,
-    /// returning what it was; `None` cuts nothing. It starts at
+    /// Sets the byte limit at which the output of a tool that sets no limit of its own is cut,
+    /// returning the previous value; `None` cuts nothing. It starts at
     /// [`Config::default_tool_output_limit`](crate::Config::default_tool_output_limit).
     ///
-    /// note: a setter as well as the field, because what is worth showing the model of one
-    /// answer depends on how large its context window is, and that moves with the model while the
-    /// session runs. A tool somebody else wrote - one from an MCP server - says nothing about its
-    /// limit, and was held to the number the kernel was built with whatever model came after.
+    /// note: a setter as well as the field, because what is worth showing the model depends on its
+    /// context window, which changes during the session. A tool from an MCP server says nothing
+    /// about its limit and was held to the number the kernel was built with, whatever model came
+    /// after.
     ///
-    /// note: read as each call's output is recorded, so a change holds from the next one. A
-    /// setting and not part of the session's state, as [`Kernel::set_call_ceiling`] is, so a
-    /// snapshot does not carry it.
+    /// note: read as each call's output is recorded, so a change holds from the next call. Like
+    /// [`Kernel::set_call_ceiling`], it is not part of the session's state, so a snapshot does not
+    /// carry it.
     pub fn set_default_tool_output_limit(&self, bytes: Option<usize>) -> Option<usize> {
         std::mem::replace(&mut *self.0.output_limit.write(), bytes)
     }
@@ -364,11 +361,11 @@ impl Kernel {
 
     /// Sets the parameters sent with every request, returning the previous ones.
     ///
-    /// note: parameters equal to the ones in force are not an operation, which is the rule
-    /// [`Kernel::replace`] and [`Kernel::set_state`] already follow. `model.params` over a request
-    /// that will go out byte for byte the same is a change somebody reading the log goes looking
-    /// for and cannot find. This is the one component setter that can tell: the rest hold a trait
-    /// object, and two `Arc<dyn Provider>` that would behave alike are not comparable.
+    /// note: parameters equal to the ones in force are not an operation, the rule
+    /// [`Kernel::replace`] and [`Kernel::set_state`] already follow. A `model.params` event for a
+    /// request that goes out byte for byte the same is a change a log reader looks for and cannot
+    /// find. This is the only component setter that can tell: the rest hold a trait object, and two
+    /// `Arc<dyn Provider>` that behave alike are not comparable.
     pub fn set_params(&self, params: Params) -> Params {
         let mut held = self.0.params.write();
         if *held == params {
