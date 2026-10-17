@@ -808,6 +808,20 @@ mod weaker {
             "{said}"
         );
     }
+
+    /// On the kernel the tests run on, `weaker_here` says nothing or one of `weaker`'s sentences.
+    ///
+    /// note: which of them depends on the machine, so this holds it to being a sentence about the
+    /// kernel and nothing else.
+    #[test]
+    fn weaker_here_says_nothing_or_a_sentence_about_this_kernel() {
+        if let Some(said) = weaker_here() {
+            assert!(
+                said.starts_with("this kernel") || said.starts_with("the kernel would not"),
+                "{said}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

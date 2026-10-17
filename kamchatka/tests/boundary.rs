@@ -880,6 +880,9 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         "and what it could have used instead: {note}"
     );
     assert!(note.contains("settings.toml is outside"), "{note}");
+    // a single path out of reach is said with the sentence that is about that alone, which tells
+    // the model to work inside the working directory rather than the mixed-reasons wording
+    assert!(note.contains("Work inside the working directory"), "{note}");
 
     // two paths refused, as `echo hi > /a/out.txt; cat /a/in.txt` is, are two paths
     let note = confined
@@ -1039,6 +1042,26 @@ fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() 
         .note_for(&stderr)
         .expect("a refusal it did not judge may be the boundary's");
     assert!(note.contains("may be that boundary"), "{note}");
+
+    // and the last of the paths judged is still judged: a command whose refusals name exactly
+    // `LOOKED` distinct paths, the last of them out of reach, is told which path that is. Judging
+    // one more than the cap is what is stopped, not the cap itself
+    let dir = common::workdir("judged-to-the-cap");
+    let inside = Sandbox {
+        workdir: dir.clone(),
+        ..confined.clone()
+    };
+    let mut stderr: String = (0..999)
+        .map(|i| format!("cat: {}/missing{i}: Permission denied\n", dir.display()))
+        .collect();
+    stderr.push_str("cat: /elsewhere/last.txt: Permission denied\n");
+    let note = inside
+        .note_for(&stderr)
+        .expect("a refusal out of reach was judged");
+    assert!(
+        note.contains("/elsewhere/last.txt is outside what this session reaches"),
+        "the 1000th path judged is named, not stopped short of: {note}"
+    );
 }
 
 /// Each of the three spellings of a refusal is a refusal on its own.
