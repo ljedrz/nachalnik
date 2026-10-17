@@ -4083,6 +4083,19 @@ fn a_record_carried_across_a_resume_checks_clean() {
         findings[0].contains("are missing") && findings[0].contains("before a resume"),
         "{findings:?}"
     );
+
+    // a run past its snapshot by one record leaves one missing, which is named singly
+    let mut past = first.snapshot();
+    let gap_at = past.last_seq + 1;
+    past.last_seq += 1;
+    let resumed = Kernel::resume(Config::default(), past);
+    let log = as_lines(&first) + &as_lines(&resumed);
+    let findings = check(Some(&log), None).findings;
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(
+        findings[0].starts_with(&format!("record {gap_at} is missing, between")),
+        "{findings:?}"
+    );
 }
 
 /// A finding says which line of the log it is about, counting from one.
