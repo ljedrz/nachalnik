@@ -21,7 +21,7 @@ REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 MUTANTS=${MUTANTS:-$REPO/target/agents}
 out=$1 n=$2; shift 2
 mkdir -p "$MUTANTS/mt" "$MUTANTS/out"
-grep -qx '/w[0-9]*/' "$REPO/.git/info/exclude" 2> /dev/null || echo '/w[0-9]*/' >> "$REPO/.git/info/exclude"
+grep -qxF '/w[0-9]*/' "$REPO/.git/info/exclude" 2> /dev/null || echo '/w[0-9]*/' >> "$REPO/.git/info/exclude"
 # see mutants.sh: the cap binds this subtree only once the user's total reaches it
 cap=$(($(ps -u "$(id -u)" -L --no-headers | wc -l) + 20000))
 # these two fail unmutated in a worktree here: the first wants a pty this machine will not
