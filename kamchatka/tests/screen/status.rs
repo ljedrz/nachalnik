@@ -747,6 +747,30 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
     );
 }
 
+/// A parameter set whole is named whole when the listing names nothing inside it.
+///
+/// note: `by_name` reads a value field by field only where the listing names a field under its
+/// path. `foo` set to an object with no listed field under `foo.` is one parameter, `foo`, and
+/// `foo.bar` is not named on its own.
+#[tokio::test]
+async fn a_parameter_set_whole_is_named_whole_where_the_listing_names_nothing_inside_it() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .set_provider(Arc::new(ScriptedProvider::new([]).with_info(
+            ModelInfo::new("scripted", "a/model").with_parameters(vec!["temperature".to_owned()]),
+        )));
+
+    harness.send(r#"/params foo {"bar":1}"#).await;
+    let screen = harness.screen();
+    assert!(screen.contains("does not list foo"), "{screen}");
+    assert!(
+        !screen.contains("does not list foo.bar"),
+        "the field inside it is not named on its own: {screen}"
+    );
+}
+
 /// The rows of the last list on `screen` that opens with `opening`, one to a parameter.
 fn listed(screen: &str, opening: &str) -> Vec<String> {
     screen
