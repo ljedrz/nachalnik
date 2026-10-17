@@ -747,6 +747,19 @@ async fn the_permissions_footer_keeps_its_first_part_when_it_runs_out_of_room() 
         footer(&screen).contains(" shell: confined, ne… "),
         "{screen}"
     );
+
+    // the keys exactly fill the border at 111 columns, with the space before them against the
+    // corner, and are one column short at 110, where the border shows before what is left
+    let screen = harness.sized(110, 20);
+    let line = footer(&screen);
+    assert!(line.contains("more it will ask about"), "{screen}");
+    assert!(!line.contains("space cycles"), "{screen}");
+    assert!(line.starts_with("└─"), "{screen}");
+
+    let screen = harness.sized(111, 20);
+    let line = footer(&screen);
+    assert!(line.contains("space cycles"), "{screen}");
+    assert!(line.starts_with("└ "), "{screen}");
 }
 
 #[tokio::test]
