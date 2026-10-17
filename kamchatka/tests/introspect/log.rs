@@ -1689,3 +1689,61 @@ async fn the_log_says_no_more_than_the_limits_table_allows_it_to() {
          large it is: {said}"
     );
 }
+
+/// A whole log, nothing drained and nothing resumed, is not said to have lost its beginning.
+///
+/// note: `earlier` is the one place that says a log's first record is not the first that happened,
+/// and it must say nothing where the first record is number 1. Every other test here reads a log
+/// that starts above 1, so this is the only check that a whole log is not told it was drained.
+#[tokio::test]
+async fn a_whole_log_is_not_said_to_have_lost_its_beginning() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read" }),
+    )]));
+    kernel.push(ContextItem::user("what has happened?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let summary = &said[0];
+    assert!(
+        !summary.contains("begins at record") && !summary.contains("starts at record"),
+        "a log holding every record is not said to begin anywhere: {summary}"
+    );
+    assert!(
+        !summary.contains("drained") && !summary.contains("resumed"),
+        "a log holding every record is not said to have been drained or resumed: {summary}"
+    );
+}
+
+/// A call to `log` whose arguments did not parse is answered with how to write them.
+///
+/// note: the kernel asks the tool what to add, and `log` adds the one sentence about a line break
+/// typed into a string, which is the fault a model makes without seeing it. Left out, or with
+/// anything else put in its place, the model is told only that the JSON was invalid.
+#[tokio::test]
+async fn a_log_call_that_did_not_parse_is_told_how_to_write_it() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![nachalnik::ToolCall::unparsed(
+            "c1",
+            "log",
+            "{\"action\": \"read\", \"kinds\": [\"a\nb\"]}",
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("what has happened?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("not a JSON object"),
+        "the kernel answers a call whose arguments did not parse: {said}"
+    );
+    assert!(
+        said.contains("Write it with a line break inside a string written as `\\n`."),
+        "the log tool's advice is in the answer, as its own sentence at its end: {said}"
+    );
+}

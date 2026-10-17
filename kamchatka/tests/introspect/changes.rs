@@ -1241,6 +1241,66 @@ async fn what_the_model_changed_before_a_resume_it_can_undo_after_one() {
     assert_eq!(kernel.item(read).unwrap().state, ContextState::Active);
 }
 
+/// The history a snapshot's file carries reads back from that file, and a file without one reads
+/// back as nothing.
+///
+/// note: `what_the_model_changed_before_a_resume_it_can_undo_after_one` takes the history out of
+/// the bytes itself, so nothing checked that `saved_history` - the function `-r` reads it with -
+/// finds it in a file on disk, or says there is none where there is none.
+#[tokio::test]
+async fn the_history_a_snapshot_file_carries_reads_back_from_that_file() {
+    let (first, _provider, anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "exclude", "ids": [1], "reason": "done with it" }),
+    )]));
+    first.push(ContextItem::file("read.rs", "..."));
+    first.push(ContextItem::user("drop the file"));
+    first.turn().await.expect("the turn failed");
+
+    let dir = crate::common::scratch("saved-history");
+    let with = dir.join("with.json");
+    let written = kamchatka::introspect::snapshot_with(&first.snapshot(), Some(&anchor.history()))
+        .expect("it renders");
+    std::fs::write(&with, &written).expect("written");
+    let expected: serde_json::Value = serde_json::from_slice(&written).expect("JSON");
+    let expected = &expected[kamchatka::introspect::HISTORY];
+    assert!(
+        expected
+            .as_object()
+            .is_some_and(|journal| !journal.is_empty()),
+        "the exclusion should have left a journal to carry: {expected}"
+    );
+    assert_eq!(
+        kamchatka::introspect::saved_history(&with).as_ref(),
+        Some(expected),
+    );
+
+    // a snapshot written without a history, and a path that is not there at all
+    let without = dir.join("without.json");
+    let bare = kamchatka::introspect::snapshot_with(&first.snapshot(), None).expect("it renders");
+    std::fs::write(&without, &bare).expect("written");
+    assert_eq!(kamchatka::introspect::saved_history(&without), None);
+    assert_eq!(
+        kamchatka::introspect::saved_history(&dir.join("absent.json")),
+        None
+    );
+}
+
+/// The history renders in debug output as a `History`, and says nothing of what it holds.
+///
+/// note: `History` derives nothing for `Debug` and writes its own, so that a session's recorder,
+/// which derives `Debug` over it, can be printed. A `Debug` that prints nothing at all would be a
+/// silent gap in whatever is printed beside it, and nothing in the suite looked.
+#[tokio::test]
+async fn the_history_names_itself_in_debug_output() {
+    let (kernel, _provider, anchor) = agent(one_turn(vec![]));
+    kernel.push(ContextItem::user("hello"));
+
+    let shown = format!("{:?}", anchor.history());
+    assert!(shown.starts_with("History"), "{shown:?}");
+}
+
 /// A pin the model made is still the model's after a resume, and one the person made is still
 /// theirs.
 ///
