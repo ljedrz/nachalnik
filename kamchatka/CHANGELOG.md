@@ -47,6 +47,13 @@ minor bump may break you.
   command under a shut network could open `AF_RXRPC` and send a UDP datagram to any address, or
   open `AF_VSOCK` and reach the host from inside a virtual machine. It now lets through only unix
   and netlink sockets, and holds the rest like an internet socket.
+- **A connection to `--web` that sends nothing no longer holds a file descriptor for good.** The
+  request is read before the key is checked, with no time limit and no limit on how many
+  connections could be waiting, so a device on the network without the key could open connections
+  until the process ran out of descriptors, and then the session could not write its record or
+  start a command. A connection now has 10 seconds to send its request and at most 64 may wait at
+  once. Running out of descriptors is said once and waited out, as `--serve` already did, rather
+  than reported on every attempt as fast as the loop could go.
 
 ## [0.20.0] - 2026-10-14
 
