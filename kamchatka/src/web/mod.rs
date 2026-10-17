@@ -908,15 +908,19 @@ fn param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
 
-    /// The key is eight hex digits, and only it opens a route beneath it.
+    /// The key is eight hex digits, and only it opens a route beneath it: a key one bit off does
+    /// not, and neither does one whose differences cancel out under XOR.
     #[test]
-    fn the_key_is_eight_hex_digits() {
+    fn only_the_key_opens_a_route_beneath_it() {
         let key = fresh_key().expect("a key");
         assert_eq!(key.len(), 8);
         assert!(key.chars().all(|c| c.is_ascii_hexdigit()), "{key}");
         assert_eq!(beneath(&format!("/{key}/events"), &key), Some("/events"));
         assert_eq!(beneath("/events", &key), None);
         assert_eq!(beneath("/00000000/events", "00000001"), None);
+        // two bytes that each differ from the key's by one bit cancel out if the differences are
+        // combined by XOR rather than OR, which would take this for the key
+        assert_eq!(beneath("/00000010/events", "00000001"), None);
     }
 
     /// A hundred wrong keys close the page to everybody for a minute, and then it opens again.
@@ -1072,5 +1076,56 @@ mod tests {
             .await
             .expect("a body exactly at the limit is read");
         assert_eq!(read.len(), MAX_BODY);
+    }
+
+    /// A request head is read to a few kilobytes, which is what a browser's cookies and a proxy's
+    /// headers can add up to.
+    #[tokio::test]
+    async fn a_request_head_of_a_few_kilobytes_is_read() {
+        let padding = "x".repeat(4096);
+        let text = format!(
+            "GET /3fa91c07/events HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Padding: {padding}\r\n\r\n"
+        );
+        let mut reader = BufReader::new(text.as_bytes());
+        let request = head(&mut reader)
+            .await
+            .expect("it is read")
+            .expect("a request");
+        assert_eq!(request.header("x-padding").map(str::len), Some(4096));
+    }
+
+    /// A command of a few kilobytes is read, since a command can carry a long line typed at the
+    /// page.
+    #[tokio::test]
+    async fn a_command_of_a_few_kilobytes_is_read() {
+        let text = "x".repeat(4096);
+        let request = Request {
+            method: "POST".to_owned(),
+            target: "/3fa91c07/do".to_owned(),
+            headers: vec![("content-length".to_owned(), "4096".to_owned())],
+        };
+        let mut reader = BufReader::new(text.as_bytes());
+        let got = body(&mut reader, &request)
+            .await
+            .expect("a command of that size is read");
+        assert_eq!(got.len(), 4096);
+    }
+
+    /// A request from this page, which says so with `Sec-Fetch-Site`, is answered; one from
+    /// another site is not.
+    #[test]
+    fn a_request_says_where_it_came_from_and_only_another_site_is_refused() {
+        let from = |site: &str| Request {
+            method: "GET".to_owned(),
+            target: "/3fa91c07/events".to_owned(),
+            headers: vec![
+                ("host".to_owned(), "127.0.0.1:8080".to_owned()),
+                ("sec-fetch-site".to_owned(), site.to_owned()),
+            ],
+        };
+        assert_eq!(foreign(&from("same-origin")), None);
+        assert_eq!(foreign(&from("none")), None);
+        assert!(foreign(&from("cross-site")).is_some());
+        assert!(foreign(&from("same-site")).is_some());
     }
 }

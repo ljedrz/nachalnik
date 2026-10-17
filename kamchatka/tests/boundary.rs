@@ -795,6 +795,20 @@ async fn the_page_is_closed_to_commands_and_listens_only_on_loopback() {
     );
 }
 
+/// A host name is refused beyond loopback, even where it resolves to a private address, since
+/// what a name resolves to is not up to the person typing it.
+#[cfg(feature = "webui")]
+#[tokio::test]
+async fn a_host_name_is_refused_beyond_loopback_even_when_it_resolves_to_a_private_address() {
+    // `192.168.1` is not an address, so it is looked up, and resolves to a private one without
+    // any network
+    let refused = kamchatka::web::Web::bind("192.168.1:8080", "tcp:127.0.0.1:1")
+        .await
+        .err()
+        .expect("a host name was listened on");
+    assert!(refused.contains("is a host name"), "{refused}");
+}
+
 #[test]
 fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     use kamchatka::sandbox::Network;
