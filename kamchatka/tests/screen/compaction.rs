@@ -1284,6 +1284,92 @@ async fn a_message_larger_than_the_window_is_named_as_the_overrun() {
     assert!(!told.contains("pinned, and no pass may free"), "{told}");
 }
 
+/// The message named as the overrun on its own is the newest message the user sent, and never a
+/// turn of the model's, which is what an answer longer than the window would otherwise be taken
+/// for.
+#[tokio::test]
+async fn a_long_answer_is_not_named_as_a_message_on_its_own() {
+    use nachalnik::{Content, Event, Overrun};
+
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(None);
+    let question = harness
+        .app
+        .kernel
+        .push(ContextItem::user("a question of a few words"));
+    // an answer of ~10,000 tokens, newer than the question
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("x".repeat(40_000)),
+        vec![],
+    ));
+    let context = harness.app.kernel.budget().context_tokens;
+    // over by 5,000: taking the question out would not be enough, and taking the answer would be
+    harness.app.on_event(Event::StepFailed {
+        error: "the request is too long".to_owned(),
+        overrun: Some(Overrun {
+            tokens: context as u64,
+            limit: Some((context - 5_000) as u64),
+        }),
+    });
+
+    let told = said(&harness);
+    assert!(
+        told.contains("tokens have to go before it is sent"),
+        "{told}"
+    );
+    assert!(
+        !told.contains("on its own"),
+        "the answer is not a message that is the overrun on its own: {told}"
+    );
+    assert!(
+        !told.contains(&format!("the message [{question}]")),
+        "and the question, which is small, is not named either: {told}"
+    );
+}
+
+/// A message is the overrun on its own only where everything else in the context is less than the
+/// overrun; where everything else is exactly the overrun, it is not, and the pinned and turns
+/// advice stands.
+#[tokio::test]
+async fn a_message_leaving_the_context_at_the_limit_is_not_named_as_it() {
+    use nachalnik::{Content, Event, Overrun};
+
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(None);
+    let question = harness
+        .app
+        .kernel
+        .push(ContextItem::user("a question of a few words"));
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("an answer of a few words"),
+        vec![],
+    ));
+    let budget = harness.app.kernel.budget();
+    let question_tokens = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .find(|item| item.id == question)
+        .expect("the question")
+        .tokens;
+    // the overrun is exactly what everything but the question comes to, so removing the question
+    // leaves the context exactly at the limit: not under it, and not the overrun on its own
+    harness.app.on_event(Event::ModelFailed {
+        error: "the request is too long".to_owned(),
+        overrun: Some(Overrun {
+            tokens: budget.context_tokens as u64,
+            limit: Some(question_tokens as u64),
+        }),
+    });
+
+    let told = said(&harness);
+    assert!(
+        !told.contains("on its own"),
+        "taking the question out lands the context on the limit, not under it: {told}"
+    );
+}
+
 /// And the line saying the context is full, which comes first, does not ask for the exclusions
 /// the next line says cannot cover it.
 ///
