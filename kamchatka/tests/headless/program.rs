@@ -2857,3 +2857,33 @@ async fn a_resume_pointed_elsewhere_says_where_the_record_was_talking() {
         "it went where it was pointed: {said}"
     );
 }
+
+/// A run on a kernel with no Landlock is told its shell commands run unconfined, and a run that
+/// asked for `--no-sandbox` is not.
+///
+/// note: the program is refused Landlock's first system call, as a kernel without Landlock refuses
+/// it, by a filter installed between `fork` and `exec`.
+#[test]
+fn the_sandbox_gap_is_said_unless_the_run_asked_for_no_sandbox() {
+    use std::os::unix::process::CommandExt as _;
+
+    let run = |extra: &[&str]| {
+        let mut command = common::command();
+        command
+            .args(["-m", "nothing", "--no-record", "hello"])
+            .args(extra)
+            .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::null());
+        // SAFETY: `without_landlock` makes two `prctl` calls and allocates nothing
+        unsafe { command.pre_exec(common::without_landlock) };
+        let out = command.output().expect("the binary under test is built");
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    };
+
+    let said = run(&[]);
+    assert!(said.contains("this kernel has no Landlock"), "{said}");
+
+    let said = run(&["--no-sandbox"]);
+    assert!(!said.contains("this kernel has no Landlock"), "{said}");
+}

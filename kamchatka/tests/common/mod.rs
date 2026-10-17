@@ -264,3 +264,53 @@ pub fn command() -> std::process::Command {
 
     command
 }
+
+/// Has this thread, and every process it starts, refused `landlock_create_ruleset` with `ENOSYS`,
+/// as a kernel built without Landlock refuses it, and every other system call let through. It is
+/// how a test sees what is said on a kernel with no Landlock while running on one that has it.
+///
+/// note: a seccomp filter cannot be taken off, so this is for a process of its own: a child the
+/// test runs, or the program between `fork` and `exec` in `CommandExt::pre_exec`, where nothing
+/// may allocate and nothing here does. The call is matched by its native number, which is the
+/// only one the code under test makes.
+pub fn without_landlock() -> std::io::Result<()> {
+    let op = |code: u32, jf: u8, k: u32| libc::sock_filter {
+        code: code as u16,
+        jt: 0,
+        jf,
+        k,
+    };
+    let mut filter = [
+        // the call's number
+        op(libc::BPF_LD | libc::BPF_W | libc::BPF_ABS, 0, 0),
+        op(
+            libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K,
+            1,
+            libc::SYS_landlock_create_ruleset as u32,
+        ),
+        op(
+            libc::BPF_RET | libc::BPF_K,
+            0,
+            libc::SECCOMP_RET_ERRNO | libc::ENOSYS as u32,
+        ),
+        op(libc::BPF_RET | libc::BPF_K, 0, libc::SECCOMP_RET_ALLOW),
+    ];
+    let program = libc::sock_fprog {
+        len: filter.len() as u16,
+        filter: filter.as_mut_ptr(),
+    };
+    // SAFETY: two `prctl` calls, the second given a filter that outlives it on this stack.
+    // `no_new_privs` is what lets a process without privileges install a filter at all
+    let installed = unsafe {
+        libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0
+            && libc::prctl(
+                libc::PR_SET_SECCOMP,
+                libc::SECCOMP_MODE_FILTER,
+                &raw const program,
+            ) == 0
+    };
+    match installed {
+        true => Ok(()),
+        false => Err(std::io::Error::last_os_error()),
+    }
+}
