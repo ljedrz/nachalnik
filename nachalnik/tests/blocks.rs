@@ -180,6 +180,46 @@ fn a_picture_is_kept_whole_and_the_text_around_it_is_cut() {
     let mut content = picture();
     assert_eq!(content.truncate_around_pictures(100, 20_000), None);
     assert_eq!(content, picture());
+
+    // unless it is over its own limit, and then it is named
+    let mut content = picture();
+    content.truncate_around_pictures(100, 5_000).expect("over");
+    assert!(content.blobs().is_empty());
+    assert!(content.to_text().contains("image/png"), "{content:?}");
+
+    // and blocks with no picture in them are truncated as `truncate_to` does it, into text
+    let mut content = Content::blocks([
+        Block::text(Content::text("x".repeat(200))),
+        Block::text(Content::text("y".repeat(200))),
+    ]);
+    content.truncate_around_pictures(100, 20_000).expect("over");
+    assert!(content.as_blocks().is_none(), "{content:?}");
+}
+
+/// Text beside a picture is held to the limit however small the picture, and a block of it that
+/// fits leaves the next only what remains.
+#[test]
+fn the_text_beside_a_picture_shares_what_is_left_of_the_limit() {
+    let picture = || Content::blob("image/png", "A".repeat(10));
+    let mut content = Content::blocks([
+        Block::text(Content::text("x".repeat(40))),
+        Block::text(picture()),
+        Block::text(Content::text("y".repeat(200))),
+    ]);
+
+    // the forty bytes before the picture fit, and leave sixty for the rest
+    assert_eq!(content.truncate_around_pictures(100, 1_000), Some(189));
+    assert_eq!(
+        content,
+        Content::blocks([
+            Block::text(Content::text("x".repeat(40))),
+            Block::text(picture()),
+            Block::text(Content::text(format!(
+                "{}\n[... 189 bytes truncated by an output limit ...]",
+                "y".repeat(11)
+            ))),
+        ])
+    );
 }
 
 #[test]
