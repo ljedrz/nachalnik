@@ -445,14 +445,18 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   a run that logs `Auto-set test timeout to 20s` beside `--test-workspace` is stopped at once.
 - **A worktree can be poisoned, and then a test it keeps failing "catches" every mutant.**
   `a_write_refused_for_anything_else_is_not_told_to_make_a_directory` makes a directory mode
-  `000` and puts it back after the call; a mutant that panics or times out in between leaves it
-  so, `scratch` cannot remove it and says nothing, and the test fails at its first line in every
-  later run in that worktree. In the run since the last mutants sweep it did so in one shard from
-  the middle of the run on, and 28 mutants were counted caught by it alone. After every run, list
-  the caught mutants whose log fails nothing but tests unrelated to the mutated code, take them
-  out of the shard's `caught.txt` (keeping a copy) so the next `--iterate` tests them again, and
-  count what it will test from the merged skip lists rather than the outcomes. Before a run,
-  `chmod -R u+rwx` and empty `w*/target/tmp`, and look there for a directory at mode `000`.
+  `000` and puts it back after the call; a mutant that panicked or timed out in between left it
+  so, kamchatka's `scratch` could not remove it and said nothing, and the test failed at its first
+  line in every later run in that worktree. In the run since the last mutants sweep it did so in
+  one shard from the middle of the run on, and 28 mutants were counted caught by it alone.
+  `scratch` now opens up what an earlier run left before removing it, and `shards.sh` empties each
+  worktree's `target/tmp` as it resets it, but a test that does the same in a directory of its own
+  can still poison a shard part way. So after every run, `python3 $SKILL/screen.py
+  target/agents/out/X-*`: it names the tests that failed in the most catches and in how many
+  files those mutants were, and a test failing for mutants all over the crate is the suspect.
+  `--flaky TEST` lists the catches it made alone; take them out of the shard's `caught.txt`
+  (keeping a copy) so the next `--iterate` tests them again, and count what it will test from the
+  merged skip lists rather than the outcomes.
 - **A shard at zero CPU is usually a deadlocked mutant, not a hung run.** Many mutants of the
   kernel's state machine (`is_interrupted` made `true`, `Restore::disarm` emptied) leave a test
   waiting on a lock forever: its binary sits on a futex using nothing until the timeout kills it,
