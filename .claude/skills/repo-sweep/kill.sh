@@ -14,6 +14,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 REPO=$(git -C "$here" rev-parse --show-toplevel)
 BIN=${CARGO_TARGET_DIR:-$REPO/target}/release/kamchatka
 DEADLINE=${DEADLINE:-3000}
+# a task file that is not there, or holds nothing, would start a session with no work in it: given
+# as relative paths from another directory, 21 sessions once ran on an empty input
+[ -s "${2:-}" ] || { echo "kill.sh: no task in \`${2:-}\`" >&2; exit 2; }
+[ -d "${3:-}" ] || { echo "kill.sh: no diffs in \`${3:-}\`" >&2; exit 2; }
 name=$1 tasks=$(realpath "$2") diffs=$(realpath "$3")
 out=$SWEEPS/mtr
 # the worktree may live elsewhere (WTROOT): a build of the terminal crate is several gigabytes, and
