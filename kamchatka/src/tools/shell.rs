@@ -1428,6 +1428,33 @@ mod tests {
         assert!(said.contains("went on"), "{said}");
     }
 
+    /// A command that stops itself after closing its standard output is ended too, and says so.
+    ///
+    /// note: with the output closed the reading is over, so the stop is found by the wait that is
+    /// left, which is a different place from the one the stop above is found in.
+    #[tokio::test]
+    async fn a_command_that_stops_itself_with_its_output_closed_is_ended_and_says_so() {
+        let said = ran("exec 1>&-; echo before >&2; kill -STOP $$; echo after >&2").await;
+        assert!(
+            said.starts_with("exit: stopped itself with SIGSTOP"),
+            "{said}"
+        );
+        assert!(said.contains("before") && !said.contains("after"), "{said}");
+    }
+
+    /// What a call whose arguments never parsed is answered with is the advice `ops` gives for the
+    /// fault, and nothing at all where there is none.
+    ///
+    /// note: the kernel puts this straight into the answer the model reads, so an empty string, a
+    /// placeholder or a fixed word would be told to the model as the fault.
+    #[test]
+    fn an_unparsed_command_is_answered_with_the_advice_for_its_fault() {
+        assert_eq!(
+            unconfined().unparsed("{\"cmd\": \"echo a\nb\"}").as_deref(),
+            Some("Write it with a line break inside a string written as `\\n`."),
+        );
+    }
+
     /// A shell with no confinement, in the temporary directory.
     fn unconfined() -> Shell {
         Shell {
