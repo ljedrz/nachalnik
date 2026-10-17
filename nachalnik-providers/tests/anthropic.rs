@@ -17,7 +17,7 @@ use nachalnik::{
     Block, Config, Content, ContextItem, Kernel, LinearProjector, ModelResponse, Part, Provider,
     StopReason, ToolCall, ToolCallId,
 };
-use nachalnik_providers::Anthropic;
+use nachalnik_providers::{Anthropic, Endpoint};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -45,6 +45,41 @@ async fn server(body: &'static str) -> String {
             .await;
         let _ = socket.flush().await;
         let _ = socket.shutdown().await;
+    });
+
+    format!("http://{address}")
+}
+
+/// Answers every request by its path, with the JSON given for that path, and anything else with a
+/// `404`.
+async fn addressed(routes: &'static [(&'static str, &'static str)]) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buffer = [0u8; 16384];
+                let read = socket.read(&mut buffer).await.unwrap_or(0);
+                let head = String::from_utf8_lossy(&buffer[..read]).into_owned();
+                let path = head.split(' ').nth(1).unwrap_or_default().to_owned();
+                let (status, body) = routes
+                    .iter()
+                    .find(|(at, _)| *at == path)
+                    .map_or(("404 Not Found", ""), |(_, body)| ("200 OK", *body));
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
+                             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            });
+        }
     });
 
     format!("http://{address}")
@@ -271,8 +306,175 @@ async fn the_reasons_a_turn_ends_are_read() {
         "data: {\"type\":\"message_stop\"}\n\n",
     );
 
+    const ENDED: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":",
+        "{\"type\":\"text\",\"text\":\"Done.\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},",
+        "\"usage\":{\"output_tokens\":2}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+    const STOPPED_AT_A_SEQUENCE: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":",
+        "{\"type\":\"text\",\"text\":\"Done.\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"stop_sequence\"},",
+        "\"usage\":{\"output_tokens\":2}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+    const PAUSED: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":",
+        "{\"type\":\"text\",\"text\":\"Half\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"pause_turn\"},",
+        "\"usage\":{\"output_tokens\":2}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
     assert_eq!(answered(REFUSED).await.2.stop, StopReason::Refusal);
     assert_eq!(answered(OUT_OF_ROOM).await.2.stop, StopReason::Length);
+    assert_eq!(answered(ENDED).await.2.stop, StopReason::EndTurn);
+    assert_eq!(
+        answered(STOPPED_AT_A_SEQUENCE).await.2.stop,
+        StopReason::EndTurn
+    );
+    assert_eq!(
+        answered(PAUSED).await.2.stop,
+        StopReason::Other("pause_turn".to_owned())
+    );
+}
+
+/// A call that opened with no input and was sent no fragments is a call with no arguments, not one
+/// with whatever it opened with.
+#[tokio::test]
+async fn a_call_sent_nothing_is_a_call_with_no_arguments() {
+    const CALLED_BARE: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{",
+        "\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"list\",\"input\":null}}\n\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},",
+        "\"usage\":{\"output_tokens\":2}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    let response = answered(CALLED_BARE).await.2;
+    let call = response
+        .content
+        .as_ref()
+        .and_then(Content::as_blocks)
+        .and_then(|blocks| blocks.iter().find_map(Block::call))
+        .expect("the call")
+        .clone();
+    assert_eq!(*call.args, json!({}));
+}
+
+/// A turn stopped after it had asked for a tool says it was stopped, rather than that it asked.
+#[tokio::test]
+async fn a_turn_stopped_after_it_asked_says_it_was_stopped() {
+    const BEGUN: &str = concat!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":5}}}\n\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{",
+        "\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"read\",\"input\":{}}}\n\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{",
+        "\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\": \\\"notes.md\\\"}\"}}\n\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 16384];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket.write_all(BEGUN.as_bytes()).await;
+        let _ = socket.flush().await;
+        // and nothing more, for longer than the test waits
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+    });
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Anthropic::new(
+        "claude-test",
+        format!("http://{address}"),
+        "no key needed",
+    )));
+    kernel.set_projector(Arc::new(LinearProjector {
+        send_blocks: true,
+        ..Default::default()
+    }));
+    kernel.push(ContextItem::user("read notes.md"));
+    let mut events = kernel.subscribe();
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.step().await }
+    });
+
+    // once the call has been handed on, so that the stop lands after it
+    while !matches!(
+        events.recv().await.expect("the kernel's events"),
+        nachalnik::Event::ModelDelta { .. }
+    ) {}
+    kernel.interrupt();
+    tokio::time::timeout(std::time::Duration::from_secs(5), running)
+        .await
+        .expect("the stop reached the stream")
+        .expect("the step is not a panic")
+        .expect("a stopped turn is not a failed one");
+
+    let response = kernel.last_response().expect("what arrived is kept");
+    assert_eq!(response.stop, StopReason::Other("interrupted".to_owned()));
+}
+
+/// Where the model's own entry says nothing, what it takes is read off the listing, from its own
+/// entry there.
+#[tokio::test]
+async fn what_the_model_takes_is_read_off_the_listing_where_its_entry_says_nothing() {
+    static LISTED: &[(&str, &str)] = &[(
+        "/models?limit=1000",
+        concat!(
+            "{\"data\":[{\"id\":\"claude-other\",\"max_input_tokens\":1000},",
+            "{\"id\":\"claude-test\",\"max_input_tokens\":200000}]}"
+        ),
+    )];
+    let provider = Anthropic::new("claude-test", addressed(LISTED).await, "no key needed");
+
+    provider.probe().await;
+    assert_eq!(provider.info().context_limit, Some(200_000));
+}
+
+/// Pointed at another address or another model, the provider says where it is and which, and puts
+/// up a notice, once, where the address does not list the model.
+#[tokio::test]
+async fn a_provider_moved_says_where_it_is_and_whether_its_model_is_there() {
+    static LISTED: &[(&str, &str)] = &[(
+        "/models?limit=1000",
+        "{\"data\":[{\"id\":\"claude-a\"},{\"id\":\"claude-b\"}]}",
+    )];
+    let provider = Anthropic::new("claude-a", "http://127.0.0.1:1", "no key needed");
+    assert_eq!(Endpoint::endpoint(&provider), "http://127.0.0.1:1");
+    assert_eq!(Endpoint::model(&provider), "claude-a");
+
+    let listing = addressed(LISTED).await;
+    provider.set_endpoint(listing.clone(), None).await;
+    assert_eq!(Endpoint::endpoint(&provider), listing);
+    assert_eq!(provider.models().await, ["claude-a", "claude-b"]);
+    assert_eq!(provider.take_notice(), None, "the model is listed");
+
+    provider.set_model("claude-c".to_owned()).await;
+    assert_eq!(Endpoint::model(&provider), "claude-c");
+    assert_eq!(
+        provider.take_notice().as_deref(),
+        Some("claude-c is not one of the 2 models this address lists (claude-a, claude-b)")
+    );
+    assert_eq!(provider.take_notice(), None, "and said once");
+}
+
+/// A request for an answer is counted; nothing else is.
+#[tokio::test]
+async fn the_requests_for_an_answer_are_counted() {
+    let provider = Anthropic::new("claude-test", "http://127.0.0.1:1", "no key needed");
+    assert_eq!(provider.attempts(), 0);
+
+    let (_, provider, _) = answered(THOUGHT_THEN_CALLED).await;
+    assert_eq!(provider.attempts(), 1);
 }
 
 /// What the model takes, and what it supports, are asked of the address from the model's own
