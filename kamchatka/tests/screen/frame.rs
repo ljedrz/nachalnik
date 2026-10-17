@@ -1072,3 +1072,26 @@ async fn the_page_panel_is_as_wide_as_its_code() {
     );
     assert_eq!(harness.style_of("▀▀▀").0, Color::White);
 }
+
+/// An address wider than its code makes the panel as wide as the address, which has no space to
+/// be folded at.
+#[cfg(feature = "webui")]
+#[tokio::test]
+async fn the_page_panel_is_as_wide_as_an_address_wider_than_its_code() {
+    let mut harness = Harness::new([]);
+    let address = "http://[fd00:1234:5678:9abc:def0:1234:5678:9abc]:65535/0123abcd";
+    let code = kamchatka::qr::Code::new(address).expect("it fits");
+    assert!(address.len() > code.lines()[0].chars().count());
+    harness.app.web = Some(address.to_owned());
+    harness.send("/web").await;
+
+    let screen = harness.screen();
+    let top = screen
+        .lines()
+        .find(|line| line.contains("┌ the page"))
+        .expect("`/web` opened a panel");
+    let left = top.chars().position(|c| c == '┌').expect("a corner");
+    let right = top.chars().position(|c| c == '┐').expect("a corner");
+    assert_eq!(right - left + 1, address.len() + 4, "{screen}");
+    assert!(screen.contains(address), "{screen}");
+}
