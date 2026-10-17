@@ -15,8 +15,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Block, Config, Content, ContextItem, Kernel, ModelResponse, Part, Provider, StopReason,
-    ToolCall, ToolCallId,
+    Block, Config, Content, ContextItem, Delta, Event, Kernel, ModelResponse, Part, Provider,
+    StopReason, ToolCall, ToolCallId,
 };
 use nachalnik_providers::{Dialect, OpenAiCompatible};
 use serde_json::{Value, json};
@@ -84,6 +84,24 @@ async fn failed(body: &'static str) -> String {
         Ok(state) => panic!("answered: {state:?}"),
         Err(e) => e.to_string(),
     }
+}
+
+/// Asks once, and hands back what the provider made of the answer and what it handed on as it
+/// came, in order.
+async fn shown(body: &'static str) -> (Arc<ModelResponse>, Vec<Delta>) {
+    let provider = provider(server(body).await);
+    let kernel = kernel_for(&provider);
+    kernel.push(ContextItem::user("read notes.md"));
+    let mut events = kernel.subscribe();
+    kernel.step().await.expect("the request is answered");
+
+    let mut deltas = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let Event::ModelDelta { delta } = event {
+            deltas.push(delta);
+        }
+    }
+    (kernel.last_response().expect("the model answered"), deltas)
 }
 
 /// A turn that reasoned and then asked for a tool, as the API streamed it.
@@ -378,6 +396,266 @@ async fn the_reasons_a_turn_ends_are_read() {
     );
 }
 
+/// What arrives in fragments is handed on as it arrives and not again when its item is done, and
+/// an item that opens with nothing in it hands on nothing.
+#[tokio::test]
+async fn what_is_said_is_handed_on_once() {
+    const SAID_AND_REFUSED: &str = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Hel\"}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"lo.\"}\n\n",
+        "data: {\"type\":\"response.refusal.delta\",\"output_index\":0,\"delta\":\"Not that.\"}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"output_text\",\"text\":\"Hello.\"},",
+        "{\"type\":\"refusal\",\"refusal\":\"Not that.\"}]}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",",
+        "\"output\":[],\"error\":null}}\n\n",
+    );
+
+    let (_, deltas) = shown(THOUGHT_THEN_CALLED).await;
+    assert_eq!(
+        deltas,
+        [
+            Delta::Reasoning("**Reading the file**\n\nThe user".to_owned()),
+            Delta::Reasoning(" wants notes.md.".to_owned()),
+            Delta::ToolArgs {
+                call: ToolCallId::from("call_kp7PhFaq"),
+                fragment: "{\"path\":\"no".to_owned()
+            },
+            Delta::ToolArgs {
+                call: ToolCallId::from("call_kp7PhFaq"),
+                fragment: "tes.md\"}".to_owned()
+            },
+        ]
+    );
+
+    // a message that said something and refused the rest is both, and a refusal
+    let (response, deltas) = shown(SAID_AND_REFUSED).await;
+    assert_eq!(
+        deltas,
+        [
+            Delta::Text("Hel".to_owned()),
+            Delta::Text("lo.".to_owned()),
+            Delta::Text("Not that.".to_owned()),
+        ]
+    );
+    assert_eq!(response.stop, StopReason::Refusal);
+    assert_eq!(
+        response
+            .content
+            .as_ref()
+            .map(|said| said.to_text().into_owned()),
+        Some("Hello.\n\nNot that.".to_owned())
+    );
+}
+
+/// An item that opens empty and is done whole, with no fragment between, is read whole and handed
+/// on once: the thinking, the text, and a refusal.
+#[tokio::test]
+async fn what_arrives_only_whole_is_read_and_handed_on() {
+    const TERSE: &str = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{",
+        "\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[]}}\n\n",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":2,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{",
+        "\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",",
+        "\"text\":\"Thinking it over.\"}],\"encrypted_content\":\"gAAA\"}}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"output_text\",\"text\":\"Hello.\"}]}}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":2,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"refusal\",\"refusal\":\"Not that.\"}]}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",",
+        "\"output\":[],\"error\":null}}\n\n",
+    );
+
+    let (response, deltas) = shown(TERSE).await;
+    assert_eq!(
+        deltas,
+        [
+            Delta::Reasoning("Thinking it over.".to_owned()),
+            Delta::Text("Hello.".to_owned()),
+            Delta::Text("Not that.".to_owned()),
+        ]
+    );
+    let blocks = response
+        .content
+        .as_ref()
+        .and_then(Content::as_blocks)
+        .expect("blocks");
+    let said: Vec<String> = blocks
+        .iter()
+        .map(|block| match block {
+            Block::Reasoning(part) | Block::Text(part) => part.content.to_text().into_owned(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(said, ["Thinking it over.", "Hello.", "Not that."]);
+    assert_eq!(response.stop, StopReason::Refusal);
+}
+
+/// A body that is not a stream is read as the items it holds, and each is handed on as a stream's
+/// would have been; one that holds no items is no answer.
+#[tokio::test]
+async fn a_whole_response_is_handed_on_as_it_is_read() {
+    const WHOLE: &str = concat!(
+        "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"output\":[",
+        "{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",",
+        "\"text\":\"Thinking it over.\"}],\"encrypted_content\":\"gAAA\"},",
+        "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"output_text\",\"text\":\"Hello.\"}]},",
+        "{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read\",",
+        "\"arguments\":\"{\\\"path\\\":\\\"notes.md\\\"}\"}]}",
+    );
+
+    let (_, deltas) = shown(WHOLE).await;
+    assert_eq!(
+        deltas,
+        [
+            Delta::Reasoning("Thinking it over.".to_owned()),
+            Delta::Text("Hello.".to_owned()),
+            Delta::ToolArgs {
+                call: ToolCallId::from("call_1"),
+                fragment: "{\"path\":\"notes.md\"}".to_owned()
+            },
+        ]
+    );
+
+    let said = failed("{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\"}").await;
+    assert!(
+        said.starts_with("the provider failed: the stream carried no data"),
+        "{said}"
+    );
+}
+
+/// The reasons a turn is left incomplete: a filter is a refusal, and any other is said as it is.
+#[tokio::test]
+async fn the_reasons_a_turn_is_left_incomplete_are_read() {
+    const FILTERED: &str = concat!(
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"output_text\",\"text\":\"Well\"}]}}\n\n",
+        "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",",
+        "\"output\":[],\"error\":null,\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n",
+    );
+    const UNHEARD_OF: &str = concat!(
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"output_text\",\"text\":\"Well\"}]}}\n\n",
+        "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",",
+        "\"output\":[],\"error\":null,\"incomplete_details\":{\"reason\":\"budget_spent\"}}}\n\n",
+    );
+
+    assert_eq!(answered(FILTERED).await.2.stop, StopReason::Refusal);
+    assert_eq!(
+        answered(UNHEARD_OF).await.2.stop,
+        StopReason::Other("budget_spent".to_owned())
+    );
+}
+
+/// A stream that only ever said a response exists has not answered, and is not taken for one
+/// somebody stopped.
+#[tokio::test]
+async fn a_stream_that_only_said_a_response_exists_is_no_answer() {
+    const ONLY_BEGUN: &str = concat!(
+        "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\",",
+        "\"output\":[],\"error\":null}}\n\n",
+        "data: [DONE]\n\n",
+    );
+
+    let said = failed(ONLY_BEGUN).await;
+    assert!(
+        said.starts_with("the provider failed: the stream carried no data"),
+        "{said}"
+    );
+}
+
+/// A failure that arrives after the answer has started keeps what arrived, as a turn cut off.
+#[tokio::test]
+async fn a_failure_after_the_answer_started_keeps_what_arrived() {
+    const BROKEN_OFF: &str = concat!(
+        "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\",",
+        "\"output\":[],\"error\":null}}\n\n",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Hal\"}\n\n",
+        "data: {\"type\":\"error\",\"code\":\"server_error\",",
+        "\"message\":\"The server had an error.\",\"param\":null}\n\n",
+    );
+
+    let response = answered(BROKEN_OFF).await.2;
+    assert_eq!(response.stop, StopReason::Other("cut off".to_owned()));
+    assert_eq!(
+        response
+            .content
+            .as_ref()
+            .map(|said| said.to_text().into_owned()),
+        Some("Hal".to_owned())
+    );
+}
+
+/// A turn stopped while it was being said keeps what had arrived, and says it was stopped.
+#[tokio::test]
+async fn a_turn_stopped_partway_keeps_what_arrived() {
+    const BEGUN: &str = concat!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n",
+        "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\",",
+        "\"output\":[],\"error\":null}}\n\n",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{",
+        "\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Hal\"}\n\n",
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 16384];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket.write_all(BEGUN.as_bytes()).await;
+        let _ = socket.flush().await;
+        // and nothing more, for longer than the test waits
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+    });
+
+    let provider = provider(format!("http://{address}"));
+    let kernel = kernel_for(&provider);
+    kernel.push(ContextItem::user("read notes.md"));
+    let mut events = kernel.subscribe();
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.step().await }
+    });
+
+    // once the text has been handed on, so that the stop lands in the middle of the answer
+    while !matches!(
+        events.recv().await.expect("the kernel's events"),
+        Event::ModelDelta { .. }
+    ) {}
+    kernel.interrupt();
+    tokio::time::timeout(std::time::Duration::from_secs(5), running)
+        .await
+        .expect("the stop reached the stream")
+        .expect("the step is not a panic")
+        .expect("a stopped turn is not a failed one");
+
+    let response = kernel.last_response().expect("what arrived is kept");
+    assert_eq!(response.stop, StopReason::Other("interrupted".to_owned()));
+    assert_eq!(
+        response
+            .content
+            .as_ref()
+            .map(|said| said.to_text().into_owned()),
+        Some("Hal".to_owned())
+    );
+}
+
 /// A failure reported as an event, after the two events that only say a response exists, is a
 /// refusal in the server's own words rather than a turn that said nothing.
 #[tokio::test]
@@ -494,6 +772,19 @@ fn an_include_of_the_callers_keeps_the_reasoning_asked_for() {
         ])
     );
 
+    // and one that already asks for it asks once
+    let body = rendered_with(
+        vec![ContextItem::user("go")],
+        json!({ "include": ["reasoning.encrypted_content", "message.output_text.logprobs"] }),
+    );
+    assert_eq!(
+        body["include"],
+        json!([
+            "reasoning.encrypted_content",
+            "message.output_text.logprobs"
+        ])
+    );
+
     let body = rendered_with(vec![ContextItem::user("go")], json!({ "store": true }));
     assert_eq!(body["store"], true);
     assert!(body.get("include").is_none(), "{body}");
@@ -582,6 +873,72 @@ fn reasoning_with_nothing_after_it_is_not_sent() {
         .map(|item| item["type"].as_str().unwrap_or_default())
         .collect();
     assert_eq!(kinds, ["message", "message"], "{body}");
+
+    // and so is thinking after what the turn said
+    let sealed =
+        |id: &str| Part::new("t").with_extra(json!({ "id": id, "encrypted_content": "gAAA" }));
+    let thought_again = ContextItem::assistant(
+        Content::blocks([
+            Block::Reasoning(sealed("rs_1")),
+            Block::Text(Part::new("so")),
+            Block::Reasoning(sealed("rs_2")),
+        ]),
+        Vec::new(),
+    );
+    let body = rendered(vec![
+        ContextItem::user("go"),
+        thought_again,
+        ContextItem::user("go on"),
+    ]);
+    let kinds: Vec<&str> = body["input"]
+        .as_array()
+        .expect("input")
+        .iter()
+        .map(|item| item["type"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["message", "reasoning", "message", "message"],
+        "{body}"
+    );
+}
+
+/// A turn recorded the conventional way - by a kernel projecting as every other dialect does - goes
+/// out as what was said and then the calls.
+#[test]
+fn a_turn_recorded_the_conventional_way_goes_out_said_and_then_called() {
+    let provider = provider("http://127.0.0.1:1".to_owned());
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.push_all(vec![
+        ContextItem::user("go"),
+        ContextItem::assistant(
+            "Reading it.",
+            vec![ToolCall::new(
+                "call_1",
+                "read",
+                json!({ "path": "notes.md" }),
+            )],
+        ),
+        ContextItem::tool_result(ToolCallId::from("call_1"), "read", "the notes", false),
+    ]);
+
+    let body = provider
+        .render(&kernel.preview_request().expect("a request"))
+        .expect("this provider always renders");
+    let input = body["input"].as_array().expect("input");
+    assert_eq!(
+        input[1..3],
+        [
+            json!({ "type": "message", "role": "assistant", "content": "Reading it." }),
+            json!({
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "read",
+                "arguments": "{\"path\":\"notes.md\"}",
+            }),
+        ]
+    );
 }
 
 /// A picture goes out as an `input_image`, from a person and from a tool alike, and a document as
