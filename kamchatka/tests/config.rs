@@ -2727,6 +2727,40 @@ fn the_flat_calls_flag_reaches_every_tool() {
     );
 }
 
+/// `--mcp-timeout-seconds` is how long a call to an MCP server's tool may wait: ten minutes unless
+/// given, no limit for `0`, and whatever number is given otherwise.
+///
+/// note: read off `Args::mcp_within`, which is what `main` hands `attach_within`. A value that is
+/// always `None`, or always some fixed duration, would leave every other test here passing, since
+/// none of them waits on a call for long enough to see the difference.
+#[test]
+fn the_mcp_timeout_is_ten_minutes_unless_given_and_no_limit_for_zero() {
+    use clap::Parser;
+    use kamchatka::args::Args;
+
+    let within = |args: &[&str]| {
+        Args::try_parse_from(std::iter::once("kamchatka").chain(args.iter().copied()))
+            .expect("the arguments parse")
+            .mcp_within()
+    };
+
+    assert_eq!(
+        within(&[]),
+        Some(std::time::Duration::from_secs(600)),
+        "left out, a call waits ten minutes"
+    );
+    assert_eq!(
+        within(&["--mcp-timeout-seconds", "0"]),
+        None,
+        "`0` waits as long as the server takes"
+    );
+    assert_eq!(
+        within(&["--mcp-timeout-seconds", "5"]),
+        Some(std::time::Duration::from_secs(5)),
+        "a number given is the limit it names"
+    );
+}
+
 /// A key is not a prerequisite: a session pointed at this machine starts without one, and one
 /// pointed at OpenRouter, which refuses every request without one, is refused at startup.
 ///
