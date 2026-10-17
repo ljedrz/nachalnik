@@ -111,6 +111,18 @@ impl ServerHandler for Bench {
                     "image/png".to_owned(),
                 )])
             }
+            // and the largest one they all take
+            "draws"
+                if request
+                    .arguments
+                    .as_ref()
+                    .is_some_and(|a| a.contains_key("largest")) =>
+            {
+                CallToolResult::success(vec![ContentBlock::image(
+                    "A".repeat(5 * 1024 * 1024),
+                    "image/png".to_owned(),
+                )])
+            }
             "draws" => CallToolResult::success(vec![
                 ContentBlock::text("the chart:"),
                 ContentBlock::image("aGVsbG8=".to_owned(), "image/png".to_owned()),
@@ -639,6 +651,24 @@ async fn an_image_too_large_to_send_is_named() {
     assert!(output.content.blobs().is_empty(), "nothing carried");
     assert!(text.contains("too large to send"), "{text}");
     assert!(text.contains("image/png"), "{text}");
+}
+
+/// The largest image every API takes is carried, not named.
+#[tokio::test]
+async fn the_largest_image_an_api_takes_is_carried() {
+    let (server, _) = bench("files").await;
+    let kernel = kernel();
+    server.install(&kernel).await.unwrap();
+
+    let output = invoke(
+        &kernel.tool("files__draws").unwrap(),
+        json!({ "largest": true }),
+    )
+    .await;
+
+    let blobs = output.content.blobs();
+    assert_eq!(blobs.len(), 1, "{:?}", output.content.to_text());
+    assert_eq!(blobs[0].data.len(), 5 * 1024 * 1024);
 }
 
 #[tokio::test]
