@@ -54,6 +54,9 @@ minor bump may break you.
   start a command. A connection now has 10 seconds to send its request and at most 64 may wait at
   once. Running out of descriptors is said once and waited out, as `--serve` already did, rather
   than reported on every attempt as fast as the loop could go.
+- **A reconcile that could not write its snapshot can be written again.** Where the log had already
+  been put in place, it was left there, and a second try refused the path because something was
+  already there. The log is now taken back out with the rest.
 
 ## [0.20.0] - 2026-10-14
 

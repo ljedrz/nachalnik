@@ -751,9 +751,13 @@ pub fn write(reconciled: &Reconciled, into: &str) -> Result<(String, String), St
         let _ = std::fs::remove_file(&state_beside);
         format!("could not write {log}: {e}")
     })?;
+    // the log is taken back out as well: alone it is no session, and left there it is a path the
+    // check above refuses, so the same reconcile could not be written again until somebody
+    // deleted it
     std::fs::rename(&state_beside, &state).map_err(|e| {
         let _ = std::fs::remove_file(&state_beside);
-        format!("wrote {log}, and could not write {state} beside it: {e}")
+        let _ = std::fs::remove_file(&log);
+        format!("could not write {state}: {e}")
     })?;
 
     Ok((log, state))
