@@ -936,6 +936,64 @@ mod tests {
         assert!(!guessing.wrong(now + PAUSE));
     }
 
+    /// A page reachable from the local network says so, and where.
+    #[tokio::test]
+    async fn a_page_on_the_network_warns_where_it_can_be_reached() {
+        let mut web = Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
+            .await
+            .expect("it listens");
+        assert_eq!(web.exposure(), None);
+
+        web.reach = Reach::Network;
+        let warned = web.exposure().expect("a warning");
+        assert!(
+            warned.contains("reachable from the local network"),
+            "{warned}"
+        );
+        assert!(warned.contains(&web.address()), "{warned}");
+    }
+
+    /// Only an address whose first part is as long as the key counts as a guess at it: a hundred
+    /// requests for the browser's own icon leave the page open, and a hundred wrong keys close it.
+    #[tokio::test]
+    async fn only_a_wrong_key_counts_towards_closing_the_page() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let web = Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
+            .await
+            .expect("it listens");
+        let at = web.listener.local_addr().expect("its address");
+        let (told, mut telling) = tokio::sync::mpsc::unbounded_channel();
+        let running = tokio::spawn(web.run(move |said| {
+            let _ = told.send(said);
+        }));
+        // the status line of the answer to a request for `path`
+        let status = |path: &'static str| async move {
+            let mut browser = TcpStream::connect(at).await.expect("it answers");
+            browser
+                .write_all(format!("GET {path} HTTP/1.1\r\nHost: {at}\r\n\r\n").as_bytes())
+                .await
+                .expect("the request");
+            let mut answer = String::new();
+            let _ = browser.read_to_string(&mut answer).await;
+            answer.lines().next().unwrap_or_default().to_owned()
+        };
+
+        for _ in 0..GUESSES {
+            assert!(status("/favicon.ico").await.contains("403"));
+        }
+        assert!(status("/favicon.ico").await.contains("403"), "still open");
+
+        for _ in 0..GUESSES {
+            status("/00000000/events").await;
+        }
+        assert!(status("/favicon.ico").await.contains("429"), "closed");
+        let said = telling.try_recv().expect("the closing is said");
+        assert!(said.contains("wrong keys have been tried"), "{said}");
+
+        running.abort();
+    }
+
     /// The refusal for an address without the key says what to open instead, and not the key.
     #[test]
     fn a_keyless_address_is_told_what_to_open() {
