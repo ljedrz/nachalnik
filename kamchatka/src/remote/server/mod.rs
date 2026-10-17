@@ -1570,6 +1570,15 @@ mod tests {
         assert!(apply_press(&mut app, &mut stopping));
     }
 
+    /// With nothing held, `released` hands nothing in and answers `false`, so the loop does not
+    /// redraw a screen that has not changed.
+    #[tokio::test]
+    async fn nothing_held_is_nothing_released() {
+        let Wired { mut app, .. } = session();
+
+        assert!(!released(&mut app, None).await);
+    }
+
     /// The seat goes to the client that is here, and only its own departure takes it away.
     ///
     /// note: the ordering, which is the whole of it. A replaced client is told so by its own
