@@ -259,6 +259,15 @@ mod tests {
             );
         }
 
+        // a RIFF container that is not a WebP (here an AVI) opens with the same four bytes, and
+        // is still said about: the `WEBP` after the size is what makes it one
+        let avi = caution(&item("image/webp", b"RIFF\x24\x01\0\0AVI LIST"))
+            .expect("a RIFF that is not a WebP was said nothing about");
+        assert!(
+            avi.contains("goes out as image/webp and does not start as one"),
+            "{avi}"
+        );
+
         // a type it knows no start of is the person's claim, and nothing is said
         assert_eq!(caution(&item("application/pdf", b"not a pdf")), None);
     }
