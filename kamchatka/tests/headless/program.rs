@@ -2887,3 +2887,62 @@ fn the_sandbox_gap_is_said_unless_the_run_asked_for_no_sandbox() {
     let said = run(&["--no-sandbox"]);
     assert!(!said.contains("this kernel has no Landlock"), "{said}");
 }
+
+/// `--send-reasoning` sends a turn back with the thinking that produced it, and a session not
+/// asked for it sends the turn without.
+///
+/// note: through the binary, because the flag's whole job is to reach the provider the program
+/// builds for itself out of the environment, and nothing in process builds that one.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_reasoning_flag_sends_a_turns_thinking_back_with_it() {
+    let sent = |flag: Option<&'static str>| async move {
+        let (base, heard) = common::hearing(vec![
+            format!(
+                "data: {}\n\ndata: {}",
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                       "reasoning": "look before answering"}, "finish_reason": null}]}),
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"tool_calls": [
+                    {"index": 0, "id": "c1", "type": "function", "function": {"name": "nothing",
+                     "arguments": "{}"}}]}, "finish_reason": "tool_calls"}]})
+            ),
+            common::answer("done"),
+        ])
+        .await;
+        let out = common::command()
+            .args([
+                "--headless",
+                "--no-record",
+                "--max-run-seconds",
+                "20",
+                "-m",
+                "nothing",
+            ])
+            .args(flag)
+            .arg("go")
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+        let said = String::from_utf8_lossy(&out.stderr).into_owned();
+        assert_eq!(out.status.code(), Some(0), "{flag:?}: {said}");
+
+        let heard = heard.lock().expect("not poisoned").clone();
+        assert_eq!(heard.len(), 2, "{flag:?}: {said}");
+        let second: serde_json::Value = serde_json::from_str(&heard[1]).expect("a JSON body");
+        second["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .find(|message| message["role"] == "assistant")
+            .expect("the turn that made the call")
+            .clone()
+    };
+
+    let turn = sent(Some("--send-reasoning")).await;
+    assert_eq!(turn["reasoning"], "look before answering", "{turn}");
+    assert_eq!(turn["tool_calls"][0]["id"], "c1", "{turn}");
+
+    let turn = sent(None).await;
+    assert!(turn.get("reasoning").is_none(), "{turn}");
+}

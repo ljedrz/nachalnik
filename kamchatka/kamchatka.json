@@ -8,6 +8,7 @@
   "compact-context-at": [0.8, 0.6],
   "parallel-tool-calls": false,
   "flat-tool-arguments": false,
+  "send-reasoning": false,
   "tools": ["context", "fork", "fs", "log", "setup", "shell"],
   "discard-cut-off-output": false,
   "send-oversized-requests": false,

@@ -393,7 +393,16 @@ pub fn session_endpoint(wire: Wire) -> String {
 /// command rather than a restart. The probe is the one thing skipped: there is no model for it to
 /// ask a limit about, and `set_model` runs it the moment there is.
 pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
-    connected(model, false).await
+    connect_with(model, false).await
+}
+
+/// [`connect`], sending each assistant turn's thinking back with it where `send_reasoning` says
+/// so; see [`OpenAiCompatible::send_reasoning`].
+pub async fn connect_with(
+    model: Option<&str>,
+    send_reasoning: bool,
+) -> Result<Arc<OpenAiCompatible>, BoxError> {
+    connected(model, false, send_reasoning).await
 }
 
 /// The same provider, asking OpenAI's Responses API: everything about where the requests go is
@@ -403,7 +412,7 @@ pub mod responses {
 
     /// Builds the provider [`super::connect`] builds, in Responses mode.
     pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
-        connected(model, true).await
+        connected(model, true, false).await
     }
 }
 
@@ -411,6 +420,7 @@ pub mod responses {
 async fn connected(
     model: Option<&str>,
     responses: bool,
+    send_reasoning: bool,
 ) -> Result<Arc<OpenAiCompatible>, BoxError> {
     let provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
@@ -419,6 +429,7 @@ async fn connected(
     )
     .with_context_limit(checked_limit()?)
     .responses(responses)
+    .send_reasoning(send_reasoning)
     .attributed_to(attribution());
 
     let provider = Arc::new(provider);

@@ -161,6 +161,13 @@ pub struct Args {
     #[arg(long)]
     pub flat_tool_arguments: bool,
 
+    /// Send each of the model's turns back with the thinking that produced it, as `reasoning`,
+    /// with `--api chat-completions`. For a model that refuses every request after its first tool
+    /// call otherwise. Off by default: most endpoints refuse a field they do not know, and the
+    /// thinking costs its tokens on every request.
+    #[arg(long)]
+    pub send_reasoning: bool,
+
     /// Run with no confinement at all: the shell reaches whatever the user running this can, and
     /// `fs`, which is not a process, stops holding itself to the working directory.
     #[arg(long)]
@@ -353,6 +360,7 @@ impl Args {
             compact_context_at,
             parallel_tool_calls,
             flat_tool_arguments,
+            send_reasoning,
             no_sandbox,
             sandbox_write,
             sandbox_read,
@@ -880,7 +888,7 @@ impl Args {
             endpoint::Wire::Responses => endpoint::responses::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
-            endpoint::Wire::OpenAi => endpoint::connect(model)
+            endpoint::Wire::OpenAi => endpoint::connect_with(model, self.send_reasoning)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
         }

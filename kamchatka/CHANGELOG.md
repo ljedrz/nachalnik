@@ -17,6 +17,15 @@ minor bump may break you.
   searched by. Without a screen there is no box to type into, so a headless or served build no
   longer compiles `nucleo-matcher` or reads the local time zone at startup.
 
+### added
+
+- **`--send-reasoning`** (`"send-reasoning"` in a settings file) sends each of the model's turns
+  back with the thinking that produced it, as `reasoning`, with `--api chat-completions`. Some
+  models refuse every request after their first tool call without it, so a session with one of
+  them failed at its second request. Off by default, since most endpoints refuse a field they do
+  not know and the thinking costs its tokens on every request. Requires `nachalnik-providers`
+  0.10.1.
+
 ### changed
 
 - **Two runtime workers rather than one per core.** What they run waits on the network, and the
