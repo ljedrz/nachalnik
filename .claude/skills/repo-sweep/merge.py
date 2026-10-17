@@ -12,6 +12,12 @@ A mutant in more than one SRC keeps its outcome from the last: list a shard's co
 each retry first and its final output last, since `--iterate` rewrites `outcomes.json` with only
 the mutants it tested again.
 
+A diff or log is named for its line and column, numbered within one run, so two runs give the
+same name to different mutants: `+` made `-` in the first and `+` made `*` in the second, say.
+Each mutant's files are copied under its own name where that is free, and under a numbered one
+where another mutant's are there, and its outcome is pointed at them; copied one over the other, a
+session was handed one mutant's diff to kill another.
+
 --unify writes the union of the skip lists back into every SRC, for a sharded `--iterate` run
 over the shards themselves (a retry of tainted outcomes): `tainted.py --strip` first, then this.
 """
@@ -37,8 +43,13 @@ if sys.argv[1] == "--unify":
     sys.exit(0)
 
 dest, srcs = sys.argv[1], sys.argv[2:]
+if os.path.realpath(dest) in map(os.path.realpath, srcs):
+    sys.exit(f"{dest} is one of the outputs merged into it")
 d = os.path.join(dest, "mutants.out")
 os.makedirs(d, exist_ok=True)
+# what an earlier merge into DEST copied would take the names this one hands out
+for sub in ("diff", "log"):
+    shutil.rmtree(os.path.join(d, sub), ignore_errors=True)
 outcomes, every, seen = {}, [], set()
 lists = {}
 for src in srcs:
@@ -48,11 +59,7 @@ for src in srcs:
     for o in json.load(open(os.path.join(s, "outcomes.json")))["outcomes"]:
         if o["scenario"] == "Baseline":
             continue
-        outcomes[o["scenario"]["Mutant"]["name"]] = o
-        for key in ("diff_path", "log_path"):
-            if o.get(key):
-                os.makedirs(os.path.join(d, os.path.dirname(o[key])), exist_ok=True)
-                shutil.copy(os.path.join(s, o[key]), os.path.join(d, o[key]))
+        outcomes[o["scenario"]["Mutant"]["name"]] = (s, o)
     for m in json.load(open(os.path.join(s, "mutants.json"))):
         if m["name"] not in seen:
             seen.add(m["name"])
@@ -61,7 +68,20 @@ for src in srcs:
         p = os.path.join(s, f)
         if os.path.exists(p):
             lists.setdefault(f, []).extend(open(p).read().splitlines())
-outcomes = list(outcomes.values())
+taken = set()
+for s, o in outcomes.values():
+    for key in ("diff_path", "log_path"):
+        if o.get(key):
+            base, ext = os.path.splitext(o[key])
+            name, n = o[key], 0
+            while name in taken:
+                n += 1
+                name = f"{base}_m{n}{ext}"
+            taken.add(name)
+            os.makedirs(os.path.join(d, os.path.dirname(name)), exist_ok=True)
+            shutil.copy(os.path.join(s, o[key]), os.path.join(d, name))
+            o[key] = name
+outcomes = [o for _, o in outcomes.values()]
 json.dump({"outcomes": outcomes}, open(os.path.join(d, "outcomes.json"), "w"))
 json.dump(every, open(os.path.join(d, "mutants.json"), "w"))
 for f, lines in lists.items():

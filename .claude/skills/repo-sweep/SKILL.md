@@ -532,6 +532,13 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   outgrew the guard (see "A mutant can start the program over and over" above), so
   `.cargo/mutants.toml` no longer generates either. Before a run, read this section and the notes
   above for every mutant they name, and check `mutants.toml` still excludes the dangerous ones.
+- **A diff's file name is not the mutant's.** cargo-mutants names diffs and logs by line and
+  column, numbered within one run, so the first run's `..._line_568_col_27.diff` (`+` made `-`)
+  and the second's (`+` made `*`) are two mutants under one name. `merge.py` used to copy one over
+  the other, and in the run since the last mutants sweep 72 merged outcomes pointed at another
+  mutant's diff, one of them a survivor a session would have been handed. It now renames the
+  second; to check a merge, the second line of a diff is `+++ <the mutation>` and a log's second
+  is `*** <the mutant's name>`.
 - `--iterate` rewrites `outcomes.json`, `missed.txt` and `mutants.json` with the current run's
   mutants only, and `mutants_tasks.py` reads `outcomes.json`. Copy the output directory aside
   before each further run over it, and make tasks from every copy that still has a miss.
