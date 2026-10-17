@@ -2780,6 +2780,52 @@ async fn endpoint_with_a_model_gives_a_session_with_none_that_model() {
     );
 }
 
+/// `/endpoint URL` with no model, in a session started with none, leaves the session with none.
+///
+/// note: the kernel holds no provider there, so there is no model for it to have changed to or
+/// from; a provider put into it here would be a model nobody named, announced as a change.
+#[tokio::test]
+async fn endpoint_without_a_model_gives_a_session_with_none_still() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    assert!(app.kernel.model_info().is_none(), "it starts with none");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            "/endpoint http://127.0.0.1:2/v1\n".as_bytes(),
+        )
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("utf-8");
+    assert!(prose.contains("there is still no model"), "{prose}");
+    assert!(app.kernel.model_info().is_none(), "{prose}");
+    assert!(
+        !app.kernel
+            .history()
+            .into_iter()
+            .any(|record| matches!(record.event, nachalnik::Event::ModelChanged { .. })),
+        "no model changed, so none is recorded as having changed"
+    );
+}
+
 /// `/endpoint` with something that is not an address refuses it and keeps the one it had.
 ///
 /// note: it took any word, so `/endpoint not a url at all` announced `a url at all at not` and the
