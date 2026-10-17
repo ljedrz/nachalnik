@@ -208,4 +208,57 @@ mod tests {
         let provider = Anthropic::new("m", "http://127.0.0.1:1", "no key");
         assert!(provider.lists_every_parameter());
     }
+
+    /// A dialect that says nothing about its projection leaves a turn's thinking out of it.
+    #[test]
+    fn a_dialect_that_says_nothing_projects_no_thinking() {
+        use nachalnik::{BoxError, DeltaSink, ModelInfo, ModelRequest, ModelResponse, async_trait};
+
+        use crate::{Dialect, Endpoint};
+
+        /// A dialect that answers nothing and leaves everything it may to the defaults.
+        struct Plain;
+
+        #[async_trait]
+        impl nachalnik::Provider for Plain {
+            fn info(&self) -> ModelInfo {
+                ModelInfo::new("plain", "m")
+            }
+
+            async fn respond(
+                &self,
+                _request: ModelRequest,
+                _deltas: DeltaSink,
+            ) -> Result<ModelResponse, BoxError> {
+                unreachable!("nothing is asked")
+            }
+        }
+
+        #[async_trait]
+        impl Endpoint for Plain {
+            fn endpoint(&self) -> String {
+                String::new()
+            }
+
+            fn model(&self) -> String {
+                "m".to_owned()
+            }
+
+            async fn models(&self) -> Vec<String> {
+                Vec::new()
+            }
+
+            async fn set_model(&self, _model: String) {}
+
+            async fn set_endpoint(&self, _url: String, _model: Option<String>) {}
+
+            fn take_notice(&self) -> Option<String> {
+                None
+            }
+        }
+
+        impl Dialect for Plain {}
+
+        assert!(!Plain.projection().send_reasoning);
+    }
 }
