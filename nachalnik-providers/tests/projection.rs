@@ -64,7 +64,7 @@ fn the_conventional_dialect_does_not_pay_for_thinking_it_cannot_send() {
     let payload = provider.render(&request).expect("it renders").to_string();
     assert!(
         !payload.contains(&thinking),
-        "this dialect has never carried an assistant turn's reasoning"
+        "this dialect carries an assistant turn's reasoning only when asked to"
     );
 
     // and the estimate agrees: the whole context now costs less than the thinking alone would,
@@ -74,6 +74,47 @@ fn the_conventional_dialect_does_not_pay_for_thinking_it_cannot_send() {
     assert!(
         kernel.budget().context_tokens < thinking_costs,
         "the estimate is carrying reasoning that the request will not"
+    );
+}
+
+/// Asked to send the thinking back, the conventional dialect puts it on the turn as `reasoning`,
+/// and the budget pays for it. Not asked, it leaves the field off even where a projector of the
+/// caller's own handed the thinking over.
+///
+/// note: for a model that refuses every request after its first tool call when the call comes back
+/// without the thinking that produced it.
+#[cfg(feature = "openai")]
+#[test]
+fn the_conventional_dialect_asked_to_send_thinking_sends_and_pays_for_it() {
+    let (kernel, thinking) = thinking_out_loud();
+    let provider =
+        nachalnik_providers::OpenAiCompatible::new("m", "https://example.invalid/v1", "k")
+            .send_reasoning(true);
+    kernel.set_projector(Arc::new(provider.projection()));
+
+    let request = kernel.preview_request().expect("a request");
+    let payload = provider.render(&request).expect("it renders");
+    assert_eq!(payload["messages"][1]["role"], "assistant");
+    assert_eq!(payload["messages"][1]["reasoning"], thinking.as_str());
+
+    let thinking_costs = kernel.counter().count(&Content::text(thinking.as_str()));
+    assert!(
+        kernel.budget().context_tokens > thinking_costs,
+        "the request carries the thinking, so the estimate has to as well"
+    );
+
+    // the projector is the caller's to choose, and the default one hands the thinking over
+    let quiet = nachalnik_providers::OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+    kernel.set_projector(Arc::new(nachalnik::LinearProjector::default()));
+    let request = kernel.preview_request().expect("a request");
+    assert!(
+        request.messages[1].reasoning.is_some(),
+        "it was handed over"
+    );
+    let payload = quiet.render(&request).expect("it renders");
+    assert!(
+        payload["messages"][1].get("reasoning").is_none(),
+        "and still not sent: {payload}"
     );
 }
 
