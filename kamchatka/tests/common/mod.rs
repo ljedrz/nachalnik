@@ -33,6 +33,12 @@ use std::path::PathBuf;
 /// suite and the test nextest hands each process, which keeps it the same from run to run, rather
 /// than by the names themselves: a socket is made in some of these, a socket's path is at most 107
 /// bytes, and a test's name can be most of that on its own.
+///
+/// note: what an earlier run left is opened up before it is removed, and a removal that fails is a
+/// panic that names the directory. A test that takes a directory's permissions away puts them back
+/// after the call, but a panic or a timeout in between leaves them gone; removing that directory
+/// then fails, and with the error ignored every later run of the test failed at its first line, in
+/// a way that said nothing about why.
 pub fn scratch(name: &str) -> PathBuf {
     let mut dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     if let (Ok(suite), Ok(test)) = (
@@ -46,10 +52,39 @@ pub fn scratch(name: &str) -> PathBuf {
         dir = dir.join(format!("n{:08x}", hasher.finish() as u32));
     }
     let dir = dir.join(name);
-    let _ = std::fs::remove_dir_all(&dir);
+    open_up(&dir);
+    match std::fs::remove_dir_all(&dir) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            panic!(
+                "{} is left from an earlier run and cannot be removed: {e}",
+                dir.display()
+            )
+        }
+        _ => {}
+    }
     std::fs::create_dir_all(&dir).expect("a directory to work in");
 
     dir
+}
+
+/// Gives the owner back read, write and search on `path` and every directory under it, so that it
+/// can be removed. Symbolic links are not followed.
+fn open_up(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if !meta.is_dir() {
+        return;
+    }
+    let mode = meta.permissions().mode();
+    if mode & 0o700 != 0o700 {
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode | 0o700));
+    }
+    for entry in std::fs::read_dir(path).into_iter().flatten().flatten() {
+        open_up(&entry.path());
+    }
 }
 
 /// A scratch directory with one file in it, `inside.txt`, for a test that reads, writes or confines
