@@ -86,6 +86,11 @@ json.dump({"outcomes": outcomes}, open(os.path.join(d, "outcomes.json"), "w"))
 json.dump(every, open(os.path.join(d, "mutants.json"), "w"))
 for f, lines in lists.items():
     open(os.path.join(d, f), "w").write("".join(l + "\n" for l in dict.fromkeys(lines)))
+# what is left missed or timed out is what the merged outcomes say, not the union: a mutant the
+# crate's own tests missed and the workspace's caught is in the first run's `missed.txt`
+for f, summary in (("missed.txt", "MissedMutant"), ("timeout.txt", "Timeout")):
+    names = [o["scenario"]["Mutant"]["name"] for o in outcomes if o["summary"] == summary]
+    open(os.path.join(d, f), "w").write("".join(name + "\n" for name in names))
 counts = {}
 for o in outcomes:
     counts[o["summary"]] = counts.get(o["summary"], 0) + 1
