@@ -549,8 +549,11 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   (the nearest `cfg` above each line), and check each by hand: `cargo test -p <crate>
   --no-default-features --no-fail-fast` in a worktree, unmutated and with the mutant's patch,
   and see which tests fail only with it. A `Default` replacement may not build there at all. Write
-  each into the ledger as `feature-gated`, naming the test. In the run since PR #65 there were
-  five, in `args.rs` and `app/views.rs`.
+  each into the ledger as `feature-gated`, naming the test. The nearest `cfg` can be the attribute
+  on the function rather than one inside it. A combination CI does not test is worth a line in the
+  report: `tui` without `webui` is one, and the only tests that catch `overlay.rs`'s mutant there
+  run in no CI job. In the run since PR #65 there were six, in `args.rs`, `app/views.rs` and
+  `ui/overlay.rs`.
 
 ## gotchas
 
