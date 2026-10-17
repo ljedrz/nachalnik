@@ -296,6 +296,43 @@ async fn a_call_whose_arguments_did_not_parse_is_answered_by_the_kernel() {
     assert!(!sent.contains("_unparsed"), "{sent}");
 }
 
+/// The text quoted back from a call that did not parse is the text around the fault, cut at
+/// characters, and a tool that adds nothing adds nothing to the answer.
+#[tokio::test]
+async fn what_is_quoted_from_a_call_that_did_not_parse_is_the_text_around_the_fault() {
+    let kernel = Kernel::new(Config::default());
+    // two bytes a character, laid out so that both ends of the quote fall inside one: it starts
+    // a hundred bytes before the fault and is two hundred long
+    let written = format!(
+        "{{\"pattern\": \"{}\\q {}\"}}",
+        "é".repeat(200),
+        "ü".repeat(200)
+    );
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![nachalnik::ToolCall::unparsed(
+            "c1",
+            "echo",
+            written.as_str(),
+        )]),
+        ModelResponse::text("ok"),
+    ])));
+    kernel.add_tool(Arc::new(EchoTool::new("echo", [])));
+    kernel.push(ContextItem::user("look"));
+    kernel.turn().await.unwrap();
+
+    let results = tool_results(&kernel);
+    assert_eq!(
+        results[0].content.to_text(),
+        format!(
+            "the arguments of this call to `echo` (`c1`) are not a JSON object, so it was not run \
+             and nothing was asked about it: invalid escape at line 1 column 415. What arrived \
+             there was `...{}\\q {}...`. Send the call again with its arguments as one JSON object.",
+            "é".repeat(50),
+            "ü".repeat(49)
+        )
+    );
+}
+
 #[tokio::test]
 async fn a_failing_tool_is_reported_to_the_model() {
     let (kernel, _) = permissive([
