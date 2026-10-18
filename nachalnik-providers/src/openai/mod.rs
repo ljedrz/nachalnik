@@ -569,20 +569,18 @@ impl OpenAiCompatible {
         }
     }
 
-    /// Asks ollama what context length the model is actually being served with.
+    /// Asks ollama what context length the model is actually served with.
     ///
-    /// note: its `/api/show` advertises the architecture's maximum - 131,072 for a llama that is
-    /// in fact loaded with a `num_ctx` of 4,096 - and a budget measured against that number would
-    /// be wrong in the one direction that matters. Nothing would ever look full, no compactor
-    /// would fire, and the server would quietly drop the front of the conversation instead.
-    /// `/api/ps` reports what a loaded model is really serving, and a model that is not loaded
-    /// yields nothing at all, because "unknown" is a better answer than a number that is wrong.
+    /// note: `/api/show` advertises the architecture's maximum - 131,072 for a llama loaded with
+    /// `num_ctx` of 4,096 - and a budget against that would be wrong in the direction that matters:
+    /// nothing would look full, no compactor would fire, and the server would quietly drop the
+    /// front of the conversation. `/api/ps` reports what a loaded model really serves; an unloaded
+    /// model yields nothing, because "unknown" is better than a wrong number.
     ///
-    /// note: the address is asked whether it is an ollama before either probe goes out, because
-    /// every `/v1` base is asked and most of them answer `/v1/models` perfectly well while saying
-    /// nothing about a context length. An address that is not ollama has no `/api/ps` to answer,
-    /// and one that took the request rather than refusing it would sit through both waits - a
-    /// minute and a half of a startup with nothing to show for it - to answer the same nothing.
+    /// note: the address is checked for ollama before either probe, because every `/v1` base is
+    /// asked and most answer `/v1/models` while saying nothing about context length. A non-ollama
+    /// address has no `/api/ps`, and one that takes rather than refuses the request waits both
+    /// probes - a minute and a half of startup - to answer nothing.
     async fn loaded_limit(&self, root: &str) -> Option<usize> {
         if !self.answers_like_ollama(root).await {
             return None;
@@ -673,21 +671,19 @@ impl OpenAiCompatible {
             same_model(listed, &model)
         })?;
 
-        // the same entry carries what the model will accept, and reading it here costs nothing:
-        // the round trip has already happened
+        // the same entry carries what the model will accept, and reading it costs nothing because
+        // the round trip has already happened.
         //
-        // note: two names for it, because two dialects publish it differently and neither is
-        // wrong. OpenRouter's `supported_parameters` lists everything a request may carry, sampling
-        // knobs and `tools` and `response_format` together; Inception's
-        // `supported_sampling_parameters` lists the sampling knobs only and puts the rest under
-        // `supported_features`. Whichever is present is read, because a list that goes unread
-        // leaves `/params` with nothing to say about a `top_p` the model ignores.
+        // note: two names for it because two dialects publish it differently. OpenRouter's
+        // `supported_parameters` lists everything a request may carry: sampling knobs, `tools`, and
+        // `response_format`. Inception's `supported_sampling_parameters` lists the sampling knobs
+        // only and puts the rest under `supported_features`. Whichever is present is read, because
+        // an unread list leaves `/params` with nothing to say about a `top_p` the model ignores.
         //
-        // note: the narrower name is a narrower answer to the same question. A *non*-sampling
-        // parameter is absent from the sampling list and may be served all the same -
-        // `response_format` on `mercury-2.5` is - so `every_parameter` is set false for that shape,
-        // and a client reading `lists_every_parameter` says such a parameter is unchecked rather
-        // than ignored.
+        // note: the narrower name is a narrower answer to the same question. A non-sampling
+        // parameter absent from the sampling list may still be served - `response_format` on
+        // `mercury-2.5` is - so `every_parameter` is set false for that shape, and a client reading
+        // `lists_every_parameter` sees such a parameter as unchecked rather than ignored.
         let sampling_only = entry["supported_parameters"].is_null();
         let mut listed = self.listed.lock();
         if let Some(names) = entry["supported_parameters"]
@@ -1001,8 +997,8 @@ mod tests {
         }
     }
 
-    /// A default published as `null` is one the listing does not know, and the cap on an answer
-    /// is a bound on both of this dialect's names for it.
+    /// A default published as `null` is unknown to the listing, and the cap on an answer bounds
+    /// both of this dialect's names for it.
     #[tokio::test]
     async fn a_listing_says_what_it_publishes_about_each_parameter() {
         let body = r#"{"data":[{"id":"m","context_length":128000,

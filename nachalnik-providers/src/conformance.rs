@@ -566,14 +566,13 @@ impl Conformance {
         }
     }
 
-    /// And a cut with nothing on the wire yet but thinking is still a turn.
+    /// A cut with nothing on the wire yet but thinking is still a turn.
     ///
-    /// note: the case above cuts after some content, which is the easy half. On a reasoning model
-    /// the answer starts late, behind all of the `reasoning`, so a cut is more likely to land here
-    /// than anywhere else. What decides it is whether a thinking delta counts as
-    /// something having arrived: counted, the turn comes back with the thinking in it, and the next
-    /// request carries what the model had worked out; not counted, the whole thing is an error and
-    /// the most expensive part of the answer is the part thrown away.
+    /// note: the case above cuts after some content. On a reasoning model the answer starts behind
+    /// all of the `reasoning`, so a cut is more likely to land here. What decides it is whether a
+    /// thinking delta counts as something having arrived: counted, the turn comes back with the
+    /// thinking and the next request carries what the model worked out; not counted, the whole
+    /// thing is an error and the most expensive part of the answer is thrown away.
     async fn cut_off_while_thinking(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -949,11 +948,11 @@ impl Conformance {
         Outcome::Passed
     }
 
-    /// A model that writes arguments which are not JSON is shown that it did.
+    /// A model that writes non-JSON arguments is shown that it did.
     ///
     /// note: handing back `{}` instead runs the tool with no arguments and tells nobody why.
-    /// Google's dialect sends arguments as an object rather than as a string, so it cannot express
-    /// the question.
+    /// Google's dialect sends arguments as an object, not a string, so it cannot express the
+    /// question.
     async fn broken_arguments(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -1121,8 +1120,8 @@ impl Conformance {
         };
 
         match self.ask(body, Delivery::Whole).await {
-            // both figures, because both are what the request cost: a provider that kept only what
-            // was sent would report every answer as free to generate
+            // both figures are the request's cost: a provider that kept only what was sent would
+            // report every answer as free to generate
             Ok(response) => match response
                 .usage
                 .map(|usage| (usage.input_tokens, usage.output_tokens))

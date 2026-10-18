@@ -689,10 +689,9 @@ fn no_answer(event: &Value) -> BoxError {
     format!("the stream carried no answer: {short}").into()
 }
 
-/// A body that was not a stream, read as the events it would have been streamed as - or, where
-/// it is not those, the error that says so.
+/// Reads a non-streamed body as the events it would have been streamed as, or returns the error.
 ///
-/// note: this API's unstreamed answer is exactly those events, in a list, which is what
+/// note: the unstreamed answer is exactly those events in a list, which is what
 /// `streamGenerateContent` sends where `alt=sse` did not reach it - a proxy that dropped the query
 /// string is enough. A single event is a list of one.
 fn unstreamed(
@@ -840,9 +839,9 @@ impl Endpoint for Gemini {
         self.say_if_the_model_is_not_there().await;
     }
 
-    /// note: the check happens whether or not a model was named. Given none the old name is kept,
-    /// and a name that was right at the last address is exactly the one worth asking about at this
-    /// one. Skipping it leaves the 404 on the next request to say so.
+    /// note: the check happens whether or not a model was named. With none, the old name is kept. A
+    /// name that was right at the last address is the one worth asking about at this one. Skipping
+    /// it means the next request gets a 404.
     async fn set_endpoint(&self, url: String, model: Option<String>) {
         *self.base_url.lock() = crate::address(url);
         *self.context_limit.lock() = self.configured;

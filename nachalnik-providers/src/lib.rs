@@ -288,11 +288,10 @@ pub fn same_model(listed: &str, model: &str) -> bool {
         || listed.strip_suffix(":latest") == Some(model)
 }
 
-/// Three of the names a listing gives, and an ellipsis where it gives more.
+/// Three names from a listing, and an ellipsis where there are more.
 ///
-/// note: three, because an endpoint that lists hundreds - OpenRouter does - would otherwise put
-/// every one of them on one line, and none leaves somebody who mistyped a name nothing to correct
-/// it by.
+/// note: three, because an endpoint that lists hundreds (OpenRouter does) would put every name on
+/// one line, leaving someone who mistyped a name nothing to correct it by.
 #[cfg(any(
     feature = "anthropic",
     feature = "gemini",
@@ -307,11 +306,11 @@ pub(crate) fn some_of(listed: &[String]) -> String {
     }
 }
 
-/// What a dialect says when the address it was sent to does not list the model it asks for, and
-/// nothing when it does - or lists nothing at all, which is no evidence either way.
+/// The message when the model is not listed, and nothing when it is or the list is empty, which is
+/// no evidence either way.
 ///
-/// note: nothing for no model either. An empty name is a session that has not picked one yet,
-/// which the program already says in its own words; what this said was that ` ` is not served,
+/// note: nothing for an empty model either. An empty name is a session that has not picked a model,
+/// which the program already says in its own words. Treating it as unlisted says ` ` is not served
 /// on every `/restart` and `/endpoint` such a session made.
 #[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
