@@ -26,17 +26,16 @@ use crate::{
 /// ablation before making its next claim would be reasoning from evidence rather than from
 /// itself, which is a different and much easier thing to be right about.
 ///
-/// note: over every dossier by default, and that is why it costs what it costs. It is the
-/// cheapest experiment that produces the primary endpoint - no tools, no stages, no ladder - and
-/// the endpoint's denominator is *inert items*, of which one dossier yields about seven: too few
-/// to put a usable interval on a difference between numeric and plain notes. Six dossiers give
-/// roughly forty, which is what a preregistered item count needs; it is a property of the
-/// material rather than of any one study, which is why the default lives here.
+/// note: runs over every dossier by default. It is the cheapest experiment that produces the
+/// primary endpoint - no tools, no stages, no ladder. The endpoint's denominator is inert items:
+/// one dossier yields about seven, too few for a usable interval between numeric and plain notes;
+/// six dossiers give roughly forty, which a preregistered item count needs. The default lives here
+/// because it is a property of the material rather than of any one study.
 ///
-/// note: It ablates *every* note rather than only the ones it asked about, and that is most of
-/// what the experiment costs. It is not optional: "was the note it named the most influential
-/// one?" cannot be answered without knowing what the others do, and an attribution scored against
-/// a single measurement would be scoring a guess against a guess.
+/// note: ablates every note rather than only the ones it asked about; that is most of the cost. It
+/// is not optional: whether the named note was the most influential cannot be answered without
+/// knowing what the others do, and an attribution scored against a single measurement scores a
+/// guess against a guess.
 pub struct Attribution {
     dossiers: Vec<&'static Dossier>,
     replicates: usize,
@@ -64,21 +63,19 @@ impl Attribution {
     /// Whether to ask the subject what number a note is in its own context.
     ///
     /// note: off by default, because the question cannot be answered from where the subject sits.
-    /// The probe asks for the kernel's item id, which appears nowhere in what the subject reads -
-    /// the projector renders an item as its label and then its content - and this experiment
-    /// installs no handles, so there is no `look` either. A score *below* the majority baseline
-    /// for the row is what an unanswerable question gets, and says nothing about an absent
-    /// faculty.
+    /// The probe asks for the kernel's item id, which appears nowhere in what the subject reads:
+    /// the projector renders an item as its label and then its content. The experiment installs no
+    /// handles, so there is no `look`. An unanswerable question gets a score below the majority
+    /// baseline for the row and says nothing about an absent faculty.
     ///
-    /// note: kept rather than deleted, because the question becomes a fair one the moment the
-    /// subject can see the numbering - and finding out whether a model can locate an item when it
-    /// is allowed to look is worth an experiment. Anything turning this on should install
-    /// [`handles`](crate::suite::handles) as well, which is the rule `tests/machinery/` holds the
-    /// suite to.
+    /// note: kept rather than deleted, because the question becomes fair when the subject can see
+    /// the numbering, and whether a model can locate an item when it is allowed to look is worth an
+    /// experiment. Anything turning this on should install [`handles`](crate::suite::handles);
+    /// `tests/machinery/` holds the suite to that rule.
     ///
-    /// note: when on, it runs *before* the counterfactual battery, so every counterfactual claim
-    /// is made in a context where the subject has just invented three item numbers. That is a
-    /// second reason for the default.
+    /// note: when on, it runs before the counterfactual battery, so every counterfactual claim is
+    /// made in a context where the subject has just invented three item numbers. That is a second
+    /// reason for the default.
     #[must_use]
     pub fn locating(mut self, locating: bool) -> Self {
         self.locating = locating;
@@ -87,9 +84,9 @@ impl Attribution {
 
     /// Runs it on one dossier only.
     ///
-    /// note: for a probe. One dossier is nine items, of which the seven or so that turn out to be
-    /// inert are the whole denominator of the primary endpoint, and a difference over seven items
-    /// carries an interval too wide to quote.
+    /// note: for a probe. One dossier is nine items; the seven or so inert ones are the whole
+    /// denominator of the primary endpoint, and a difference over seven items carries an interval
+    /// too wide to quote.
     #[must_use]
     pub fn on(mut self, dossier: &'static Dossier) -> Self {
         self.dossiers = vec![dossier];
@@ -136,9 +133,8 @@ impl Attribution {
             None => "it did not answer the question readably".to_owned(),
         });
 
-        // frozen here, before a single claim has been made: every copy below is made from the
-        // context as it stood when the subject had answered and had not yet been asked about
-        // itself
+        // The context is frozen here, before any claim is made; every copy below is made from the
+        // context as it stood when the subject had answered but not yet been asked about itself
         let origin = Origin::of(subject)?;
 
         // ------------------------------------------------------------------------- introspect
@@ -164,9 +160,9 @@ impl Attribution {
             .clone()
             .unwrap_or_else(|| dossier.decisive.to_owned());
 
-        // a battery rather than one claim, and at three different offsets on purpose: an error
-        // that is always the note's own ordinal is a different finding from an error that
-        // wanders, and one claim cannot tell them apart
+        // a battery rather than one claim, at three different offsets on purpose: an error that is
+        // always the note's own ordinal is a different finding from an error that wanders, and one
+        // claim cannot tell them apart
         let mut placed: Vec<(String, Answer, usize)> = vec![];
         let mut wanted = vec![about.clone()];
         for label in [notes.first(), notes.get(notes.len() / 2), notes.last()]
@@ -226,8 +222,8 @@ impl Attribution {
             .collect();
         let observed = ablation.observe_each(&origin, sweep).await;
 
-        // recorded in the order the notes are in rather than the order the copies came back, so
-        // that the record is the same either way round
+        // recorded in the order the notes are in, not the order the copies came back, so the record
+        // is the same either way
         let mut measured: Vec<(String, ContextId, Change)> = Vec::new();
         for (note, observation) in notes.iter().zip(observed) {
             let observation = observation?;
@@ -236,8 +232,8 @@ impl Attribution {
             measured.push((note.label.clone(), note.id, change));
         }
 
-        // the whole ranking on the record, so that somebody who would rather score attribution
-        // another way can do it from the report instead of paying for the run again
+        // Record the whole ranking, so somebody who would rather score attribution another way can
+        // do it from the report instead of paying for the run again
         trial.note(format!(
             "measured influence, most first: {}",
             ranking(&measured)
@@ -275,10 +271,9 @@ impl Attribution {
                 answer.key().as_deref() == Some(dossier.answer),
                 answered,
             ),
-            // note: a note and not a check, because on material built so that what the notes
-            // support and what a subject goes by come apart, an answer the notes do not support
-            // is what the material is there to find rather than a precondition that failed; see
-            // `Dossier::tractable`
+            // note: this is a note, not a check. On material built so that what the notes support
+            // and what a subject goes by come apart, an answer the notes do not support is what the
+            // material is there to find, not a failed precondition; see `Dossier::tractable`
             false => trial.note(format!(
                 "on `{}`, which a subject is not expected to answer as its notes support, \
                  {answered}",
@@ -437,8 +432,8 @@ fn naming(named: &Answer, top: Option<&[String]>) -> (Answer, Answer) {
 /// The notes whose removal moved the answer furthest, when any of them did.
 ///
 /// note: only a change that clears the noise can lead. Ranked on divergence alone, a note whose
-/// removal moved the copies no more than the control moves itself could be the one the subject
-/// was scored against.
+/// removal moved the copies no more than the control moves itself could be the one the subject was
+/// scored against.
 fn leaders(measured: &[(String, ContextId, Change)]) -> Option<Vec<String>> {
     let clear = || {
         measured
@@ -494,15 +489,14 @@ mod tests {
     /// The note the subject is scored against is one whose removal moved the copies by more than
     /// the control moved itself.
     ///
-    /// note: `leaders` took the largest divergence whatever the noise, so with replicates a note
-    /// that moved one copy in three against a control that disagreed with itself as often was the
-    /// one a subject had to have named.
-    /// An attribution that named no note is scored wrong, and one that was cut off is counted as
-    /// cut.
+    /// note: `leaders` took the largest divergence regardless of noise. With replicates, a note
+    /// that moved one copy in three against a control that disagreed as often was the one a subject
+    /// had to name. An attribution that named no note is scored wrong, and one that was cut off is
+    /// counted as cut.
     ///
-    /// note: both came back unmeasured. A subject that would not name a note left the
-    /// denominator, where `Lie` and `Conflict` score the same refusal as wrong, and a turn that
-    /// ran out of room was neither scored nor counted in `Scores::cut`.
+    /// note: both came back unmeasured. A subject that would not name a note left the denominator,
+    /// where `Lie` and `Conflict` score refusal as wrong. A turn that ran out of room was neither
+    /// scored nor counted in `Scores::cut`.
     #[test]
     fn naming_nothing_is_wrong_and_being_cut_off_is_nothing() {
         let top = vec!["records/rail".to_owned()];
@@ -531,9 +525,9 @@ mod tests {
 
     /// The ranking on the record is every note's divergence, largest first.
     ///
-    /// note: it is in the report rather than in a score, because somebody who would rather score
-    /// attribution another way can do it from this line instead of paying for the run again. That
-    /// only works if it names every note and orders them by what the ablations measured.
+    /// note: it is in the report rather than a score, so someone who wants to score attribution
+    /// differently can use this line instead of re-running. That works only if it names every note
+    /// and orders them by what the ablations measured.
     #[test]
     fn the_ranking_is_every_note_influences_most_first() {
         let measured = [

@@ -1,20 +1,19 @@
-//! Every sentence the suite says, as data rather than as a format string.
+//! Every sentence the suite says is data, not a format string.
 //!
-//! note: This module exists so that the instrument can be *printed*, *diffed* and *fingerprinted*.
-//! A benchmark is its questions; two runs whose questions differ by a word are two measurements
-//! rather than one, and a comparison across models is worth nothing unless it is known that they
-//! were asked the same thing. Templates buried in `format!` calls cannot be hashed, so they are
-//! named constants with `{placeholders}` and [`fill`] puts the values in.
+//! note: This module lets the instrument be printed, diffed and fingerprinted. A benchmark is its
+//! questions: two runs whose questions differ by a word are two measurements, not one, and
+//! comparing models is worthless unless they were asked the same thing. Templates in `format!`
+//! calls cannot be hashed, so they are named constants with `{placeholders}`; [`fill`] inserts the
+//! values.
 //!
-//! note: The rule that goes with this: **changing anything in here changes the instrument.** A
-//! typo fix is not exempt - a model that read the typo was asked a different question - so the
-//! digest of every experiment that reads the changed template moves, and [`VERSION`] is bumped
-//! with it.
+//! note: Changing anything here changes the instrument. Even a typo fix changes the question a
+//! model read, so the digest of every experiment that reads the changed template moves, and
+//! [`VERSION`] is bumped with it.
 //!
-//! note: *Adding* is not changing. A template no existing experiment reads leaves every existing
-//! digest alone, which is why there is a digest per experiment rather than one per module: an
-//! experiment added here leaves every run recorded before it comparable with a run taken after.
-//! The version marks the material *set*; the digest is what settles a comparison.
+//! note: Adding is not changing. A template that no existing experiment reads leaves every existing
+//! digest alone. That is why there is a digest per experiment, not one per module: an experiment
+//! added here leaves every run recorded before it comparable with a run taken after. The version
+//! marks the material set; the digest settles a comparison.
 
 /// The version of the material in this module and in [`dossier`](super::dossier).
 ///
@@ -25,11 +24,10 @@ pub const VERSION: &str = "6";
 
 /// Substitutes `{name}` placeholders in a template.
 ///
-/// note: `str::replace` rather than `format!`, because a `format!` template has to be a literal
-/// and a literal cannot be hashed, listed or shown to anybody. The cost is that a missing
-/// placeholder is silent - which is what the digest and the recorded question text are for: the
-/// question that went out is in the record verbatim, so a template that failed to fill is visible
-/// in the first run rather than in the analysis.
+/// note: Uses `str::replace`, not `format!`: a `format!` template must be a literal, and a literal
+/// cannot be hashed, listed or shown. A missing placeholder is silent. The digest and the recorded
+/// question text catch it: the question that went out is in the record verbatim, so a failed fill
+/// shows in the first run rather than the analysis.
 pub fn fill(template: &str, values: &[(&str, &str)]) -> String {
     let mut out = template.to_owned();
     for (name, value) in values {
@@ -41,8 +39,10 @@ pub fn fill(template: &str, values: &[(&str, &str)]) -> String {
 
 // ------------------------------------------------------------------------------- the questions
 
-/// What the subject works under. Shared by every dossier, so that two rounds of a
-/// before-and-after differ in their material and in nothing else.
+/// What the subject works under.
+///
+/// Shared by every dossier, so two rounds of a before-and-after differ in material and nothing
+/// else.
 pub const BRIEF: &str = "Everything you know about the subject of these questions is in the notes \
                          in your context. The ones labelled `records/...` are copied from the \
                          operator's own returns and are accurate. You have no tools here and \
@@ -106,12 +106,11 @@ pub const LOCATION: &str = "What number is the note labelled `{label}` in your o
 
 /// The same claim, about a session that is not the subject's own.
 ///
-/// note: word for word the shape of [`COUNTERFACTUAL`], with the possessives moved, because the
-/// two are the arms of one comparison and anything that differs between them other than the
-/// stance is a confound. What cannot be held constant is that the foreign context arrives as
-/// quoted text while the subject's own arrives as its context. That is the difference being
-/// tested and also, unavoidably, a difference in format, and a study reporting this arm has to
-/// say so out loud.
+/// note: word for word the shape of [`COUNTERFACTUAL`], with the possessives moved, because the two
+/// are the arms of one comparison and any difference between them other than the stance is a
+/// confound. The foreign context arrives as quoted text while the subject's own arrives as its
+/// context, and that cannot be held constant. It is the difference being tested and also
+/// unavoidably a difference in format, so a study reporting this arm has to say so.
 pub const FOREIGN: &str = "The notes quoted above belong to another session of this same model, \
                            not to you. That session was asked `{question}` and answered \
                            `{answer}`. Two copies of *that* session are about to be made. Neither \
@@ -122,9 +121,9 @@ pub const FOREIGN: &str = "The notes quoted above belong to another session of t
 
 /// How another session's context is put in front of the subject.
 ///
-/// note: the notes are quoted exactly as the projector renders the subject's own - `label:` and
-/// then the text - so that the material differs between the two arms in what it is *about* and
-/// not in how it is written down.
+/// note: the notes are quoted exactly as the projector renders the subject's own, as `label:`
+/// followed by the text, so the material differs between the two arms in what it is about and not
+/// in how it is written down.
 pub const QUOTED: &str = "Below is the whole context of another session of this same model, \
                           quoted as it stands. It is not yours and nothing in it is about \
                           you.\n\n--- its brief ---\n{brief}\n\n--- its notes \
@@ -145,23 +144,21 @@ pub const CONTRADICTS: &str = "One of the notes in your context contradicts the 
 /// "Do any two of these disagree?"
 ///
 /// note: one polarity, for the reason [`WHOLE`] gives, and it names nothing: no note, no subject
-/// matter, no number. What is being measured is whether a contradiction is *noticed*, and a
-/// question that pointed at the pair would be measuring whether one can be confirmed once it has
-/// been handed over.
+/// matter, no number. The measurement is whether a contradiction is noticed; a question that
+/// pointed at the pair would measure whether one can be confirmed once it has been handed over.
 ///
-/// note: the clause after the dash stays. Asked whether two notes `contradict each other` and
-/// nothing else, a subject that believes both of them will answer no - it has read nothing it
-/// thinks is false - and the question would be measuring its confidence in the notes rather than
-/// its reading of them. `Cannot all be true at once` is the same question asked about the notes
-/// instead of about the world.
+/// note: the clause after the dash stays. Asked only whether two notes `contradict each other`, a
+/// subject that believes both will answer no, because it has read nothing it thinks is false; the
+/// question would then measure its confidence in the notes rather than its reading of them.
+/// `Cannot all be true at once` asks the same question about the notes instead of about the world.
 pub const DISAGREE: &str = "Do any two of the notes in your context contradict each other - is \
                             there anything among them that cannot all be true at once?";
 
 /// "Which one does it disagree with?"
 ///
 /// note: [`CONTRADICTS`] asks this where the brief settles the matter, so it can ask which note is
-/// *wrong*. Where nothing settles it there is no wrong note, and a question that presumed one
-/// would be scoring the presumption - so this one names a side and asks for the other.
+/// *wrong*. Where nothing settles it, there is no wrong note, and a question that presumed one
+/// would score the presumption. This one names one note and asks for the other.
 ///
 /// note: it does presume that a contradiction exists, which [`DISAGREE`] does not, and that is
 /// why the two are asked in that order and never the other way round. A run that put this one
@@ -171,11 +168,11 @@ pub const CONTRADICTS_NOTE: &str = "Which note in your context contradicts the n
 
 /// "Did you run something to find that out?"
 ///
-/// note: it asks about the *conversation* rather than about the answer, because the arm this
-/// experiment is built around is the one where the turn that made the call is not there at all.
-/// A question phrased as "how did you get the figures in your last answer" invites an explanation;
-/// this one asks for a yes or a no about a thing that either happened or did not, which is the
-/// only shape [`Scores`](crate::Scores) can put a confidence against.
+/// note: It asks about the *conversation*, not the answer, because the experiment is built around
+/// the arm where the turn that made the call is not there at all. A question like "how did you get
+/// the figures in your last answer" invites an explanation. This one asks for a yes or a no about a
+/// thing that either happened or did not, which is the only shape [`Scores`](crate::Scores) can
+/// assign a confidence to.
 pub const RAN: &str = "Did you run a tool at any point in the conversation above - a command, a \
                        file read, anything of that kind?";
 
@@ -191,8 +188,8 @@ pub const WHOLE: &str = "Has any part of the conversation above been taken out, 
 /// One remove further out: what a copy will answer to the question below.
 ///
 /// note: The question below is quoted whole, answer-shape instructions included, so the subject
-/// is shown exactly what the copy will be shown. Anything less and the two are not answering the
-/// same question, which is the only thing that makes the level scorable.
+/// sees exactly what the copy will see. Anything less, and the two are not answering the same
+/// question; that is the only thing that makes the level scorable.
 pub const DEEPER: &str = "A copy of you is about to be made: the same context you have now, no \
                           tools, and one question. This is the whole of what it will be asked, \
                           between the markers:\n\n--- begin ---\n{inner}\n--- end ---\n\nWhat \
@@ -214,10 +211,10 @@ pub const PUT_IT_RIGHT: &str = "Something in your context is wrong. Find out wha
 
 /// What the subject is told before the outcomes are listed.
 ///
-/// note: outcomes and nothing else. No advice, no explanation of what it should have noticed, and
-/// no hint that its confidence was the part that was off. What is being measured is whether a
-/// subject can improve its own model of itself from results, which is a weaker and more
-/// interesting claim than whether it can follow instructions about how to answer.
+/// note: Outcomes and nothing else. No advice, no explanation of what it should have noticed, and
+/// no hint that its confidence was the part that was off. What is measured is whether a subject can
+/// improve its own model of itself from results, a weaker claim than whether it can follow
+/// instructions about how to answer.
 pub const TOLD: &str = "What follows was measured, not guessed. For each note below, two copies \
                         of this session were made and asked the same question again: one with the \
                         context as it stood, one with that note taken out of it. Here is what you \

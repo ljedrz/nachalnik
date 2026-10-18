@@ -125,11 +125,11 @@ async fn main() -> Result<(), nachalnik::BoxError> {
 
     let mut params = Params::new();
     params.insert("temperature".to_owned(), json!(temperature));
-    // note: set rather than left to the provider, because a reasoning model that runs out of
-    // output budget mid-thought returns no content at all - `finish_reason: length` and a null
-    // message - and every probe here is read off the *last line* of an answer. That arrives as
-    // `Answer::Unreadable`, which is scored honestly as untested, so the failure is quiet: a
-    // report full of untested claims and no indication that the cause was a token cap.
+    // note: set rather than left to the provider, because a reasoning model that runs out of output
+    // budget mid-thought returns no content: `finish_reason: length` and a null message. Every
+    // probe is read off the last line of an answer, so an empty one arrives as `Answer::Unreadable`
+    // and is scored as untested. The failure is quiet: a report of untested claims with no
+    // indication that a token cap caused it.
     if max_tokens > 0 {
         params.insert("max_tokens".to_owned(), json!(max_tokens));
     }
@@ -166,11 +166,10 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     }
     println!();
 
-    // note: one `Pace` for the whole run, because a rate is only obeyed if its window is shared - a
-    // limit of twenty a minute applied afresh per experiment is nine times the limit. The window
-    // itself is built inside `evaluate_with`, so at `-j 1`, where each experiment is evaluated on
-    // its own below, each one starts a fresh window and the boundary between two can see up to
-    // twice the rate.
+    // note: one `Pace` for the whole run, because a rate is only obeyed if its window is shared. A
+    // limit of twenty a minute applied afresh per experiment is nine times the limit. The window is
+    // built inside `evaluate_with`, so at `-j 1` each experiment starts a fresh window and the
+    // boundary between two can see up to twice the rate.
     let pace = match per_minute {
         0 => Pace::at_once(at_once),
         n => Pace::at_once(at_once).per_minute(n),
@@ -187,10 +186,10 @@ async fn main() -> Result<(), nachalnik::BoxError> {
         Ok(Subject::new(kernel))
     };
 
-    // note: on by default, and named after the model and the time it started if nobody said where.
-    // A run is hours long and the console output is a summary - the scores, not the questions and
-    // answers they were computed from - so without the file, a run whose terminal is closed leaves
-    // nothing that can be scored again. Opting out is `--no-json`, the rarer thing to want.
+    // note: on by default, and named after the model and start time unless a path is given. A run
+    // is hours long and the console output is a summary: the scores, not the questions and answers.
+    // Without the file, a run whose terminal is closed leaves nothing that can be scored again. Opt
+    // out with `--no-json`.
     let started = SystemTime::now();
     let json = match (json, no_json) {
         (_, true) => None,
@@ -205,14 +204,13 @@ async fn main() -> Result<(), nachalnik::BoxError> {
         .map(|since| since.as_millis() as u64)
         .unwrap_or_default();
 
-    // every experiment that has finished, in the order they finished, which is what a checkpoint
-    // is written from. The report at the end is the ordered one; this is only ever the record
-    // that survives a run being killed
+    // every finished experiment, in the order it finished. A checkpoint is written from this. The
+    // report at the end is the ordered one; this is only the record that survives a killed run.
     //
-    // note: printing is this example's job and not the library's. `evaluate_with` prints nothing -
-    // a library has no business writing to somebody's terminal - so `tell` is what lets a run
-    // that fans its experiments out still show progress as they finish, and a run of hundreds of
-    // requests that shows nothing until the last one is a run nobody can tell from a hung one
+    // note: printing is this example's job, not the library's. `evaluate_with` prints nothing,
+    // because a library should not write to somebody's terminal. `tell` lets a run that fans its
+    // experiments out show progress as they finish; a run of hundreds of requests that shows
+    // nothing until the last one cannot be told from a hung one
     let landed: Mutex<Vec<Outcome>> = Mutex::new(Vec::new());
     let tell = |outcome: &Outcome| {
         println!("{outcome}\n");
@@ -230,8 +228,8 @@ async fn main() -> Result<(), nachalnik::BoxError> {
                 at,
                 outcomes: landed.clone(),
             };
-            // warned rather than returned: losing a checkpoint is a reason to say so loudly, not
-            // a reason to throw away the hours of run still to come
+            // warned rather than returned: losing a checkpoint is a reason to say so loudly, not to
+            // throw away the hours of run still to come
             if let Err(e) = checkpoint(path, &so_far) {
                 eprintln!("warning: could not write {path}: {e}");
             }
@@ -296,14 +294,13 @@ fn default_path(model: &str, started: &SystemTime) -> String {
 
 /// Writes the report to `path`, atomically.
 ///
-/// note: written beside the target and renamed onto it, rather than written over it. A rename
-/// within a directory is atomic, so a reader - or a run killed mid-write - sees either the whole
-/// previous checkpoint or the whole new one, and never the half of one that had been flushed when
-/// the process died. Writing in place would make every checkpoint a window in which the file on
-/// disk is truncated JSON, which is a worse record than the one this exists to replace.
+/// note: it writes beside the target and renames onto it, rather than writing over it. A rename
+/// within a directory is atomic, so a reader, or a run killed mid-write, sees either the whole
+/// previous checkpoint or the whole new one, never a half-flushed one. Writing in place would leave
+/// a window in which the file on disk is truncated JSON.
 ///
 /// note: the temporary is in the same directory, because a rename across filesystems is not a
-/// rename. `/tmp` would be the usual place for it, and on anyone whose working directory is a
+/// rename. `/tmp` would be the usual place for it, and for anyone whose working directory is on a
 /// different mount every checkpoint would fail to land.
 fn checkpoint(path: &str, report: &Report) -> Result<(), nachalnik::BoxError> {
     let partial = format!("{path}.partial");
@@ -313,8 +310,8 @@ fn checkpoint(path: &str, report: &Report) -> Result<(), nachalnik::BoxError> {
     Ok(())
 }
 
-/// The last two lines of a [`Report`]'s own rendering: the outcomes above have already been
-/// printed one by one as they landed.
+/// The last two lines of a [`Report`]'s rendering. The outcomes above were already printed one by
+/// one as they landed.
 fn summary(report: &Report) -> String {
     let spend = report.spend();
 
@@ -329,8 +326,8 @@ fn summary(report: &Report) -> String {
 
 /// The calibration curve, as far as there is one to draw.
 ///
-/// note: printed rather than plotted, and printed with the counts, because the shape of a curve
-/// over forty claims is mostly the shape of where the claims happened to land.
+/// note: printed rather than plotted, and printed with the counts, because with forty claims the
+/// shape of the curve is mostly where the claims happened to land.
 fn print_curve(report: &Report) {
     let scores = report.scores();
     if scores.bins.iter().all(|bin| bin.n == 0) {

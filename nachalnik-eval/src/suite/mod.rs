@@ -1,26 +1,25 @@
-//! The experiments, and the material they are run on.
+//! The experiments and the material they are run on.
 //!
-//! note: This module is where the prompt text is, and it is the only place in the crate that has
-//! any but the two lines the machinery says itself: [`PREAMBLE`](crate::PREAMBLE) and
-//! [`Reading::instructions`](crate::Reading::instructions). Everything above it is machinery that does not know what a question is about; everything
-//! in here is a question, a planted note, or a sentence explaining to a copy that it has no
-//! tools. The line between them is worth keeping: a benchmark is its questions, and questions go
-//! stale - a model that has seen [`DEPOT`] in a training set is a model this suite can no longer
-//! measure, and replacing the suite should not mean replacing the harness.
+//! note: This module holds the prompt text. It is the only place in the crate with prompt text
+//! besides [`PREAMBLE`](crate::PREAMBLE) and
+//! [`Reading::instructions`](crate::Reading::instructions). Everything above is machinery that does
+//! not know what a question is about; everything here is a question, a planted note, or a sentence
+//! telling a copy it has no tools. The line between them is worth keeping: a benchmark is its
+//! questions, and questions go stale. A model that has seen [`DEPOT`] in a training set is a model
+//! this suite can no longer measure, and replacing the suite should not mean replacing the harness.
 //!
 //! note: [`all`] lists the experiments in the order they are worth reading rather than the order
-//! they cost. [`Attribution`] is the one the others are variations on; [`Recursion`] is the one
-//! that goes deeper; [`Lie`] and [`Provenance`] are the two whose ground truth does not depend on
-//! a fork at all, the first because the harness wrote the falsehood and the second because it
-//! wrote the record; [`Conflict`] is [`Lie`] with the tiebreak taken out, so that the
-//! contradiction has no right answer and only reporting it does; [`Privilege`] is the control that
-//! decides whether any of it is metacognition; and [`Feedback`] is the only one that asks whether
-//! any of this can be learnt, and costs about as much as several of the others together.
+//! they cost. [`Attribution`] is the one the others are variations on. [`Recursion`] goes deeper.
+//! [`Lie`] and [`Provenance`] do not depend on a fork for ground truth: the harness wrote the
+//! falsehood in the first, and the record in the second. [`Conflict`] is [`Lie`] with the tiebreak
+//! taken out, so the contradiction has no right answer and only reporting it does. [`Privilege`] is
+//! the control that decides whether any of it is metacognition. [`Feedback`] is the only one that
+//! asks whether any of this can be learnt, and costs about as much as several of the others
+//! together.
 //!
-//! note: [`Provenance`] is also the only one that asks the subject nothing. It measures what
-//! copies say about a record the harness has doctored, which needs no claim to score it against -
-//! and being the cheapest thing here, it is the one to run first when a new model is being tried
-//! out.
+//! note: [`Provenance`] is also the only one that asks the subject nothing. It measures what copies
+//! say about a record the harness has doctored, which needs no claim to score it against. It is the
+//! cheapest thing here, so run it first when trying out a new model.
 
 use std::sync::Arc;
 
@@ -64,20 +63,19 @@ pub use crate::suite::{
     repair::{AGAIN, CARRYING, LADDERS, REPAIRED, Repair, TOLD_SO, UNPROMPTED},
 };
 
-/// The question every counterfactual claim in the suite is put as: two copies, and whether they
-/// will answer differently.
+/// The question every counterfactual claim is put as: two copies, and whether they answer
+/// differently.
 ///
-/// note: Two copies rather than "would *your* answer change". What the harness measures is a
-/// treated copy against a control copy - it has to be, or the intervention is confounded with the
-/// whole business of being a copy at all - so that is what the question has to ask about. Asked
-/// the other way, a subject can be exactly right about how the two copies will answer and be
-/// scored wrong because the live session, which has the elicitation in its context and its tools
-/// in its request, answered differently from both.
+/// note: Two copies rather than "would your answer change". The harness measures a treated copy
+/// against a control copy, because otherwise the intervention is confounded with being a copy at
+/// all, so that is what the question asks. Asked the other way, a subject can be exactly right
+/// about how both copies answer and be scored wrong because the live session, which has the
+/// elicitation in its context and its tools in its request, answered differently from both.
 ///
-/// note: the session and its copies do disagree in practice: a session can answer a dossier
-/// correctly while a copy of the same context answers it wrongly, and a claim about the session's
-/// own answer would then be graded against a baseline the subject was never shown. Every record
-/// says which happened, in the line [`note_drift`] writes, which begins `the session`.
+/// note: The session and its copies disagree in practice: a session can answer a dossier correctly
+/// while a copy of the same context answers it wrongly. A claim about the session's own answer
+/// would then be graded against a baseline the subject was never shown. Every record says which
+/// happened, in the line [`note_drift`] writes, which begins `the session`.
 pub(crate) fn counterfactual(question: &str, difference: &str) -> Probe {
     Probe::claim(script::fill(
         script::COUNTERFACTUAL,
@@ -118,13 +116,12 @@ pub(crate) fn instrument(
 
 /// Records whether a copy of a session answers the way the session itself did.
 ///
-/// note: Worth a line in every record, because it is the caveat every other figure is read
-/// under. A copy is not the session: it has one question at the end of it, no tools in its
-/// request, and a sentence explaining that it has none. Where the two agree, the copies are
-/// standing in for the subject and the ablations mean what they look like. Where they do not,
-/// the ablations are still sound - they are copies measured against copies - and the subject's
-/// own answer was reached some other way, which is a thing worth knowing before quoting a
-/// number at anybody.
+/// note: Worth a line in every record, because it is the caveat every other figure is read under. A
+/// copy is not the session: it has one question at the end, no tools in its request, and a sentence
+/// saying it has none. Where they agree, the copies stand in for the subject and the ablations mean
+/// what they look like. Where they do not, the ablations are still sound - copies measured against
+/// copies - and the subject's own answer was reached some other way, worth knowing before quoting a
+/// number.
 pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
     let copy = control.majority();
     match (live.key(), &copy) {
@@ -143,10 +140,10 @@ pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
 /// put to `replicates` copies of `origin` with nothing changed, recorded beside how the session
 /// itself answered.
 ///
-/// note: `blind` is an argument rather than a builder call an experiment remembers to make,
+/// note: `blind` is an argument rather than a builder call an experiment has to remember to make,
 /// because a copy that can read the answer the session already gave, a few items above the
-/// question it is asked again, is a copy agreeing with itself - see `Ablation::blind_to` - and
-/// "it did not change" then measures nothing. It is the one step no experiment can leave out.
+/// question it is asked again, is a copy agreeing with itself - see `Ablation::blind_to` - and "it
+/// did not change" then measures nothing. It is the one step no experiment can leave out.
 pub(crate) async fn controlled(
     trial: &Trial,
     origin: &Origin,
@@ -180,42 +177,39 @@ pub(crate) fn copies_agree(trial: &Trial, control: &Observation, copies: &str) {
 
 /// What the copies answered, or that they did not.
 ///
-/// note: here rather than beside the experiment that reads it, because two of them read it and
-/// the sentence a record carries is the thing a reader compares across experiments.
+/// note: here rather than beside the experiment that reads it, because two experiments read it and
+/// readers compare the sentence a record carries across experiments.
 pub(crate) fn said_or_nothing(answer: &Option<String>) -> String {
     answer
         .clone()
         .map_or_else(|| "nothing readable".to_owned(), |said| format!("`{said}`"))
 }
 
-/// The experiment whose claims are the primary endpoint, [`Report::surface`](crate::Report::surface).
+/// The experiment whose claims are the primary endpoint,
+/// [`Report::surface`](crate::Report::surface).
 ///
-/// note: `attribution` because it is the one that asks about every note of every dossier, once
-/// each, with no handles in reach and no feedback before it - which is the count the endpoint is
-/// sized at.
+/// note: `attribution` because it asks about every note of every dossier, once each, with no
+/// handles in reach and no feedback before it; the endpoint is sized at that count.
 pub const ENDPOINT: &str = "attribution";
 
 /// The nine experiments, at their default settings.
 ///
-/// note: One copy per condition, which is the cheap end. It is enough to run the whole thing and
-/// to produce every figure in a report; it is *not* enough for
-/// [`Change::instability`](crate::Change), which needs at least two and is reported as zero
-/// without them. Raise the replicates before quoting a number at anybody.
+/// note: One copy per condition. Enough to run everything and produce every figure in a report, but
+/// not [`Change::instability`](crate::Change), which needs at least two and reports zero without
+/// them. Raise the replicates before quoting a number.
 pub fn all() -> Vec<Arc<dyn Experiment>> {
     all_with(1, LADDERS)
 }
 
-/// The same nine, with every condition run `replicates` times and every ladder run `ladders`
-/// times.
+/// The same nine, with every condition run `replicates` times and every ladder run `ladders` times.
 ///
-/// note: two numbers, because they buy different things and only one of them is cheap. A
-/// *replicate* is another copy of an [`Ablation`] - the harness re-running its
-/// own measurement to put a noise floor under it - and one is enough where measured instability
-/// across copies is zero. A *ladder* is another pass over the same dossier by a fresh subject,
-/// which is the only way [`Repair`] gets more than one observation per rung, and the [`AGAIN`]
-/// control is there because a subject asked the same question twice does not always answer it
-/// the same way. Conflating them would either replicate the copies for nothing or leave the rungs
-/// with one observation per dossier.
+/// note: Two numbers: they buy different things, and only one is cheap. A *replicate* is another
+/// copy of an [`Ablation`]: the harness re-runs its measurement to put a noise floor under it. One
+/// is enough where measured instability across copies is zero. A *ladder* is another pass over the
+/// same dossier by a fresh subject. It is the only way [`Repair`] gets more than one observation
+/// per rung. The [`AGAIN`] control exists because a subject may answer the same question
+/// differently when asked twice. Conflating them either replicates copies for nothing or leaves
+/// rungs with one observation per dossier.
 pub fn all_with(replicates: usize, ladders: usize) -> Vec<Arc<dyn Experiment>> {
     vec![
         Arc::new(Attribution::new().replicates(replicates)),
@@ -258,11 +252,11 @@ mod tests {
         Trial::new("suite", &Subject::new(Kernel::new(Config::default())))
     }
 
-    /// A copy that answered what the session answered is not drift, and a copy that answered
-    /// something else is not a failure either.
+    /// A copy that answered what the session answered is not drift. A copy that answered something
+    /// else is not a failure.
     ///
-    /// note: the two lines are read apart in every report, because the second is the caveat every
-    /// other figure in the record is read under.
+    /// note: The two lines are read apart in every report because the second is the caveat under
+    /// which every other figure in the record is read.
     #[test]
     fn a_copy_that_answered_the_same_is_not_a_copy_that_drifted() {
         let drifted = |control: &Observation, live: &Answer| {
@@ -285,9 +279,9 @@ mod tests {
             vec!["the session and a copy of it both answered `kirov`"]
         );
 
-        // the copies' own commonest answer, against a session that said another thing: the
-        // sentence the doc says begins `the session`, and it is what says the rest of the
-        // figures are copies measured against copies
+        // the copies' commonest answer, when the session said something else: the sentence begins
+        // with `the session` and states that the rest of the figures are copies measured against
+        // copies
         assert_eq!(
             drifted(&copies_saying(&["omsk", "omsk", "kirov"]), &live),
             vec![
@@ -296,8 +290,8 @@ mod tests {
             ]
         );
 
-        // and nothing either side could be read is a third sentence rather than a variant of the
-        // second: with no answer from the copies there is no comparison to report
+        // nothing readable on either side is a third case, not a variant of the second: with no
+        // answer from the copies there is no comparison to report
         assert_eq!(
             drifted(&copies_saying(&[]), &Answer::Unreadable),
             vec!["the session or its copies did not answer readably"]

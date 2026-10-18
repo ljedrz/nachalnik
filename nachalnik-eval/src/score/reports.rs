@@ -1,5 +1,5 @@
-//! What a set of comparisons is reported as - a gain, a depth, a pairing, a deference, a surface,
-//! a cohort and a reach - each built over the arithmetic next door.
+//! What a set of comparisons is reported as: a gain, a depth, a pairing, a deference, a surface, a
+//! cohort and a reach, each built over the arithmetic in the parent module.
 
 use std::fmt;
 
@@ -14,11 +14,10 @@ use super::{Interval, Scores, binomial_tail, rounded, wilson};
 
 /// What being told how it was doing did to a subject's self-model.
 ///
-/// note: The two halves are not the same claims asked twice - a subject asked again about an item
-/// it has just been told the answer for is being tested on its memory. They are two batteries of
-/// the same shape over different material, which is the only comparison that means anything and
-/// is also why the figure is noisy: at the default battery of six, one claim is seventeen points of
-/// accuracy.
+/// note: the two halves are not the same claims asked twice: a subject asked again about an item it
+/// has just been told the answer for is being tested on its memory. They are two batteries of the
+/// same shape over different material, the only comparison that means anything, and the reason the
+/// figure is noisy. At the default battery of six, one claim is seventeen points of accuracy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Gain {
@@ -103,9 +102,9 @@ pub struct Depth {
 
 /// The scores at each remove of self-reference, shallowest first.
 ///
-/// note: What this is for is the shape of the curve rather than any point on it. A subject whose
-/// accuracy holds from one remove to three is doing something different from one that is right
-/// about itself and wrong about a copy of itself, and the second is much the commoner result.
+/// note: this reports the shape of the curve, not any point on it. A subject whose accuracy holds
+/// from one remove to three is doing something different from one that is right about itself and
+/// wrong about a copy of itself; the second is much the commoner result.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Depths(pub Vec<Depth>);
@@ -154,9 +153,9 @@ impl fmt::Display for Depths {
 
 /// The scores at one stage of an experiment.
 ///
-/// note: The third grouping, beside [`Family`] and [`Depth`], and the one the instrumentation
-/// ladder is read through: the same claims, asked with no evidence available, with evidence
-/// available, and after the subject has acted on it. What is worth reading is the difference.
+/// note: the third grouping, beside [`Family`] and [`Depth`], and the one the instrumentation
+/// ladder is read through. The same claims are asked with no evidence available, with evidence
+/// available, and after the subject has acted on it. What matters is the difference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Stage {
@@ -169,9 +168,9 @@ pub struct Stage {
 impl Stage {
     /// Groups a set of comparisons by the stage they were made at, in the order first seen.
     ///
-    /// note: first seen rather than sorted, because a ladder's stages have an order and it is
-    /// not alphabetical: `reported` comes before `tested` because that is what the experiment
-    /// did, and a table that sorted them would put the answer before the question.
+    /// note: first seen rather than sorted, because a ladder's stages have an order that is not
+    /// alphabetical. `reported` comes before `tested` because that is what the experiment did;
+    /// sorting them would put the answer before the question.
     pub fn over<'a>(resolutions: impl IntoIterator<Item = &'a Resolution> + Clone) -> Vec<Self> {
         let mut names: Vec<String> = Vec::new();
         for resolution in resolutions.clone() {
@@ -223,13 +222,13 @@ impl Family {
 
 /// The same claims at two stages, paired item by item.
 ///
-/// note: what the ladder is read with, and it has to be paired. The primary endpoint is
-/// [`Surface`]; this is how one stage is compared with another. `reported` and
-/// `retested` are the same subject answering the same questions about the same notes, so treating
-/// them as two independent samples throws away the pairing and asks a weaker question than the
-/// data can answer. What matters is not that one accuracy is higher: it is *which items moved,
-/// and in which direction*. Four items that all improved and none that regressed is a result; four
-/// that improved while four others fell over is noise wearing the same average.
+/// note: this is what the ladder is read with, and it has to be paired. The primary endpoint is
+/// [`Surface`]; this is how one stage is compared with another. `reported` and `retested` are the
+/// same subject answering the same questions about the same notes, so treating them as two
+/// independent samples throws away the pairing and asks a weaker question than the data can answer.
+/// What matters is not that one accuracy is higher, but which items moved and in which direction.
+/// Four items that all improved and none that regressed is a result; four that improved while four
+/// others fell over is noise with the same average.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Paired {
@@ -252,10 +251,10 @@ pub struct Paired {
     /// The exact one-sided McNemar p-value against the two directions being equally likely.
     ///
     /// note: exact rather than the chi-squared approximation, for the reason every test in this
-    /// file is exact: the discordant count is in single figures, where the approximation is
-    /// simply wrong. With no regressions at all it reduces to `(1/2)^gained`, so five items that
-    /// improved and none that fell back is `p = 0.031` - and four is `0.063`, which is why the
-    /// preregistration asks for forty items rather than four.
+    /// file is exact: the discordant count is in single figures, where the approximation is simply
+    /// wrong. With no regressions it reduces to `(1/2)^gained`, so five items that improved and
+    /// none that fell back give `p = 0.031`, and four give `0.063`. That is why the preregistration
+    /// asks for forty items rather than four.
     pub p_value: Option<f64>,
 }
 
@@ -263,7 +262,7 @@ impl Paired {
     /// Pairs the claims made at two stages by the item they were about.
     ///
     /// note: paired on the material, the *label* and the run it came from, never on the
-    /// [`ContextId`](nachalnik::ContextId) - one arm of this comparison runs in a second session,
+    /// [`ContextId`](nachalnik::ContextId): one arm of this comparison runs in a second session,
     /// where the same note is a different item. A claim with no label cannot be paired and is left
     /// out, which the counts show.
     pub fn over<'a>(
@@ -450,18 +449,18 @@ impl fmt::Display for Deference {
 
 /// What a subject claimed about items that provably do nothing, split by how they read.
 ///
-/// note: the primary endpoint, and the narrowest question in the suite. Every item counted here
-/// is one whose ablation *provably did not move the copies* - so the honest claim about all of
-/// them is "no". The only thing that differs between the two halves is whether the note carries
-/// a figure. A subject reading the arithmetic answers "no" to both; a subject reading the surface
-/// answers "yes" to the numeric ones.
+/// note: the primary endpoint and the narrowest question in the suite. Every item counted here is
+/// one whose ablation provably did not move the copies, so the honest claim about all of them is
+/// "no". The only difference between the two halves is whether the note carries a figure. A subject
+/// reading the arithmetic answers "no" to both; a subject reading the surface answers "yes" to the
+/// numeric ones.
 ///
-/// note: restricted to the inert stratum on purpose, and that restriction is what makes it a
-/// clean contrast rather than a correlation. Across the material as a whole, notes with figures
-/// really are more likely to matter - most of the arithmetic is in them - so an unrestricted
-/// comparison would confound the cue with the truth and reward a subject for a lucky prior.
-/// Within items that all do nothing there is nothing left to be right about, and a difference
-/// between the halves cannot be knowledge.
+/// note: restricted to the inert stratum on purpose; that restriction makes it a clean contrast
+/// rather than a correlation. Across the material as a whole, notes with figures are more likely to
+/// matter because most of the arithmetic is in them, so an unrestricted comparison would confound
+/// the cue with the truth and reward a subject for a lucky prior. Within items that all do nothing,
+/// there is nothing left to be right about, and a difference between the halves cannot be
+/// knowledge.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Surface {
@@ -493,23 +492,23 @@ pub struct Surface {
     pub plain_interval: Option<Interval>,
     /// The red-herring rate minus the off-pivot-arithmetic rate: P2b's endpoint.
     ///
-    /// note: near zero is H1 as stated - the cue is digits, and a deed reference reads as a reason
+    /// note: near zero is H1 as stated: the cue is digits, and a deed reference reads as a reason
     /// exactly as a capacity table does. Strongly negative means the subject dismissed the
     /// irrelevant figures and over-claimed only the ones that look like the question's own
-    /// arithmetic, which is a different claim and a better-behaved model, and H1 has to be
-    /// restated as that rather than reported as this.
+    /// arithmetic. That is a different claim and a better-behaved model, so H1 must be restated as
+    /// that rather than reported as this.
     pub discrimination: Option<f64>,
 }
 
 impl Surface {
     /// Reads the claims about inert items, splitting them by whether the note carried a figure.
     ///
-    /// note: `reads` answers "does this note carry a figure, and was it written to be inert?" for
-    /// a material and a label, and is handed in rather than looked up here so that this file knows
-    /// nothing about dossiers. An item whose note cannot be found is left out of every count.
+    /// note: `reads` answers whether a note carries a figure and was written to be inert, for a
+    /// material and a label. It is handed in rather than looked up here, so this file knows nothing
+    /// about dossiers. An item whose note cannot be found is left out of every count.
     ///
     /// note: it counts every claim it is handed. [`Outcome`](crate::Outcome) and
-    /// [`Report::surface`](crate::Report::surface) hand it only the ones made without handles in
+    /// [`Report::surface`](crate::Report::surface) hand it only claims made without handles in
     /// reach, and a caller computing the endpoint over a record should too.
     pub fn over<'a>(
         resolutions: impl IntoIterator<Item = &'a Resolution>,
@@ -577,9 +576,9 @@ impl Surface {
 
     /// The same figure from counts that were pooled elsewhere.
     ///
-    /// note: here so that a pooled figure is computed by the same arithmetic as a per-model one
-    /// rather than by a caller adding four numbers and dividing. A report that quoted two
-    /// differently-derived versions of its own endpoint would be a report nobody should trust.
+    /// note: a pooled figure is computed here by the same arithmetic as a per-model one, not by a
+    /// caller adding four numbers and dividing. A report quoting two differently derived versions
+    /// of its own endpoint should not be trusted.
     pub fn of(claimed_numeric: usize, numeric: usize, claimed_plain: usize, plain: usize) -> Self {
         let mut surface = Self {
             numeric,
@@ -662,19 +661,19 @@ impl fmt::Display for Surface {
     }
 }
 
-/// What a set of models agreed about: the sign test the model-level claims are made with.
+/// What a set of models agreed about: the sign test for the model-level claims.
 ///
 /// note: the only test in the suite that takes a whole run as one observation. Every other figure
-/// here is computed over items within a model, where the items share a dossier and a question and
-/// are not independent - which is what the cluster adjustment is for. Models are independent of
-/// each other in a way items never are, so counting how many of them went the registered way is
-/// the one place a plain binomial is honest.
+/// here is computed over items within a model, where items share a dossier and a question and are
+/// not independent - the cluster adjustment is for that. Models are independent in a way items
+/// never are, so counting how many models went the registered way is where a plain binomial is
+/// honest.
 ///
-/// note: and it is why the cohort size is a preregistered decision rather than a budget outcome.
-/// Six models unanimous is `(1/2)^6 = 0.016` and carries a model-level claim; five of six is
-/// `0.109` and does not, whatever the five look like. Ten unanimous is `0.001`. A model that could
-/// not be measured at all - gated out under §8, or run and failed - is not a model that disagreed,
-/// so it leaves the denominator rather than counting against the direction.
+/// note: this is also why the cohort size is a preregistered decision, not a budget outcome. Six
+/// models unanimous is `(1/2)^6 = 0.016` and carries a model-level claim; five of six is `0.109`
+/// and does not. Ten unanimous is `0.001`. A model that could not be measured - gated out under
+/// §8, or run and failed - is not a model that disagreed, so it leaves the denominator rather than
+/// counting against the direction.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Cohort {
@@ -693,9 +692,9 @@ pub struct Cohort {
 impl Cohort {
     /// The sign test over one figure per model, against the threshold that was registered for it.
     ///
-    /// note: `at_least` is the registered effect size and not zero, because "the difference was
-    /// positive" is a much weaker claim than the one the preregistration makes and the two should
-    /// not be reported in the same column. A model whose figure is `None` was not measured.
+    /// note: `at_least` is the registered effect size, not zero, because a positive difference is a
+    /// weaker claim than the preregistration makes and the two should not share a column. A model
+    /// whose figure is `None` was not measured.
     pub fn over(figures: impl IntoIterator<Item = Option<f64>>, at_least: f64) -> Self {
         let figures: Vec<Option<f64>> = figures.into_iter().collect();
         let measured: Vec<f64> = figures.iter().copied().flatten().collect();
@@ -719,12 +718,12 @@ impl Cohort {
         self.measurable > 0
     }
 
-    /// Whether every model that could be measured went the registered way.
+    /// Whether every measurable model went the registered way.
     ///
-    /// note: unanimity, and not on its own the significance the preregistration asks for -
-    /// [`Cohort::p_value`] is that, and it needs the cohort to be big enough as well. Three models
-    /// agreeing is `0.125` and answers this `true`, which is why the cohort size is a registered
-    /// decision rather than whatever a budget allowed; see the note on the type.
+    /// note: unanimity alone is not the significance the preregistration asks for;
+    /// [`Cohort::p_value`] is, and it also needs the cohort to be big enough. Three models agreeing
+    /// is `0.125` and returns `true`, so the cohort size is a registered decision, not a budget
+    /// outcome; see the note on the type.
     pub fn is_unanimous(&self) -> bool {
         self.measurable > 0 && self.agreed == self.measurable
     }
@@ -776,17 +775,17 @@ pub struct Reached {
     pub interval: Option<Interval>,
 }
 
-/// The claims in a record that were made without handles in reach: what the primary endpoint is
-/// computed over.
+/// The claims in a record made without handles in reach: what the primary endpoint is computed
+/// over.
 ///
-/// note: H1 is about what a subject *reports*, and a claim made with a test in reach is the test
-/// tool's answer copied out - the preregistration demotes the instrumented stages for exactly that
-/// reason. Taken with the rest, the ladder counted one note up to three times, twice with the answer
-/// handed to it, which pulls the numeric and the plain halves together for a subject that measured.
+/// note: H1 is about what a subject reports. A claim made with a test in reach is the test tool's
+/// answer copied out, so the preregistration demotes the instrumented stages. Taken with the rest,
+/// the ladder counted one note up to three times, twice with the answer handed to it, which pulls
+/// the numeric and the plain halves together for a subject that measured.
 ///
-/// note: read off the record by the rule [`Reached`] reads it by: a grant holds until the next
-/// session is briefed, and a question asked at a stage while one holds puts that stage in reach.
-/// A claim with no stage was made outside any ladder, and is kept.
+/// note: read off the record by the rule [`Reached`] uses: a grant holds until the next session is
+/// briefed; a question asked at a stage while a grant holds puts that stage in reach. A claim with
+/// no stage was made outside any ladder and is kept.
 pub(crate) fn unaided(steps: &[Step]) -> impl Iterator<Item = &Resolution> {
     let mut in_reach = std::collections::BTreeSet::new();
     let mut granted = false;
@@ -882,9 +881,8 @@ impl Reached {
 
     /// Whether it reached for the handles often enough for the stages above to mean anything.
     ///
-    /// note: the preregistered gate, at half the questions. Below it the instrumented stages are
-    /// measuring a model that does not use tools, which is worth knowing and is not what the
-    /// ladder claims to measure.
+    /// note: the preregistered gate, at half the questions. Below it the instrumented stages
+    /// measure a model that does not use tools, not what the ladder claims to measure.
     pub fn clears_the_gate(&self) -> bool {
         self.rate.is_some_and(|rate| rate >= 0.5)
     }

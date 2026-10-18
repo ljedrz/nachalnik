@@ -1,21 +1,19 @@
-//! Puts saved runs side by side, and refuses to pretend that runs asked different questions are
+//! Puts saved runs side by side, and does not treat runs that were asked different questions as
 //! comparable.
 //!
 //! ```text
 //! cargo run -p nachalnik-eval --example compare -- eval-runs/*/*/report.json
 //! ```
 //!
-//! note: Most of this is arithmetic anybody could do in a spreadsheet; what a spreadsheet will not
-//! do is notice that one of the files was produced by an instrument whose questions had a word
-//! changed in them. Runs are grouped by [`nachalnik_eval::Instrument::digest`] and by [`Outcome::rules`], and
-//! where one experiment's rows come from more than one instrument, or were scored by more than
-//! one set of rules, they are printed under a line saying they are not comparable. The one table
-//! that pools is the dissociation, which adds a model's family counts across every instrument it
-//! was run under and says `pooled` in its heading.
+//! note: runs are grouped by [`nachalnik_eval::Instrument::digest`] and by [`Outcome::rules`].
+//! Where one experiment's rows come from more than one instrument, or were scored by more than one
+//! set of rules, they are printed under a line saying they are not comparable. The dissociation is
+//! the one table that pools: it adds a model's family counts across every instrument it was run
+//! under and says `pooled` in its heading.
 //!
-//! note: It reads the crate's own `Report` back through `serde`, which is what the record being a
-//! value rather than a log is for: a run can be re-read, re-scored and re-tabulated months later
-//! without the model that produced it being asked anything again.
+//! note: reads the crate's own `Report` back through `serde`; the record is a value, not a log, so
+//! a run can be re-read, re-scored and re-tabulated months later without asking the model anything
+//! again.
 
 use std::{collections::BTreeMap, env, fs};
 
@@ -147,11 +145,10 @@ struct Instrumented<'a> {
     outcome: &'a Outcome,
 }
 
-/// The claim families that come apart: saying *what* an answer rests on, against saying *where*
-/// the thing is.
+/// The claim families that can come apart: what an answer rests on, against where the thing is.
 ///
-/// note: worth its own table because it is the one place two families measured on the same
-/// subject, in the same session, about the same item, can be read against each other.
+/// note: worth its own table because it is the only place two families measured on the same
+/// subject, in the same session, about the same item, can be compared.
 fn dissociation(runs: &[Instrumented]) {
     println!("\n=== what against where, pooled per model");
     println!(

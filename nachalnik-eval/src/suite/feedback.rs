@@ -21,20 +21,18 @@ use crate::{
 /// How many notes each battery asks about.
 const BATTERY: usize = 6;
 
-/// Runs a battery of counterfactual claims, measures every one of them, tells the subject what
-/// happened, and runs a second battery of the same shape over different material.
+/// Runs a battery of counterfactual claims, measures each one, tells the subject what happened, and
+/// runs a second battery of the same shape over different material.
 ///
-/// note: The two batteries are over two dossiers rather than over the same one twice, and that
-/// is what the experiment turns on. Asking again about notes it has just been told the answers
-/// for measures memory; asking about different notes of the same kind measures whether anything
-/// transferred. The dossiers are built to the same design for exactly this comparison - see
-/// [`ORCHARD`].
+/// note: The two batteries use two dossiers, not the same one twice. Asking again about notes whose
+/// answers were just given measures memory; asking about different notes of the same kind measures
+/// whether anything transferred. The dossiers share a design for this comparison - see [`ORCHARD`].
 ///
-/// note: The feedback is outcomes and nothing else: which way each claim went, what the copies
-/// actually did, and how many it got right. No advice, no explanation of what it should have
-/// noticed, and no hint that its confidence was the part that was off. What is being measured is
-/// whether a subject can improve its own model of itself from results, which is a much weaker
-/// and more interesting claim than whether it can follow instructions about how to answer.
+/// note: Feedback is outcomes only: which way each claim went, what the copies did, and how many it
+/// got right. No advice, no explanation of what it should have noticed, no hint that its confidence
+/// was the part that was off. It measures whether a subject can improve its own model of itself
+/// from results, which is a weaker and more interesting claim than whether it can follow
+/// instructions about how to answer.
 pub struct Feedback {
     first: &'static Dossier,
     second: &'static Dossier,
@@ -131,10 +129,9 @@ impl Feedback {
             &format!("on `{}` the control copies", dossier.name),
         );
 
-        // the sweep, which is the one part of this that is not a conversation: every copy is made
-        // from `origin`, frozen before any claim was made, so none can see another's. The labels
-        // that name nothing are dropped before the fan-out rather than skipped inside it, so what
-        // comes back lines up with what went in
+        // the sweep is not a conversation. Every copy is made from `origin`, frozen before any
+        // claim was made, so none can see another's. Labels that name nothing are dropped before
+        // the fan-out rather than skipped inside it, so what comes back lines up with what went in
         let sweep: Vec<(&&str, (Answer, usize), ContextId)> = battery
             .iter()
             .zip(claims)
@@ -238,10 +235,9 @@ impl Experiment for Feedback {
         );
         trial.record(Step::Told { feedback });
 
-        // the first round's notes go out of the request rather than out of the context: the
-        // second question is about different material, and a copy of this session still lists
-        // them and can bring them back. What stays is the exchange and the feedback, which is
-        // the thing being tested
+        // the first round's notes leave the request rather than the context: the second question is
+        // about different material, and a copy of this session still lists them and can bring them
+        // back. The exchange and the feedback stay; that is what is being tested
         subject.kernel().set_state(
             planted.iter().map(|note| note.id),
             ContextState::Excluded,

@@ -19,13 +19,13 @@ use std::{env, fs};
 
 use nachalnik_eval::{Cohort, Kind, Report, Step, Surface, per_model, suite};
 
-/// The default effect size the sign test counts against, as a fraction: thirty points is `0.30`,
-/// and `--at-least` takes points and divides them by a hundred.
+/// The default effect size for the sign test, as a fraction: 30 points is `0.30`. `--at-least`
+/// takes points and divides them by a hundred.
 ///
-/// note: a study's registered effect and not zero, because "the difference was positive" is a much
-/// weaker claim than any preregistration makes and the two must not be reported in the same
-/// column. Thirty is what the first study registered; `--at-least` is how a later one says what it
-/// registered instead.
+/// note: a study's registered effect, not zero, because "the difference was positive" is a weaker
+/// claim than any preregistration makes and the two must not be reported in the same column. Thirty
+/// is what the first study registered; `--at-least` is how a later one says what it registered
+/// instead.
 const REGISTERED: f64 = 0.30;
 
 const USAGE: &str = "\
@@ -58,17 +58,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("nothing to pool\n\n{USAGE}").into());
     }
 
-    // one report per model. The rule - a report that measured nothing never displaces one that
-    // did - lives in the crate rather than here, because getting it wrong silently drops a model
-    // from the table, and a rule that can do that belongs somewhere with a test on it
+    // one report per model. A report that measured nothing never displaces one that did; the rule
+    // lives in the crate rather than here because getting it wrong silently drops a model from the
+    // table, and a rule that can do that belongs somewhere with a test on it
     let mut loaded: Vec<(Report, String)> = Vec::new();
     for path in &paths {
         let text = fs::read_to_string(path)?;
         let report: Report = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
         loaded.push((report, path.clone()));
     }
-    // one row per model and not per endpoint, which is what makes the rows independent; but a
-    // model measured through two endpoints had one of them picked for it, and that is said
+    // one row per model and not per endpoint, which makes the rows independent. A model measured
+    // through two endpoints had one of them picked for it, and that is said
     let mut endpoints: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
         Default::default();
     for (report, _) in &loaded {
@@ -116,10 +116,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // a report from before the claims carried their material cannot be read for this endpoint,
-    // and it is said rather than left as a dash. Such runs are not comparable for other reasons
-    // too, but a reader looking at a column of dashes needs to know whether the model said nothing
-    // or the file cannot answer
+    // a report from before the claims carried their material cannot be read for this endpoint, and
+    // it is said rather than left as a dash. Such runs are not comparable for other reasons too,
+    // but a reader looking at a column of dashes needs to know whether the model said nothing or
+    // the file cannot answer
     let stale: Vec<&str> = runs
         .iter()
         .zip(&surfaces)
@@ -151,8 +151,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // and the same figures pooled over every item of every model, which is *not* the endpoint
-    // and is printed last so that nobody reads it first
+    // and the same figures pooled over every item of every model, which is not the endpoint,
+    // printed last so that nobody reads it first
     let pooled = Surface::of(
         surfaces.iter().map(|s| s.claimed_numeric).sum(),
         surfaces.iter().map(|s| s.numeric).sum(),

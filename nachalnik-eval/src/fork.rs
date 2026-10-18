@@ -177,8 +177,8 @@ impl Ablation {
             spend: Spend::default(),
         };
         // folded in the order they were asked for. `applied`, `items` and `repairs` are settled
-        // before a copy is asked anything, by the same intervention on the same snapshot through
-        // the same projector, so every copy has the same ones and the last copy's stand for all
+        // before a copy is asked anything, by the same intervention, snapshot and projector, so
+        // every copy has the same ones and the last copy's stand for all
         for copy in copies {
             let copy = copy?;
             observation.applied = copy.applied;
@@ -226,8 +226,8 @@ impl Ablation {
         let copy = Kernel::resume(
             Config {
                 session_name: Some(name),
-                // it answers once and is thrown away: there is nothing for an undo stack to
-                // be for, and nothing after the first request for a second one to build on
+                // it answers once and is thrown away: nothing for an undo stack to be for, and
+                // nothing after the first request for a second one to build on
                 context_undo_depth: 0,
                 max_requests_per_turn: Some(1),
                 ..Config::default()
@@ -236,15 +236,15 @@ impl Ablation {
         );
         copy.set_provider(origin.provider.clone());
         copy.set_projector(origin.projector.clone());
-        // note: no tools, and that is the whole of the isolation. A copy that could run a
-        // command could go and find out what the answer is, and a measurement of what a
-        // context supports would become a measurement of what a shell can reach.
+        // note: no tools, and that is the whole of the isolation. A copy that could run a command
+        // could find out the answer, and a measurement of what a context supports would become a
+        // measurement of what a shell can reach.
         copy.push(ContextItem::system(self.preamble.clone()).pinned());
         copy.push(ContextItem::user(self.probe.asked()).because("put to a copy of this context"));
 
-        // what the copy will actually read, rather than what it was handed: the projector
-        // still has to repair the calls whose results were just excluded out from under
-        // them, and a count taken before it did would be one no copy ever saw
+        // what the copy actually reads, not what it was handed: the projector still has to repair
+        // calls whose results were excluded out from under them, and a count taken before that
+        // would be one no copy ever saw
         let projection = copy.project();
 
         copy.turn().await?;
@@ -301,11 +301,11 @@ pub struct Observation {
 }
 
 impl Observation {
-    /// The answer more of the copies gave than any other, where any of them could be read.
+    /// The answer more of the copies gave than any other, among those that could be read.
     ///
-    /// note: A plurality rather than a majority, and ties go to nobody: two copies that
-    /// disagreed have no answer between them, and inventing one would turn a coin toss into a
-    /// finding. [`Observation::agreement`] is how much of a plurality it was.
+    /// note: A plurality rather than a majority, and ties go to nobody: two copies that disagreed
+    /// have no answer between them, and inventing one would turn a coin toss into a finding.
+    /// [`Observation::agreement`] is how much of a plurality it was.
     pub fn majority(&self) -> Option<String> {
         let mut tally: BTreeMap<String, usize> = BTreeMap::new();
         for answer in &self.answers {
@@ -321,24 +321,22 @@ impl Observation {
         leaders.next().is_none().then_some(leader.0)
     }
 
-    /// What the copies said between them, as one answer: the commonest one, held with the
-    /// confidence the copies put on it together.
+    /// The commonest answer among the copies, with the confidence the copies pooled on it.
     ///
-    /// note: for a condition whose copies are the respondents - where what they said is the claim
-    /// being scored rather than the outcome it is scored against. Built from
-    /// [`Observation::majority`], which is a bare key, such a claim carried no confidence and
-    /// could not have been cut off, so every calibration figure over it was `None` and a turn that
-    /// ran out of room was scored as a refusal.
+    /// note: used where the copies are the respondents: what they said is the claim being scored,
+    /// not the outcome it is scored against. Built from [`Observation::majority`], which is a bare
+    /// key, such a claim carried no confidence and could not have been cut off, so every
+    /// calibration figure over it was `None` and a turn that ran out of room was scored as a
+    /// refusal.
     ///
     /// note: the confidence is the copies' pooled probability of the commonest answer: each copy
     /// that stated one puts it on the answer it gave and the rest on the other, and the mean is
-    /// taken over them. Not the mean confidence of the copies that agreed, which would make two
-    /// copies saying yes at 90 beside one saying no at 90 a yes at 90. It can come out below a
-    /// half, and `Resolution::probability` scores it as the pooled forecast it is.
+    /// taken over them. Not the mean confidence of the copies that agreed: two copies saying yes at
+    /// 90 beside one saying no at 90 must not become a yes at 90. It can come out below a half, and
+    /// `Resolution::probability` scores it as the pooled forecast it is.
     ///
     /// note: [`Answer::Cut`] only when no copy could be read and every copy was cut off. A copy
-    /// that said something nobody could read is a respondent that did not commit, and makes the
-    /// whole of it `Unreadable`.
+    /// that said something nobody could read did not commit, so the whole is `Unreadable`.
     pub fn consensus(&self) -> Answer {
         let Some(key) = self.majority() else {
             return match !self.answers.is_empty() && self.answers.iter().all(Answer::is_cut) {
@@ -450,11 +448,11 @@ pub struct Change {
     /// with three replicates an item that moved two copies out of three is doing more work than
     /// one that moved one, and a binary verdict cannot tell them apart.
     pub divergence: f64,
-    /// The share of *control* copies that differed from their own commonest answer: the noise
-    /// this change was measured against.
+    /// The share of control copies that differed from their own commonest answer: the noise this
+    /// change was measured against.
     ///
-    /// note: `0.0` with one replicate, which is not a claim that the answer is stable - it is
-    /// the honest figure for "nothing was measured". See [`Ablation::replicates`].
+    /// note: `0.0` with one replicate, not a claim that the answer is stable but the honest figure
+    /// for "nothing was measured". See [`Ablation::replicates`].
     pub instability: f64,
 }
 
@@ -513,11 +511,11 @@ mod tests {
         }
     }
 
-    /// What an ablation was blinded to is on the record, for the caller to read back.
+    /// What an ablation was blinded to is kept for the caller to read back.
     ///
-    /// note: it is the only part of a built ablation a caller can see, and the part a caller
-    /// needs to say what was held constant - a report that quoted an arm without saying the
-    /// exchange the copies could not read would be quoting half the design.
+    /// note: that list is the only part of a built ablation a caller can see, and the part a caller
+    /// needs in order to say what was held constant. A report that quotes an arm without saying the
+    /// exchange the copies could not read quotes half the design.
     #[test]
     fn an_ablation_says_what_every_copy_is_made_without() {
         let probe = Probe::choice("which depot runs out first?", ["kirov", "omsk"]);
@@ -535,9 +533,9 @@ mod tests {
     /// A copy that gave no answer did not give a different one.
     ///
     /// note: `divergence` counted an unreadable copy as one that moved, so an ablation whose copies
-    /// all failed to answer measured the largest influence there is - and `Attribution` ranks by
-    /// it, crediting a subject that named an inert note. `moved` already said `None` for the same
-    /// copies, because "the copies did not answer" is not "the answer changed".
+    /// all failed to answer measured the largest possible influence. `Attribution` ranks by
+    /// `divergence`, so it credited a subject that named an inert note. `moved` already returned
+    /// `None` for the same copies, because no answer is not a changed answer.
     #[test]
     fn copies_that_did_not_answer_did_not_move() {
         let control = saying(vec![Answer::Choice("kirov".to_owned()); 2]);
@@ -564,11 +562,11 @@ mod tests {
 
     /// A copy spends one request and is thrown away, whatever the model asked for in reply.
     ///
-    /// note: the budget is what stops a copy spending a whole run on tool calls it cannot make.
-    /// A copy is given no tools, and a model told it has none still asks for one; the kernel
-    /// answers such a call with an error result and the loop goes on. Left on the default budget
-    /// of eight, one copy of one condition costs eight requests to say nothing at all - and the
-    /// cost is charged to the run, not to the copy that incurred it.
+    /// note: the budget stops a copy from spending a whole run on tool calls it cannot make. A copy
+    /// is given no tools, and a model told it has none still asks for one. The kernel answers such
+    /// a call with an error result, and the loop goes on. On the default budget of eight, one copy
+    /// of one condition costs eight requests and produces no answer. The cost is charged to the
+    /// run, not to the copy that incurred it.
     #[tokio::test]
     async fn a_copy_spends_one_request_however_much_the_model_asks_to_run_something() {
         let model = Arc::new(ScriptedProvider::new(
@@ -691,12 +689,12 @@ mod tests {
         );
     }
 
-    /// A move no larger than the control's disagreement with itself is not read as a move, and
-    /// not as a hold either.
+    /// A move no larger than the control's disagreement with itself is read as neither a move nor a
+    /// hold.
     ///
-    /// note: `as_answer` read `moved` alone, so with replicates a commonest answer that flipped on
+    /// note: `as_answer` read only `moved`, so with replicates a commonest answer that flipped on
     /// one readable copy out of three scored a claim as though the note had moved the answer,
-    /// against a control that disagreed with itself as often.
+    /// against a control that disagreed with itself just as often.
     #[test]
     fn a_move_inside_the_noise_shows_nothing() {
         let said = |word: &str| Answer::Choice(word.to_owned());
