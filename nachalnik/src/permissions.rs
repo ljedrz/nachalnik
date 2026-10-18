@@ -82,9 +82,10 @@ impl From<&str> for Domain {
 ///
 /// note: `net` still earns its place, though a session that also has a shell can reach the network
 /// through it whatever this says. The objection is not about the domain: `fs:read` is exactly as
-/// unverifiable, and every one of these is a label rather than a boundary. Where there is no shell
-/// - an agent whose tools all come from MCP servers, an editor integration that reads, writes and
-/// fetches - refusing `net` refuses every way the registered tools have of reaching the network.
+/// unverifiable, and every one of these is a label rather than a boundary. Where there is no
+/// shell - an agent whose tools all come from MCP servers, an editor integration that reads,
+/// writes and fetches - refusing `net` refuses every way the registered tools have of reaching
+/// the network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 #[non_exhaustive]
