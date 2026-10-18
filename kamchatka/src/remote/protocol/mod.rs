@@ -79,9 +79,9 @@ pub enum Command {
         session: Option<String>,
         /// Which version of this wire the client speaks; see [`VERSION`].
         ///
-        /// note: `None` is a client written before the field existed, which is version 1 by
-        /// definition. A default of "unknown" would refuse exactly the clients it was added to
-        /// keep working.
+        /// note: `None` is a client written before the field existed, so it is version 1 by
+        /// definition. A default of "unknown" would refuse the clients the field was added to keep
+        /// working.
         version: Option<u32>,
     },
     /// Hand in one line, exactly as it would be typed at the prompt: a message, or a command.
@@ -105,11 +105,11 @@ pub enum Command {
     },
     /// Answer a running command that reached for the network; see [`Message::Reaching`].
     ///
-    /// note: beside [`Command::Decide`] rather than folded into it, because the two questions are
-    /// numbered by different things. A `Decide` answers the kernel's question, which the kernel
-    /// numbers and records; this answers one the kernel never asked, raised by the gate while a
-    /// call was running and numbered by the policy that holds it. One command taking either
-    /// identifier would be a client guessing which question a number meant.
+    /// note: separate from [`Command::Decide`] because the two questions are numbered by different
+    /// things. `Decide` answers the kernel's question, which the kernel numbers and records; this
+    /// answers one the kernel never asked, raised by the gate during a call and numbered by the
+    /// policy. One command taking either identifier would make a client guess which question a
+    /// number meant.
     Reach {
         /// Which question, as [`Reached::id`] names it.
         id: u64,
@@ -117,7 +117,7 @@ pub enum Command {
         grant: Grant,
         /// Whether to allow the network from here on. This is the `a` key.
         ///
-        /// note: with an allow only, for the reason `Decide`'s is.
+        /// note: allow only, for the same reason as `Decide`.
         remember: bool,
     },
     /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.
@@ -155,13 +155,13 @@ pub enum Command {
     },
     /// Tell the policy what to answer about one row of the permissions tab from here on.
     ///
-    /// note: a command of its own rather than a [`Command::Submit`] of a line, on the grounds
-    /// [`Command::Cycle`] gives: `a`, `n` and `r` on the permissions tab are what do this at a
-    /// terminal, and there is no line a person types for it.
+    /// note: a command of its own rather than [`Command::Submit`] of a line, as [`Command::Cycle`]
+    /// shows: `a`, `n` and `r` on the permissions tab do this at a terminal, and nobody types a
+    /// line for it.
     ///
-    /// note: only a row the tab draws, which is a subject somebody has decided, and the session
-    /// answers with the projection the rows come from. See [`crate::app::App::rule`], which the
-    /// keys and this both go through.
+    /// note: only a row the tab draws, a subject somebody has decided; the session answers with the
+    /// projection the rows come from. [`crate::app::App::rule`] is what the keys and this both go
+    /// through.
     Rule {
         /// Which row, spelled as [`Stanced::subject`] spells it.
         subject: String,
@@ -523,13 +523,13 @@ pub struct Attached {
     pub rated: Vec<Judged>,
     /// Why the advisor has no rating for the questions it was asked about and could not answer.
     ///
-    /// note: beside [`Attached::rated`] and in the same shape, one row per question, so that a
-    /// client draws one line or the other where the band would go. Without it an unrated
-    /// question looks like one the advisor had nothing to say about - and the requests the
-    /// advisor's endpoint refuses are the ones about the commands most worth a colour.
+    /// note: beside [`Attached::rated`] and in the same shape, one row per question, so a client
+    /// draws one line or the other where the band would go. Without it, an unrated question looks
+    /// like one the advisor had nothing to say about, and the requests the endpoint refuses are
+    /// about the commands most worth a colour.
     ///
-    /// note: empty from a session that predates the field, which a client reads as the absence
-    /// it drew before.
+    /// note: empty for a session that predates the field; a client reads that as the absence it
+    /// drew before.
     #[serde(default)]
     pub unrated: Vec<Unjudged>,
     /// What the policy in force is called.
@@ -563,12 +563,11 @@ pub struct Attached {
     /// the line there carries [`Line::clipped`], which this cannot. Left whole, the message would
     /// be carried twice in a projection being cut down because it is too long.
     pub queued: Option<String>,
-    /// The ones waiting behind that one, oldest first; each gets a turn of its own.
+    /// The ones waiting behind that one, oldest first; each gets a turn.
     ///
     /// note: beside [`Attached::queued`] rather than instead of it, because a session holds a queue
-    /// now and held one message before. A client written against `queued` reads the next of them
-    /// and is not broken by the rest, and a projection from an older session reads as nothing
-    /// waiting behind.
+    /// now and held one message before. A client written against `queued` reads the next one and is
+    /// not broken by the rest; a projection from an older session reads as nothing waiting behind.
     #[serde(default)]
     pub queued_behind: Vec<String>,
     /// What the shell tool's sandbox came to, or nothing where there is none.
@@ -607,19 +606,18 @@ pub struct Judged {
     pub confidence: f64,
     /// Which stage of the command earned the band, as a byte range into the `cmd` argument.
     ///
-    /// note: on the wire because it cannot be worked out at the other end. A client would need
-    /// two things to point at this itself - where the command comes apart, which is
+    /// note: on the wire because it cannot be worked out at the other end. A client would need two
+    /// things to point at this itself: where the command comes apart, which is
     /// [`joints`](crate::tools::joints) and is Rust in this crate, and which stage the advisor
-    /// liked least, which nothing but the advisor knows - so left off, the one fact that says
-    /// *where* in a long chain is unreachable from anywhere but the process that produced it.
+    /// liked least, which only the advisor knows. Left off, the fact of where in a long chain is
+    /// unreachable from anywhere but the process that produced it.
     ///
-    /// note: a range and not the text, so a client points at the stage in the command it is
-    /// already drawing rather than printing a copy of it underneath. A second copy of a long
-    /// stage is a row at a terminal and most of the screen on a phone.
+    /// note: a range, not the text, so a client points at the stage in the command it is already
+    /// drawing instead of printing a copy underneath. A second copy of a long stage takes a row at
+    /// a terminal and most of a phone screen.
     ///
-    /// note: absent for a command that was rated in one piece, and absent from a session that
-    /// predates the field, which is one case as far as a client is concerned - nothing to point
-    /// at, and a band to draw exactly as before.
+    /// note: absent for a command rated in one piece, and for a session that predates the field. To
+    /// a client that is one case: nothing to point at, and a band to draw exactly as before.
     #[serde(default)]
     pub worst: Option<(usize, usize)>,
 }
@@ -875,11 +873,11 @@ pub struct Printed {
     pub pages: Vec<Page>,
 }
 
-/// Whether an event is a fragment of something still arriving, rather than a thing that happened.
+/// Whether an event is a fragment of something still arriving, not a thing that happened.
 ///
 /// note: the same two the kernel keeps out of its log unless asked. The runtime does not publish
-/// that list, so this is a copy of the one in `Kernel::emit`: if the runtime ever records a third
-/// kind of progress, this is where the two would disagree, and it has to move with it.
+/// that list, so this copies `Kernel::emit`. If the runtime ever records a third kind of progress,
+/// this and `Kernel::emit` would disagree here, so this must move with it.
 pub fn is_progress(event: &Event) -> bool {
     matches!(event, Event::ModelDelta { .. } | Event::ToolOutput { .. })
 }

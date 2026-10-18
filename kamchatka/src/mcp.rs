@@ -131,16 +131,16 @@ pub async fn attach_within(
     Ok(servers)
 }
 
-/// Installs the tools of servers that are already running into another kernel, as `/restart`
-/// does, and hands back a sentence for each server whose tools were left out.
+/// Installs the tools of running servers into another kernel, as `/restart` does, and returns a
+/// sentence for each server whose tools were left out.
 ///
-/// note: held to the rule `attach` is. A server's list can change between one session and the
-/// next, and [`Server::install`] reports a clash in `replaced` only after the tool that was there
-/// first is gone - so a server offering an identifier something else already has is left out
-/// whole, before any of its tools go in.
+/// note: the same rule as `attach`. A server's list can change between sessions, and
+/// [`Server::install`] reports a clash in `replaced` only after the tool already there is gone, so
+/// a server offering an identifier something else already has is left out whole before any of its
+/// tools go in.
 ///
-/// note: left out rather than refused, because a session is already running: a server short is
-/// worth saying and not worth ending a run over.
+/// note: left out rather than refused because a session is already running: report a short server,
+/// do not end a run over it.
 pub async fn reinstall(kernel: &Kernel, policy: &Careful, servers: &[Server]) -> Vec<String> {
     let mut taken: HashSet<String> = kernel.tool_ids().into_iter().collect();
     let mut left_out = Vec::new();
@@ -157,8 +157,8 @@ pub async fn reinstall(kernel: &Kernel, policy: &Careful, servers: &[Server]) ->
             }
         };
         let clashes = claim(&mut taken, &tools);
-        // told apart as `attach` tells them: a name another tool has, or one the server offers
-        // twice, which nothing about the other tools would change
+        // as `attach` does: a name another tool has, or one the server offers twice; a duplicate
+        // within the server does not depend on the other tools
         let (elsewhere, twice): (Vec<String>, Vec<String>) =
             clashes.into_iter().partition(|id| taken.contains(id));
         if !elsewhere.is_empty() {
@@ -188,8 +188,8 @@ pub async fn reinstall(kernel: &Kernel, policy: &Careful, servers: &[Server]) ->
     left_out
 }
 
-/// The identifiers among `tools` that are taken already or that `tools` offers twice. `taken`
-/// gains the rest only when there are none, so a server left out claims nothing.
+/// Identifiers in `tools` that are already taken or offered twice. `taken` gains the rest only when
+/// there are none, so a left-out server claims nothing.
 fn claim(taken: &mut HashSet<String>, tools: &[Arc<dyn Tool>]) -> Vec<String> {
     let mut claimed = HashSet::new();
     let mut clashes: Vec<String> = tools
@@ -208,10 +208,10 @@ fn claim(taken: &mut HashSet<String>, tools: &[Arc<dyn Tool>]) -> Vec<String> {
     clashes
 }
 
-/// The name a server is given by one `--mcp` spec, and the command line that starts it.
+/// The server name and command line from one `--mcp` spec.
 ///
-/// note: its own function so that `--auto-allow-server` and `--auto-deny-server` can be held to the
-/// names before anything is spawned, by the same reading `attach` gives them.
+/// note: a separate function so `--auto-allow-server` and `--auto-deny-server` can be checked
+/// against the names before anything is spawned, using the same reading `attach` gives them.
 pub(crate) fn named(spec: &str) -> (String, &str) {
     // `env FOO=bar cmd` is a command rather than a name, which is what the guard is for
     let (name, line) = match spec.split_once('=') {

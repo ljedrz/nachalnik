@@ -1,16 +1,14 @@
-//! `--check`: reading a session's record the way somebody who is not this program would, and
-//! saying what does not add up.
+//! `--check`: reads a session's record and reports what does not add up.
 //!
-//! note: a reader of the files and nothing else. No kernel is built and nothing is resumed, so
-//! what this says about a record is what the record says about itself - the claim a record kept
-//! for somebody else to read has to hold without this program in the room. It works on the text of
-//! the two files rather than on paths, so a test hands it a log as a string.
+//! note: a reader of the files and nothing else. No kernel is built and nothing is resumed, so what
+//! it says about a record is what the record says about itself. It works on the text of the two
+//! files rather than on paths, so a test can hand it a log as a string.
 //!
-//! note: what it finds is said, not repaired, and a finding is not always a fault. A call that was
-//! asked for and never finished is what a killed run leaves, and is worth knowing about for that
-//! reason - a session that ended with calls waiting says so in `turn.unfinished`, and those are not
-//! findings; a record numbered twice, or an item the log never added, is a record that something
-//! other than this program has changed.
+//! note: findings are reported, not repaired, and a finding is not always a fault. A call that was
+//! asked for and never finished is what a killed run leaves, and is worth knowing about; a session
+//! that ended with calls waiting says so in `turn.unfinished`, and those are not findings. A record
+//! numbered twice, or an item the log never added, means something other than this program changed
+//! the record.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -101,8 +99,7 @@ fn read(log: &str, checked: &mut Checked) -> Vec<(usize, Record)> {
                 continue;
             }
         };
-        // the name read off the line itself, since what an unknown event was called is the one
-        // thing `Event::Unknown` does not keep
+        // the name read off the line itself, since `Event::Unknown` does not keep it
         if record.event == Event::Unknown {
             let named = serde_json::from_str::<Value>(line)
                 .ok()

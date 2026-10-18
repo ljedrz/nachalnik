@@ -647,16 +647,16 @@ impl App {
                  and no request so far has been big enough to learn anything from"
                     .to_owned()
             }
-            // note: the two figures and the scale, and no percentage. `scale - 1` is the error as a
-            // fraction of the *estimate*, where "reading N% low" is read as a fraction of the
-            // truth, and the two are far apart for the same pair of numbers. Both are true and a
-            // sentence could only assert one of them, so it asserts neither: the guess and the
-            // charge are what somebody wants, and the scale between them is already on the line
+            // note: the line shows the two figures and the scale, and no percentage. `scale - 1` is
+            // the error as a fraction of the estimate; "reading N% low" is read as a fraction of
+            // the truth. The two are far apart for the same pair of numbers. Both are true, and a
+            // sentence could only assert one, so it asserts neither. The guess and the charge are
+            // what somebody wants, and the scale between them is already on the line.
             //
-            // note: the count is the counter's and not this run's, which is the one place here the
+            // note: the count is the counter's, not this run's, and this is the one place here the
             // two could be taken for each other. A snapshot carries what the counter learned, so
-            // this is every request the session has sent; `/spend`, whose total is the program's
-            // and starts again in every process, is counting the other thing
+            // the count is every request the session has sent. `/spend` counts the other thing: its
+            // total is the program's and starts again in every process
             Some(learned) => format!(
                 "the counter has learned from {} request(s) and scaled itself by {:.3}: its own \
                  guesses came to {} tokens where the provider counted {}",

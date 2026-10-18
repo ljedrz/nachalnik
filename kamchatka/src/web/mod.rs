@@ -209,8 +209,8 @@ impl Web {
                 .ok_or_else(|| format!("could not resolve `{listen}`"))?,
         };
         let reach = match reach(address.ip()) {
-            // beyond loopback, only a typed IP address: what a host name resolves to, and which of
-            // its addresses comes first, isn't up to the user
+            // beyond loopback, only a typed IP address: a host name resolves to whichever address
+            // comes first, not one the user chooses
             reached if typed.is_none() && reached != Some(Reach::Machine) => {
                 return Err(format!(
                     "`{listen}` is a host name; to listen beyond this machine, give an IP address, \
@@ -462,7 +462,7 @@ async fn serve(
     match (request.method.as_str(), path) {
         ("GET", "" | "/") => page(&mut write).await,
         // note: the browser's own reconnection, arriving as a resume. `Last-Event-ID` is the last
-        // `id:` this tab was sent, which is a record sequence, which is what `attach` takes
+        // `id:` sent to this tab, a record sequence that `attach` takes
         ("GET", "/events") => {
             let since = request
                 .header("last-event-id")
@@ -740,8 +740,8 @@ async fn attach<W: AsyncWrite + Unpin>(
         .await?;
 
         // a session that took the connection and went away before answering it. Said as a gateway
-        // error rather than as an empty reply, because that is what it is, and the browser opens
-        // another in a second either way
+        // error rather than an empty reply, because that is what it is; the browser opens another
+        // in a second either way
         let Some(first) = protocol::read::<serde_json::Value>(&mut up).await? else {
             let said = format!("the session at {session} closed without answering the attach");
             reply(write, "502 Bad Gateway", "text/plain", said.as_bytes()).await?;
@@ -768,10 +768,10 @@ async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     up: &mut protocol::Frames<R>,
     named: &Named,
 ) -> Result<(), String> {
-    // note: read as JSON rather than as a `Message`, and passed on as it arrived. A relay that
-    // parsed each message into this build's own enum and wrote it out again would turn everything
-    // a later session said into `Message::Unknown` on the way past - which is the relay deciding
-    // what the page is allowed to hear. What it has to understand is the tag and one number
+    // note: messages are read as JSON rather than as a `Message`, and passed on as they arrived.
+    // Parsing each message into this build's enum would turn later sessions' messages into
+    // `Message::Unknown`, letting the relay decide what the page hears. It only needs to understand
+    // the tag and one number
     while let Some(message) = protocol::read::<serde_json::Value>(up).await? {
         if !forward(write, &message, named).await? {
             return Ok(());
@@ -781,11 +781,11 @@ async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     Ok(())
 }
 
-/// Writes one message out as one event; `false` where the browser has gone.
+/// Writes one message as one event; returns `false` if the browser has gone.
 ///
-/// note: a function rather than the body of the loop above, because the first message off a fresh
-/// connection is read by [`attach`] and owes the page exactly what every one after it does - the
-/// same `id:`, and the same note of what the session is called.
+/// note: a separate function because the first message on a fresh connection is read by [`attach`]
+/// and must give the page the same `id:` and the same note of what the session is called as every
+/// later message.
 async fn forward<W: AsyncWrite + Unpin>(
     write: &mut W,
     message: &serde_json::Value,
@@ -976,8 +976,8 @@ mod tests {
         assert_eq!(beneath(&format!("/{key}/events"), &key), Some("/events"));
         assert_eq!(beneath("/events", &key), None);
         assert_eq!(beneath("/00000000/events", "00000001"), None);
-        // two bytes that each differ from the key's by one bit cancel out if the differences are
-        // combined by XOR rather than OR, which would take this for the key
+        // two bytes differing from the key by one bit cancel out under XOR; OR would take them for
+        // the key
         assert_eq!(beneath("/00000010/events", "00000001"), None);
     }
 
@@ -1185,8 +1185,8 @@ mod tests {
         }
     }
 
-    /// A parameter is the value of the pair with exactly its name, and a name that is not there is
-    /// nothing at all, not an empty value.
+    /// A parameter is the value of the pair with exactly its name; a missing name is nothing, not
+    /// an empty value.
     #[test]
     fn a_parameter_is_the_value_of_its_own_name() {
         assert_eq!(param("tab=first&since=7", "tab"), Some("first"));
@@ -1318,8 +1318,8 @@ mod tests {
         format!("{request}X-Pad: {}\r\n{blank}", "a".repeat(pad)).into_bytes()
     }
 
-    /// A resume that the session refuses for its watermark is attached again without it, once,
-    /// and the browser is told only the answer to the second attach.
+    /// A resume refused for its watermark is retried once without it, and the browser is told only
+    /// the second attach's answer.
     #[tokio::test]
     async fn a_refused_resume_is_retried_once_without_its_watermark() {
         let (address, asked) = scripted(vec![

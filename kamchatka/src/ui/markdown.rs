@@ -25,12 +25,11 @@ pub(super) fn separate(lines: &mut Vec<Line<'static>>) {
     }
 }
 
-/// What a fence's info string means to the highlighter, which thinks in file extensions.
+/// The extension the highlighter uses for a fence's info string.
 ///
-/// note: models write `rust` and `python` far more often than `rs` and `py`, and a block that
-/// silently came out uncoloured because of that would look like the highlighter had failed. The
-/// list is short on purpose: anything not here is passed through as-is, which already covers `rs`,
-/// `go`, `sql`, `toml` and the rest.
+/// note: models write `rust` and `python` more often than `rs` and `py`; an uncoloured block would
+/// look like the highlighter had failed. Anything not in the list is passed through as-is, which
+/// already covers `rs`, `go`, `sql`, `toml` and the rest.
 fn extension(language: &str) -> &str {
     match language.to_ascii_lowercase().as_str() {
         "rust" => "rs",
@@ -50,11 +49,9 @@ fn extension(language: &str) -> &str {
 
 /// The colour a token of that name is drawn in.
 ///
-/// note: by name rather than by theme, which is why the highlighting is done here instead of by the
-/// markdown renderer. A theme is a set of 24-bit colours chosen against a known background, and
-/// this program does not know the background - the same argument that put a rule down the left of a
-/// code block instead of a slab behind it. Named colours are the terminal's own, so they are
-/// legible in whatever the user has set up.
+/// note: colours are chosen by name rather than by theme, so highlighting is done here instead of
+/// by the markdown renderer. A theme needs a known background, which this program does not have.
+/// Named colours are the terminal's own and are legible in whatever the user has set up.
 fn token(name: &str) -> Style {
     let colour = match name {
         "comment" => Color::Gray,
@@ -165,13 +162,12 @@ pub(super) fn command(
 ) -> Vec<Line<'static>> {
     let bar = Span::styled("│ ", faint());
     let room = width.saturating_sub(2).max(8);
-    // note: over the whole command, and so only where the whole command is one line. `joints`
-    // declines a command with newlines in it and this asks it once, so a heredoc is drawn with
-    // nothing picked out rather than with the offsets of a line other than the one being drawn
+    // note: applies to the whole command, so only when the command is one line. `joints` declines a
+    // command with newlines; called once, a heredoc is drawn with nothing picked out rather than
+    // the offsets of another line.
     //
-    // note: `worst` is safe in the same row-by-row loop for the same reason and not by luck - the
-    // advisor takes a command apart with this function, so a command it declines is one with no
-    // stage to be worst
+    // note: `worst` is safe in the same loop for the same reason, not by luck. The advisor uses
+    // this function to take a command apart, so a declined command has no stage to be worst
     let picked: Vec<(usize, usize)> = joints(cmd)
         .into_iter()
         .map(|range| drawn_at(cmd, range))
@@ -596,12 +592,11 @@ mod tests {
         );
     }
 
-    /// The prose in front of a table is a chunk, and the table starts at the header's own line.
+    /// The prose before a table is its own chunk, and the table starts at its header line.
     ///
-    /// note: a table is only recognised because of the delimiter row under its header, so the
-    /// header is a line back from the line that makes the decision - and the prose before it has
-    /// to be handed over as text of its own. Losing it leaves the answer starting at the table,
-    /// which is the model reading a document rather than a person being answered.
+    /// note: a table is recognised by the delimiter row under its header, so the header is one line
+    /// back from the decision line and the prose before it must be its own chunk. Losing it makes
+    /// the answer start at the table: the model reading a document rather than answering a person.
     #[test]
     fn the_prose_in_front_of_a_table_is_a_chunk_of_its_own() {
         assert_eq!(

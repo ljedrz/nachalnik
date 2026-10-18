@@ -64,15 +64,14 @@ const X32: Option<u32> = None;
 const SOCKET: u32 = libc::SYS_socket as u32;
 const IO_URING_SETUP: u32 = libc::SYS_io_uring_setup as u32;
 
-/// The families a socket is opened in without asking: the ones that cannot leave the machine.
+/// Socket families a process may open without asking: the ones that cannot leave the machine.
 ///
-/// note: a list of what is let through rather than of what is held, because the families that
-/// reach out keep being found. Any process can open `AF_SMC`, `AF_RDS` and `AF_RXRPC`, which carry
-/// their traffic over TCP or UDP to an internet address, `AF_VSOCK`, which reaches the host from
-/// inside a virtual machine, and `AF_BLUETOOTH` and `AF_CAN`, which reach devices. A family the
-/// kernel gains later is held without anybody adding it here. A unix socket is the filesystem's,
-/// and Landlock's to govern; netlink talks to this kernel and nothing past it, and `getifaddrs`
-/// opens one
+/// note: an allowlist, not a blocklist, because families that reach out keep being found. Any
+/// process can open `AF_SMC`, `AF_RDS` and `AF_RXRPC`, which carry traffic over TCP or UDP to an
+/// internet address, `AF_VSOCK`, which reaches the host from inside a virtual machine, and
+/// `AF_BLUETOOTH` and `AF_CAN`, which reach devices. A family the kernel gains later is held
+/// without anybody adding it here. A unix socket is the filesystem's and Landlock's to govern.
+/// Netlink talks to this kernel and nothing past it. `getifaddrs` opens one
 const LOCAL: [u32; 2] = [libc::AF_UNIX as u32, libc::AF_NETLINK as u32];
 
 /// `socket`, and `socketcall` where there is one, in the table of the 32-bit processes this kernel
@@ -135,21 +134,21 @@ enum Op {
     Return(u32),
 }
 
-/// The filter, as the classic BPF the kernel runs.
+/// The filter the kernel runs, as classic BPF.
 ///
-/// note: every socket that can leave the machine is held, whether the answer is going to be yes,
-/// no or a question, so that the process answering always knows an attempt was made. A refusal
-/// made in the kernel reaches nobody, and a command refused a name lookup says `Temporary failure
-/// in name resolution`, which reads as a network having trouble rather than a network refused.
+/// note: every socket that can leave the machine is held, whatever the answer, so the process
+/// answering always knows an attempt was made. A kernel refusal reaches nobody. A command refused a
+/// name lookup says `Temporary failure in name resolution`, which reads as a network having trouble
+/// rather than a refused network.
 ///
-/// note: `io_uring_setup` is refused as though the kernel had none. A ring opens a socket with
-/// an operation of its own rather than a `socket()` call, so a gate that let rings through
-/// would be a gate with a door beside it. `ENOSYS` rather than a refusal, because it is what a
-/// program that can use a ring is written to fall back from.
+/// note: `io_uring_setup` is refused as though the kernel had none. A ring opens a socket with its
+/// own operation rather than a `socket()` call, so letting rings through would leave a door beside
+/// the gate. `ENOSYS` rather than a refusal, because programs that can use a ring fall back from
+/// it.
 ///
-/// note: an architecture this kernel does not run kills the process. None can reach it - a
-/// kernel runs its own table and one 32-bit one - and a filter that allowed what it did not
-/// recognise is the shape the classic way round one takes.
+/// note: an architecture this kernel does not run kills the process. None can reach it: a kernel
+/// runs its own table and one 32-bit table. A filter that allowed what it does not recognise is the
+/// classic way round.
 fn program() -> Vec<libc::sock_filter> {
     use Label::*;
 
@@ -260,14 +259,14 @@ fn filter(code: u32, jt: u8, jf: u8, k: u32) -> libc::sock_filter {
     }
 }
 
-/// Holds every socket that can leave the machine this process, and everything it runs, will ask
-/// for, and sends the listener that answers them down standard input.
+/// Holds every socket that can leave the machine and that this process and everything it runs will
+/// ask for, and sends the answering listener down standard input.
 ///
 /// note: for the child that confines itself, after the ruleset and before the command.
 ///
-/// note: standard input because it is the one descriptor a spawning end hands over by name
-/// without a helper standing in front of the command, and the command is given `/dev/null`
-/// there before it runs - so nothing downstream of this ever holds the socket.
+/// note: standard input is the one descriptor a spawning end hands over by name, with no helper in
+/// front of the command. The command gets `/dev/null` there before it runs, so nothing downstream
+/// ever holds the socket.
 pub fn hold() -> io::Result<()> {
     let listener = install()?;
     hand_over(io::stdin().as_fd(), &listener)
@@ -281,9 +280,9 @@ fn install() -> io::Result<OwnedFd> {
         filter: code.as_ptr().cast_mut(),
     };
 
-    // note: the arguments as `unsigned long`, which is what the kernel reads them as. Handed
-    // through a variadic call as `int`, the upper half of each is whatever the register held,
-    // and `PR_SET_NO_NEW_PRIVS` refuses anything but zero in the last three
+    // note: the arguments are `unsigned long`, which is what the kernel reads. Handed through a
+    // variadic call as `int`, the upper half of each is whatever the register held.
+    // `PR_SET_NO_NEW_PRIVS` refuses anything but zero in the last three arguments
     let no: libc::c_ulong = 0;
     // SAFETY: `PR_SET_NO_NEW_PRIVS` takes integers and touches no memory of ours. Without
     // privileges a filter may be installed only once it is set, and Landlock has set it already
@@ -312,9 +311,9 @@ fn install() -> io::Result<OwnedFd> {
 
 /// Whether this kernel can hold a call for another process to answer.
 ///
-/// note: asked of the kernel, which answers without installing anything, so any process may
-/// ask. `CONTINUE`, the answer that lets a held call go on, is Linux 5.5, and Landlock is 5.13:
-/// wherever the shell is confined at all, the one implies the other.
+/// note: the kernel answers without installing anything, so any process may ask. `CONTINUE`, the
+/// answer that lets a held call go on, is Linux 5.5; Landlock is 5.13. Wherever the shell is
+/// confined at all, one implies the other.
 pub fn holds() -> bool {
     let action: u32 = libc::SECCOMP_RET_USER_NOTIF;
     // SAFETY: `GET_ACTION_AVAIL` reads one `u32` through the pointer, which is to a local that
@@ -406,10 +405,10 @@ impl Listener {
     /// The next attempt; `None` once no process under the filter is left to make one.
     ///
     /// note: polled before it is received, every time. Receiving waits for a notification and
-    /// takes no notice of `O_NONBLOCK`, so a receive with nothing there would block the thread
-    /// it runs on for as long as the command runs - and for ever once every process under the
-    /// filter has gone, which is what `POLLHUP` says. The readiness tokio holds is a hint to
-    /// look again, so it is cleared before each look rather than trusted.
+    /// ignores `O_NONBLOCK`, so a receive with nothing there would block the thread for as long as
+    /// the command runs, and for ever once every process under the filter has gone; `POLLHUP` says
+    /// so. The readiness tokio holds is a hint to look again, so it is cleared before each look
+    /// rather than trusted.
     pub async fn next(&self) -> Option<Attempt> {
         loop {
             let mut polled = [PollFd::new(self.0.get_ref(), PollFlags::IN)];
@@ -463,9 +462,8 @@ impl Listener {
 
     /// Lets the attempt through, or refuses it with `EACCES`.
     ///
-    /// note: a failure is not reported. The one there can be is `ENOENT`, which is the process
-    /// having been killed while it waited - by a stopped call, most often - and then there is
-    /// nobody left to answer.
+    /// note: a failure is not reported. The only failure is `ENOENT`: the process was killed while
+    /// waiting, most often by a stopped call, so nobody is left to answer.
     pub fn answer(&self, attempt: Attempt, allow: bool) {
         let response = libc::seccomp_notif_resp {
             id: attempt.0,

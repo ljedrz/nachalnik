@@ -200,13 +200,12 @@ impl Reach {
                     .is_ok_and(|allowed| resolved.starts_with(allowed))
             }) {
             true => Ok(resolved),
-            // note: written for the model, which is what reads it. It cannot restart this
-            // program or pass it a flag, so being told to is worse than being told nothing: what
-            // it can do is work inside the directory, or say what it needs and why
-            // note: a path opened for reading and asked for in writing gets its own answer.
-            // Telling a model that `~/.rustup` is "outside what this session reaches" when it has
-            // just read a file there is a contradiction it cannot do anything with, and the
-            // useful fact - that this one is read-only - is one this knows
+            // note: written for the model, which reads it. The model cannot restart this program or
+            // pass it a flag, so telling it to is worse than telling it nothing. It can work inside
+            // the directory, or say what it needs and why. note: a path opened for reading and
+            // asked for in writing gets its own answer. Telling a model that `~/.rustup` is outside
+            // what this session reaches, when it has just read a file there, is a contradiction it
+            // cannot use. The useful fact - that this one is read-only - is one this code knows
             false
                 if !readable
                     && self.readable.iter().any(|allowed| {
@@ -250,25 +249,23 @@ impl Reach {
 }
 
 impl Reach {
-    /// Opens a path [`Reach::allows`] answered for, beneath the directory it was allowed under:
-    /// for reading, or for writing from the start.
+    /// Opens a path [`Reach::allows`] answered for, beneath the directory it was allowed under, for
+    /// reading or for writing from the start.
     ///
-    /// note: `allows` resolves a path and checks it, and the open comes after - so a part of the
-    /// path swapped for a link in between would be followed wherever the link pointed. On Linux
-    /// this opens with `openat2` and `RESOLVE_BENEATH` from the directory the path was allowed
-    /// under, and the kernel will not let the open leave that directory whatever is on disk by
-    /// then, so a swap is refused rather than followed. On a kernel that has no `openat2` it is an
-    /// ordinary open and the window is the one SECURITY.md describes.
+    /// note: `allows` resolves and checks a path, and the open comes after. A part of the path
+    /// swapped for a link in between would be followed wherever the link pointed. On Linux this
+    /// opens with `openat2` and `RESOLVE_BENEATH` from the directory the path was allowed under,
+    /// and the kernel will not let the open leave that directory whatever is on disk by then, so a
+    /// swap is refused rather than followed. On a kernel without `openat2` it is an ordinary open
+    /// and the window is the one SECURITY.md describes.
     ///
-    /// note: `path` is what `allows` returned, which is resolved, so a link met on the way is one
-    /// that was not there when the path was checked, and refusing it refuses nothing that was
-    /// allowed.
+    /// note: `path` is what `allows` returned, so it is resolved. A link met on the way was not
+    /// there when the path was checked, and refusing it refuses nothing that was allowed.
     ///
-    /// note: and only a regular file. A pipe blocks an open until somebody writes to it, which
-    /// nobody will, and the open is not a place an interrupt reaches - so `mkfifo p` and `fs read p`
-    /// was a turn nobody could stop. The path is looked at first, which is what the sentence comes
-    /// from; the open does not block either, whatever is there by then, and what it opened is
-    /// looked at again before anything reads it.
+    /// note: only a regular file. A pipe blocks an open until somebody writes to it, which nobody
+    /// will, and an interrupt does not reach an open - so `mkfifo p` and `fs read p` could not be
+    /// stopped. The path is checked first; the open does not block either, whatever is there by
+    /// then, and what it opened is checked again before anything reads it.
     pub fn open(&self, path: &Path, doing: Access) -> std::io::Result<std::fs::File> {
         self.opened(path, doing, None)
     }

@@ -73,11 +73,10 @@ passed, 129/130/143 SIGHUP, ctrl+c or SIGTERM - the last three for a served one 
     )
 }
 
-/// A terminal agent that shows you its context.
+/// A terminal agent that shows its context.
 ///
-/// note: `#[non_exhaustive]`, because this is answered with rather than built: [`Args::given`] is
-/// where one comes from, and a flag added later should be a patch rather than a break for anybody
-/// assembling a session of their own out of it.
+/// note: `#[non_exhaustive]` because [`Args::given`] constructs it, so adding a flag later is a
+/// patch rather than a breaking change for anyone assembling sessions.
 #[derive(Parser)]
 #[non_exhaustive]
 #[command(version, about, long_about = None, after_help = environment())]
@@ -198,9 +197,9 @@ pub struct Args {
     #[arg(long)]
     pub discard_cut_off_output: bool,
 
-    /// Send a request the counter puts over the model's context anyway, and let the endpoint be
-    /// the one that says no. For a limit that is advertised wrongly, or a counter that has
-    /// drifted, the endpoint's own count is worth more than any guess made here.
+    /// Send a request even if the counter says it is over the model's context, and let the endpoint
+    /// say no. For a wrongly advertised limit or a drifted counter, the endpoint's own count is
+    /// worth more than any guess made here.
     #[arg(long)]
     pub send_oversized_requests: bool,
 
@@ -256,7 +255,7 @@ pub struct Args {
     pub auto_deny_server: Vec<String>,
 
     /// What to do with a question nobody is there to answer: in a headless run, and in a
-    /// `--connect` one once its input has closed. `--connect` leaves it for somebody else unless
+    /// `--connect` run once its input has closed. `--connect` leaves it for somebody else unless
     /// this is given; `leave` is for `--connect` alone.
     #[arg(long, value_name = "ANSWER", default_value = "deny")]
     pub on_ask: OnAsk,
@@ -266,9 +265,9 @@ pub struct Args {
     #[arg(long, value_name = "SECONDS")]
     pub max_run_seconds: Option<u64>,
 
-    /// How many seconds the model's answer may say nothing - before its first word, or between
-    /// two - before the request is given up on; 150 unless given. A free endpoint under load can
-    /// hold a request in its queue for longer than that and then answer it normally.
+    /// How many seconds the model's answer may say nothing - before its first word or between two -
+    /// before the request is given up on; 150 unless given. A free endpoint under load can hold a
+    /// request in its queue longer than that and then answer it normally.
     #[arg(long, value_name = "SECONDS")]
     pub max_silence_seconds: Option<u64>,
 
@@ -328,13 +327,13 @@ pub struct Args {
 impl Args {
     /// Fills in everything the command line did not say from a settings file.
     ///
-    /// note: it asks clap which arguments were *typed*, rather than comparing against the defaults,
-    /// because those are not the same question: `--max-requests-per-turn 8` is the default value
-    /// and somebody meant it, and a merge that could not tell them apart would let a file quietly
+    /// note: it asks clap which arguments were typed, rather than comparing against the defaults,
+    /// because those are not the same question: `--max-requests-per-turn 8` is the default and
+    /// somebody meant it, and a merge that could not tell them apart would let a file quietly
     /// override what was asked for. `ValueSource::CommandLine` is the only answer that counts, and
     /// it is why [`Args::given`] hands back the matches as well as the struct.
     ///
-    /// note: a list from the command line *replaces* the file's rather than adding to it. One rule
+    /// note: a list from the command line replaces the file's rather than adding to it. One rule
     /// for every key is the only kind anybody can predict, and the other way round there is no way
     /// to ask for fewer than the file says.
     pub fn under(mut self, settings: Settings, matches: &clap::ArgMatches) -> Result<Self> {
@@ -385,18 +384,17 @@ impl Args {
         if self.model.is_none() {
             self.model = settings.model;
         }
-        // note: and not at all into a resumed session, whose context already holds the one the
-        // snapshot's first run was given, pinned. Pushed again on every `-r`, it would stack a copy
-        // per resume, each beyond compaction's reach; a typed `-s` beside `-r` is somebody asking
-        // for one, and is still honoured
+        // note: not into a resumed session, whose context already holds the pinned system prompt
+        // from the snapshot's first run. Pushed again on every `-r`, it would stack a copy per
+        // resume beyond compaction's reach. A typed `-s` beside `-r` is still honoured
         if self.system_prompt.is_none() && self.resume.is_none() {
             self.system_prompt = settings.system_prompt;
         }
-        // read here rather than where it is drawn, so that a colour nobody can parse is a startup
-        // error naming the file rather than a frame that is quietly the default. There is no
-        // argument to lose to, so there is nothing to ask `typed` about
+        // parsed here rather than where it is drawn, so a colour nobody can parse is a startup
+        // error naming the file rather than a quietly default frame. There is no argument to lose
+        // to, so nothing to ask `typed` about.
         //
-        // note: a `null` is a colour of its own - the terminal's - and not the key left out
+        // note: a `null` is the terminal's colour, not a missing key
         match settings.border_color {
             None => {}
             Some(None) => self.border_color = None,
@@ -411,8 +409,8 @@ impl Args {
         self.tools = settings.tools;
         if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
             self.on_ask = OnAsk::from_str(&on_ask, true).map_err(|_| {
-                // what the word is held to, rather than clap's own "invalid variant: maybe": a
-                // settings file has no `--help` beside it, and these two are the only answers
+                // validated strictly, not with clap's "invalid variant: maybe". A settings file has
+                // no `--help` beside it, and `deny` and `allow` are the only answers
                 anyhow::anyhow!(
                     "`on-ask` in the settings file is what a question nobody is there to answer \
                      gets, and this is `{on_ask}`: it is `deny` or `allow`"
@@ -696,10 +694,10 @@ impl Args {
         };
         let setup = Setup {
             resume,
-            // the runtime's own default is a counter that restarts at 0 with the process, which is
-            // fine as an identity and useless as a filename: every session would write over the
-            // last one's record. A resumed session keeps the name in its snapshot, so carrying on
-            // appends to the same session rather than starting a second one that looks unrelated
+            // the runtime's default counter restarts at 0 with the process. It is fine as an
+            // identity but useless as a filename: every session would overwrite the last record. A
+            // resumed session keeps the name in its snapshot, so resuming appends to the same
+            // session instead of starting a second, unrelated one
             session_name: self.resume.is_none().then(|| {
                 let started = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1015,9 +1013,9 @@ pub(crate) fn talked_to(records: &[nachalnik::Record]) -> Option<nachalnik::Mode
 /// Whether the settings file found underfoot may be read, asked of the terminal, and a refusal
 /// where there is nobody at one.
 ///
-/// note: a refusal rather than a run without the file, because a file carrying `max-run-seconds` or
+/// note: refuse rather than run without the file, because a file carrying `max-run-seconds` or
 /// `max-spend-tokens` is a script's bounds, and a script that quietly lost them would run
-/// unbounded. Naming the file with `--config-file` is how a run nobody can ask says it is meant.
+/// unbounded. A run nobody can ask names the file with `--config-file`.
 fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
     use std::io::IsTerminal as _;
 
@@ -1191,7 +1189,7 @@ pub enum OnAsk {
     Deny,
     /// Grant it.
     Allow,
-    /// Answer nothing, and leave it for the next client to attach to the same session, or for this
+    /// Answer nothing, leaving it for the next client to attach to the same session, or for this
     /// one coming back. `--connect` only: a headless run has nobody else to leave it to.
     Leave,
 }

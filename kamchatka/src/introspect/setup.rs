@@ -170,9 +170,8 @@ fn model(kernel: &Kernel) -> String {
         ),
     });
 
-    // read off the record rather than off a flag, because the record is where it is true: a
-    // resumed session is one that emitted `session.resumed`, and nothing else in a kernel
-    // remembers that it did
+    // read from the record, not a flag: the record is where it is true. A resumed session is one
+    // that emitted `session.resumed`; nothing else in a kernel remembers that it did
     let resumed = kernel.with_history(|session| {
         session.records().find_map(|record| match &record.event {
             nachalnik::Event::SessionResumed { items, tokens, .. } => Some((*items, *tokens)),
@@ -192,9 +191,9 @@ fn model(kernel: &Kernel) -> String {
                  session.\n"
             .to_owned(),
     });
-    // note: and a switch inside the session, which is the same blindness with nothing to announce
-    // it. After `/model`, the turns the other model wrote read in the first person like the rest,
-    // and a model told the conversation started here took every one of them for its own
+    // note: a model switch inside the session is the same blindness, with nothing to announce it.
+    // After `/model`, turns the other model wrote read in the first person like the rest, and a
+    // model told the conversation started here took every one of them for its own
     if let Some(info) = kernel.model_info() {
         for (model, items) in written_by_others(kernel, &info.model) {
             out.push_str(&format!(
@@ -217,11 +216,11 @@ fn model(kernel: &Kernel) -> String {
     out
 }
 
-/// The answers still in the context that a model other than `current` wrote, by model.
+/// Answers still in the context that models other than `current` wrote, grouped by model.
 ///
-/// note: read off the record, which names the model each request went to and the item its answer
-/// became - and taken out of it before the context is asked which items are still there, so that
-/// no lock is held across the two.
+/// note: read from the record, which names the model each request went to and the item its answer
+/// became. The answers are taken out before the context is asked which items remain, so no lock is
+/// held across the two.
 fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<ContextId>> {
     let answered: Vec<(String, ContextId)> = kernel.with_history(|session| {
         let mut asked = None;
@@ -251,18 +250,16 @@ fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<Con
     by
 }
 
-/// Every tool on offer, what it declares, and how much of any one answer you are shown.
+/// Every tool on offer, what it declares, and how much of any one answer is shown.
 ///
-/// note: the declared capabilities beside each one, because that is the thing a model cannot see
-/// and the thing that decides whether a call is worth making. A tool it may not use and a tool
-/// that does not exist fail differently and are worth telling apart before the call rather than
-/// after it.
+/// note: the declared capabilities beside each one, because a model cannot see them and they decide
+/// whether a call is worth making. A tool it may not use and a tool that does not exist fail
+/// differently, so tell them apart before the call, not after.
 ///
-/// note: the limits are a sentence under the table rather than a column in it, because they are
-/// keyed by *subject* and a tool has several. A column would have had one number standing for
-/// `fs:read` and `fs:grep` alike, which is the thing keying them by subject exists to stop - and a
-/// row per subject would spend most of this answer on a figure that is the same everywhere until
-/// somebody changes one. So: the number they share, and then whichever ones do not share it.
+/// note: limits are a sentence under the table, not a column, because they are keyed by subject and
+/// a tool has several subjects. A column would give `fs:read` and `fs:grep` one number; keying by
+/// subject stops that. A row per subject would repeat the shared figure. So: the shared number,
+/// then the subjects that differ.
 fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
     let specs = kernel.tool_specs();
     if specs.is_empty() {

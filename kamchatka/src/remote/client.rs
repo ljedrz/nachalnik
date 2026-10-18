@@ -86,14 +86,14 @@ pub struct Client<'a> {
     written: u64,
     /// The session those records came from, where this client has attached to one.
     ///
-    /// note: this is what says whether there is anything to resume, as well as what a resume
-    /// names: `Some` is a client holding a conversation and a watermark, `None` one with nothing.
+    /// note: this says whether there is anything to resume, and what a resume names: `Some` is a
+    /// client holding a conversation and a watermark, `None` one with nothing.
     ///
-    /// note: a resume refused is the end of this client rather than a fresh attach, because what
-    /// refuses one is a session that is not this one - a host restarted at the same address - and
-    /// attaching to it would carry on the record stream with another session's records under the
-    /// first one's, with nothing in it to say where one ended. `--connect` stands in for
-    /// `--headless`, which is one session, and says how to attach to the other instead.
+    /// note: a resume refused is the end of this client rather than a fresh attach, because the
+    /// refusing session is not this one - a host restarted at the same address. Attaching to it
+    /// would carry on the record stream with another session's records under the first one's, with
+    /// nothing to say where one ended. `--connect` stands in for `--headless`, which is one
+    /// session, and says how to attach to the other instead.
     session: Option<String>,
     /// The questions waiting on somebody, oldest first.
     asking: VecDeque<PermissionRequest>,
@@ -101,9 +101,9 @@ pub struct Client<'a> {
     ///
     /// note: kept until the `permission.decided` record rather than forgotten with the answer,
     /// because an answer can die in a socket the session never read. A resume is sent the records
-    /// after the last one this client saw, and the question was asked before that - so a question
-    /// dropped here is one the session goes on waiting for and this client can no longer answer.
-    /// What the resume leaves undecided goes back on `asking` once the attach is answered.
+    /// after the last one this client saw, and the question was asked before that, so a question
+    /// dropped here is one the session waits for and this client can no longer answer. What the
+    /// resume leaves undecided goes back on `asking` once the attach is answered.
     answering: VecDeque<PermissionRequest>,
     /// The running commands waiting to hear whether they may reach the network, oldest first, as
     /// the session last listed them and less the ones this has answered.
@@ -125,11 +125,11 @@ pub struct Client<'a> {
     model: Option<Option<String>>,
     /// What a question is answered with once there is nobody left here to answer it.
     ///
-    /// note: the same flag `--headless` reads, and it reaches the same two states for the same
-    /// reason: an input that has closed cannot be asked anything. It is this client's rather than
-    /// the session's - `--connect` takes nothing else on the command line precisely because
-    /// everything else belongs to whoever is serving, and what a *detaching* client does with an
-    /// open question does not.
+    /// note: the same flag `--headless` reads, reaching the same two states for the same reason: an
+    /// input that has closed cannot be asked anything. It is this client's rather than the
+    /// session's. `--connect` takes nothing else on the command line because everything else
+    /// belongs to whoever is serving, and what a detaching client does with an open question does
+    /// not.
     on_ask: Grant,
     /// Whether a question is left for somebody else once the input has closed, rather than
     /// answered with `on_ask`; see [`Client::leaves_questions`].
@@ -151,10 +151,10 @@ pub struct Client<'a> {
     detaching: bool,
     /// Whether the session has said it is finished.
     ///
-    /// note: what tells a closing socket apart from a dropped one, and without it a `/quit` typed
-    /// at this client is answered by a minute of attempts to reattach to a session that did exactly
-    /// what it was asked. `session.finished` is a record like any other, so this is the session
-    /// saying so rather than this client inferring it from a silence.
+    /// note: it tells a closing socket from a dropped one. Without it, `/quit` leads to a minute of
+    /// reattach attempts to a session that already did what it was asked. `session.finished` is a
+    /// record like any other: the session says so, rather than this client inferring it from
+    /// silence.
     over: bool,
     /// Whether the last turn this client saw end failed.
     ///
@@ -165,10 +165,10 @@ pub struct Client<'a> {
     failed: bool,
     /// Whether the session has said anything on this connection.
     ///
-    /// note: what makes [`GIVE_UP`] a minute from the last drop rather than a minute across the
-    /// whole of a run. A connection the session answered on was picked back up, and the next time
-    /// it goes is a drop of its own. Without this, short outages over a day add up to the minute,
-    /// and the next one gives up without a single attempt, saying the session has not answered.
+    /// note: it makes [`GIVE_UP`] a minute from the last drop, not a minute across the whole run. A
+    /// connection the session answered on is picked back up, and the next time it goes down is a
+    /// drop of its own. Without this, short outages over a day add up to the minute, and the next
+    /// one gives up without a single attempt, saying the session has not answered.
     reached: bool,
     /// Whether a line is read only once the session is ready for it.
     ///
@@ -180,13 +180,13 @@ pub struct Client<'a> {
     paced: bool,
     /// A line read while a question waited that does not answer it, sent once the turn is over.
     ///
-    /// note: what `--headless` does with the same script. A question nobody at a pipe answers is
-    /// answered with `--on-ask`, and the line after it is read once the turn it paused is over -
-    /// sent at once, it met a turn still running and was refused, and the lines after it went too.
+    /// note: it matches `--headless`: a question nobody at a pipe answers is answered with
+    /// `--on-ask`, and the next line is read once the turn it paused is over. Sent at once, that
+    /// line met a turn still running and was refused, and the lines after it went too.
     ///
-    /// note: a queue, because a client that leaves its questions reads on while a line is held:
-    /// the line waits on somebody else's answer, and only reading on says whether the input has
-    /// closed. What it reads meanwhile waits behind the line, in order.
+    /// note: it is a queue because a client that leaves its questions keeps reading while a line is
+    /// held: the line waits for somebody else's answer, and only reading on shows whether the input
+    /// has closed. What it reads meanwhile waits behind the line, in order.
     held: VecDeque<String>,
     /// Whether a write to this connection has failed.
     ///
@@ -338,10 +338,10 @@ impl<'a> Client<'a> {
         typed: &mut crate::headless::Typed<impl AsyncBufRead + Unpin>,
         first: bool,
     ) -> Left {
-        // note: before the connect rather than after it. An attempt that cannot connect has not
-        // been answered either, and one that kept the last connection's `true` would reset the
-        // wait on every failure - so a client whose session had gone would try every quarter of a
-        // second for as long as the process lived, and never reach `GIVE_UP`
+        // note: set `reached` to false before connecting, not after. A failed connect is not an
+        // answer. Keeping the last connection's `true` would reset the wait on every failure, so a
+        // dead session would retry every quarter of a second for as long as the process lived and
+        // never reach `GIVE_UP`
         self.reached = false;
         self.unwritable = false;
         let stream = match connect(address).await {
@@ -404,9 +404,9 @@ impl<'a> Client<'a> {
                 biased;
 
                 message = protocol::read::<Message>(&mut frames) => match message {
-                    // note: settled before the rest is read, because a question that arrived after
-                    // the input closed is the case this exists for - the turn goes on producing
-                    // them, and each one has to be answered by somebody or the session stops here
+                    // note: settled before the rest is read, because a question arriving after the
+                    // input closed is why this exists. The turn keeps producing questions, and each
+                    // must be answered or the session stops
                     Ok(Some(message)) => match self.heard(message) {
                         Ok(()) => match self.follow(&mut write).await {
                             Ok(()) if self.detaching && self.resting() => Some(Left::Done),
@@ -423,10 +423,10 @@ impl<'a> Client<'a> {
                         true => Some(Left::Done),
                         false => Some(Left::Dropped),
                     },
-                    // note: a reset after `session.finished` is the end too, for the same reason. A
-                    // session that has ended can close with something this client wrote still
-                    // unread, and a socket closed that way reads here as a reset once the last of
-                    // what the session wrote has been read
+                    // note: a reset after `session.finished` is the end too. A session that has
+                    // ended can close with something this client wrote still unread, and a socket
+                    // closed that way reads here as a reset once the session's last write has been
+                    // read
                     Err(_) if self.over => Some(Left::Done),
                     // note: a connection going is not a session saying something, and the two read
                     // one way at a reader: a reset is `ECONNRESET` and nothing was said in it. A
@@ -439,8 +439,8 @@ impl<'a> Client<'a> {
                     }
                 },
                 // note: the branch is switched off once the input has closed, rather than reading
-                // the end of it for ever. A `select!` arm over a reader at EOF is ready every time
-                // round the loop, and this one would have spun on it
+                // its end for ever. A `select!` arm over a reader at EOF is ready every loop
+                // iteration, so this one would have spun on it
                 line = typed.next_line(), if !self.detaching && self.reads() => match line {
                     // note: what `--headless` does with a blank line and with spaces round one,
                     // for its reason: a blank line sent is a request for nothing, and `  /help`

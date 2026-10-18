@@ -302,12 +302,12 @@ impl App {
                 self.count = format!("{count}{digit}");
             }
             KeyCode::Esc => self.cancel_edit(),
-            // changing what an item says, which is the verb the other keys were missing: `space`
-            // and `p` decide whether the model reads it, and this decides what it reads
+            // changes what an item says. `space` and `p` decide whether the model reads it; this
+            // decides what it reads.
             //
-            // note: what it reads, and only that. An item whose substance the prompt cannot hold
-            // is refused here rather than opened - a tool call is on the item's kind and not in
-            // its content, so a turn that is nothing but calls would open an empty box over a row
+            // note: what it reads, and only that. An item whose substance the prompt cannot hold is
+            // refused here rather than opened. A tool call is on the item's kind and not in its
+            // content, so a turn that is nothing but calls would open an empty box over a row
             // visibly holding one, and committing anything into it would write a sentence beside a
             // call it had not touched. `beyond_a_prompt` decides; `enter` is still the way to read
             // every face of an item this cannot rewrite
@@ -350,16 +350,16 @@ impl App {
                 };
                 self.kernel.set_state([picked.id], to, None);
             }
-            // the row's own text, out of the window and onto the clipboard. A mouse over the chat
-            // pane takes the frame with it, and `y` is the key a pager binds this to
+            // Copies the row's own text to the clipboard. A mouse over the chat pane takes the
+            // frame with it, and `y` is the key a pager binds this to
             KeyCode::Char('y') => self.copy(picked.id),
             // a view, not a change: nothing is touched and nothing is logged. After a compaction
-            // most of the list is items the model will never read again, and reading past them to
-            // find the conversation is the thing this tab is for
+            // most of the list is items the model will never read again; this tab is for reading
+            // past them to the conversation.
             //
             // note: the selection follows the item rather than the row number, because the rows
-            // under it have just moved. If what was picked is one of the ones now hidden, the
-            // nearest row that is still there gets it
+            // under it have just moved. If the picked item is now hidden, the nearest remaining row
+            // gets it
             KeyCode::Char('f') => {
                 let was = picked.id;
                 self.sending_only = !self.sending_only;
@@ -390,10 +390,10 @@ impl App {
     /// Every face of a context item worth reading, and which of them to open on.
     ///
     /// note: the default is what the item says, except when that is not what the model reads. An
-    /// elided item goes into the request as a marker, an excluded one does not go at all, and a
-    /// tool result whose call has been taken out is repaired away though nothing on its row says
-    /// so - all three are rows where the screen and the request disagree, and the disagreement is
-    /// what somebody pressed enter to find. So the projection decides this, not the state.
+    /// elided item goes into the request as a marker; an excluded one does not go at all; a tool
+    /// result whose call has been taken out is repaired away though nothing on its row says so. All
+    /// three are rows where the screen and the request disagree, and that disagreement is what
+    /// somebody pressed enter to find. The projection decides this, not the state.
     fn faces(&self, item: &ContextItem) -> (Vec<Page>, usize) {
         let projection = self.kernel.project();
         let reads_it = projection.included.contains(&item.id) && item.state.sends_content();
@@ -761,8 +761,8 @@ impl App {
     /// Drops every call the model is waiting on an answer for, and tells it so.
     ///
     /// note: denying them one at a time says no to each; this says no to all of them with one
-    /// reason, which is the answer when the model has gone off down the wrong path entirely.
-    /// Either way the model is told - a call that simply vanished would leave it waiting.
+    /// reason, which is the answer when the model has gone off down the wrong path entirely. Either
+    /// way the model is told; a call that simply vanished would leave it waiting.
     fn drop_pending(&mut self) {
         let dropped = self.kernel.cancel_pending_calls("dropped at the terminal");
         self.overlay = None;

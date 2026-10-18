@@ -410,11 +410,11 @@ impl Query {
         let all = counter.count(&Content::text(read.every.clone()));
 
         if read.total == 0 {
-            // note: an empty log has two causes and they are opposite answers to the question
-            // being asked. Nothing has happened yet, or everything that happened has been taken
-            // out and written somewhere else - `Kernel::drain_history` is a supported thing to do
-            // with a long session and it leaves the sequence counter alone, which is how this can
-            // tell. Reporting the second as the first is the one mistake this tool must not make.
+            // note: an empty log has two causes, opposite answers to the question being asked:
+            // nothing has happened yet, or everything has been drained out and written somewhere
+            // else. `Kernel::drain_history` is supported for a long session and leaves the sequence
+            // counter alone, which is how this can tell. Reporting drained as nothing-happened is
+            // the one mistake this tool must not make.
             return match read.last_seq {
                 0 => "nothing has been recorded yet: this session's log is empty because nothing \
                       has happened, not because you are being kept from it.\n"
@@ -552,11 +552,11 @@ impl Query {
 
     /// What an `ids` filter found no beginning for, which is usually what it was really asking.
     ///
-    /// note: an *absence*, and the one answer a list of matching records cannot give. A session
+    /// note: an absence, and the one answer a list of matching records cannot give. A session
     /// resumed under a second model that asks the log where an inherited item came from gets
-    /// `model.requested` rows naming that item - every one of them true, because the item has been
-    /// in every request since - and can read them as proof it wrote the item itself. What decides
-    /// the question is the record that is not there.
+    /// `model.requested` rows naming that item - every one true, because the item has been in every
+    /// request since - and can read them as proof it wrote the item itself. What decides the
+    /// question is the record that is not there.
     fn inherited(&self, kernel: &Kernel, read: &Read, policy: &Careful) -> String {
         // an item the kernel has never held has no beginning; calling it inherited would tell the
         // model a history that did not happen
@@ -592,19 +592,18 @@ impl Query {
 
 /// Where this log's records stop being the whole of what happened, when it does not hold them all.
 ///
-/// note: the same sentence for every answer that turns on records this log cannot show, because
-/// the two causes are opposite and a model told the wrong one is worse off than one told neither.
-/// A log that starts above 1 either had records *drained* out of it - carried away and kept where
-/// this session cannot read - or begins at a session that was *resumed*, in which case the
-/// records before it belong to the session it was resumed from and were never taken away. `since`
-/// below the first record and an `ids` filter with no match are both the same question, so both
-/// are answered with this. An empty string is the answer for a log that starts at 1, where
-/// nothing is missing.
+/// note: the same sentence for every answer that turns on records this log cannot show, because the
+/// two causes are opposite and a model told the wrong one is worse off than one told neither. A log
+/// that starts above 1 either had records drained out of it - carried away and kept where this
+/// session cannot read - or began at a resumed session, in which case the records before it belong
+/// to the session it was resumed from and were never taken away. `since` below the first record and
+/// an `ids` filter with no match are the same question, so both are answered with this. An empty
+/// string is the answer for a log that starts at 1, where nothing is missing.
 ///
-/// note: and the records missing from the middle, where a resume carried on from a snapshot the
-/// log beside it had run past. They are left out because what they did is not in this session -
-/// an item they added is not in its context - and they are said, because a log read as one
-/// whole would otherwise pass over them as if nothing had happened there.
+/// note: records missing from the middle, where a resume carried on from a snapshot the log beside
+/// it had run past. They are left out because what they did is not in this session - an item they
+/// added is not in its context - and they are said because a log read as one whole would otherwise
+/// pass over them as if nothing had happened there.
 fn earlier(read: &Read) -> String {
     let lost = read.lost.map(|(from, to)| {
         let (which, them) = match from == to {
@@ -673,7 +672,7 @@ fn histogram(read: &Read) -> String {
 ///
 /// note: [`trace_line`] rather than a second renderer, so the words a model reads off the log are
 /// the words a person reads off the trace pane. A program whose two accounts of one event differ
-/// is a program in which the two of them can be shown the same session and disagree about it.
+/// can be shown the same session and disagree about it.
 fn line(record: &Record, whole: bool) -> String {
     let (name, detail) = trace_line(&record.event);
     let mut out = format!("{:>5}  {name:<NAMES$}  {detail}", record.seq);

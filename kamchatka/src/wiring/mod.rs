@@ -109,24 +109,22 @@ pub struct Setup {
     pub leave_running: bool,
     /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
-    /// note: a list rather than a flag per family, because "which tools" is one question, and a
-    /// flag per family answers it in places that can disagree. What is offered is a property of the
-    /// session, so it is one field, and the two answers people actually want - all of them, or
-    /// these - are the two shapes an `Option<Vec<_>>` has.
+    /// note: a list rather than a flag per family, because "which tools" is one question and a flag
+    /// per family answers it in places that can disagree. What is offered is a property of the
+    /// session, so it is one field. The two answers people want - all of them, or these - are the
+    /// two shapes an `Option<Vec<_>>` has.
     ///
-    /// note: naming a subset still *builds* the others and shelves them, so
-    /// [`App::toggle`](crate::app::App::toggle) can offer one mid-session. That is what makes this
-    /// a starting position rather than a decision: a session that started without `shell` can be
-    /// given one, and it is confined exactly as it would have been.
+    /// note: naming a subset still builds the others and shelves them, so
+    /// [`App::toggle`](crate::app::App::toggle) can offer one mid-session. A session that started
+    /// without `shell` can be given one, and it is confined exactly as it would have been.
     ///
-    /// note: an empty list is the exception, and builds none of them at all - which is what a
-    /// caller whose tools all come from MCP servers, or who brings its own, is asking for. There
-    /// is nothing to offer later either, which is what asking for none means. It also skips the
-    /// question of what the sandbox will take, and that question costs a child process.
+    /// note: an empty list builds none of them at all. A caller whose tools all come from MCP
+    /// servers, or who brings its own, is asking for this. There is nothing to offer later either.
+    /// It skips the question of what the sandbox will take, which costs a child process.
     ///
-    /// note: this program's own tools, and not the ones an MCP server brings. Those arrive after
-    /// the wiring, under names nothing here can know in advance, and they are offered as they
-    /// arrive; `/tools toggle` turns one off like any other.
+    /// note: this program's own tools, not MCP server tools. Those arrive after the wiring, under
+    /// names nothing here can know in advance, and they are offered as they arrive; `/tools toggle`
+    /// turns one off like any other.
     pub tools: Option<Vec<String>>,
     /// Whether to confine what the tools can reach.
     ///
@@ -341,9 +339,9 @@ fn unreached(subject: &Subject) -> Option<String> {
     if ops.is_empty() {
         let ids: Vec<&str> = specs.iter().map(|spec| spec.id.as_str()).collect();
         return Some(match named(&domain, &ids) {
-            // a file somebody meant to rule about, and the grammar `objection_to` holds the other
-            // kind to - a rule about a path is a file name in which `*` stands for any run of
-            // characters, so `b.txt*` is one and `b.txt` is not what a path rule is written as
+            // a file somebody meant to rule about, and the grammar `objection_to` holds for the
+            // other kind. A path rule is a file name in which `*` stands for any run of characters;
+            // `b.txt*` is one, and `b.txt` is not written as a path rule
             Some(_) => format!(
                 "`{subject}` is read as a whole domain, and no domain here is called `{domain}`. A \
                  path rule is a file name in which `*` stands for any run of characters - \
@@ -442,13 +440,12 @@ impl Flagged {
 
 /// Why [`Setup::check`] refused a setup, and which setting said what it refused.
 ///
-/// note: the setting as a settings file spells its key - `sandbox-device`, `auto-allow-server` -
-/// since that is the one spelling every setting has, and a flag has it too with `--` in front. It
-/// is `None` for a refusal no setting said, like a working directory that cannot be found.
+/// note: the key is spelled as in a settings file, such as `sandbox-device` or `auto-allow-server`;
+/// a flag spells it with `--` in front. It is `None` when no setting said it, such as a working
+/// directory that cannot be found.
 ///
-/// note: it exists for the caller holding a settings file, which names the file beside a value the
-/// file said and says nothing about one somebody typed. Without it that caller had one string and
-/// no way to tell, and named the file for a `--sandbox-device` typed on the command line.
+/// note: it lets a caller holding a settings file name the file beside a value the file said, so a
+/// `--sandbox-device` typed on the command line is not mistaken for a file setting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Refused {
@@ -647,15 +644,14 @@ impl Setup {
             parallel_tool_calls: self.parallel,
             keep_truncated_output: self.keep_truncated,
             refuse_oversized_requests: self.refuse_oversized,
-            // note: the floor under everything without a row in `Limits`, which is every tool
-            // from an MCP server: those hold no handle to that table, so without this a session
-            // started with `--mcp` has no ceiling at all on what somebody else's server can put
-            // in its context. The runtime's own default is `None`, which is right for a runtime
-            // and wrong for a program that offers to run other people's tools.
+            // note: the limit for every tool without a row in `Limits`, which is every tool from an
+            // MCP server; those hold no handle to that table. Without it, a session started with
+            // `--mcp` has no ceiling on what another's server can put in its context. The runtime's
+            // own default is `None`, right for a runtime but wrong for a program that runs other
+            // people's tools.
             //
-            // note: it does not give those tools a `/limit` row. A row that listed a number
-            // nothing consults would be worse than no row, and what would earn one is the tools
-            // consulting this table rather than the table naming them.
+            // note: it does not give those tools a `/limit` row. A row listing a number nothing
+            // consults is worse than no row; tools would have to consult this table to earn one.
             default_tool_output_limit: Some(tools::CEILING),
             ..Default::default()
         };
@@ -668,11 +664,11 @@ impl Setup {
         }
         for path in &self.files {
             setup.push(
-                // note: `{e:#}` for the whole chain, as `/attach` prints it and for the reason its
-                // note gives: what could not be done, and then the operating system's own account
-                // of why. Without the `#` the cause is dropped and the refusal reads as
-                // `missing.png: could not read missing.png` - the file named twice and no word
-                // about why - or as `fifo: fifo is not a file`, with `os error` nowhere
+                // note: `{e:#}` prints the whole chain as `/attach` does: what could not be done,
+                // then the operating system's account of why. Without `#` the cause is dropped, so
+                // the refusal reads `missing.png: could not read missing.png` - the file named
+                // twice and no word about why - or `fifo: fifo is not a file`, with `os error`
+                // nowhere
                 attach::attached(path)
                     .map_err(|e| format!("{e:#}"))?
                     .because("named on the command line")
@@ -694,9 +690,9 @@ impl Setup {
         // many in one answer the rest are answered and not run. Far more than an answer that
         // means its calls asks for, and few enough that a loop costs a turn rather than a context
         kernel.set_call_ceiling(Some(CALLS));
-        // note: a screenshot from an MCP server is megabytes of base64, over any limit a tool's
-        // text is held to, so a picture is kept whole up to what the bridge carries and only the
-        // text around it is cut; see `Kernel::set_picture_limit`. Only a server's tools return one
+        // note: an MCP screenshot is megabytes of base64, over any limit a tool's text is held to,
+        // so a picture is kept whole up to what the bridge carries and only the text around it is
+        // cut; see `Kernel::set_picture_limit`. Only a server's tools return one
         #[cfg(feature = "mcp")]
         kernel.set_picture_limit(Some(nachalnik_mcp::LARGEST_IMAGE));
 
@@ -796,7 +792,7 @@ impl Setup {
                 unconfined_because = probed.why;
                 // note: only where the shell is confined, which `available` already folds in: the
                 // gate is installed by the child that confines itself, so an unconfined shell has
-                // nothing to hold a call with and goes on being asked about by name
+                // nothing to hold a call with and is still asked about by name
                 if probed.gated {
                     policy.gate_the_network();
                 }
@@ -831,8 +827,8 @@ impl Setup {
             }
         }
 
-        // the handle the tools reach the kernel through, which `App` then holds for the rest of
-        // the session; see `introspect::install` for why it is a weak handle to something out here
+        // the handle the tools reach the kernel through, which `App` holds for the rest of the
+        // session; see `introspect::install` for why it is a weak handle to something out here
         // rather than a kernel the tools hold
         let introspect = building
             .then(|| introspect::install(&kernel, policy.clone(), limits.clone(), self.layout));
@@ -973,14 +969,14 @@ impl Setup {
     }
 }
 
-/// Stops what the session's commands left running, or with `leave` only names it, and hands back
-/// the lines saying which.
+/// Stops what the session's commands left running, or with `leave` only names it, and returns the
+/// lines saying which.
 ///
-/// note: stopped by default, because the session that started them is over: a server or a
-/// `sleep 300 &` the model put in the background ran on reparented to init, with nothing left to
-/// answer its network questions or record what it did, and usually nobody had asked for it to
-/// outlive anything. `--leave-running` is for somebody who did - a server started on purpose - and
-/// is still told what it is leaving.
+/// note: stopped by default because the session that started them is over: a server or
+/// `sleep 300 &` the model put in the background keeps running, reparented to init, with nothing
+/// left to answer its network questions or record what it did, and usually nobody asked for it to
+/// outlive anything. `--leave-running` is for a server started on purpose, and it is still told
+/// what it is leaving.
 pub fn stragglers_at_end(app: &App, leave: bool) -> Vec<String> {
     let (commands, done) = match leave {
         true => (
@@ -996,19 +992,16 @@ pub fn stragglers_at_end(app: &App, leave: bool) -> Vec<String> {
         .collect()
 }
 
-/// Whether the session has already said it is over.
+/// Whether the session has ended.
 ///
-/// note: the log rather than a flag on [`App`], because the loops that end a session end it on the
-/// kernel and a flag would be a second place to keep the same fact. Reading the last record is
-/// also the only answer that stays right for a loop nobody here has written: an embedder that ends
-/// its own session gets one `session.finished`, and one that leaves it to [`Setup::relaunch`] gets
-/// one too.
+/// note: uses the log rather than a flag on [`App`], because the loops that end a session end it on
+/// the kernel and a flag would be a second place to keep the same fact. An embedder that ends its
+/// own session gets one `session.finished`; one that leaves it to [`Setup::relaunch`] gets one too.
 ///
-/// note: *any* record rather than the last. They differ after a second `ctrl+c`, which leaves a
-/// headless run without waiting for the turn: the session is ended while the turn is still
-/// running, and what it records after that is later than `session.finished`. Asking of the last
-/// record then says the session never ended, and it is ended a second time. The program's own
-/// parting asks this too, so the two can no longer disagree.
+/// note: checks any record rather than the last. After a second `ctrl+c`, a headless run ends the
+/// session while the turn is still running, and later records come after `session.finished`.
+/// Checking the last record then says the session never ended, and it is ended a second time. The
+/// program's own parting checks the same way.
 pub fn ended(kernel: &Kernel) -> bool {
     kernel.with_history(|log| {
         log.records()
@@ -1022,9 +1015,9 @@ mod tests {
 
     /// The shipped settings file lists every tool this program offers, and nothing else.
     ///
-    /// note: the file lists them rather than leaving the key out, since `null` is refused and all
-    /// of them is otherwise nothing a reader can see. A list that is written out is a list that
-    /// goes stale, and a tool added without it is a tool a copied file quietly turns off.
+    /// note: the file lists them rather than omitting the key, because `null` is refused and an
+    /// omitted key shows nothing to a reader. A written-out list goes stale, and a tool added
+    /// without it is quietly turned off in a copied file.
     #[test]
     fn the_shipped_file_lists_every_tool() {
         let shipped: crate::config::Settings =

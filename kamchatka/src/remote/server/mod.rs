@@ -134,8 +134,8 @@ pub struct Asked(FromClient);
 
 /// A connection that has just arrived and has not been taken on yet.
 ///
-/// note: the same shape and for the same reason: [`Server::arrived`] borrows the listener and
-/// [`Serving::attend`] borrows the `App`, so they are two calls with this in between.
+/// note: [`Server::arrived`] borrows the listener and [`Serving::attend`] borrows the `App`, so
+/// this sits between those two calls.
 pub struct Arrived(super::Connection);
 
 /// What reaches the session loop from a connection.
@@ -169,11 +169,10 @@ enum FromClient {
 impl Server {
     /// Listens where the address says, and refuses where listening would be a mistake.
     ///
-    /// note: there is **no authentication in this protocol**, by decision rather than by omission -
-    /// see the module note in [`super`] - so where it listens is the whole of the boundary. A unix
-    /// socket's file permissions are that boundary; a loopback port is the machine. Binding
-    /// anywhere else hands the `shell` tool to whoever finds the port, so it is refused here
-    /// rather than written down as something not to do.
+    /// note: there is no authentication in this protocol, by decision - see the module note in
+    /// [`super`] - so where it listens is the whole boundary. A unix socket's file permissions are
+    /// that boundary; a loopback port is the machine. Binding anywhere else hands the `shell` tool
+    /// to whoever finds the port, so it is refused here.
     pub async fn bind(address: &str) -> Result<Self, String> {
         let terminations = crate::stopping::Terminated::new()
             .map_err(|e| format!("could not listen for a request to end: {e}"))?;
@@ -252,12 +251,11 @@ impl Server {
                 ),
             });
         }
-        // note: after the refusals above rather than before them, because they are the ones that
-        // matter to whoever reads them. A mistyped `--serve` over somebody's own file has to be
-        // answered as a file, whatever the path weighs - telling that person the path is too long
-        // sends them looking for a shorter directory while the file they nearly deleted sits there
-        // still. This one is about a path with nothing at it, which is the only case a length is
-        // the whole of the answer
+        // note: this check runs after the refusals above because they matter more to whoever reads
+        // them. A mistyped `--serve` over somebody's own file must be answered as a file, whatever
+        // the path length; saying it is too long sends them looking for a shorter directory while
+        // the file they nearly deleted sits there still. This check covers a path with nothing at
+        // it, the only case where length is the whole of the answer
         if let Some(bytes) = protocol::overlong_path(&path.to_string_lossy()) {
             return Err(format!(
                 "a socket file cannot be named by {bytes} bytes, and this one is; a `unix:` path \
@@ -356,18 +354,18 @@ impl Server {
 
     /// Waits for the next connection, for a loop to hand to [`Serving::attend`].
     ///
-    /// note: this and `attend` are the pair a loop that is not [`Server::run`] needs, and they are
+    /// note: `arrived` and `attend` are the pair a loop that is not [`Server::run`] needs. They are
     /// two calls because a `select!` branch may borrow the listener or the `App` and not both.
     ///
-    /// note: a failure is handed back once, and every later one in the same run of them is waited
-    /// out quietly, `RESTING` apart. Both loops say what this hands back to everybody attached, and
-    /// out of file descriptors it would otherwise be a line to each of them for every turn of the
-    /// loop until somebody closed something.
+    /// note: a failure is handed back once; every later one in the same run is waited out quietly,
+    /// `RESTING` apart. Both loops say what this hands back to everybody attached. Out of file
+    /// descriptors it would otherwise be a line to each of them for every turn of the loop until
+    /// somebody closed something.
     ///
     /// note: a run ends once a whole `RESTING` has gone by past the retry without another failure,
-    /// and not when one connection arrives. Descriptors come back one at a time, as the tasks
-    /// holding them read to the end, so the first connection taken on the way out of a shortage is
-    /// often followed by another failure - and ended there, the run would be said twice.
+    /// not when one connection arrives. Descriptors come back one at a time as the tasks holding
+    /// them read to the end, so the first connection taken on the way out of a shortage is often
+    /// followed by another failure; ending the run there would say it twice.
     pub async fn arrived(&self) -> std::io::Result<Arrived> {
         loop {
             let resting = *self.resting.lock().unwrap_or_else(|e| e.into_inner());
@@ -1040,12 +1038,12 @@ impl Drop for Server {
     }
 }
 
-/// Does one of the things that need the session itself, and says what it did.
+/// Handles one of the commands that need the session, and reports what it did.
 ///
 /// note: every command but one. `Inspect` of what an item says *now* is answered by the connection
-/// that asked it, out of a `Kernel` handle of its own, because reading it needs no `App` - and a
-/// client reading a four-megabyte tool result should not be something the session stops to do. An
-/// earlier version is `App`'s to remember, so that one comes here.
+/// that asked it, from its own `Kernel` handle, because reading it needs no `App`, and the session
+/// should not stop for a client reading a four-megabyte tool result. An earlier version is `App`'s
+/// to remember, so that one comes here.
 async fn apply(app: &mut App, command: Command) -> Option<Message> {
     match command {
         // note: a resume is answered with `Message::Done` rather than nothing, because
@@ -1112,16 +1110,15 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             error: "a blank line is not a message, so nothing was sent".to_owned(),
         }),
         Command::Submit { line } => {
-            // note: a client has no keys of this program's to press, whatever the loop driving the
-            // session has, so `App::keys` is set around the one call that reads it rather than once
-            // for the session. A served session can have a screen as well: a `/help` typed at the
-            // desk wants the key pages, and the same `/help` sent from a browser would be a
-            // reference to a program the reader is not using. The flag is a fact about whoever just
-            // asked. See `App::help`
+            // note: a client has no keys of this program to press, so `App::keys` is set around the
+            // one call that reads it rather than once for the session. A served session can have a
+            // screen: `/help` at the desk wants the key pages, and `/help` from a browser refers to
+            // a program the reader is not using. The flag is a fact about whoever just asked. See
+            // `App::help`
             //
-            // note: and `/compact` reads it when its pass comes back, which is after this: a client
-            // has no keys to answer the question with, so the pass is taken and its list said -
-            // see `App::planned`
+            // note: `/compact` reads it when its pass comes back, after this. A client has no keys
+            // to answer the question with, so the pass is taken and its list is said. See
+            // `App::planned`
             let keys = std::mem::replace(&mut app.keys, false);
             let reply = app.submit(&line).await;
             app.keys = keys;
@@ -1633,11 +1630,11 @@ mod tests {
 
     /// A command from a client that has been replaced is refused, rather than done.
     ///
-    /// note: the seat is what makes one client at a time true, and nothing else stands between a
-    /// replaced client and the session: its connection is told to go, and goes when it next
-    /// looks. A command it had read before then still arrived here and was done - an interrupt
-    /// stopping the turn the newcomer had just started, or a `y` answering a question the
-    /// newcomer was about to answer for itself - with nothing telling the newcomer it happened.
+    /// note: the seat enforces one client at a time, and nothing else stands between a replaced
+    /// client and the session: its connection is told to go, and goes when it next looks. A command
+    /// read before replacement still arrived and was done - an interrupt stopping the newcomer's
+    /// turn, or a `y` answering a question the newcomer was about to answer - with nothing telling
+    /// the newcomer it happened.
     #[tokio::test]
     async fn a_command_from_a_replaced_client_is_refused() {
         let Wired { mut app, .. } = session();
@@ -1709,13 +1706,12 @@ mod tests {
     /// A question the advisor placed travels to the client beside the question it is about, and a
     /// question it could not place travels with the reason rather than as nothing at all.
     ///
-    /// note: the two rows, because they are two halves of one thing. `Attached::rated` is where a
-    /// browser draws the band, and an empty list is not the same thing as no question: a client
-    /// cannot tell a command nobody rated from a command this end forgot to rate, and the second
-    /// is a bug it has no way of noticing. `Attached::unrated` exists for the case where the
-    /// advisor answered and could not place the command - a firewall's refusal is the command the
-    /// colour is most for - and a reason dropped is a question drawn as though nobody had anything
-    /// to say about it.
+    /// note: the two rows are two halves of one thing. `Attached::rated` is where a browser draws
+    /// the band, and an empty list is not the same as no question: a client cannot tell a command
+    /// nobody rated from a command this end forgot to rate, and the second is a bug the client
+    /// cannot notice. `Attached::unrated` exists for when the advisor answered and could not place
+    /// the command - a firewall's refusal is the command the colour is most for - and a reason
+    /// dropped is a question drawn as though nobody had anything to say about it.
     #[cfg(feature = "shell-advisor")]
     #[tokio::test]
     async fn what_the_advisor_said_about_a_waiting_question_travels_beside_it() {

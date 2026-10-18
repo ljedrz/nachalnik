@@ -70,17 +70,14 @@ fn question_parts(
         .iter()
         .map(|subject| subject.to_string())
         .collect();
-    // two lines of options rather than one that wraps wherever it happens to run out: the answers
-    // on the first, and the two that are about looking closer or giving up on the lot on the
-    // second. The `pgup / pgdn` joins them when there are arguments below the fold, rather than
-    // going on a line of its own: a line of its own costs the arguments two rows on the screen
-    // that made it necessary in the first place
+    // two lines of options: answers on the first, and the options for looking closer or giving up
+    // on the lot on the second. `pgup / pgdn` joins them when there are arguments below the fold
+    // instead of taking a line of its own, which costs two rows.
     //
-    // note: and a line above them, until the keys are here, because until then none of them does
-    // anything. Listing `[y] once` beside a `y` that is being swallowed is the panel promising a
-    // key it has not got - and the swallowing is deliberate, so the honest thing is to name the
-    // one key that works. It goes when `tab` is pressed, which is also the moment the options
-    // start being true
+    // note: a line above them appears until the keys are here, because until then none of them does
+    // anything. It goes when `tab` is pressed, when the options start being true. `y` is swallowed
+    // deliberately, so `[y] once` is not listed beside it - that would promise a key that is not
+    // there. The one key that works is named instead
     let answers = format!(
         "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
         until_keys(app),

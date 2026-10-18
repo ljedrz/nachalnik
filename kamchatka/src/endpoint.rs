@@ -93,8 +93,8 @@ pub fn configured_limit() -> Option<usize> {
 /// setting that says `0` here and "no limit" everywhere else is a trap, and this one is the only
 /// place the value is spent rather than merely held.
 pub(crate) fn checked_limit() -> Result<Option<usize>, BoxError> {
-    // note: the two errors told apart. A value that is not text is a value somebody set, and read
-    // as none it was a limit not in force with nothing saying so - the one thing this refuses
+    // note: the two errors are told apart. A non-text value is a value somebody set; read as none,
+    // it was a limit not in force with nothing saying so, so this refuses to read it as none
     let limit = match env::var("KAMCHATKA_CONTEXT_LIMIT") {
         Ok(limit) => limit,
         Err(env::VarError::NotPresent) => return Ok(None),
@@ -296,11 +296,10 @@ pub fn is_an_address(url: &str) -> bool {
 
 /// An address as this program says it back: without a `user:password@` before the host.
 ///
-/// note: the request still goes with it, and a person may well have meant it there; what is left
-/// out is its being said. Every line naming an address goes to a screen, down a pipe into a log
-/// somebody pastes, and to every client of a served session, and the record already writes it
-/// down without one - so the status line, `/model`, `/endpoint` and `/seams` say it as the record
-/// does.
+/// note: the request still sends the credentials; only the display omits them. An address goes to a
+/// screen, into a log somebody pastes, and to every client of a served session, and the record
+/// already writes it without credentials - so the status line, `/model`, `/endpoint` and `/seams`
+/// say it as the record does.
 pub fn shown(url: &str) -> String {
     let (scheme, rest) = url
         .split_once("://")

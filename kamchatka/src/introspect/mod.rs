@@ -332,9 +332,9 @@ fn ids(args: &Value, name: &str) -> Result<Vec<ContextId>, String> {
 
 /// What an argument holds when a model has put it inside an object of one `item` key.
 ///
-/// note: a spelling of lists some models carry over from markup, where each element is an
-/// `<item>`. Read through it, a call would be a guess at what was meant; refused as an argument
-/// that is not a list, the model is not told where its list went, and sends it the same way again.
+/// note: a spelling of lists some models carry over from markup, where each element is an `<item>`.
+/// Read through it, a call would be a guess at what was meant. Refused as an argument that is not a
+/// list, the model is not told where its list went and sends it the same way again.
 fn wrapped(value: &Value) -> Option<&Value> {
     let fields = value.as_object()?;
     (fields.len() == 1).then(|| fields.get("item")).flatten()
@@ -381,8 +381,8 @@ pub(crate) struct Named<'a> {
 pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<Named<'a>, String> {
     let numbers = ids(args, "ids")?;
     // note: refused rather than read as no selector. A `select` that is not a string would
-    // otherwise drop out here, and `look` would list everything as though it had never been
-    // given - the call ignoring an argument, answered as a call that did what it was told
+    // otherwise drop out here, and `look` would list everything as though it had never been given:
+    // the call ignoring an argument, answered as a call that did what it was told
     if let Some(inside) = wrapped(&args["select"]).filter(|inside| inside.is_array()) {
         return Err(format!(
             "`select` holds `{}`, which is not a selector: it is a list inside an `item`, and \
@@ -444,12 +444,12 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
 /// is told so here rather than left to guess again.
 ///
 /// note: `file:` names a file attached to the context. A path the model read is a tool result
-/// instead, and no `file:` matches it - which is what nearly every empty `file:` turns out to be,
-/// so it is said where the mistake is made.
+/// instead, and no `file:` matches it - nearly every empty `file:` is that - so it is said where
+/// the mistake is made.
 ///
-/// note: the tool is named only where the session still has it, and a selector that names no tool
-/// is named either way: `kind:tool_result` is a word this tool prints itself, so it stays true
-/// however the session is set up. Everything named in an answer is read as something to try.
+/// note: the tool is named only where the session still has it. A selector that names no tool is
+/// named either way: `kind:tool_result` is a word this tool prints itself, so it stays true however
+/// the session is set up. Everything named in an answer is read as something to try.
 pub(crate) fn unmatched(kernel: &Kernel, select: &str) -> String {
     let source = select.trim().to_lowercase();
     let source = (source.strip_prefix("all:"))

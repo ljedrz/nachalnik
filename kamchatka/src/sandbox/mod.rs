@@ -201,10 +201,10 @@ impl Sandbox {
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
         let writable = writes(policy);
-        // note: and it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is
-        // refused a write there under the same refusal, so a shell that could still write in them
-        // was two tools disagreeing about one path - and the one that could write was the one
-        // whose writes nothing checks
+        // note: it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is refused
+        // a write there under the same refusal. A shell that could still write in them was two
+        // tools disagreeing about one path; the one that could write was the one whose writes
+        // nothing checks
         let (extra, readable) = match writable {
             true => (extra, readable),
             false => (Vec::new(), extra.into_iter().chain(readable).collect()),
@@ -326,10 +326,10 @@ impl Sandbox {
         {
             return false;
         }
-        // note: a device named was reached, so a refusal of it is its own permissions. Anything
-        // else under `/dev` is the boundary unless a root the person named covers it:
-        // `--sandbox-write` and `--sandbox-read` are granted under `/dev` as anywhere else, so
-        // answering `false` for all of `/dev` blamed the confinement for a file's own permissions
+        // note: a named device was reached, so refusing it is its own permissions. Anything else
+        // under `/dev` is the boundary unless a root the person named covers it: `--sandbox-write`
+        // and `--sandbox-read` are granted under `/dev` as anywhere else, so answering `false` for
+        // all of `/dev` blamed the confinement for a file's own permissions
         if self.names_device(&resolved) {
             return true;
         }
@@ -655,9 +655,9 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
     let mut followed = 0;
     let mut seen = std::collections::HashSet::new();
     let joined = |base: PathBuf, rest: &Path| match rest.as_os_str().is_empty() {
-        // note: joined only when there is something to join. `Path::join("")` appends a
-        // separator, and `/w/local.txt/` is a directory that is not there, so a plain
-        // `./local.txt` would come back `Not a directory`
+        // note: joined only when there is something to join. `Path::join("")` appends a separator,
+        // and `/w/local.txt/` is a directory that is not there, so `./local.txt` would come back
+        // `Not a directory`
         true => base,
         false => base.join(rest),
     };
@@ -698,8 +698,8 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
                     };
                     existing = parent.to_path_buf();
                 }
-                // what is left, rather than the path as it was handed in: after a link has been
-                // followed those are different paths, and only this one is where the open goes
+                // the resolved path, not the path handed in. After a link is followed they differ,
+                // and only the resolved path is where the open goes
                 _ => break Some(joined(existing, &rest)),
             },
         }
@@ -850,9 +850,9 @@ impl fmt::Display for Sandbox {
             ", its own `$TMPDIR` read-write, the system directories read-only, {}",
             self.network
         )?;
-        // note: said wherever TCP is not refused outright, since that is where a closed port is the
-        // one connection refused - and a command refused it was told only that the network was
-        // reachable, with nothing to say why this one address was not
+        // note: said wherever TCP is not refused outright, since a closed port is the one
+        // connection refused there. A command refused it was told only that the network was
+        // reachable, with nothing to say why this address was not
         if !self.network.refuses_tcp() && !self.closed.is_empty() {
             let ports: Vec<String> = self.closed.iter().map(u16::to_string).collect();
             write!(
@@ -903,9 +903,8 @@ static SERVED: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 
 /// The sessions this process's confined commands have run in, each named by the command's pid.
 ///
-/// note: every one ever started rather than the ones still running. A command's session outlives
-/// the command in whatever it left running, which is what would come knocking, and a pid is four
-/// bytes a command.
+/// note: every session ever started, not just the ones still running. A command's session outlives
+/// the command in whatever it left running. A pid is four bytes a command.
 static SESSIONS: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
 
 /// Closes `port` to every command confined from here on; see [`Sandbox::closed`].

@@ -74,11 +74,10 @@ pub struct Entry {
     pub streamed: bool,
     /// The newest context item that existed when it was said, if any did.
     ///
-    /// note: what puts it back in its place. A line like this belongs *between* two turns rather
-    /// than at an index, because the turns around it can be excluded, edited, undone or
-    /// compacted and it still happened where it happened. Anchoring to an identifier survives
-    /// all of that, the anchor itself going away included: the line simply renders before
-    /// whatever the next surviving item is.
+    /// note: a line like this belongs *between* two turns rather than at an index, because the
+    /// turns around it can be excluded, edited, undone or compacted and it still happened where it
+    /// happened. Anchoring to an identifier survives all of that, the anchor itself going away
+    /// included: the line renders before the next surviving item.
     pub after: Option<ContextId>,
     /// Whether it was said while something was still arriving, and so belongs after whatever that
     /// arrival turns into.
@@ -112,11 +111,10 @@ impl Entry {
 
 /// Keeps a tool's live output under [`LIVE_OUTPUT`], dropping from the front.
 ///
-/// note: the bound is on a tool's output and on nothing else. A `find /` should not be able to fill
-/// the screen up, and the whole of it is in the context either way - but a long answer under the
-/// same bound loses its first paragraphs while the model is still writing the last one. A message
-/// is what somebody came here to read, and it is never shortened; the moment the turn is recorded
-/// the line is dropped and the item is what gets drawn.
+/// note: the bound is on a tool's output and on nothing else. A `find /` should not fill the
+/// screen, and its whole output is in the context either way; a long answer under the same bound
+/// loses its first paragraphs while the model is still writing the last one. A message is never
+/// shortened: once the turn is recorded the line is dropped and the item is drawn.
 fn bounded(text: &mut String) {
     if text.len() <= LIVE_OUTPUT {
         return;
@@ -152,20 +150,20 @@ impl App {
     /// Hands what an item says to the loop, for the terminal to put on the clipboard.
     ///
     /// note: the item's own text, which is not what is on the screen. A selection dragged across
-    /// the chat pane takes the frame down both sides of every line, the wrapping of whatever
-    /// width the window was, and none of what has scrolled past - and a model's answer is the
-    /// thing people most often want out of here whole. This is that answer as the context holds
-    /// it; see [`crate::clipboard`] for what the loop then does with it, and for the one thing
-    /// neither can find out, which is whether the terminal took it.
+    /// the chat pane takes the frame down both sides of every line, the wrapping of whatever width
+    /// the window was, and none of what has scrolled past; a model's answer is what people most
+    /// often want whole. See [`crate::clipboard`] for what the loop then does with it, and for the
+    /// one thing neither can find out: whether the terminal took it.
     ///
     /// note: it says how many bytes, because that is the only receipt there is. A line reading
-    /// "copied" would be claiming a thing this program cannot see; the figure is what somebody
-    /// compares against what turns up in their paste.
+    /// "copied" would claim a thing this program cannot see; the figure is what somebody compares
+    /// against what turns up in their paste.
     ///
-    /// note: and it does not name the terminal, because the loop is what finds out whether there
-    /// is one. Said here, `handed to the terminal` would be followed down a pipe by `there is no
-    /// terminal here for it to go to` - two lines about one act, the second contradicting the
-    /// first. A loop that finds none says so with [`App::not_copied`], which rewrites this line.
+    /// note: it does not name the terminal, because the loop is what finds out whether there is
+    /// one. Said here, `handed to the terminal` would be followed by
+    /// `there is no terminal here for it to go to`: two lines about one act, the second
+    /// contradicting the first. A loop that finds none says so with [`App::not_copied`], which
+    /// rewrites this line.
     pub fn copy(&mut self, id: ContextId) {
         let Some(item) = self.kernel.item(id) else {
             self.say(Speaker::Note, format!("there is no item {id}"));
@@ -182,23 +180,19 @@ impl App {
     /// Says that what [`App::copy`] handed over went nowhere, in place of the line that said it
     /// went to the clipboard.
     ///
-    /// note: **in place rather than after it.** A loop finds out only once it holds the text
-    /// whether there is a terminal to give it to, and a second line taking the first back is the
-    /// same contradiction one step later: a reader scrolling a run finds the receipt, and then the
-    /// notice, and has to work out which of the two was true. One line that was wrong while it was
-    /// on the screen and is true now is the one thing that is not about the copy.
+    /// note: in place rather than after it. The loop learns whether there is a terminal only once
+    /// it holds the text. Appending a correction after the receipt leaves two lines, and a reader
+    /// scrolling finds the receipt then the notice and has to work out which was true.
     ///
-    /// note: without a receipt to rewrite it says `why` as it stands. The receipt is taken with
-    /// it, so a loop that calls this twice says the second reason and stops - there is nothing
-    /// left to take back, and a line taken back twice is a line about nothing.
+    /// note: without a receipt to rewrite it says `why` as it stands. The receipt is taken with it,
+    /// so a loop that calls this twice says the second reason and stops.
     pub fn not_copied(&mut self, why: &str) {
         let Some((receipt, id)) = self.receipt.take() else {
             return self.say(Speaker::Note, why);
         };
         let said = format!("[{id}] was not copied: {why}");
-        // note: searched for backwards, so a receipt that has been pushed off the transcript is
-        // not found and a second copy's line is not taken back instead - the search is for this
-        // one act and finds only the line that made it
+        // note: searched backwards, so it finds only the line that made this act: a receipt pushed
+        // off the transcript is not found, and a second copy's line is not taken back instead
         match (self.loose.iter_mut().rev())
             .find(|entry| entry.speaker == Speaker::Note && entry.text == receipt)
         {
@@ -215,8 +209,8 @@ impl App {
     /// seconds ago can be read until the turn ends.
     pub fn say(&mut self, speaker: Speaker, text: impl Into<String>) {
         let text = unpadded(&text.into()).to_owned();
-        // whether something was arriving is read *before* closing it, because closing is what
-        // makes it stop arriving and this line was said while it still was
+        // whether something was arriving is read before closing, because closing makes it stop
+        // arriving and this line was said while it was still arriving
         let arriving = self.arriving();
         self.close();
         self.loose.push(Entry {
@@ -383,10 +377,10 @@ impl App {
                     the same decision made by hand"
                 .to_owned();
         }
-        // note: and where the context entire is less than the overrun, nothing in it is the
-        // remedy, pinned or not: what is left is the tool definitions. A model with a window of a
-        // few thousand tokens is refused before it has been asked anything, and pointing it at
-        // `/exclude` is a sentence asking for a thing that cannot work
+        // note: if the context entire is less than the overrun, nothing in it is the remedy, pinned
+        // or not; what is left is the tool definitions. A model with a window of a few thousand
+        // tokens is refused before it has been asked anything, and pointing it at `/exclude` asks
+        // for something that cannot work
         let budget = self.kernel.budget();
         if budget.context_tokens < over {
             return format!(

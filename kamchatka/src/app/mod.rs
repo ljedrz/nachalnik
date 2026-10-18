@@ -613,41 +613,40 @@ pub struct App {
     reported_repairs: Vec<String>,
     /// How far down the pinned question's arguments are scrolled.
     ///
-    /// note: on the app rather than on the question, because there is no question to hang it on:
-    /// what stands in the prompt's place is drawn from `pending_permissions()` every frame, so
+    /// note: on the app rather than on the question because there is no question to hang it on.
+    /// What stands in the prompt's place is drawn from `pending_permissions()` every frame, so
     /// there is no state saying a question is open and none to get out of step with the kernel.
     pub question_scroll: usize,
     /// A compaction pass waiting on a `y` or an `n`, if one is.
     ///
     /// note: held here, where `App::asked` is asked of the kernel every time. The kernel knows
-    /// nothing about this one: a compaction nobody has agreed to yet is not a state the runtime
-    /// has, and giving it one would be this program's screen leaking into the runtime's model of
-    /// a session. What the kernel is told is the pass itself, once, when somebody says yes.
+    /// nothing about it: a compaction nobody has agreed to yet is not runtime state, and giving it
+    /// one would leak this program's screen into the runtime's model of a session. The kernel is
+    /// told the pass itself, once, when somebody says yes.
     pub proposed: Option<Proposed>,
-    /// The messages somebody sent into a turn that was already running, oldest first, each
-    /// waiting for a turn of its own.
+    /// The messages somebody sent into a turn that was already running, oldest first, each waiting
+    /// for a turn of its own.
     ///
-    /// note: a queue rather than one slot, and each stays its own message. A session drawn at a
-    /// desk and served is two ways in, and a slot the newest won took one person's line away
-    /// whenever the other typed after them; merging them instead would hand the model two people's words as
-    /// one. So every turn that ends takes the oldest in and gives it a turn, and the next waits for
-    /// that one. [`App::put_back`] is the way back to the newest - `up` takes it out of here and
-    /// into the prompt, where it can be changed, sent again or simply dropped. Each is drawn at the
-    /// end of the conversation, in order, until it becomes an item.
+    /// note: a queue rather than one slot, and each stays its own message. A session has two ways
+    /// in; one slot would lose the older message whenever the other person typed after it, and
+    /// merging them would give the model two people's words as one. Each turn that ends takes the
+    /// oldest message and gives it a turn; the next waits. [`App::put_back`] returns the newest to
+    /// the prompt: `up` takes it out, where it can be changed, sent again, or dropped. Each is
+    /// drawn at the end of the conversation, in order, until it becomes an item.
     typed_ahead: VecDeque<String>,
     /// The last line submitted at the prompt, message or command, for [`App::put_back`].
     last_sent: Option<String>,
-    /// What [`App::put_back`] last put in the prompt, for as long as the prompt still says
-    /// exactly that.
+    /// What [`App::put_back`] last put in the prompt, for as long as the prompt still says exactly
+    /// that.
     ///
-    /// note: compared against what is in the box rather than trusted on its own, so `down` undoes
-    /// a recall and nothing else. A word typed onto the end makes it a message somebody is
-    /// writing, and a key that emptied the box then would be the worst kind of shortcut.
+    /// note: compared against what is in the box rather than trusted on its own, so `down` undoes a
+    /// recall and nothing else. Typing onto the end makes it a message being written; emptying the
+    /// box with a key would be a bad shortcut.
     ///
-    /// note: behind the feature, unlike `last_sent` above it, and the difference is which side of
-    /// the screen each belongs to. A line that was sent is a fact about the session - `submit`
-    /// records it whether anybody is watching or not - and this is a fact about the prompt box,
-    /// which a build with no screen does not have. Every use of it is in `keys`.
+    /// note: behind the `tui` feature, unlike `last_sent` above it; the difference is which side of
+    /// the screen each belongs to. A sent line is a session fact: `submit` records it whether
+    /// anybody is watching or not. This is a prompt-box fact, which a build with no screen does not
+    /// have. Every use of it is in `keys`.
     #[cfg(feature = "tui")]
     recalled: Option<String>,
     /// How much the running tool has said so far, for the one trace line that counts it.
@@ -656,10 +655,10 @@ pub struct App {
     outcomes: UnboundedSender<Outcome>,
     /// The session's record on disk, written as it goes, where one was started.
     ///
-    /// note: here rather than on a loop, because [`App::on_event`] is the door every loop comes
-    /// through and a record kept by one loop is a record the other two do not write. `main.rs`
-    /// starts one with [`crate::wiring::Recorder::start`] unless `--no-record` says otherwise; an
-    /// embedder that wants the same safety net puts one here.
+    /// note: here rather than on a loop because [`App::on_event`] is the door every loop comes
+    /// through; a record kept by one loop is a record the other two do not write. `main.rs` starts
+    /// one with [`crate::wiring::Recorder::start`] unless `--no-record` is set; an embedder that
+    /// wants the same safety net puts one here.
     pub recorder: Option<crate::wiring::Recorder>,
     /// How many pages have been opened over the session.
     ///
@@ -1174,30 +1173,28 @@ impl App {
         !self.busy && matches!(self.kernel.state(), State::Ready { .. })
     }
 
-    /// Puts an edited item into the context in place of the one it came from, and says whether
-    /// that changed anything.
+    /// Puts an edited item into the context in place of the one it came from, and says whether that
+    /// changed anything.
     ///
-    /// note: `pub` and not gated on `tui` for the reason [`App::submit`] and [`App::interrupt`]
-    /// are. The terminal's `e` is one editor; a browser has a box on the screen that is already
-    /// showing what the item says, and needs somewhere to commit it to. Both go through here, so
-    /// neither invents a second account of what an edit is.
+    /// note: `pub` and not gated on `tui`, for the same reason as [`App::submit`] and
+    /// [`App::interrupt`]. The terminal's `e` is one editor; a browser has a box already showing
+    /// what the item says and needs somewhere to commit it. Both go through here, so neither
+    /// invents a second account of what an edit is.
     ///
-    /// note: it asks `text::beyond_a_prompt` itself rather than trusting the caller to have
-    /// asked. Both callers do ask first, because refusing after somebody has typed is worse than
-    /// refusing before - the terminal before it opens the editor, a client off
-    /// [`Listed::beyond`](crate::remote::protocol::Listed::beyond) before it offers one - and
-    /// neither of those is a decision. A row is a moment old by the time anybody acts on it, and
-    /// a guard that lives at the operation is the one that holds for every caller that ever
-    /// arrives.
+    /// note: it asks `text::beyond_a_prompt` itself rather than trusting the caller. Both callers
+    /// ask first, because refusing after somebody has typed is worse than refusing before - the
+    /// terminal before it opens the editor, a client off
+    /// [`Listed::beyond`](crate::remote::protocol::Listed::beyond) before it offers one. A row is a
+    /// moment old by the time anybody acts on it, so a guard at the operation holds for every
+    /// caller.
     ///
-    /// note: `Ok(false)` where the text is what the item already said, which is not an error and
-    /// is not silent either. Nothing is written - no `context.replaced`, no version page, no undo
-    /// checkpoint, because an operation that changes nothing takes none - and the caller is told
-    /// so it can say as much rather than report an edit that did not happen.
+    /// note: `Ok(false)` where the text is what the item already said - not an error and not
+    /// silent. Nothing is written: no `context.replaced`, no version page, no undo checkpoint,
+    /// because an operation that changes nothing takes none. The caller is told so it can say as
+    /// much rather than report an edit that did not happen.
     ///
-    /// note: `reason` is how the item's metadata says where the hand was, and `by` is `user` in
-    /// every case because a person is a person wherever they are standing. The `context` tool
-    /// writes this same key with `by: context`, and the one thing the two must not do is look
+    /// note: `reason` is the item's metadata saying where the hand was, and `by` is `user` in every
+    /// case. The `context` tool writes this same key with `by: context`, and the two must not look
     /// alike: a model reading its own metadata should never find its own tool credited with a
     /// sentence a person rewrote.
     pub fn revise(&mut self, id: ContextId, text: &str, reason: &str) -> Result<bool, String> {
@@ -1211,10 +1208,9 @@ impl App {
             return Ok(false);
         }
 
-        // note: nothing here keeps what it used to say. `Kernel::replace` emits the one event
-        // that carries content and `App::remember` is already listening for it, so the version
-        // pages fill themselves - which is also why an `undo` of this reaches the screen with
-        // nothing here keeping a second account of what to put back
+        // note: `Kernel::replace` emits the one event that carries content and `App::remember` is
+        // already listening for it, so the version pages fill themselves. Nothing here keeps a
+        // second account of what to put back, so an `undo` of this reaches the screen without one
         self.kernel
             .replace(id, text.to_owned())
             .map_err(|e| e.to_string())?;
@@ -1235,18 +1231,18 @@ impl App {
     /// fragments and land in the same list, so a caller echoing those as well prints every answer
     /// twice.
     ///
-    /// note: `said` is how many of *these* have been taken rather than how far down
-    /// [`App::loose`] the caller had got. The list is not append-only - a turn being recorded
-    /// takes every line that streamed out of it, because the context says those now - so a mark
-    /// against the whole list slides backwards under its own watermark, and everything said
-    /// between one shrink and the next is skipped: a line saying the ceiling was reached can be
-    /// decided, recorded and acted on and still never reach the person. A scripted model answers
-    /// between two looks, so nothing shrinks in between and a test driving one does not see it.
-    /// What the filtered sequence *is* is append-only: a note is not something that streams.
+    /// note: `said` is how many of these have been taken, not how far down [`App::loose`] the
+    /// caller had got. The list is not append-only: a turn being recorded takes every line that
+    /// streamed out of it, because the context says those now. So a mark against the whole list
+    /// slides backwards under its own watermark, and everything said between one shrink and the
+    /// next is skipped - a line saying the ceiling was reached can be decided, recorded and acted
+    /// on and still never reach the person. A scripted model answers between two looks, so nothing
+    /// shrinks in between and a test does not see it. The filtered sequence is append-only: a note
+    /// is not something that streams.
     ///
-    /// note: with one exception, and it is `/cleanup`. [`App::clear_notices`] empties this sequence
-    /// rather than shortening it, so a watermark against it is stale in the one direction that is
-    /// silent. [`App::cleared`] is what says so, and every caller of this has to read it.
+    /// note: the exception is `/cleanup`. [`App::clear_notices`] empties this sequence rather than
+    /// shortening it, so a watermark against it is stale in the one direction that is silent.
+    /// [`App::cleared`] says so, and every caller of this has to read it.
     pub fn notes(&self, said: usize) -> impl Iterator<Item = &Entry> {
         self.loose
             .iter()
@@ -1282,15 +1278,15 @@ impl App {
 
     /// The key reference, opened at whichever page is about where somebody is standing.
     ///
-    /// note: this is the one place that knows a tab has a page, and it is here rather than in
-    /// `help` because the mapping is a fact about the program: `help` holds the words and has no
-    /// business knowing which tab `G` belongs to. Every section is still offered - `←` and `→`
-    /// reach the rest - so what this decides is the *first* page, not which of them exist.
+    /// note: this is the one place that maps a tab to a page, and it is here rather than in `help`
+    /// because the mapping is a fact about the program: `help` holds the words, and the tab-to-page
+    /// mapping does not belong there. Every section is still offered - `←` and `→` reach the rest -
+    /// so this decides the *first* page, not which of them exist.
     ///
-    /// note: a waiting question wins over the chat tab it is pinned to, because somebody pressing
-    /// F1 with a tool waiting is asking about the thing that is blocking them. From another tab it
-    /// does not, since what they are looking at is that tab; the page is still one key away, and
-    /// the tab strip is already red to say the question is there.
+    /// note: a waiting question wins over the chat tab it is pinned to, because F1 with a tool
+    /// waiting asks about what is blocking them. From another tab it does not, since they are
+    /// looking at that tab; the page is still one key away, and the tab strip is already red to say
+    /// the question is there.
     pub(super) fn help(&mut self) {
         let asked = self.asking();
         let here = match (self.tab, asked) {
@@ -1518,8 +1514,8 @@ impl App {
         self.kernel
             .record_rule(subject.to_string(), verdict, None, false);
         self.refresh_full_notice();
-        // said out loud, because this is a decision about what may happen later and the tab it
-        // was made on is not the one somebody will be looking at when it does
+        // said out loud because it is a decision about what may happen later, and the tab it was
+        // made on is not the one somebody will be looking at when it does
         self.say(
             Speaker::Note,
             match verdict {

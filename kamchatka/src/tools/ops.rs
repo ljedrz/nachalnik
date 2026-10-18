@@ -723,9 +723,10 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
     // about them is never read. "names no operation" beside `{"call":` does not look like a call
     // naming nothing to whoever wrote it, and it was sent again unchanged, over and over
     if let Some(written) = unparsed(&request.args) {
-        // note: with what is wrong and the part of it to look at, as `unreadable` gives them. Told
-        // only that it was not JSON and shown the end of the payload, a model whose fault is in the
-        // middle of it - a `\(` in a pattern - has nothing to change, and sends the same call again
+        // note: the error gives what is wrong and where to look, as `unreadable` gives them. A
+        // model told only that it was not JSON and shown the end of the payload has nothing to
+        // change if the fault is in the middle - such as a `\(` in a pattern - and sends the same
+        // call again
         let (why, at, rule) = match serde_json::from_str::<Value>(written) {
             Err(e) => (
                 format!(" ({e})"),
@@ -1244,11 +1245,11 @@ mod tests {
         }
     }
 
-    /// The wrapper is typed where it is one shape, and a union of several says nothing beside
-    /// its branches.
+    /// The wrapper has a `type` where it is one shape; a union of several has no `type` beside its
+    /// branches.
     ///
-    /// note: the single-branch arm gets its `type` from `branch` by accident of construction, and
-    /// an accident is a thing to pin. The union's absence is pinned for the reason in `schema`.
+    /// note: the single-branch arm gets its `type` from `branch` by accident of construction, so it
+    /// is pinned. The union's absence is pinned for the reason in `schema`.
     #[test]
     fn the_wrapper_is_typed_only_where_it_is_one_shape() {
         let several = schema(&ops(), Layout::Wrapped);
@@ -1759,12 +1760,12 @@ mod tests {
         );
     }
 
-    /// A fault before the end of a payload is shown where it is, and not at the end of it.
+    /// A fault before the end of a payload is shown where it occurs, not at the end.
     ///
-    /// note: the position arrives as a line and a column and is counted out of the text here,
-    /// which is the one step between what the parser said and what the model is shown. A payload
-    /// written over several lines is ordinary - a model indenting a command is producing one -
-    /// and a count that lands anywhere but the fault quotes the part that was fine.
+    /// note: the position arrives as a line and a column, counted out of the text - the step
+    /// between what the parser said and what the model is shown. A payload written over several
+    /// lines is ordinary: a model indenting a command produces one. A count that lands anywhere but
+    /// the fault quotes the part that was fine.
     #[test]
     fn a_fault_before_the_end_of_a_payload_is_shown_where_it_is() {
         let payload = [
