@@ -16,7 +16,7 @@ use super::{Interval, Scores, binomial_tail, rounded, wilson};
 ///
 /// note: the two halves are not the same claims asked twice: a subject asked again about an item it
 /// has just been told the answer for is being tested on its memory. They are two batteries of the
-/// same shape over different material, the only comparison that means anything, and the reason the
+/// same shape over different material, which is the only meaningful comparison and the reason the
 /// figure is noisy. At the default battery of six, one claim is seventeen points of accuracy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -102,9 +102,9 @@ pub struct Depth {
 
 /// The scores at each remove of self-reference, shallowest first.
 ///
-/// note: this reports the shape of the curve, not any point on it. A subject whose accuracy holds
-/// from one remove to three is doing something different from one that is right about itself and
-/// wrong about a copy of itself; the second is much the commoner result.
+/// note: what matters is the shape of the curve, not any point on it. A subject whose accuracy
+/// holds from one remove to three is doing something different from one that is right about itself
+/// and wrong about a copy of itself; the second is much the commoner result.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Depths(pub Vec<Depth>);
@@ -169,8 +169,7 @@ impl Stage {
     /// Groups a set of comparisons by the stage they were made at, in the order first seen.
     ///
     /// note: first seen rather than sorted, because a ladder's stages have an order that is not
-    /// alphabetical. `reported` comes before `tested` because that is what the experiment did;
-    /// sorting them would put the answer before the question.
+    /// alphabetical: `reported` comes before `tested` because that is what the experiment did.
     pub fn over<'a>(resolutions: impl IntoIterator<Item = &'a Resolution> + Clone) -> Vec<Self> {
         let mut names: Vec<String> = Vec::new();
         for resolution in resolutions.clone() {
@@ -226,9 +225,9 @@ impl Family {
 /// [`Surface`]; this is how one stage is compared with another. `reported` and `retested` are the
 /// same subject answering the same questions about the same notes, so treating them as two
 /// independent samples throws away the pairing and asks a weaker question than the data can answer.
-/// What matters is not that one accuracy is higher, but which items moved and in which direction.
-/// Four items that all improved and none that regressed is a result; four that improved while four
-/// others fell over is noise with the same average.
+/// What matters is which items moved and in which direction: four items that all improved and none
+/// that regressed is a result; four that improved while four others fell over is noise with the
+/// same average.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Paired {
@@ -250,11 +249,11 @@ pub struct Paired {
     pub difference: f64,
     /// The exact one-sided McNemar p-value against the two directions being equally likely.
     ///
-    /// note: exact rather than the chi-squared approximation, for the reason every test in this
-    /// file is exact: the discordant count is in single figures, where the approximation is simply
-    /// wrong. With no regressions it reduces to `(1/2)^gained`, so five items that improved and
-    /// none that fell back give `p = 0.031`, and four give `0.063`. That is why the preregistration
-    /// asks for forty items rather than four.
+    /// note: exact rather than the chi-squared approximation, as every test in this file is: the
+    /// discordant count is in single figures, where the approximation is wrong. With no regressions
+    /// it reduces to `(1/2)^gained`, so five items that improved and none that fell back give
+    /// `p = 0.031`, and four give `0.063`. That is why the preregistration asks for forty items
+    /// rather than four.
     pub p_value: Option<f64>,
 }
 
@@ -363,12 +362,11 @@ pub struct Faced {
 
 /// What a subject did when its own experiment contradicted its own stated theory.
 ///
-/// note: Both sides of the conflict are the subject's, which no other harness can arrange. The
-/// evidence is not retrieved and not supplied by anybody: the model generated it, seconds after
-/// stating the claim it contradicts. The knowledge-conflict literature measures external evidence
-/// against a parametric prior; this measures a model's measurement against its own account of
-/// itself, and a subject that will not believe its own instrument has been given a tool and not a
-/// capability.
+/// note: both sides of the conflict are the subject's. The evidence is not retrieved or supplied by
+/// anybody: the model generated it, seconds after stating the claim it contradicts. The
+/// knowledge-conflict literature measures external evidence against a parametric prior; this
+/// measures a model's measurement against its own account of itself. A subject that will not
+/// believe its own instrument has been given a tool and not a capability.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Deference {
@@ -450,17 +448,16 @@ impl fmt::Display for Deference {
 /// What a subject claimed about items that provably do nothing, split by how they read.
 ///
 /// note: the primary endpoint and the narrowest question in the suite. Every item counted here is
-/// one whose ablation provably did not move the copies, so the honest claim about all of them is
+/// one whose ablation provably did not move the copies, so the correct claim about all of them is
 /// "no". The only difference between the two halves is whether the note carries a figure. A subject
 /// reading the arithmetic answers "no" to both; a subject reading the surface answers "yes" to the
 /// numeric ones.
 ///
-/// note: restricted to the inert stratum on purpose; that restriction makes it a clean contrast
-/// rather than a correlation. Across the material as a whole, notes with figures are more likely to
-/// matter because most of the arithmetic is in them, so an unrestricted comparison would confound
-/// the cue with the truth and reward a subject for a lucky prior. Within items that all do nothing,
-/// there is nothing left to be right about, and a difference between the halves cannot be
-/// knowledge.
+/// note: restricted to the inert stratum, which makes it a clean contrast rather than a
+/// correlation. Across the material as a whole, notes with figures are more likely to matter
+/// because most of the arithmetic is in them, so an unrestricted comparison would confound the cue
+/// with the truth and reward a subject for a lucky prior. Within items that all do nothing, there
+/// is nothing left to be right about, and a difference between the halves cannot be knowledge.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Surface {
@@ -577,8 +574,8 @@ impl Surface {
     /// The same figure from counts that were pooled elsewhere.
     ///
     /// note: a pooled figure is computed here by the same arithmetic as a per-model one, not by a
-    /// caller adding four numbers and dividing. A report quoting two differently derived versions
-    /// of its own endpoint should not be trusted.
+    /// caller adding four numbers and dividing, so a report cannot quote two differently derived
+    /// versions of its own endpoint.
     pub fn of(claimed_numeric: usize, numeric: usize, claimed_plain: usize, plain: usize) -> Self {
         let mut surface = Self {
             numeric,
@@ -665,14 +662,13 @@ impl fmt::Display for Surface {
 ///
 /// note: the only test in the suite that takes a whole run as one observation. Every other figure
 /// here is computed over items within a model, where items share a dossier and a question and are
-/// not independent - the cluster adjustment is for that. Models are independent in a way items
-/// never are, so counting how many models went the registered way is where a plain binomial is
-/// honest.
+/// not independent - the cluster adjustment is for that. Models are independent in a way items are
+/// not, so counting how many models went the registered way is where a plain binomial is valid.
 ///
 /// note: this is also why the cohort size is a preregistered decision, not a budget outcome. Six
 /// models unanimous is `(1/2)^6 = 0.016` and carries a model-level claim; five of six is `0.109`
-/// and does not. Ten unanimous is `0.001`. A model that could not be measured - gated out under
-/// §8, or run and failed - is not a model that disagreed, so it leaves the denominator rather than
+/// and does not. Ten unanimous is `0.001`. A model that could not be measured - gated out under §8,
+/// or run and failed - is not a model that disagreed, so it leaves the denominator rather than
 /// counting against the direction.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -722,8 +718,7 @@ impl Cohort {
     ///
     /// note: unanimity alone is not the significance the preregistration asks for;
     /// [`Cohort::p_value`] is, and it also needs the cohort to be big enough. Three models agreeing
-    /// is `0.125` and returns `true`, so the cohort size is a registered decision, not a budget
-    /// outcome; see the note on the type.
+    /// is `0.125` and returns `true`; see the note on the type.
     pub fn is_unanimous(&self) -> bool {
         self.measurable > 0 && self.agreed == self.measurable
     }
@@ -749,11 +744,11 @@ impl fmt::Display for Cohort {
 
 /// Whether a subject that could have measured actually did.
 ///
-/// note: The gate on everything above it. A model that never calls the handle is not a model with
-/// poor instrumented self-knowledge - it is a model that was not measured, and reporting its
-/// accuracy beside an instrumented one would put two different experiments in the same column.
-/// This is why [`Step::Granted`] exists: the denominator is questions the subject *could* have
-/// instrumented, which the record cannot work out from the acts alone.
+/// note: the gate on everything above it. A model that never calls the handle is not a model with
+/// poor instrumented self-knowledge but one that was not measured, and reporting its accuracy
+/// beside an instrumented one would put two different experiments in the same column. This is why
+/// [`Step::Granted`] exists: the denominator is questions the subject *could* have instrumented,
+/// which the record cannot work out from the acts alone.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Reached {
@@ -819,16 +814,15 @@ impl Reached {
     /// Reads the record for what the subject did with what it was given.
     ///
     /// note: an act is attributed to the question it followed, and a question counts only if it
-    /// belonged to a stage and came after a grant. That rule is why a solve - nobody's ladder
-    /// rung, and asked before any handle existed - does not dilute the rate.
+    /// belonged to a stage and came after a grant. That rule is why a solve - nobody's ladder rung,
+    /// and asked before any handle existed - does not dilute the rate.
     ///
-    /// note: and a grant is spent when the next session starts, which [`Step::Briefed`] marks. An
+    /// note: a grant is spent when the next session starts, which [`Step::Briefed`] marks. An
     /// experiment that runs the same ladder over several dossiers, or the same dossier several
-    /// times, raises a fresh subject each time and hands it fresh handles partway up - so a
+    /// times, raises a fresh subject each time and hands it fresh handles partway up, so a
     /// carried-over grant would count every rung *below* the handles, in every session after the
-    /// first, as a question the subject declined to instrument. On the default ladder that is
-    /// over a quarter of the questions, and it deflates the rate the preregistered gate is read
-    /// off.
+    /// first, as a question the subject declined to instrument. That deflates the rate the
+    /// preregistered gate is read off.
     pub fn over(steps: &[Step]) -> Self {
         let mut reached = Self::default();
         let mut granted = false;

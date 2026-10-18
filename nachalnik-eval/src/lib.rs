@@ -95,13 +95,13 @@
 //!
 //! # where the questions live
 //!
-//! There **is** prompt text in this crate, which is the one place it departs from the runtime's
-//! rules, and it is deliberate: the questions are the instrument. They are all in [`suite`],
-//! kept apart from the machinery in the modules above it, so that replacing them replaces the
-//! benchmark and not the harness. Everything in [`suite`] is written in terms of the public
-//! surface here and can be written again without touching it. The machinery says two things of
-//! its own: [`PREAMBLE`], which every copy is told before its question, and
-//! [`Reading::instructions`], the line that tells a subject what shape to answer in.
+//! There **is** prompt text in this crate, unlike the runtime, because the questions are the
+//! instrument. They are all in [`suite`], kept apart from the machinery in the modules above
+//! it, so that replacing them replaces the benchmark and not the harness. Everything in
+//! [`suite`] is written in terms of the public surface here and can be written again without
+//! touching it. The machinery says two things of its own: [`PREAMBLE`], which every copy is told
+//! before its question, and [`Reading::instructions`], the line that tells a subject what shape
+//! to answer in.
 //!
 //! This crate is the instrument, not a study. A study run with it keeps its material, results
 //! and write-up in a repository of its own, as

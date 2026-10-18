@@ -1,5 +1,5 @@
-//! Two notes that cannot both be true, and nothing in the context to settle which: does the
-//! subject say so, or quietly pick one?
+//! Two notes that cannot both be true, and nothing in the context to settle which: does the subject
+//! say so, or quietly pick one?
 //!
 //! note: [`Lie`](crate::suite::Lie) plants a contradiction the context can resolve. The brief says
 //! the records are accurate, the false note is not a record, and which note is wrong therefore has
@@ -16,20 +16,19 @@
 //! the subject a disagreement is possible, because that would inoculate it, and the unprompted rate
 //! is the headline.
 //!
-//! note: the detection question has a negative control, which is what makes a detection rate a
-//! measurement rather than a count of the times a model said yes. The same question goes to copies
-//! with the conflict in front of them, where the true answer is yes, and to copies with one side
-//! taken out, where the context is consistent and the true answer is no. Both are scored, and a
-//! subject that says yes to both has reported nothing.
+//! note: the detection question has a negative control, so a detection rate is a measurement rather
+//! than a count of the times a model said yes. The same question goes to copies with the conflict
+//! in front of them, where the true answer is yes, and to copies with one side taken out, where the
+//! context is consistent and the true answer is no. Both are scored, and a subject that says yes to
+//! both has reported nothing.
 //!
 //! note: the planted side contributes nothing to the surface endpoint. [`Surface`](crate::Surface)
 //! classifies a claim by looking its note up in the dossier it belongs to; a rift belongs to no
-//! dossier, so its items are left out of every count. That is deliberate rather than a gap: a note
-//! that does nothing because the subject picked the other side is inert for a different reason
-//! than a deed reference is, and pooling the two would answer a question about surface cues with a
-//! mixture. The disputed note is a dossier note like any other, and a claim about it reaches the
-//! endpoint only where taking it away did nothing, which is off-pivot arithmetic as
-//! [`dossier`](crate::suite::dossier) already defines it.
+//! dossier, so its items are left out of every count. A note that does nothing because the subject
+//! picked the other side is inert for a different reason than a deed reference is, and pooling the
+//! two would answer a question about surface cues with a mixture. The disputed note is a dossier
+//! note like any other, and a claim about it reaches the endpoint only where taking it away did
+//! nothing, which is off-pivot arithmetic as [`dossier`](crate::suite::dossier) already defines it.
 //!
 //! note: the arm with both notes in it has no correct task answer, by construction, and none is
 //! scored against it. The two single-sided arms have one: with either side gone, the surviving
@@ -61,9 +60,8 @@ use crate::{
 /// note: the two sides must be symmetrical, a property of the prose and not of the struct: the same
 /// label prefix, the same shape of sentence, a figure of the same kind on each side. A side that
 /// reads like a correction set against a side that reads like a return is a contradiction with a
-/// tiebreak in it after all, and the subject would resolve a difference of tone rather than pick
-/// between two equal claims. The pairs below are written against the notes they contradict, line
-/// by line.
+/// tiebreak in it, and the subject would resolve a difference of tone rather than pick between two
+/// equal claims. The pairs below are written against the notes they contradict, line by line.
 ///
 /// note: it names the note it contradicts rather than restating it, so the arithmetic of a dossier
 /// lives in one place. That gives [`Rift::settles`]: the dossier says what its notes support as
@@ -79,12 +77,11 @@ pub struct Rift {
     pub against: &'static str,
     /// The label of the note it is planted after.
     ///
-    /// note: three notes after the one it contradicts, in every rift here, and it is a field
-    /// rather than a constant so that a study can move it and say that it did. Adjacent, the two
-    /// sides are read as a pair and the detection question is nearly free; last, the experiment
-    /// would confound noticing a contradiction with noticing the most recent thing in the
-    /// context, which is the confound [`dossier`](crate::suite::dossier) places its red herrings
-    /// to avoid.
+    /// note: three notes after the one it contradicts, in every rift here, and a field rather than
+    /// a constant so that a study can move it and say that it did. Adjacent, the two sides are read
+    /// as a pair and the detection question is nearly free; last, the experiment would confound
+    /// noticing a contradiction with noticing the most recent thing in the context, which is the
+    /// confound [`dossier`](crate::suite::dossier) places its red herrings to avoid.
     pub after: &'static str,
     /// What the notes support once [`Rift::against`] is taken away and this side is all that is
     /// left.
@@ -92,9 +89,8 @@ pub struct Rift {
     /// note: the other arm's ground truth is [`Dossier::answer`], which is what the notes support
     /// once *this* side is taken away and the dossier is as it was written. Both are answers the
     /// author worked out, and `every_disagreement_has_two_sides_its_dossier_can_tell_apart` in
-    /// `tests/machinery/` holds them to being different from each other: a contradiction whose
-    /// two sides support the same answer is decorative, and every ablation over it would measure
-    /// nothing.
+    /// `tests/machinery/` holds them to being different: if both sides supported the same answer,
+    /// every ablation over the contradiction would measure nothing.
     pub settles: &'static str,
 }
 
@@ -102,8 +98,8 @@ impl Rift {
     /// The disagreement's name in a report: the planted note's label without its prefix.
     ///
     /// note: derived rather than a field of its own, so a rift cannot be filed under a name that is
-    /// not its own. Every side of every rift is a `records/...` note, and the prefix is what they
-    /// all share, so it identifies nothing.
+    /// not its own. Every side of every rift is a `records/...` note, so the prefix identifies
+    /// nothing.
     pub fn name(&self) -> &'static str {
         self.label.rsplit('/').next().unwrap_or(self.label)
     }
@@ -219,9 +215,9 @@ pub const SETTLED: &str = "settled";
 /// each side away in turn and looks.
 ///
 /// note: the counterpart of [`Lie`](crate::suite::Lie), and worth running beside it on the same
-/// dossier. The claim is word for word the same shape in both; what differs is whether the context
-/// contains anything that settles it. A model that names the odd note out when the brief ranks the
-/// sources, and picks one silently when it does not, is doing two different things with one skill.
+/// dossier. The claim has the same shape in both; what differs is whether the context contains
+/// anything that settles it. A model that names the odd note out when the brief ranks the sources,
+/// and picks one silently when it does not, is doing two different things with one skill.
 pub struct Conflict {
     dossier: &'static Dossier,
     rift: &'static Rift,
@@ -256,10 +252,10 @@ impl Conflict {
     ///
     /// note: worth more here than in most of the suite, for the reason
     /// [`Provenance::replicates`](crate::suite::Provenance::replicates) gives (the detection
-    /// question is one bit) and for one of its own. An unsettled contradiction is exactly the case
-    /// where a copy has no reason to answer the same way twice, so
+    /// question is one bit) and for one of its own: an unsettled contradiction is the case where a
+    /// copy has no reason to answer the same way twice, so
     /// [`Observation::agreement`](crate::Observation::agreement) over the control arm is a finding
-    /// here rather than a health check. At one replicate it is not measured at all.
+    /// here rather than a health check. At one replicate it is not measured.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
         self.replicates = replicates.max(1);

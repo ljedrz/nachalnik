@@ -25,22 +25,22 @@ const BATTERY: usize = 5;
 /// Asks a subject to predict ablations on its own context and on a context it has only been shown,
 /// and compares how well it does at each.
 ///
-/// note: Every other experiment here measures how well a model predicts the behaviour of a context
-/// it is in. None of them can tell that apart from ordinary reasoning about notes, because a model
-/// good at working out what a dossier determines will look good at working out what its own dossier
+/// note: every other experiment here measures how well a model predicts the behaviour of a context
+/// it is in, and none can tell that apart from ordinary reasoning about notes: a model good at
+/// working out what a dossier determines will look good at working out what its own dossier
 /// determines. This one compares the two side by side: same model, same session, matched material,
 /// interleaved batteries; only whose context is predicted differs. If the accuracies match, being
-/// in the context conferred nothing.
+/// in the context added nothing.
 ///
-/// note: The foreign session is real, not described. A second [`Subject`] is built on the same
+/// note: the foreign session is real, not described. A second [`Subject`] is built on the same
 /// provider, given the other dossier as its own notes, and asked the question; the copies that
 /// settle the foreign battery come from its context. Predicting a session that was never run would
 /// be predicting a story about a session.
 ///
-/// note: The foreign context arrives as quoted text while the subject's own arrives as its context;
-/// that cannot be held constant. It is both the difference under test and a difference in
-/// presentation, so a study runs [`Privilege::swapped`] and reports both. A study's methods
-/// document is where that difference is argued.
+/// note: the foreign context arrives as quoted text while the subject's own arrives as its context,
+/// and that cannot be held constant. It is both the difference under test and a difference in
+/// presentation, so a study runs [`Privilege::swapped`] and reports both, and argues the difference
+/// in its methods document.
 pub struct Privilege {
     own: &'static Dossier,
     foreign: &'static Dossier,
@@ -67,7 +67,7 @@ impl Privilege {
 
     /// The same, with the dossiers the other way round.
     ///
-    /// note: The counterbalance. The dossiers share one design but are different numbers, so a
+    /// note: the counterbalance. The dossiers share one design but are different numbers, so a
     /// difference between the arms of a single run is confounded with a difference between the
     /// materials. Running both orders and pooling separates them.
     #[must_use]

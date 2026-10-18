@@ -24,15 +24,15 @@ const BATTERY: usize = 6;
 /// Runs a battery of counterfactual claims, measures each one, tells the subject what happened, and
 /// runs a second battery of the same shape over different material.
 ///
-/// note: The two batteries use two dossiers, not the same one twice. Asking again about notes whose
+/// note: the two batteries use two dossiers, not the same one twice. Asking again about notes whose
 /// answers were just given measures memory; asking about different notes of the same kind measures
 /// whether anything transferred. The dossiers share a design for this comparison - see [`ORCHARD`].
 ///
-/// note: Feedback is outcomes only: which way each claim went, what the copies did, and how many it
+/// note: feedback is outcomes only: which way each claim went, what the copies did, and how many it
 /// got right. No advice, no explanation of what it should have noticed, no hint that its confidence
 /// was the part that was off. It measures whether a subject can improve its own model of itself
-/// from results, which is a weaker and more interesting claim than whether it can follow
-/// instructions about how to answer.
+/// from results, a weaker and more interesting claim than whether it can follow instructions about
+/// how to answer.
 pub struct Feedback {
     first: &'static Dossier,
     second: &'static Dossier,

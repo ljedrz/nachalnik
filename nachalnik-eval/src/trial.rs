@@ -16,10 +16,10 @@ use crate::{
 
 /// Everything one experiment did, in the order it did it.
 ///
-/// note: the same arrangement the runtime uses for a session: the record is written as things
-/// happen and every figure is computed from it afterwards. Nothing is accumulated on the side, so a
-/// reported score cannot disagree with the steps it came from, and a run that fell over halfway
-/// still has everything established up to that point.
+/// note: as with a runtime session, the record is written as things happen and every figure is
+/// computed from it afterwards. Nothing is accumulated on the side, so a reported score cannot
+/// disagree with the steps it came from, and a run that failed halfway keeps everything established
+/// up to that point.
 pub struct Trial {
     experiment: String,
     instrument: Instrument,
@@ -271,9 +271,9 @@ pub enum Step {
     /// The subject's context was set up.
     ///
     /// note: one per session, including the siblings an experiment raises for itself, because it
-    /// marks a session boundary in the record. [`Reached`](crate::Reached) reads it that way: a
-    /// subject handed handles in the last session is not holding them in this one, and a grant that
-    /// outlived its session would count unhandled questions against the instrumentation rate.
+    /// marks a session boundary in the record. [`Reached`](crate::Reached) reads it that way:
+    /// handles granted in the last session are not held in this one, and a grant that outlived its
+    /// session would count unhandled questions against the instrumentation rate.
     Briefed {
         /// The items that were planted, and what they were called.
         items: Vec<Labelled>,
@@ -284,10 +284,10 @@ pub enum Step {
         question: String,
         /// The shape the answer was asked for in.
         ///
-        /// note: with the question, this is the whole of what was sent (`Probe::asked` is a
-        /// function of the two). It also lets a saved run be re-read: the answers are verbatim, so
-        /// a reading that was too strict or too lax can be replaced and the run scored again
-        /// without paying twice. That is [`Outcome::reread`](crate::Outcome::reread).
+        /// note: with the question, this is all that was sent (`Probe::asked` is a function of the
+        /// two). It also lets a saved run be re-read: the answers are verbatim, so a reading that
+        /// was too strict or too lax can be replaced and the run scored again without paying twice,
+        /// with [`Outcome::reread`](crate::Outcome::reread).
         shape: Reading,
         /// What it said, verbatim.
         ///
@@ -305,10 +305,10 @@ pub enum Step {
         spend: Spend,
         /// Which stage of the experiment the question belonged to, where it belonged to one.
         ///
-        /// note: What makes [`Reached`](crate::Reached) computable from the record rather than
-        /// tallied on the side. A run contains questions nobody could have instrumented - a
-        /// solve, a second session's solve - and counting those in the denominator would report a
-        /// model as ignoring handles it did not have.
+        /// note: this makes [`Reached`](crate::Reached) computable from the record rather than
+        /// tallied on the side. A run contains questions nobody could have instrumented (a solve, a
+        /// second session's solve), and counting those in the denominator would report a model as
+        /// ignoring handles it did not have.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stage: Option<String>,
     },
@@ -345,9 +345,8 @@ pub enum Step {
     /// The subject was given handles onto its own context.
     ///
     /// note: without this, the record cannot say which questions the subject could have
-    /// instrumented, so it cannot distinguish a model that was offered a tool and ignored it from
-    /// one never offered anything. That distinction is the denominator of
-    /// [`Reached::rate`](crate::Reached::rate).
+    /// instrumented, so it cannot tell a model that ignored a tool from one never offered one. That
+    /// distinction is the denominator of [`Reached::rate`](crate::Reached::rate).
     Granted {
         /// What it was given.
         tools: Vec<String>,
@@ -357,13 +356,13 @@ pub enum Step {
     /// The stages that put the same claims to the same respondent again, in the order they are
     /// climbed.
     ///
-    /// note: it is what [`Outcome::paired`](crate::Outcome::paired) pairs, and all it pairs. A
-    /// stage pair is a paired contrast only when one subject answers one claim twice. `conflict`'s
-    /// three stages are the subject's own unprompted claim and two sets of copies, one with the
-    /// opposite truth, so they are not a ladder. Pairing every stage an experiment had gave each
-    /// pair a McNemar test it had no business having. It is declared in the record rather than on
-    /// [`Experiment`](crate::Experiment), so whoever runs the experiment and whoever re-reads what
-    /// it saved pairs what was declared.
+    /// note: [`Outcome::paired`](crate::Outcome::paired) pairs these stages and no others. A stage
+    /// pair is a paired contrast only when one subject answers one claim twice. `conflict`'s three
+    /// stages are the subject's own unprompted claim and two sets of copies, one with the opposite
+    /// truth, so they are not a ladder; pairing every stage an experiment had once gave such pairs
+    /// a McNemar test that did not apply. It is declared in the record rather than on
+    /// [`Experiment`](crate::Experiment), so the run and any later re-read of what it saved pair
+    /// the same declared stages.
     Ladder {
         /// The stages, earliest first.
         stages: Vec<String>,
@@ -382,11 +381,10 @@ pub enum Step {
 
 /// A precondition an experiment tested rather than assumed.
 ///
-/// note: The manipulation check, which an experiment on introspection needs more than most. A
-/// subject that cannot do the underlying task at all produces ablations that move nothing, and a
-/// battery of "no" claims against a battery of outcomes that were all "no" scores beautifully
-/// while measuring nothing whatever. Measured, not assumed: a dossier's causal structure is a
-/// property of the dossier *and the subject*, and it has to be established for each one.
+/// note: this is the manipulation check. A subject that cannot do the underlying task produces
+/// ablations that move nothing, and a battery of "no" claims against outcomes that were all "no"
+/// scores well while measuring nothing. A dossier's causal structure is a property of the dossier
+/// *and the subject*, so it has to be established for each pair.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Check {
@@ -400,10 +398,9 @@ pub struct Check {
 
 /// One thing a subject did with the handles it was given.
 ///
-/// note: it records what a model did, not what it said, and is why the handles in
+/// note: this records what a model did, not what it said, which is why the handles in
 /// [`suite::handles`](crate::suite::handles) keep a journal. Whether a model reaches for evidence
-/// when evidence is available is the measurement; scoring only its final answer would miss it
-/// entirely.
+/// when it is available is the measurement, and scoring only the final answer would miss it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "act", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -432,10 +429,10 @@ pub enum Act {
         spend: Spend,
         /// Why the copies could not be run, where they could not.
         ///
-        /// note: journaled all the same. The subject reached for the handle and a test came off
-        /// its budget, and a record without it would show a question the subject declined to
-        /// instrument; it counts as a test in [`Reached`](crate::Reached), and shows nothing
-        /// about any item.
+        /// note: journaled all the same: the subject reached for the handle and a test came off its
+        /// budget, and a record without it would show a question the subject declined to
+        /// instrument. It counts as a test in [`Reached`](crate::Reached) and shows nothing about
+        /// any item.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failed: Option<String>,
     },
@@ -489,45 +486,42 @@ pub enum Kind {
     Attribution,
     /// Where something is in its own context.
     ///
-    /// note: it is its own family because it comes apart from the rest. The claims "my answer does
-    /// not depend on that note" and "that note is item 5" are about the same item, and a model can
-    /// be right about the first and wrong about the second. That is visible only if the two are not
-    /// averaged together.
+    /// note: a family of its own because it comes apart from the rest: "my answer does not depend
+    /// on that note" and "that note is item 5" are about the same item, and a model can be right
+    /// about the first and wrong about the second. Averaging the two would hide that.
     Location,
     /// What a copy of itself would say.
     Recursive,
     /// Whether what it is reading is the whole of what happened.
     ///
-    /// note: Its own family for the same reason as [`Kind::Location`]: it comes apart from the
-    /// rest. Every other claim is answerable from the record the subject holds; the question is
-    /// whether the model reads it well. A provenance claim is about whether the record is whole,
-    /// and a context that has had something taken out of it supports the wrong answer. Averaged
-    /// with the others, it would look like the model got worse at reasoning about notes, when the
-    /// notes changed.
+    /// note: a family of its own for the same reason as [`Kind::Location`]. Every other claim is
+    /// answerable from the record the subject holds, and the question is whether the model reads it
+    /// well. A provenance claim is about whether the record is whole, and a context with something
+    /// taken out of it supports the wrong answer. Averaged with the others, it would look like the
+    /// model got worse at reasoning about notes, when the notes changed.
     Provenance,
     /// Whether the things it is carrying agree with each other.
     ///
-    /// note: Its own family, not [`Kind::Provenance`]. Provenance is about whether the record is
-    /// whole: something was taken out, and what is left supports the wrong answer. This is about
-    /// whether it hangs together: nothing was taken out, and what is there supports two answers at
-    /// once. A model can be good at one and hopeless at the other: the first is noticing an
-    /// absence, the second a collision. Averaged into one figure, they would report a model that
-    /// got worse at reading notes.
+    /// note: not [`Kind::Provenance`]. Provenance is about whether the record is whole: something
+    /// was taken out, and what is left supports the wrong answer. This is about whether it hangs
+    /// together: nothing was taken out, and what is there supports two answers at once. The first
+    /// is noticing an absence, the second a collision, and a model can be good at one and poor at
+    /// the other. Averaged into one figure, they would report a model that got worse at reading
+    /// notes.
     Consistency,
     /// Not a claim about itself: the answer to the underlying question, scored against what the
     /// material supports.
     ///
-    /// note: Here because repairing a context should give a better answer, not a better report
-    /// about one. An experiment that improved a subject's self-model but left its output wrong
-    /// would show less than it seems. This family says so.
+    /// note: repairing a context should give a better answer, not only a better report about one.
+    /// An experiment that improved a subject's self-model but left its output wrong would show less
+    /// than it seems, and this family shows that.
     Task,
     /// The same claim, about a session that is not its own.
     ///
-    /// note: The control that decides whether any of the rest is metacognition. Everything else
+    /// note: the control that decides whether any of the rest is metacognition. Everything else
     /// measures how well a model predicts the behaviour of a context it is in; this measures how
-    /// well it predicts the behaviour of a context it has merely been shown. If the two are the
-    /// same, being in the context conferred nothing, and what looked like self-knowledge was
-    /// ordinary reasoning about some notes.
+    /// well it predicts one it has only been shown. If the two are the same, being in the context
+    /// added nothing, and what looked like self-knowledge was ordinary reasoning about some notes.
     Foreign,
 }
 
@@ -555,10 +549,10 @@ impl std::fmt::Display for Kind {
 
 /// One claim, beside what actually happened.
 ///
-/// note: This is the unit of measurement in this crate, and every figure in [`Scores`] is
-/// computed over a set of them. It carries both sides of the comparison rather than a verdict, so
-/// that a report can be re-scored - with different bins, or with the unreadable answers counted
-/// another way - without the run having to be paid for again.
+/// note: the unit of measurement in this crate; every figure in [`Scores`] is computed over a set
+/// of them. It carries both sides of the comparison rather than a verdict, so a report can be
+/// re-scored (with different bins, or with unreadable answers counted another way) without paying
+/// for the run again.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Resolution {
@@ -588,51 +582,48 @@ pub struct Resolution {
     pub informed: bool,
     /// The stage of the experiment it was made at, where an experiment has stages.
     ///
-    /// note: `informed` answers a two-way split and nothing more. An experiment that asks the same
-    /// thing before a subject has evidence, after it has evidence, and again after it has acted on
-    /// the evidence needs three, and the interesting figure is the difference between them rather
-    /// than any one of them.
+    /// note: `informed` answers a two-way split. An experiment that asks the same thing before a
+    /// subject has evidence, after it has evidence, and after it has acted on the evidence needs
+    /// three, and the interesting figure is the difference between them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
     /// The material the claim was made about: the dossier, which is the cluster the claim belongs
     /// to.
     ///
-    /// note: Claims drawn from one dossier are not independent observations: they share a question,
-    /// a brief and a causal structure, and a subject that misreads the arithmetic misreads all of
-    /// them together. An interval computed as though they were independent is too narrow, sometimes
-    /// by a factor of three, and this field is what [`Scores::clustered`](crate::Scores::clustered)
-    /// needs in order to say so.
+    /// note: claims drawn from one dossier are not independent: they share a question, a brief and
+    /// a causal structure, and a subject that misreads the arithmetic misreads all of them. An
+    /// interval computed as though they were independent is too narrow, and
+    /// [`Scores::clustered`](crate::Scores::clustered) needs this field to say so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
     /// The name of the item the claim was about.
     ///
-    /// note: The pairing key, and the reason [`Resolution::item`] cannot be one. A paired test asks
+    /// note: the pairing key, and the reason [`Resolution::item`] cannot be one. A paired test asks
     /// whether this claim about this note improved between two stages, and one of the stages runs
-    /// in a second session where the same note is a different [`ContextId`]. The label is the same
-    /// in both, because the dossier gave it.
+    /// in a second session where the same note has a different [`ContextId`]. The label, given by
+    /// the dossier, is the same in both.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     /// The independent run over that material the claim came from, where the material was run more
     /// than once.
     ///
-    /// note: The other half of the pairing key, and a separate field from [`Resolution::material`]
-    /// on purpose. An experiment with one answer per dossier has to run several times to have
-    /// anything to pair, and the second run's claims are about the same dossier and the same note
-    /// as the first's, so without this they would pair against each other and all but one would be
-    /// dropped. It is deliberately not part of the cluster: three sessions over one dossier are
-    /// three observations sharing a question, a brief and a planted falsehood, so the cluster is
-    /// still the dossier, and counting them as three would give an interval the design does not
-    /// support.
+    /// note: the other half of the pairing key, kept apart from [`Resolution::material`]. An
+    /// experiment with one answer per dossier has to run several times to have anything to pair,
+    /// and the second run's claims are about the same dossier and note as the first's; without this
+    /// they would pair against each other and all but one would be dropped. It is not part of the
+    /// cluster: three sessions over one dossier share a question, a brief and a planted falsehood,
+    /// so the cluster is still the dossier, and counting them as three would give an interval the
+    /// design does not support.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<usize>,
     /// Where in the record the claim was read: the index of that [`Step::Asked`] among the
     /// outcome's steps.
     ///
-    /// note: what lets [`Outcome::reread`](crate::Outcome::reread) carry a new reading of an answer
-    /// into the claim made of it. Left empty where the claim is worked out from an answer - a label
-    /// mapped to the note it names, or several answers put together - because a new reading of the
-    /// words is not a new reading of that, and a claim linked to the answer it came from would be
-    /// replaced by the answer.
+    /// note: lets [`Outcome::reread`](crate::Outcome::reread) carry a new reading of an answer into
+    /// the claim made of it. Left empty where the claim is worked out from an answer (a label
+    /// mapped to the note it names, or several answers put together), because a new reading of the
+    /// words is not a new reading of that, and a claim linked to its answer would be replaced by
+    /// the answer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asked: Option<usize>,
     /// What was compared with what, in one line.

@@ -29,15 +29,15 @@ const TESTS: usize = 4;
 /// note: three runs. Unlike [`Instrumented`](crate::suite::Instrumented), this experiment cannot
 /// have one. A rung is one answer per dossier, so a five-dossier run gives each rung five
 /// observations and each paired contrast five items. Five items with no regressions is `p = 0.031`
-/// at best, which is the whole budget spent to arrive at the edge of significance. Three runs make
-/// it fifteen.
+/// at best, the whole budget spent to arrive at the edge of significance. Three runs make it
+/// fifteen.
 ///
 /// note: the [`AGAIN`] control is why three runs cannot be assumed away. `Instrumented` runs one
 /// copy per condition because measured answer instability across its replicates is zero; on this
 /// ladder it is not. Even at temperature zero, a subject asked the same question twice in the same
 /// session can answer it two different ways, and the same rung can answer differently in two
 /// identical runs. A single ladder cannot tell a rung's treatment from the subject changing its
-/// mind, and the difference the experiment is about is exactly that size.
+/// mind, and the difference the experiment is about is that size.
 pub const LADDERS: usize = 3;
 
 /// The stage at which the subject had a false note and no way to do anything about it.
@@ -55,15 +55,15 @@ pub const TOLD_SO: &str = "told-so";
 /// The stage after it was asked to put it right.
 pub const REPAIRED: &str = "repaired";
 
-/// Plants a note that contradicts the records and asks the same question five times, adding
-/// exactly one thing between each pair.
+/// Plants a note that contradicts the records and asks the same question five times, adding exactly
+/// one thing between each pair.
 ///
-/// note: five rungs rather than three, because the disclosure *is information*. Being told that
-/// one of your notes contradicts the records tells you a note is false, which is most of the work.
-/// A ladder that only asked the question, disclosed that a note was wrong, asked which, and asked
-/// the question again could not separate "having named it" from "having been told one exists",
-/// or from being asked the same question twice - and an answer that came right before any repair
-/// would read as naming an error undoing it.
+/// note: five rungs rather than three, because the disclosure *is information*. Being told that one
+/// of your notes contradicts the records tells you a note is false, which is most of the work. A
+/// ladder that only asked the question, disclosed that a note was wrong, asked which, and asked the
+/// question again could not separate "having named it" from "having been told one exists", or from
+/// being asked the same question twice - and an answer that came right before any repair would read
+/// as naming an error undoing it.
 ///
 /// note: so each rung adds one thing and nothing else.
 ///
@@ -75,29 +75,29 @@ pub const REPAIRED: &str = "repaired";
 /// | [`TOLD_SO`] | [`REPAIRED`] | being asked to fix it |
 ///
 /// [`AGAIN`] is the control that makes the rest readable: an improvement there is an improvement
-/// from being asked twice, and belongs to no hypothesis. [`UNPROMPTED`] is the strong claim - a
+/// from being asked twice, and belongs to no hypothesis. [`UNPROMPTED`] is the strong claim: a
 /// subject that finds the bad note *without being told there is one* has done the whole thing by
-/// itself, which is a different and much better result than repairing on request.
+/// itself, a much better result than repairing on request.
 ///
-/// note: the whole ladder is run [`LADDERS`] times over each dossier, in independent sessions,
-/// and a claim is paired against the claim from the *same* run - see
+/// note: the whole ladder is run [`LADDERS`] times over each dossier, in independent sessions, and
+/// a claim is paired against the claim from the *same* run - see
 /// [`Resolution::session`](crate::Resolution::session). One run per dossier would give each rung
-/// as many observations as there are dossiers, which is five, and would leave a rung that moved
-/// indistinguishable from a subject that changed its mind between two askings of the same
-/// question - which the [`AGAIN`] control shows a subject does.
+/// five observations, one per dossier, and would leave a rung that moved indistinguishable from a
+/// subject that changed its mind between two askings of the same question, which the [`AGAIN`]
+/// control shows a subject does.
 ///
 /// note: what is scored is [`Kind::Task`]: whether the answer is the one the records support. A
 /// repair that improved the subject's self-model and left its output as wrong as it was would be
-/// a much less interesting result than it looks, and this is the family that would say so.
+/// much less interesting than it looks, and this family would show that.
 ///
-/// note: the falsehood is planted **without** [`Plant::caveat`]. The caveat says notes of that
-/// kind are not guaranteed to be right and the records are - fair play in
-/// [`Lie`](crate::suite::Lie), where the task is to *name* the false note, and fatal here, where
-/// the task is to be *fooled* by it. A subject that reads the caveat discounts the note, answers
-/// the question right while carrying it, and arrives at the repair rung with nothing left to
-/// repair. Without the caveat the contradiction is still perfectly findable, because the planted
-/// note contradicts the record it denies in as many words - the caveat is not what makes the
-/// naming task solvable, only what makes the falsehood harmless.
+/// note: the falsehood is planted **without** [`Plant::caveat`]. The caveat says notes of that kind
+/// are not guaranteed to be right and the records are - fair in [`Lie`](crate::suite::Lie), where
+/// the task is to *name* the false note, and fatal here, where the subject has to be *fooled* by it
+/// first. A subject that reads the caveat discounts the note, answers the question right while
+/// carrying it, and arrives at the repair rung with nothing left to repair. Without the caveat the
+/// contradiction is still findable, because the planted note contradicts the record it denies in as
+/// many words: the caveat is not what makes the naming task solvable, only what makes the falsehood
+/// harmless.
 pub struct Repair {
     plants: Vec<(&'static Dossier, &'static Plant)>,
     tests: usize,
@@ -151,7 +151,7 @@ impl Repair {
     /// How many times the whole ladder runs over each dossier, in independent sessions.
     ///
     /// note: `replicates(1)` is a probe only. It shows whether the ladder runs and whether the
-    /// model reaches for the handles. It cannot answer any hypothesis: at one run per dossier the
+    /// model reaches for the handles, and cannot answer any hypothesis: at one run per dossier the
     /// [`AGAIN`] control has no room to show anything, and a moved rung cannot be told from a
     /// subject that changed its mind.
     #[must_use]

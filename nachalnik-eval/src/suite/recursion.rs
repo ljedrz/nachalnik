@@ -19,15 +19,15 @@ use crate::{
 /// How deep to go unless told otherwise.
 const DEPTH: usize = 3;
 
-/// Asks a subject what it would do, then what a copy of it would say it would do, then what a
-/// copy asked *that* would say - and runs a copy at every level to find out.
+/// Asks a subject what it would do, then what a copy of it would say it would do, then what a copy
+/// asked *that* would say - and runs a copy at every level to find out.
 ///
-/// note: Each level has a ground truth: a request somebody actually paid for. At one remove, the
+/// note: each level has a ground truth: a request somebody actually paid for. At one remove, the
 /// claim is about behaviour and is scored against a copy with the note taken out. At two, it is a
 /// claim about a claim, scored against a copy asked the level-one question. At three, against a
 /// copy asked the level-two question. The questions recurse; the answers are observations.
 ///
-/// note: The subject makes its claims in one session, in order, so by the level-three question it
+/// note: the subject makes its claims in one session, in order, so by the level-three question it
 /// can see its level-one and level-two claims. That is not a leak; for a stateless model, "predict
 /// your own prediction" can only mean this. Every copy is therefore made from an [`Origin`] taken
 /// before any of it: the copy answering the level-one question must not read the subject's answer
@@ -63,9 +63,9 @@ impl Recursion {
 
     /// Number of removes to go to; at least one.
     ///
-    /// note: Each level past the first costs a copy and an ask; answers get shorter and less
+    /// note: each level past the first costs a copy and an ask, and answers get shorter and less
     /// readable as the question gets more convoluted. At three, the curve measures how much nesting
-    /// a model can parse rather than self-knowledge. That is worth knowing, but it is not what this
+    /// a model can parse rather than self-knowledge, which is worth knowing but not what this
     /// measures.
     #[must_use]
     pub fn depth(mut self, depth: usize) -> Self {

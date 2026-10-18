@@ -42,10 +42,9 @@ const WRAPPING: [char; 6] = ['*', '`', '_', ' ', '"', '\''];
 
 /// A question and how its answer is read.
 ///
-/// note: the reading is part of the question rather than applied to it afterwards:
-/// [`Probe::asked`] appends the answer shape to the question, so what is parsed is what was asked
-/// for. A benchmark that asked open questions and then guessed at the answers would measure its
-/// own parser.
+/// note: the reading is part of the question rather than applied to it afterwards: [`Probe::asked`]
+/// appends the answer shape to the question, so what is parsed is what was asked for. A benchmark
+/// that asked open questions and then guessed at the answers would measure its own parser.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Probe {
     /// The question, in whatever words the experiment uses.
@@ -191,7 +190,7 @@ pub enum Answer {
     Number(i64),
     /// A yes or no, and how sure the subject said it was.
     ///
-    /// note: Confidence is [`Option`] because a subject can answer the question without it. Filling
+    /// note: confidence is [`Option`] because a subject can answer the question without it. Filling
     /// it in with a half would invent the number the calibration figures are made of, so
     /// calibration covers only claims that carry one; [`Scores::scored`](crate::Scores) counts
     /// them.
@@ -205,7 +204,7 @@ pub enum Answer {
     Item(ContextId),
     /// No answer arrived: the turn was cut off before the subject said anything.
     ///
-    /// note: Kept apart from [`Unreadable`](Answer::Unreadable), because conflating the two scores
+    /// note: kept apart from [`Unreadable`](Answer::Unreadable), because conflating the two scores
     /// a truncated request as a wrong claim. A reasoning model can spend its whole output ceiling
     /// thinking and return `finish_reason: length` with an empty message. Nothing was asserted, so
     /// there is nothing to be right or wrong about: a claim that arrives this way is
@@ -215,7 +214,7 @@ pub enum Answer {
     Cut,
     /// The reading recognised nothing.
     ///
-    /// note: Not an error or a wrong answer. The scores count it separately: an unreadable claim is
+    /// note: not an error or a wrong answer. The scores count it separately: an unreadable claim is
     /// scored as incorrect because the subject was asked to commit and did not; an unreadable
     /// outcome is unmeasured because there is nothing to have been right or wrong about. What was
     /// said is kept on the record either way.
@@ -225,7 +224,7 @@ pub enum Answer {
 impl Answer {
     /// The comparable value: two answers with the same key are the same answer.
     ///
-    /// note: Every comparison in this crate uses this key rather than `==`. The difference is
+    /// note: every comparison in this crate uses this key rather than `==`, because of
     /// [`Answer::Claim`]: two claims that say yes with different confidences are the same answer,
     /// differently held. Scoring them as two answers would make a subject that wavered look like
     /// one that changed its mind.
@@ -278,8 +277,8 @@ impl Answer {
 
 /// The text after the last line tagged `tag`, with the decoration taken off.
 ///
-/// note: the last one. A model asked to end with one line often restates it, and the last statement
-/// is the one it committed to. A reader that took the first would score the working out.
+/// note: the last one, because a model asked to end with one line often restates it, and the last
+/// statement is the one it committed to. A reader that took the first would score the working out.
 fn tagged<'a>(said: &'a str, tag: &str) -> Option<&'a str> {
     said.lines().rev().find_map(|line| {
         let line = line.trim().trim_start_matches(LEADING);
@@ -297,7 +296,7 @@ fn tagged<'a>(said: &'a str, tag: &str) -> Option<&'a str> {
 ///
 /// note: several is unreadable rather than "the first one". `not omsk, kirov` and
 /// `either omsk or kirov` are both ambiguous, and resolving the ambiguity by position would guess
-/// on the subject's behalf in the cases where what it thinks matters most.
+/// on the subject's behalf where what it thinks matters most.
 fn choose(text: &str, among: &[String]) -> Option<String> {
     let lower = text.to_lowercase();
     if let Some(exact) = among
@@ -372,10 +371,10 @@ fn boolean(text: &str) -> Option<bool> {
 /// The confidence in `text`, as a fraction.
 ///
 /// note: `80`, `80%` and `0.8` all mean the same thing, and models asked for a number out of a
-/// hundred produce all three. The rule is: anything above one is a percentage, anything at or
-/// below it is already a fraction - so `1` is certainty rather than one percent, which is what a
-/// model that wrote it after being asked for `0-100` meant. Out-of-range figures are clamped
-/// rather than dropped, because `120` is a badly written certainty and not a missing answer.
+/// hundred produce all three. Anything above one is a percentage, anything at or below it is
+/// already a fraction, so `1` is certainty rather than one percent, which is what a model that
+/// wrote it after being asked for `0-100` meant. Out-of-range figures are clamped rather than
+/// dropped, because `120` is a badly written certainty and not a missing answer.
 fn confidence(text: &str) -> Option<f64> {
     let cleaned: String = text
         .chars()

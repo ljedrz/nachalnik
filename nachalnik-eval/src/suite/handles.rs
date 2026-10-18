@@ -1,31 +1,30 @@
 //! The handles a subject can be *given*, as opposed to asked about: one that looks at its own
 //! context and runs experiments on it, and one that changes it.
 //!
-//! note: This module is the difference between measuring introspection and measuring
+//! note: this module is the difference between measuring introspection and measuring
 //! instrumentation. Everything else in this crate asks a model what its answer rests on and scores
 //! the answer, which is all a harness can do on a runtime where a context is a wall of text that
 //! arrives and is gone. Here it is a list of values with identities, it can be snapshotted, and a
-//! copy of it can be run - so a model can stop guessing and go and look. What that is worth is a
-//! number, and these two tools are how it is obtained.
+//! copy of it can be run, so a model can stop guessing and go and look. These two tools measure
+//! what that is worth.
 //!
-//! note: Two tools rather than one with a mode. A [`ToolSpec`] declares its capabilities once for
-//! every call it will ever receive, and neither of these implements [`Tool::needs`], so one tool
-//! would mean that answering *yes* to "may it experiment on itself?" also answered "may it rewrite
-//! its own memory?". Looking and changing are separately grantable here, and [`Granted`] grants
-//! exactly the two and nothing else.
+//! note: two tools rather than one with a mode. A [`ToolSpec`] declares its capabilities once for
+//! every call it will ever receive, and neither of these implements [`Tool::needs`], so with one
+//! tool, answering *yes* to "may it experiment on itself?" would also answer "may it rewrite its
+//! own memory?". Looking and changing are separately grantable here, and [`Granted`] grants exactly
+//! the two and nothing else.
 //!
-//! note: `kamchatka` has the same pair as one tool, for a reason that does not reach here. There
-//! a call declares which operation it is - `Tool::needs` reads the `action` and answers
+//! note: `kamchatka` has the same pair as one tool, for a reason that does not apply here. There a
+//! call declares which operation it is - `Tool::needs` reads the `action` and answers
 //! `context:look` or `context:revise` - so one tool is twelve separately grantable subjects. These
 //! two answer for every call alike, and a tool that cannot say which of its operations a call is
 //! has only its own name to be granted by.
 //!
-//! note: `test` forks from an [`Origin`] frozen when the handles were installed, not from the
-//! live context. That is deliberate and it is what makes the model's measurement and the
-//! harness's *the same measurement*: same snapshot, same blinding, same question, so the numbers
-//! are commensurable and a claim can be scored against a copy the model itself could have run.
-//! `look`, by contrast, reads the live context, because "what am I carrying?" asked of a stale
-//! snapshot is a different question and a less honest one.
+//! note: `test` forks from an [`Origin`] frozen when the handles were installed, not from the live
+//! context. That makes the model's measurement and the harness's *the same measurement*: same
+//! snapshot, same blinding, same question, so the numbers are commensurable and a claim can be
+//! scored against a copy the model itself could have run. `look` reads the live context, because
+//! "what am I carrying?" asked of a stale snapshot is a different and less useful question.
 
 use std::sync::{
     Arc, Weak,
@@ -72,9 +71,9 @@ const GLIMPSE: usize = 44;
 
 /// A [`PermissionPolicy`] that allows exactly the handles this module installs.
 ///
-/// note: Not "allow everything". The two capabilities named are the ones these tools declare;
+/// note: not "allow everything". The two capabilities named are the ones these tools declare;
 /// anything else a subject carries must be decided by somebody. Installing `AllowAll` to get its
-/// own tools past the gate would quietly grant a shell as well.
+/// own tools past the gate would also grant a shell.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Granted;
 
@@ -459,8 +458,7 @@ impl Tool for Amend {
 ///
 /// note: the return value must be held, not merely read: the tools hold a [`Weak`] to it, and
 /// dropping it switches them off. An [`Arc<Kernel>`] stored inside a tool the same kernel holds is
-/// a cycle that outlives the last handle to the session; that is the shape `kamchatka` documents
-/// and this copies.
+/// a cycle that outlives the last handle to the session; `kamchatka` documents the same shape.
 pub fn install(
     kernel: &Kernel,
     origin: Arc<Origin>,
@@ -544,9 +542,9 @@ fn verdict(
 
 /// Turns whatever a model named - labels or numbers - into identifiers.
 ///
-/// note: labels and numbers both, on purpose. A subject cannot see the session's numbering unless
-/// it looks, and a handle that could only be addressed by number would measure whether it looked
-/// rather than what it did next.
+/// note: labels and numbers both. A subject cannot see the session's numbering unless it looks, and
+/// a handle that could only be addressed by number would measure whether it looked rather than what
+/// it did next.
 fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, Vec<String>) {
     let mut ids = Vec::new();
     let mut unknown = Vec::new();
@@ -585,15 +583,14 @@ fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, V
 
 /// Which named items a subject may move, and why not for the rest.
 ///
-/// note: These refusals are this experiment's, not the runtime's. The kernel would apply every one
-/// without complaint; `set_state` belongs to whoever holds the kernel. What is protected is the
-/// measurement and the person: a subject that could exclude the brief could make the question
-/// unanswerable, and one that could rewrite the turn it is speaking in could take the call being
-/// executed down with it.
+/// note: these refusals are this experiment's, not the runtime's. The kernel would apply every one;
+/// `set_state` belongs to whoever holds the kernel. What is protected is the measurement and the
+/// person: a subject that could exclude the brief could make the question unanswerable, and one
+/// that could rewrite the turn it is speaking in could take the call being executed down with it.
 ///
-/// note: the turn the call is made from, and no other. [`AMEND`] tells the subject that much. A
-/// subject's earlier answers are its own to move; rewriting one is a thing `repair` is there to
-/// see, and every answer it gave is already on the record as the step it was given in.
+/// note: the turn the call is made from, and no other, as [`AMEND`] tells the subject. A subject's
+/// earlier answers are its own to move; rewriting one is a thing `repair` is there to see, and
+/// every answer it gave is already on the record as the step it was given in.
 fn permitted(
     ids: &[ContextId],
     items: &[Arc<ContextItem>],

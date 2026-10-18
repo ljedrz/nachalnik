@@ -1,12 +1,12 @@
 //! The experiments and the material they are run on.
 //!
-//! note: This module holds the prompt text. It is the only place in the crate with prompt text
-//! besides [`PREAMBLE`](crate::PREAMBLE) and
-//! [`Reading::instructions`](crate::Reading::instructions). Everything above is machinery that does
-//! not know what a question is about; everything here is a question, a planted note, or a sentence
-//! telling a copy it has no tools. The line between them is worth keeping: a benchmark is its
-//! questions, and questions go stale. A model that has seen [`DEPOT`] in a training set is a model
-//! this suite can no longer measure, and replacing the suite should not mean replacing the harness.
+//! note: this module holds the prompt text, the only prompt text in the crate besides
+//! [`PREAMBLE`](crate::PREAMBLE) and [`Reading::instructions`](crate::Reading::instructions).
+//! Everything above is machinery that does not know what a question is about; everything here is a
+//! question, a planted note, or a sentence telling a copy it has no tools. Keep that line: a
+//! benchmark is its questions, and questions go stale. A model that has seen [`DEPOT`] in a
+//! training set is a model this suite can no longer measure, and replacing the suite should not
+//! mean replacing the harness.
 //!
 //! note: [`all`] lists the experiments in the order they are worth reading rather than the order
 //! they cost. [`Attribution`] is the one the others are variations on. [`Recursion`] goes deeper.
@@ -66,13 +66,10 @@ pub use crate::suite::{
 /// The question every counterfactual claim is put as: two copies, and whether they answer
 /// differently.
 ///
-/// note: Two copies rather than "would your answer change". The harness measures a treated copy
-/// against a control copy, because otherwise the intervention is confounded with being a copy at
-/// all, so that is what the question asks. Asked the other way, a subject can be exactly right
-/// about how both copies answer and be scored wrong because the live session, which has the
-/// elicitation in its context and its tools in its request, answered differently from both.
+/// note: two copies rather than "would your answer change", for the reason given on
+/// [`COUNTERFACTUAL`](script::COUNTERFACTUAL).
 ///
-/// note: The session and its copies disagree in practice: a session can answer a dossier correctly
+/// note: the session and its copies disagree in practice: a session can answer a dossier correctly
 /// while a copy of the same context answers it wrongly. A claim about the session's own answer
 /// would then be graded against a baseline the subject was never shown. Every record says which
 /// happened, in the line [`note_drift`] writes, which begins `the session`.
@@ -116,12 +113,12 @@ pub(crate) fn instrument(
 
 /// Records whether a copy of a session answers the way the session itself did.
 ///
-/// note: Worth a line in every record, because it is the caveat every other figure is read under. A
-/// copy is not the session: it has one question at the end, no tools in its request, and a sentence
-/// saying it has none. Where they agree, the copies stand in for the subject and the ablations mean
-/// what they look like. Where they do not, the ablations are still sound - copies measured against
-/// copies - and the subject's own answer was reached some other way, worth knowing before quoting a
-/// number.
+/// note: a line in every record, because every other figure is read under this caveat. A copy is
+/// not the session: it has one question at the end, no tools in its request, and a sentence saying
+/// it has none. Where they agree, the copies stand in for the subject and the ablations mean what
+/// they look like. Where they do not, the ablations are still sound - copies measured against
+/// copies - but the subject's own answer was reached some other way, which should be known before
+/// quoting a number.
 pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
     let copy = control.majority();
     match (live.key(), &copy) {
@@ -141,9 +138,9 @@ pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
 /// itself answered.
 ///
 /// note: `blind` is an argument rather than a builder call an experiment has to remember to make,
-/// because a copy that can read the answer the session already gave, a few items above the
-/// question it is asked again, is a copy agreeing with itself - see `Ablation::blind_to` - and "it
-/// did not change" then measures nothing. It is the one step no experiment can leave out.
+/// because a copy that can read the answer the session already gave, a few items above the question
+/// it is asked again, is a copy agreeing with itself - see `Ablation::blind_to` - and "it did not
+/// change" then measures nothing. No experiment can leave this step out.
 pub(crate) async fn controlled(
     trial: &Trial,
     origin: &Origin,
@@ -194,8 +191,8 @@ pub const ENDPOINT: &str = "attribution";
 
 /// The nine experiments, at their default settings.
 ///
-/// note: One copy per condition. Enough to run everything and produce every figure in a report, but
-/// not [`Change::instability`](crate::Change), which needs at least two and reports zero without
+/// note: one copy per condition: enough to run everything and produce every figure in a report
+/// except [`Change::instability`](crate::Change), which needs at least two and reports zero without
 /// them. Raise the replicates before quoting a number.
 pub fn all() -> Vec<Arc<dyn Experiment>> {
     all_with(1, LADDERS)
@@ -203,11 +200,11 @@ pub fn all() -> Vec<Arc<dyn Experiment>> {
 
 /// The same nine, with every condition run `replicates` times and every ladder run `ladders` times.
 ///
-/// note: Two numbers: they buy different things, and only one is cheap. A *replicate* is another
-/// copy of an [`Ablation`]: the harness re-runs its measurement to put a noise floor under it. One
-/// is enough where measured instability across copies is zero. A *ladder* is another pass over the
-/// same dossier by a fresh subject. It is the only way [`Repair`] gets more than one observation
-/// per rung. The [`AGAIN`] control exists because a subject may answer the same question
+/// note: two numbers, because they buy different things and only one is cheap. A *replicate* is
+/// another copy of an [`Ablation`]: the harness re-runs its measurement to put a noise floor under
+/// it. One is enough where measured instability across copies is zero. A *ladder* is another pass
+/// over the same dossier by a fresh subject, the only way [`Repair`] gets more than one observation
+/// per rung; the [`AGAIN`] control exists because a subject may answer the same question
 /// differently when asked twice. Conflating them either replicates copies for nothing or leaves
 /// rungs with one observation per dossier.
 pub fn all_with(replicates: usize, ladders: usize) -> Vec<Arc<dyn Experiment>> {

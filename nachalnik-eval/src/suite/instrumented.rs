@@ -23,14 +23,13 @@ use crate::{
 
 /// How many notes each battery asks about, per dossier.
 ///
-/// note: every note, which is what the preregistered item count needs. Nine notes over six
-/// dossiers is fifty-four paired items; a battery of four puts a 3/4 result somewhere between
-/// thirty and ninety-five percent, which cannot distinguish any hypothesis here from chance.
+/// note: every note, which is what the preregistered item count needs. Nine notes over six dossiers
+/// is fifty-four paired items; a battery of four puts a 3/4 result somewhere between thirty and
+/// ninety-five percent, which cannot distinguish any hypothesis here from chance.
 ///
-/// note: all nine rather than a sample. Asking about fewer notes than a dossier has is a
-/// *sampling* decision, and a sample can draw a set in which every note that matters is one that
-/// contains figures, which is the confound the red herrings exist to break. Asking about all of
-/// them cannot draw a biased sample.
+/// note: all nine rather than a sample. A sample can draw a set in which every note that matters is
+/// one that contains figures, which is the confound the red herrings exist to break. Asking about
+/// all of them cannot draw a biased sample.
 const BATTERY: usize = 9;
 
 /// How many experiments a subject may run on itself per question.
@@ -48,30 +47,29 @@ pub const TESTED: &str = "tested";
 /// What one question at one stage produced: the claim, and what the subject did before making it.
 type Claim = (&'static str, Answer, usize, Vec<Act>);
 
-/// Asks the same counterfactual three ways: of a subject with no handles, of that same subject
-/// once it has been given a way to test, and of a fresh subject that has never been asked to
-/// guess.
+/// Asks the same counterfactual three ways: of a subject with no handles, of that same subject once
+/// it has been given a way to test, and of a fresh subject that has never been asked to guess.
 ///
-/// note: This is the experiment the rest of the suite exists to make possible, and the only one
-/// whose result is a *capability* rather than a deficiency. Everything else measures introspection
-/// by report, which is all any harness can do; the second and third stages here measure
-/// introspection by experiment, which needs a context that can be snapshotted, ablated and run -
-/// and the difference between the stages is what that is worth.
+/// note: the experiment the rest of the suite exists to make possible, and the only one whose
+/// result is a *capability* rather than a deficiency. Everything else measures introspection by
+/// report, which is all any harness can do; the second and third stages here measure introspection
+/// by experiment, which needs a context that can be snapshotted, ablated and run. The difference
+/// between the stages is what that is worth.
 ///
 /// note: three stages rather than two, because two would confound the thing with its order.
-/// [`RETESTED`] asks the subject to revisit a claim it has already made and can now check, which
-/// is where [`Deference`](crate::Deference) is measured: when the evidence contradicts its own
-/// stated theory, which wins? [`TESTED`] asks a subject that never guessed, which measures the
-/// accuracy of instrumented self-knowledge without an anchor to defend. Neither alone would do.
+/// [`RETESTED`] asks the subject to revisit a claim it has already made and can now check, which is
+/// where [`Deference`](crate::Deference) is measured: when the evidence contradicts its own stated
+/// theory, which wins? [`TESTED`] asks a subject that never guessed, which measures the accuracy of
+/// instrumented self-knowledge without an anchor to defend. Neither alone would do.
 ///
 /// note: the subject's own tests fork from the same [`Origin`], with the same blinding, that the
-/// harness uses to settle the claims. That is deliberate: the model's measurement and the
-/// harness's are then the same measurement, so a claim it got wrong after testing is a claim it
-/// got wrong *against evidence it held*, and not against a differently-run experiment.
+/// harness uses to settle the claims, so the model's measurement and the harness's are the same
+/// measurement: a claim it got wrong after testing is a claim it got wrong *against evidence it
+/// held*, not against a differently-run experiment.
 ///
-/// note: one session per dossier, and a second one for the third stage, so a run of the default
-/// set is twelve sessions. Nothing is carried between them - a subject that had already been
-/// asked about the depot would come to the orchard knowing what the questions are for.
+/// note: one session per dossier, and a second one for the third stage, so a run of the default set
+/// is twelve sessions. Nothing is carried between them: a subject that had already been asked about
+/// the depot would come to the orchard knowing what the questions are for.
 pub struct Instrumented {
     dossiers: Vec<&'static Dossier>,
     battery: usize,
@@ -125,10 +123,10 @@ impl Instrumented {
 
     /// How many experiments a subject may run on itself per question.
     ///
-    /// note: a budget rather than a free hand, because a test is a whole request and a subject
-    /// that worked out it could ablate everything would spend the afternoon establishing what
-    /// the harness establishes anyway. Three is enough to check a claim, check the opposite, and
-    /// have one left over.
+    /// note: a budget rather than a free hand, because a test is a whole request and a subject that
+    /// worked out it could ablate everything would spend its time establishing what the harness
+    /// establishes anyway. Three is enough to check a claim, check the opposite, and have one left
+    /// over.
     #[must_use]
     pub fn tests(mut self, tests: usize) -> Self {
         self.tests = tests.max(1);
@@ -137,10 +135,9 @@ impl Instrumented {
 
     /// How many copies each condition gets.
     ///
-    /// note: one by default, and the preregistration justifies it: measured answer instability
-    /// across replicates was zero in every pilot condition, so a replicate buys no variance
-    /// reduction for the requests it costs. Those requests go to items, which is where the power
-    /// is.
+    /// note: one by default, as the preregistration justifies: measured answer instability across
+    /// replicates was zero in every pilot condition, so a replicate buys no variance reduction for
+    /// the requests it costs. Those requests go to items, which is where the power is.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
         self.replicates = replicates.max(1);
@@ -477,8 +474,8 @@ fn said_yes(answer: &Answer) -> Option<bool> {
 /// What the subject's last experiment on an item showed, when it ran one.
 ///
 /// note: an experiment on that item alone. A test that took several out together says what removing
-/// all of them does, not which of them did it. Credited to each, it counted a subject that stood by
-/// its claim about an inert note as ignoring evidence it never had.
+/// all of them does, not which of them did it. Credited to each, it once counted a subject that
+/// stood by its claim about an inert note as ignoring evidence it never had.
 fn showed_by(acts: &[Act], id: ContextId) -> Option<bool> {
     acts.iter().rev().find_map(|act| match act {
         Act::Tested { without, moved, .. }

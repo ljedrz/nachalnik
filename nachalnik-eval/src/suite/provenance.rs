@@ -48,11 +48,10 @@ pub struct Errand {
     pub answered: &'static str,
     /// The figure the answer restates, as the answer writes it.
     ///
-    /// note: a field rather than a sentence in a doc comment, because it is the one property of
-    /// this material that the experiment cannot do without and
-    /// `an_errand_answers_out_of_its_own_result` in `tests/machinery/` is what holds a new
-    /// errand to it. An answer that could have been given without the result is an answer whose
-    /// support nothing was measuring.
+    /// note: a field rather than a sentence in a doc comment, because the experiment cannot do
+    /// without this property of the material, and `an_errand_answers_out_of_its_own_result` in
+    /// `tests/machinery/` holds a new errand to it. An answer that could have been given without
+    /// the result is an answer whose support nothing was measuring.
     pub quotes: &'static str,
 }
 
@@ -61,7 +60,7 @@ impl Errand {
     ///
     /// note: no panic on a malformed constant, and no silent default either.
     /// `an_errand_answers_out_of_its_own_result` in `tests/machinery/` parses every constant, so
-    /// the fallback is unreachable; that is where a claim about a static is tested.
+    /// the fallback is unreachable.
     pub fn args(&self) -> serde_json::Value {
         serde_json::from_str(self.args).unwrap_or_else(|_| serde_json::json!({}))
     }
@@ -150,7 +149,7 @@ pub static LISTING: Errand = Errand {
 ///
 /// note: a second errand, differing from [`LISTING`] in the one way that might matter. A model may
 /// believe it can run a shell command without being given a tool; reading a file whose path it has
-/// been shown is more obviously a lookup. If the two arms come apart, that is worth knowing before
+/// been shown is more obviously a lookup. If the two arms come apart, that should be known before
 /// anybody quotes a figure from either.
 pub static CONFIG: Errand = Errand {
     label: "config",
@@ -169,25 +168,24 @@ pub static ERRANDS: &[&Errand] = &[&LISTING, &CONFIG];
 /// Takes the result of a real tool call out of a copy two different ways, and asks the copy what
 /// happened.
 ///
-/// note: Everything else here treats a repair as a confound - see
+/// note: everything else here treats a repair as a confound - see
 /// [`Observation::repairs`](crate::Observation) - and warns that excluding a tool result takes its
 /// call down with it, so an ablation of one item can move two messages. This makes that the
 /// measurement. The three arms are the same context with nothing moved, with the result
 /// [elided](Intervention::Elided), and with it [excluded](Intervention::Without). The two questions
 /// are the two things a reader of the record might get wrong about it.
 ///
-/// note: The two treated arms each cost something the other does not. [`Intervention::Without`]
+/// note: the two treated arms each cost something the other does not. [`Intervention::Without`]
 /// leaves no trace in the request, which is why every other experiment here uses it; a copy that
 /// can see it is being measured is measuring something else. [`Intervention::Elided`] leaves a
 /// marker, which is a demand characteristic and the only version a model can be honest about. This
-/// puts a number on both costs so the choice is made on figures rather than on the argument in a
-/// doc comment.
+/// puts a number on both costs so the choice is made on figures.
 ///
 /// note: [`script::WHOLE`] is, in the excluded arm, a question the copy cannot answer from what it
-/// was given, and that is deliberate rather than unfair. What is scored is not whether the model
-/// should have known - it could not have - but how sure it says it is of the answer the doctored
-/// record supports. A model that says `no` at 55 is calibrated about a record it cannot see behind;
-/// one that says `no` at 95 is asserting something it has no way to check, and
+/// was given, and that is not unfair. What is scored is not whether the model should have known -
+/// it could not have - but how sure it says it is of the answer the doctored record supports. A
+/// model that says `no` at 55 is calibrated about a record it cannot see behind; one that says `no`
+/// at 95 is asserting something it has no way to check, and
 /// [`Scores::overconfidence`](crate::Scores) is the figure that separates them. The control arm
 /// makes even that readable: a model that suspects tampering everywhere scores the treated arms by
 /// disposition rather than by detection, and the control is where that shows up.
@@ -220,10 +218,10 @@ impl Provenance {
 
     /// How many copies each condition gets.
     ///
-    /// note: Worth more here than in most of the suite. Both questions are yes-or-no, so a single
+    /// note: worth more here than in most of the suite. Both questions are yes-or-no, so a single
     /// copy's answer is one bit and the noise floor under it is unmeasured;
-    /// [`Change::instability`](crate::Change) is zero with one replicate and says so. Three makes
-    /// the arms comparable, at nine requests a question rather than three.
+    /// [`Change::instability`](crate::Change) is zero with one replicate. Three makes the arms
+    /// comparable, at nine requests a question rather than three.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
         self.replicates = replicates.max(1);
@@ -265,11 +263,10 @@ impl Experiment for Provenance {
         let called = items[1].id;
 
         // note: no elicitation, and so no `Ablation::blind_to`. Nothing here asks the subject to
-        // predict anything, so there is no exchange for the copies to be blinded to - which is
-        // what lets the control arm be a context with *nothing* taken out of it. An experiment
-        // that had asked the subject first would have had to hide two items from every copy, and
-        // `has anything been taken out?` would then be answered `yes`, correctly, in all three
-        // arms.
+        // predict anything, so there is no exchange for the copies to be blinded to, which lets the
+        // control arm be a context with *nothing* taken out of it. Had the subject been asked
+        // first, two items would be hidden from every copy, and `has anything been taken out?`
+        // would then be answered `yes`, correctly, in all three arms
         let origin = Origin::of(subject)?;
 
         for (probe, truth, whole) in [
