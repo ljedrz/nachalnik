@@ -26,11 +26,12 @@ minor bump may break you.
   models refuse every request after their first tool call without it, so a session with one of
   them failed at its second request. Off by default, since most endpoints refuse a field they do
   not know and the thinking costs its tokens on every request. In the library,
-  `endpoint::connect_with` is `endpoint::connect` with the switch. Requires `nachalnik-providers`
-  0.10.1.
+  `endpoint::connect_with` is `endpoint::connect` with the switch.
 
 ### changed
 
+- Requires `nachalnik-providers` 0.10.1. Its `OpenAiCompatible::send_reasoning` is
+  `--send-reasoning`.
 - **Two runtime workers rather than one per core.** What they run waits on the network, and the
   file tools already work on the blocking pool. On glibc, each worker kept memory of its own: on a
   32-core machine a long session's peak drops from about 55MB to 40MB, and an idle screen session
