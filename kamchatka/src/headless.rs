@@ -1,23 +1,21 @@
 //! Driving a session with nothing drawing it.
 //!
-//! The loop next door in `main.rs` draws a frame and waits for a key; this one waits for a line.
-//! Everything between the two is the same [`App`]: `submit` takes the line a person would have
-//! typed, a command or a message, `on_event` takes what the kernel says back, and the session,
-//! the tools, the policy and the trace are where they always were.
+//! This loop waits for a line; the loop in `main.rs` draws a frame and waits for a key. Both use
+//! the same [`App`]: `submit` takes a line, a command or a message, and `on_event` takes what the
+//! kernel says back.
 //!
-//! note: what it writes is split by who reads it. The **records** are the session log, one JSON
-//! object per line, taken out of [`Kernel::history_since`](nachalnik::Kernel::history_since)
-//! rather than off the broadcast - so they are the same bytes `/save` writes, in the same order,
-//! and they include the `session.started` that is emitted while the kernel is still being
-//! constructed and that no subscriber can ever catch. The **prose** is a person's half: what the
-//! model said, and what the program had to say about the run. One goes to a pipe and the other to
-//! a terminal, which is why they are two writers rather than a verbosity flag.
+//! note: records go to one writer and prose to another. The records are the session log, one JSON
+//! object per line, taken from [`Kernel::history_since`](nachalnik::Kernel::history_since) rather
+//! than the broadcast, so they are the same bytes `/save` writes, in the same order, and they
+//! include `session.started`, which is emitted while the kernel is still being constructed and
+//! which no subscriber can catch. The prose is what the model said and what the program said about
+//! the run. One goes to a pipe and the other to a terminal, which is why they are two writers
+//! rather than a verbosity flag.
 //!
-//! note: what this does *not* do is answer a question by asking somebody. There is nobody to ask,
-//! so the answer handed to [`Headless::new`] is the one every question gets - decided in advance
-//! on the command line, and recorded as the decision it is. `Grant::Deny` is the default in the
-//! program above, because a run nobody is watching should not be able to do a thing nobody has
-//! allowed.
+//! note: this does not answer a question by asking somebody; there is nobody to ask. The answer
+//! handed to [`Headless::new`] is the one every question gets, decided in advance on the command
+//! line and recorded as the decision it is. `Grant::Deny` is the program's default because a run
+//! nobody is watching should not be able to do a thing nobody has allowed.
 
 use std::{io::Write, time::Duration};
 
@@ -110,11 +108,10 @@ pub struct Headless<'a> {
     /// Whether a model is answering, which is the only thing this loop prints fragments of.
     ///
     /// note: a `Lagged` carries a count and no events, so what went past cannot be sorted into
-    /// kinds afterwards - and the two kinds are the whole of the question. This is what a count
-    /// is believed against: `Requesting` and `Executing` are different states, so while a model is
-    /// being answered no tool is running, and a count arriving in that window is fragments of
-    /// words. A count arriving under a tool is that tool's output, which this loop does not print
-    /// and the log does not hold.
+    /// kinds afterwards, and this is what a count is believed against. `Requesting` and
+    /// `Executing` are different states, so while a model is being answered no tool is running,
+    /// and a count arriving in that window is fragments of words. A count arriving under a tool is
+    /// that tool's output, which this loop does not print and the log does not hold.
     answering: bool,
 }
 
@@ -135,18 +132,17 @@ impl<'a> Headless<'a> {
         }
     }
 
-    /// Stops the run after this long, however far it has got.
+    /// Stops the run after this long.
     ///
     /// note: inside the loop rather than a `timeout` around it. A dropped future never reaches the
-    /// end of `run`, so the session would never be finished and the last records - the turn it was
-    /// interrupted in among them - would be written nowhere. A deadline reached here interrupts
-    /// the turn, lets what arrived be recorded, and leaves by the ordinary door.
+    /// end of `run`, so the session never finishes and its last records are never written. A
+    /// deadline reached here interrupts the turn and records what arrived.
     ///
-    /// note: and a command of the operator's own waiting on an endpoint - `/models`, or a
-    /// compaction pass - is stopped the same way, since it is sent out rather than awaited where
-    /// its line was read; see `App::in_flight`. A `/model` or `/endpoint` switch is let finish
-    /// instead, under the bound the turn is waited for with: a half-applied `/endpoint` is a worse
-    /// thing to leave behind than a late deadline.
+    /// note: a command waiting on an endpoint - `/models`, or a compaction pass - is stopped the
+    /// same way, because it is sent out rather than awaited where its line was read; see
+    /// `App::in_flight`. A `/model` or `/endpoint` switch finishes instead, under the bound the
+    /// turn is waited for with. A half-applied `/endpoint` is worse to leave behind than a late
+    /// deadline.
     pub fn deadline(mut self, after: Duration) -> Self {
         self.deadline = Some(after);
         self
@@ -154,13 +150,13 @@ impl<'a> Headless<'a> {
 
     /// Takes `ctrl+c` as "stop" rather than letting it kill the process.
     ///
-    /// note: off by default. This is a library loop, and taking a process-wide signal is the
-    /// caller's decision to make - a host with its own shutdown has one already and would find this
-    /// competing with it. `kamchatka --headless` turns it on, because there it *is* the program.
+    /// note: off by default. This is a library loop, so taking a process-wide signal is the
+    /// caller's decision. A host with its own shutdown would find this competing with it.
+    /// `kamchatka --headless` turns it on, because there it is the program.
     ///
-    /// note: one stop rather than a kill, for the same reason `esc` is: a run interrupted has a
-    /// half-answer, a tool result and a record worth keeping, and stopping cooperatively is what
-    /// lets them survive. A second `ctrl+c` leaves at once.
+    /// note: one stop rather than a kill, for the same reason `esc` is: an interrupted run has a
+    /// half-answer, a tool result and a record worth keeping, and cooperative stopping lets them
+    /// survive. A second `ctrl+c` leaves at once.
     pub fn stops_on_ctrl_c(mut self) -> Self {
         self.ctrl_c = true;
         self
@@ -175,21 +171,20 @@ impl<'a> Headless<'a> {
         self
     }
 
-    /// Why the last [`Headless::run`] stopped before it had worked through its input, or `None`
-    /// where it did - which is what the program's exit status is made of.
+    /// Why the last [`Headless::run`] stopped before finishing its input, or `None` if it finished.
+    /// The program's exit status is made of this.
     pub fn stopped(&self) -> Option<Stop> {
         self.stopped
     }
 
     /// Reads lines, drives the kernel, and returns when there is nothing left of either.
     ///
-    /// note: it ends when the input is closed *and* nothing is in flight, rather than at the end
-    /// of the first turn. A single question piped in is then the same code path as a session held
-    /// open by a script that sends another line when it has read the answer to the last, and the
-    /// difference between them is where the pipe came from.
+    /// note: it ends when the input is closed and nothing is in flight, rather than at the end of
+    /// the first turn. A piped question and a session held open by a script use the same code path;
+    /// the difference is only where the input came from.
     ///
-    /// note: `Ok` for a run cut short as well as for one that finished, since neither is an
-    /// error; [`Headless::stopped`] says which, once this has returned.
+    /// note: returns `Ok` for a run cut short and for one that finished, since neither is an error.
+    /// [`Headless::stopped`] says which once this has returned.
     pub async fn run(
         &mut self,
         app: &mut App,
@@ -197,13 +192,13 @@ impl<'a> Headless<'a> {
         finished: &mut mpsc::UnboundedReceiver<Outcome>,
         input: impl AsyncBufRead + Unpin,
     ) -> Result<(), String> {
-        // note: this loop is the definition of a caller with no keys, so it says so rather than
-        // being told by whoever built it - which means an embedder that drives `Headless` gets the
-        // same `/help` the program does. See `App::keys`
+        // note: this loop defines a caller with no keys, so it says so rather than being told by
+        // whoever built it. An embedder that drives `Headless` gets the same `/help` the program
+        // does. See `App::keys`
         app.keys = false;
         self.stopped = None;
-        // what a question comes to here, so that nothing sends the model to a tool every call to
-        // which would be refused for want of somebody to ask; see `Careful::reachable`
+        // This is what a question comes to here, so nothing sends the model to a tool whose every
+        // call would be refused for want of somebody to ask; see `Careful::reachable`
         app.policy.unanswered(Some(match self.on_ask {
             Grant::Allow => Verdict::Allow,
             Grant::Deny => Verdict::Deny,
@@ -212,23 +207,23 @@ impl<'a> Headless<'a> {
 
         let mut lines = Typed::new(input);
         let mut reading = true;
-        // note: an instant rather than a duration, so that it means the same thing however many
-        // times round the loop it is waited on; and taken once the run starts rather than when
-        // the driver was built, since a caller may have held it for a while. One too far off to
-        // be an instant at all is no deadline, which is what it would come to anyway
+        // note: an instant rather than a duration, so it means the same thing however many times
+        // round the loop it is waited on; taken once the run starts rather than when the driver was
+        // built, since a caller may have held it for a while. One too far off to be an instant at
+        // all is no deadline
         let mut ends = self
             .deadline
             .and_then(|after| Instant::now().checked_add(after));
         let mut stopping = false;
-        // subscribed once, because a second press arriving while the first is being handled is the
-        // one that means leave; see `crate::stopping`
+        // subscribed once, because a second press while the first is being handled means leave; see
+        // `crate::stopping`
         //
-        // note: and only where it was asked for. Subscribing is what installs the process-wide
-        // handler, and it installs it for the life of the process - so a subscription taken beside
-        // a branch that is switched off would take SIGINT away from a caller who never asked for
-        // any of it: the handler is in, the branch never polls it, and the signal goes nowhere at
-        // all. It also needs the runtime's signal driver, which comes with the io driver, so
-        // subscribing unasked panics a host that built its runtime with `enable_time` alone
+        // note: only where asked for. Subscribing installs the process-wide handler for the life of
+        // the process. A subscription beside a switched-off branch takes SIGINT from a caller who
+        // never asked for it: the handler is installed, the branch never polls it, and the signal
+        // goes nowhere. Subscribing also needs the runtime's signal driver, which comes with the io
+        // driver, so subscribing unasked panics a host that built its runtime with `enable_time`
+        // alone
         let mut presses = self
             .ctrl_c
             .then(crate::stopping::Stopping::new)
@@ -241,9 +236,9 @@ impl<'a> Headless<'a> {
             .map_err(|e| format!("could not listen for a request to end: {e}"))?;
         // a second `ctrl+c`, which is the one way out that does not wait for a running turn
         let mut at_once = false;
-        // note: the *last* one rather than any, because a turn that failed and was then carried on
-        // from is a session that recovered, and a run that reported it as a failure would have
-        // every script treating one provider hiccup as a dead session
+        // note: the last one rather than any, because a failed turn carried on from is a recovered
+        // session, and reporting it as failure makes every script treat one provider hiccup as a
+        // dead session
         let mut failed = None;
         // where the log had got to the last time it was written out, so that nothing is written
         // twice and nothing is missed
@@ -261,9 +256,9 @@ impl<'a> Headless<'a> {
         let mut notices = tokio::time::interval(NOTICES);
         notices.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        // note: an async block rather than the loop alone, so that every way out of it - a
-        // `break`, and an error writing the prose or reading the input as much as `/quit` - ends
-        // up below, where a turn still running is stopped and waited for before `session.finished`
+        // note: an async block rather than a bare loop, so every exit - a `break`, an error writing
+        // the prose or reading the input, or `/quit` - ends below, where a running turn is stopped
+        // and waited for before `session.finished`
         let driven: Result<(), String> = async {
             loop {
                 // before anything else, and wherever the question came from: a turn that stopped to
@@ -280,10 +275,10 @@ impl<'a> Headless<'a> {
                 if !app.busy && app.asked().is_some() {
                     self.answer(app)?;
                 }
-                // note: and a running command's question on sight, busy or not, because it is not the
-                // kernel's. It arrives while the call runs and holds the call until it is answered, so
-                // waiting for the kernel to rest would be waiting for the command that is waiting on
-                // this
+                // note: answer a running command's question on sight, busy or not, because it is
+                // not the kernel's. It arrives while the call runs and holds the call until
+                // answered, so waiting for the kernel to rest would mean waiting for the command
+                // waiting on this
                 if app.reached().is_some() {
                     self.answer_reaching(app)?;
                 }
@@ -293,15 +288,14 @@ impl<'a> Headless<'a> {
                 if !app.overspent() && !app.oversized() {
                     passing = false;
                 }
-                // a session that is not going to be given anything else to do, and is not doing
-                // anything, is over. `quit` is `/quit`, which means the same here as at a prompt.
-                // A command still out is something it is doing: a script whose last line is
-                // `/models` is asking for the list. Unless it was told to stop, when what is left
-                // is a switch - a listing or a pass was stopped with the turn - and the way out
-                // waits for that, under its own bound
+                // a session with nothing else to do and nothing in progress is over. `quit` is
+                // `/quit`, as at a prompt. A command still in flight is something in progress: a
+                // script whose last line is `/models` is asking for the list. Unless it was told to
+                // stop, when what remains is a switch - a listing or a pass was stopped with the
+                // turn - and the exit waits for that, under its own bound
                 // a switch held for the end of a turn, which a line read while a question was
-                // open can be; see `App::submit`. Nothing else is held here, since no line is read
-                // while a command is out
+                // open can be; see `App::submit`. Nothing else is held here, because no line is
+                // read while a command is out
                 app.release().await;
                 if app.leaving()
                     || (!reading && !app.busy && (!app.in_flight() || self.stopped.is_some()))
@@ -310,37 +304,36 @@ impl<'a> Headless<'a> {
                 }
 
                 tokio::select! {
-                    // note: `!busy` is what makes a pipe behave like somebody who waits for the
-                    // answer before typing the next thing. Without it a script's lines are all read
-                    // the moment they are written, and two things go wrong that a person at a prompt
-                    // never sees: a command runs in the middle of the turn before it, so `/budget`
-                    // lands above the answer it was asked after; and a *message* sent into a running
-                    // turn waits in `App::typed_ahead` while the commands after it run at once, so
-                    // the script's lines would happen in an order nobody wrote.
-                    // Nothing here can be typed during a turn, so nothing is lost by reading it after.
+                    // note: `!busy` makes the pipe wait for the answer before reading the next
+                    // line. Without it a script's lines are all read as soon as they are written,
+                    // and two things go wrong: a command runs in the middle of the turn before it,
+                    // so `/budget` lands above the answer it was asked after; and a message sent
+                    // into a running turn waits in `App::typed_ahead` while the commands after it
+                    // run at once, so the lines happen in an order nobody wrote. Nothing here can
+                    // be typed during a turn, so nothing is lost by reading it after.
                     //
-                    // note: and not while a command is out at the endpoint either, for the same
-                    // reason: the line after `/models` is often the `/model` it was asked for. See
+                    // note: also not while a command is out at the endpoint, for the same reason:
+                    // the line after `/models` is often the `/model` it was asked for. See
                     // `App::in_flight`
                     line = lines.next_line(), if reading && !app.busy && !app.in_flight() => match line {
-                        // note: what the prompt does with enter on nothing, and with spaces round a
-                        // line. Otherwise a blank line down a pipe is sent as an empty message and
-                        // answered - a request for nothing - and `  /help` is a message here and a
+                        // note: as at the prompt, enter on an empty line is ignored and spaces
+                        // round a line are trimmed. Otherwise a blank line down a pipe is sent as
+                        // an empty message and answered, and `  /help` is a message here and a
                         // command there
                         Ok(Some((line, _))) if line.trim().is_empty() => {}
-                        // note: a session that has spent what it was given still reads, because the
-                        // way back is a line: `/spend N` raises the ceiling and `/spend 0` takes it
-                        // away, and a loop that stopped reading dropped the very command its stop had
-                        // just recommended. A message is another matter. `App::start_turn` refuses it,
-                        // but only once it is in the context, where it would go out unasked with
-                        // whatever turn the script paid for next - so it is passed over here, and said
-                        // to be once rather than a refusal a line for the rest of a script
+                        // note: an overspent session still reads lines, because the way back is a
+                        // line: `/spend N` raises the ceiling and `/spend 0` takes it away, and a
+                        // loop that stopped reading would drop the command its stop had just
+                        // recommended. A message is different: `App::start_turn` refuses it, but
+                        // only once it is in the context, where it would go out unasked with the
+                        // next turn the script paid for. So a message is passed over here and
+                        // reported once, not refused on every line for the rest of the script.
                         //
-                        // note: and a session whose last turn was refused for a request longer than
-                        // the model takes, while the next one would be too, for the same reason: a
-                        // message cannot go out, and kept in the context it makes the request it
-                        // could not get into longer still. The way back is a command here as well -
-                        // `/exclude`, `/limit` - so those are still read
+                        // note: the same for a session whose last turn was refused for a request
+                        // longer than the model takes, while the next one would be too: a message
+                        // cannot go out, and kept in the context it makes the request longer still.
+                        // The way back is a command here as well - `/exclude`, `/limit` - so those
+                        // are still read
                         Ok(Some((line, _)))
                             if (app.overspent() || app.oversized())
                                 && !line.trim().starts_with('/') =>
@@ -373,9 +366,9 @@ impl<'a> Headless<'a> {
                             if mangled {
                                 app.say(Speaker::Note, not_text(&line));
                             }
-                            // the lines it said are printed by `echo` below, which is watching
-                            // `App::loose` for the ones that arrive with no line to answer either;
-                            // the page is this call's alone and has no other way out
+                            // the lines said here are printed by `echo` below, which watches
+                            // `App::loose` for the ones that arrive with no line to answer; the
+                            // page belongs to this call alone and has no other way out
                             let opened = app.submit(line.trim()).await.page;
                             // what the line did to the context is said with it, rather than on some
                             // later turn round - after the next line, or never if this was the last
@@ -386,14 +379,15 @@ impl<'a> Headless<'a> {
                             if let Some(Overlay::Text { title, pages, .. }) = opened {
                                 self.prose.fresh_line()?;
                                 writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
-                                // note: every page rather than the one it was opened at. A screen
-                                // turns them with `←` and `→` and there is no key to press down a
-                                // pipe, so a caller handed one page of several would be reading a
-                                // reference whose others it has no way to ask for.
+                                // note: every page is printed, not just the one opened at. A screen
+                                // turns pages with `←` and `→`, and there is no key to press down a
+                                // pipe, so a caller handed one page of several cannot ask for the
+                                // others.
                                 //
-                                // note: named only where there is more than one. A page opened by
-                                // `App::preview` is deliberately nameless - there is one of it - and a
-                                // rule saying nothing over `/budget` would be chrome for its own sake
+                                // note: the page name is printed only when there is more than one
+                                // page. A page opened by `App::preview` is deliberately nameless
+                                // because there is one of it, and a rule saying nothing over
+                                // `/budget` would be chrome for its own sake
                                 for page in &pages {
                                     if pages.len() > 1 {
                                         writeln!(self.prose, "-- {} --", page.name)
@@ -412,9 +406,9 @@ impl<'a> Headless<'a> {
                             {
                                     app.not_copied(&why);
                             }
-                            // note: a `/compact` is taken by the `App` when its pass comes back,
-                            // because there are no keys here to answer the question with - see
-                            // `App::planned` - and its list is said, so `echo` prints it
+                            // note: `App` takes `/compact` when its pass comes back, because there
+                            // are no keys here to answer the question with (see `App::planned`).
+                            // Its list is said, so `echo` prints it
                         }
                         // stdin has closed. Whatever is running still finishes, and the loop leaves
                         // when it has: a script that pipes one question in and goes away is asking
@@ -427,17 +421,17 @@ impl<'a> Headless<'a> {
                             self.say(&app.kernel, &event)?;
                             app.on_event(event);
                         }
-                        // note: the records are read out of the log rather than from here, so a
-                        // subscriber that fell behind has missed nothing that is written out. What it
-                        // has missed is the *prose*, which is the half nothing else keeps
+                        // note: records are read out of the log rather than from here, so a
+                        // subscriber that fell behind has missed nothing that is written out. What
+                        // it missed is the prose, the half nothing else keeps
                             //
-                            // note: a tool's output arrives as fragments too, and none of them are ever
-                            // on the prose - a headless run says what a tool was asked to do and what its
-                            // result cost, and the output between is the model's to read. Counting those
-                            // reported a loss of something nobody was going to be shown, and pointed at a
-                            // log that has none of them either, since a fragment is not an event anybody
-                            // records. So a count is only believed while a model is answering, which is
-                            // the one thing this loop prints fragments of
+                            // note: a tool's output arrives as fragments too, and none of them are
+                            // ever on the prose. A headless run says what a tool was asked to do
+                            // and what its result cost; the output between is the model's to read.
+                            // Counting fragments reported a loss of something nobody was going to
+                            // be shown and pointed at a log without them, because a fragment is not
+                            // an event anybody records. A count is only believed while a model is
+                            // answering, the one thing this loop prints fragments of
                         Err(broadcast::error::RecvError::Lagged(missed)) => {
                                 if self.answering {
                                     self.missed += missed;
@@ -445,10 +439,10 @@ impl<'a> Headless<'a> {
                         }
                         Err(broadcast::error::RecvError::Closed) => break,
                     },
-                    // note: a deadline that is not set waits on a future that never completes, which
-                    // is what `select!` does with a branch that must never win. The alternative is a
-                    // precondition, and a disabled branch is a subtler thing to reason about than a
-                    // future that is honestly never ready
+                    // note: a deadline that is not set waits on a future that never completes,
+                    // which is what `select!` does with a branch that must never win. A
+                    // precondition is the alternative, but a disabled branch is subtler to reason
+                    // about than a future that is honestly never ready
                     () = async {
                         match ends {
                             Some(at) => tokio::time::sleep_until(at).await,
@@ -465,11 +459,11 @@ impl<'a> Headless<'a> {
                         writeln!(self.prose, "· out of time; stopping")
                             .map_err(|e| e.to_string())?;
                     }
-                    // note: a run that was not told to take `ctrl+c` waits here on a future that is
-                    // never ready, which is what the deadline above does with a deadline nobody set and
-                    // for the same reason. A disabled branch would not do: `select!` evaluates the
-                    // expression whether or not the branch is enabled, and the expression is where the
-                    // subscription would be
+                    // note: a run that was not told to take `ctrl+c` waits on a future that is
+                    // never ready, as the deadline branch does when no deadline was set, and for
+                    // the same reason. A disabled branch would not work: `select!` evaluates the
+                    // expression whether or not the branch is enabled, and the expression is where
+                    // the subscription would be
                     () = async {
                         match presses.as_mut() {
                             Some(presses) => presses.pressed().await,
@@ -511,9 +505,9 @@ impl<'a> Headless<'a> {
                             _ => failed = None,
                         }
                         app.on_outcome(outcome);
-                        // what a command did when it came back is said with it, as what a line did
-                        // is - a pass taken reports itself in an event, and a script whose last line
-                        // was `/compact` would otherwise leave before the event was read
+                        // what a command did when it came back is said with it, as a line's is: a
+                        // pass taken reports itself in an event, and a script whose last line was
+                        // `/compact` would otherwise leave before that event was read
                         if returned {
                             while let Ok(event) = events.try_recv() {
                                 self.say(&app.kernel, &event)?;
@@ -555,7 +549,7 @@ impl<'a> Headless<'a> {
         }
         .await;
 
-        // what the prose fails to say here is not a reason to leave a turn running: the records
+        // a failure to write the prose here is not a reason to leave a turn running: the records
         // are the part that is kept, and they are read out of the log below
         if !at_once {
             let kernel = app.kernel.clone();
@@ -597,10 +591,9 @@ impl<'a> Headless<'a> {
             };
         }
 
-        // note: the reason is not repeated here. It has been on the prose since the moment it
-        // happened, and what the caller wants from this is the exit code. A piped run whose model
-        // could never be reached must not end in a `0`, or a script reports a session that never
-        // happened as a success
+        // note: the reason is already in the prose from when it happened; the caller needs the exit
+        // code. A piped run whose model could never be reached must not exit `0`, or a script
+        // reports a session that never happened as a success
         match failed {
             Some(_) => Err("the last turn failed".to_owned()),
             None => Ok(()),
@@ -627,10 +620,10 @@ impl<'a> Headless<'a> {
     /// [`crate::remote`] - needs the same answer, and a watermark rule stated twice will
     /// eventually be two.
     fn echo(&mut self, app: &App, said: &mut usize, cleared: &mut u64) -> Result<(), String> {
-        // `/cleanup` empties the sequence this is a watermark into rather than shortening it, so the
-        // mark goes back to nothing with it. Nothing is printed to say so: what a pipe has already
-        // been handed cannot be taken back, and the lines that would have said it are the ones
-        // that just went. See `App::cleared`
+        // `/cleanup` empties the sequence this watermark indexes rather than shortening it, so the
+        // mark goes back to zero. Nothing is printed: a pipe cannot take back output it has already
+        // been handed, and the lines that would have said it are the ones that just went. See
+        // `App::cleared`
         if *cleared != app.cleared() {
             *cleared = app.cleared();
             *said = 0;
@@ -651,18 +644,18 @@ impl<'a> Headless<'a> {
         Ok(())
     }
 
-    /// Answers every question waiting on somebody who is not there, and carries on.
+    /// Answers every question that is waiting for somebody who is not there, and carries on.
     ///
     /// note: it answers all of them rather than one, because a model that asks for three things at
     /// once produces three questions and the flag is the same answer to each.
     ///
-    /// note: through [`App::decide`] rather than through the kernel, because answering is more
-    /// than the kernel's decision. The sandbox has to be told about a granted command that reaches
-    /// the network, or `--on-ask allow` allows a `curl` and then runs it with the network cut and
-    /// no account of why. And the turn has to be driven on afterwards - a decision leaves the
-    /// kernel resting with nothing to drive it, unless somebody asked to drive it a transition at
-    /// a time with `/step`, in which case answering must not quietly run the rest of the turn.
-    /// `decide` does all of it once, where every caller gets it.
+    /// note: it goes through [`App::decide`] rather than the kernel, because answering is more than
+    /// the kernel's decision. The sandbox must be told about a granted command that reaches the
+    /// network; otherwise `--on-ask allow` would allow a `curl` and then run it with the network
+    /// cut and no record of why. The turn must also be driven on afterwards: a decision leaves the
+    /// kernel resting with nothing to drive it. If somebody asked to drive it one transition at a
+    /// time with `/step`, answering must not quietly run the rest of the turn. [`App::decide`] does
+    /// all of this once for every caller.
     fn answer(&mut self, app: &mut App) -> Result<(), String> {
         for pending in app.kernel.pending_permissions() {
             let tool = pending.tool.clone();
@@ -714,15 +707,12 @@ impl<'a> Headless<'a> {
 
     /// Says that fragments of an answer went by too fast to print, if any did.
     ///
-    /// note: said once, whatever the answer was and however many turns round the loop it took to
-    /// notice - the count is the whole of what went past rather than one notice per moment the
-    /// loop was behind, and a session falling behind on a long answer would otherwise be mostly
-    /// notices.
+    /// note: said once, not once per moment the loop was behind. The count is everything that went
+    /// past; otherwise a session falling behind on a long answer would be mostly notices.
     ///
-    /// note: no word about the records, because there is nothing true to say with one. What is
-    /// lost is unrecoverable from here - a fragment is in no record, and a record holds a turn by
-    /// naming it rather than copying it - so a notice claiming the log has it was sending a reader
-    /// after something that was never in it.
+    /// note: no word about the records. What is lost is unrecoverable from here: a fragment is in
+    /// no record, and a record names a turn rather than copying it, so a notice claiming the log
+    /// has it would send a reader after something that was never in it.
     fn said_missed(&mut self) -> Result<(), String> {
         let missed = std::mem::take(&mut self.missed);
         if missed == 0 {
@@ -769,15 +759,15 @@ impl<'a> Headless<'a> {
     /// notices, while a run printing only fragments printed nothing of the answer at all.
     fn say(&mut self, kernel: &Kernel, event: &Event) -> Result<(), String> {
         // note: before anything else, because a `Lagged` arriving after this event has to be read
-        // against it. A tool and a model are never both running, so what is in flight here is the
-        // whole of what a count could be about, and a count arriving under a tool is that tool's
-        // output - which nothing here prints
+        // against it. A tool and a model are never both running, so what is in flight is the whole
+        // of what a count could be about. A count arriving under a tool is that tool's output,
+        // which nothing here prints
         self.answering = matches!(
             event,
             Event::ModelRequested { .. } | Event::ModelDelta { .. }
         );
-        // no newline after a fragment: this arrives in pieces and is a sentence being written.
-        // Everything below it is a whole line, so each of them ends that one first
+        // no newline after a fragment: it arrives in pieces and is a sentence being written.
+        // Everything below it is a whole line, so each ends that one first
         if let Event::ModelDelta {
             delta: Delta::Text(text),
         } = event
@@ -786,12 +776,12 @@ impl<'a> Headless<'a> {
 
             return self.prose.write_answer(text);
         }
-        // a new request is a new answer, which starts on a line of its own: the last one very
-        // likely ended mid-line, and the first fragment of this one was written straight after it
+        // a new request is a new answer and starts on a line of its own: the last one very likely
+        // ended mid-line, and the first fragment of this one was written straight after it.
         //
-        // note: and the fragments that went by are said against the last answer rather than
-        // against this one, so what went missing is named before the next thing is started rather
-        // than attributed to a sentence that had not been written yet
+        // note: the fragments that went by are said against the last answer, not this one, so what
+        // went missing is named before the next thing starts rather than attributed to a sentence
+        // that had not been written yet
         if matches!(event, Event::ModelRequested { .. }) {
             self.streamed = false;
             self.said_missed()?;
@@ -940,14 +930,14 @@ impl<W: Write> Write for Printable<W> {
     }
 }
 
-/// Lines off an input, whatever bytes they turn out to be.
+/// Lines read from an input, whatever bytes they contain.
 ///
-/// note: rather than `AsyncBufReadExt::lines`, which fails the whole stream at the first line that
-/// is not UTF-8 - so one Latin-1 `é` in a script ended the session, dropped every line after it,
-/// and never said which line it was. A line is taken whatever it holds, with `U+FFFD` where the
-/// bytes were not text, and the caller says so, since what goes on is not quite what was typed.
+/// note: it does not use `AsyncBufReadExt::lines`, which fails the whole stream at the first line
+/// that is not UTF-8, so one Latin-1 byte in a script ended the session and dropped every line
+/// after it. A line is taken whatever it holds, with `U+FFFD` where the bytes were not text, and
+/// the caller is told, because what goes on is not quite what was typed.
 ///
-/// note: as safe to drop mid-line as `lines` is, and for the same reason: `read_until` appends
+/// note: it is as safe to drop mid-line as `lines` is, for the same reason: `read_until` appends
 /// what it has read to a buffer this owns, so a `select!` that takes another branch loses nothing
 /// and the next call carries on from where that one stopped.
 pub(crate) struct Typed<R> {
@@ -1037,7 +1027,7 @@ mod tests {
 
     /// Bytes that are not text still lose their control characters, and keep their lines and tabs.
     ///
-    /// note: an escape sequence in prose is somebody's terminal being driven by a model's words,
+    /// note: an escape sequence in prose drives somebody's terminal with the model's words,
     /// whatever else the bytes around it are.
     #[test]
     fn bytes_that_are_not_text_lose_their_control_characters() {

@@ -34,10 +34,9 @@ pub(super) fn columns(text: &str) -> usize {
 
 /// `text` clipped to `width` columns and padded out to exactly that many.
 ///
-/// note: `{:<width$}` is the obvious way and it pads by *characters*, so a label of three CJK
-/// characters in a column ten wide is given seven spaces and takes thirteen cells - which pushes
-/// every column to the right of it off the end of the row. Nothing in `std`'s formatting knows
-/// what a column is, so a padded cell of text somebody else wrote is built here instead.
+/// note: `{:<width$}` pads by characters, not columns: three CJK characters in a column ten wide
+/// get seven spaces and take thirteen cells, pushing every column to the right off the end of the
+/// row. Nothing in `std` formatting knows what a column is, so the padding is built here.
 pub(super) fn pad(text: &str, width: usize) -> String {
     let clipped = clip(text, width);
     let spare = width.saturating_sub(columns(&clipped));
@@ -166,8 +165,8 @@ pub(super) fn refit(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
         ];
     }
 
-    // an indented line's continuations belong under it rather than back at the margin, and so do
-    // a list item's: `- ` and `1. ` are indentation as far as reading it goes
+    // Continuations of an indented line hang under it, not back at the margin. A list item's
+    // continuations do the same: `- ` and `1. ` count as indentation
     let spaces = plain.chars().take_while(|c| *c == ' ').count();
     let hang = " ".repeat(spaces + bullet(&plain[spaces..]));
     let hang = match hang.len() + 8 < width {
@@ -218,11 +217,11 @@ fn bullet(text: &str) -> usize {
 
 /// Splits a word that is wider than the line into pieces that are not.
 ///
-/// note: between graphemes rather than between characters, and by column rather than by count.
-/// Half of a wide character is not a character, and an `é` written as `e` and a combining accent
-/// is two characters and one cell - so a chunking that counted either would put the accent on the
-/// row below the letter it belongs to. [`prefix_within`] answers both, and it never answers
-/// nothing, which is what stops a grapheme wider than the whole box looping here for ever.
+/// note: the split is between graphemes, not characters, and by column, not by count. Half of a
+/// wide character is not a character, and an `é` written as `e` plus a combining accent is two
+/// characters and one cell, so counting either would put the accent on the row below its letter.
+/// [`prefix_within`] answers both and never returns nothing, which stops a grapheme wider than the
+/// whole box from looping here for ever.
 pub(super) fn split_to_fit(word: &str, width: usize) -> Vec<String> {
     if columns(word) <= width {
         return vec![word.to_owned()];
@@ -240,12 +239,12 @@ pub(super) fn split_to_fit(word: &str, width: usize) -> Vec<String> {
     out
 }
 
-/// Breaks text into lines that fit, keeping the newlines it already had, hanging continuations
-/// under the prefix, and leaving a line that already fits exactly as it was.
+/// Breaks text into lines that fit the width, keeping existing newlines and hanging continuations
+/// under the prefix. A line that already fits is left exactly as it was.
 ///
-/// note: The last of those is what makes code and command output readable in here - a wrapper
-/// that reflowed every line would turn an indented block into a paragraph. A line that has to be
-/// broken keeps its own indentation on the pieces, so a list stays a list.
+/// note: reflowing every line would turn an indented block into a paragraph, so a line that already
+/// fits is left alone. A line that has to be broken keeps its own indentation on the pieces, so a
+/// list stays a list.
 pub(super) fn wrapped(text: &str, width: usize, prefix: &str) -> Vec<String> {
     let head = columns(prefix);
     let width = width.max(head + 12);
@@ -270,11 +269,10 @@ pub(super) fn wrapped(text: &str, width: usize, prefix: &str) -> Vec<String> {
 
 /// Breaks one paragraph into pieces no wider than `room`.
 ///
-/// note: `split(' ')` rather than `split_whitespace`, because the latter collapses a run of
-/// spaces into one and this is what draws `/payload` - a panel whose whole claim is that it shows
-/// the bytes that would go out. A file's indentation inside a JSON string is spaces in a row, and
-/// re-flowing them away would be quietly answering a different question. It keeps the help's
-/// columns lined up in a narrow pane, too.
+/// note: `split(' ')` rather than `split_whitespace`, because `split_whitespace` collapses a run of
+/// spaces into one. This draws `/payload`, which shows the bytes that would go out: a file's
+/// indentation inside a JSON string is spaces in a row, and re-flowing them away would answer a
+/// different question. It also keeps the help's columns lined up in a narrow pane.
 pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
     if columns(body) <= room {
         return vec![body.to_owned()];
@@ -293,7 +291,7 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
     for word in body.split(' ') {
         let wide = columns(word);
         // a single word longer than the pane is broken rather than allowed to overflow; the last
-        // piece stays open, so that whatever follows can share the line with it
+        // piece stays open, so whatever follows can share the line with it
         if wide > room {
             if !fresh {
                 out.push(std::mem::take(&mut line));
@@ -325,11 +323,10 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
 
 /// Shortens text to a width in columns, with an ellipsis if it had to.
 ///
-/// note: the ellipsis is a column of its own and is counted as one, so what comes back is never
-/// wider than it was asked for. There is a case with no good answer - one grapheme two cells wide
-/// in a box two cells wide, where the grapheme and the ellipsis do not both fit - and it goes to
-/// the ellipsis: a box this narrow can say *something was cut* or it can say one character of
-/// what, and the first is the one a reader can act on.
+/// note: the ellipsis is a column of its own and is counted as one, so the result is never wider
+/// than the width asked for. If a grapheme two cells wide does not fit with the ellipsis in a
+/// two-cell box, the ellipsis wins: a box this narrow can say something was cut or one character of
+/// what, and a reader can act on the first.
 pub(super) fn clip(text: &str, width: usize) -> String {
     if columns(text) <= width {
         return text.to_owned();
@@ -346,10 +343,10 @@ pub(super) fn clip(text: &str, width: usize) -> String {
     }
 }
 
-/// A round number in as few characters as it can be said in: `1M`, `131k`, `4.1k`.
+/// A round number in as few characters as possible: `1M`, `131k`, `4.1k`.
 ///
-/// note: For the limit rather than the count. Nobody reads `1,048,576` as anything but "a lot",
-/// and it is the shape of the number that matters when it is sitting next to a percentage.
+/// note: for the limit rather than the count. Nobody reads `1,048,576` as anything but "a lot", and
+/// the shape of the number is what matters next to a percentage.
 pub(super) fn compact(n: usize) -> String {
     match n {
         0..1_000 => n.to_string(),
@@ -437,9 +434,9 @@ mod tests {
         assert!(rows.iter().all(|row| columns(row) <= 8), "{rows:?}");
         assert_eq!(rows.concat(), "一丁丂七丄丅丆万");
 
-        // the gap between two words is a column like any other, so a pair that fills the room
-        // exactly stays on one row and a pair one column over does not - and the pair is not the
-        // whole paragraph, so this is the arithmetic in the loop rather than the way out of it
+        // the gap between two words is a column like any other: a pair that fills the room exactly
+        // stays on one row, and a pair one column over does not. The pair is not the whole
+        // paragraph, so this is the arithmetic in the loop rather than the way out of it
         assert_eq!(fold("aaaaa bbbb", 10), ["aaaaa bbbb"]);
         assert_eq!(fold("aaaaa bbbbb", 10), ["aaaaa", "bbbbb"]);
         assert_eq!(fold("aaaaa bbbb cc", 10), ["aaaaa bbbb", "cc"]);
@@ -476,10 +473,10 @@ mod tests {
     }
 
     /// A count is said in the band it falls in: as it is under a thousand, to a tenth of a thousand
-    /// under ten thousand, in whole thousands under a million, and to a tenth of a million under ten
-    /// million, where a `.0` is dropped.
+    /// under ten thousand, in whole thousands under a million, and to a tenth of a million under
+    /// ten million, with a `.0` dropped.
     ///
-    /// note: each band is here because the ones either side of it say the same count differently,
+    /// note: each band is here because the bands either side of it say the same count differently,
     /// so a band that goes missing is a number said in some other band's words.
     #[test]
     fn a_round_figure_is_said_in_as_few_characters_as_it_can_be() {
@@ -500,13 +497,13 @@ mod tests {
         }
     }
 
-    /// A list item's continuation hangs under its marker, and text that only looks like one does not.
+    /// A list item's continuation hangs under its marker, and text that only looks like one does
+    /// not.
     ///
-    /// note: `- ` and `1. ` are indentation as far as reading it goes, so the marker is as wide as
-    /// it is drawn, however many digits the number runs to. The two that are *not* markers are
-    /// worth naming, because a rule that says yes to either hangs a row of ordinary prose under
-    /// something that is not there: digits with no `. ` or `) ` behind them, and a `. ` that never
-    /// had a number in front of it.
+    /// note: `- ` and `1. ` are indentation as far as reading goes, so the marker is as wide as it
+    /// is drawn, however many digits the number runs to. Two things are not markers: digits with no
+    /// `. ` or `) ` behind them, and a `. ` that never had a number in front of it. A rule that
+    /// says yes to either hangs a row of ordinary prose under something that is not there.
     #[test]
     fn a_list_items_continuation_hangs_under_its_marker() {
         let rest = |line: &str| -> Vec<String> {
@@ -589,8 +586,8 @@ mod tests {
     /// A word wider than the room the hang leaves is cut to that room, not to the whole pane.
     ///
     /// note: the continuation carries the indent, so a word cut to the full width would overflow
-    /// the row by however much the indent is. Twelve columns with two of them spent leaves ten,
-    /// and twelve is what `width + hang` would have cut it to instead.
+    /// the row by however much the indent is. Twelve columns with two spent leaves ten;
+    /// `width + hang` would have cut it to twelve instead.
     #[test]
     fn a_refit_line_cuts_a_word_to_the_room_left_by_the_hang() {
         assert_eq!(
@@ -599,8 +596,7 @@ mod tests {
         );
     }
 
-    /// A word that lands a row on the width exactly stays on it, and the word after it starts the
-    /// row below.
+    /// A word that fills a row exactly stays on it; the next word starts the row below.
     ///
     /// note: a word is measured with its trailing space trimmed off, because that space is the
     /// gap to what follows and a row ending on one is not full. `abcdef` is six and `ghijk` is

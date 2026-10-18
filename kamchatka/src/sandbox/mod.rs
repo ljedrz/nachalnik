@@ -1,60 +1,54 @@
 //! A confinement for the `shell` tool, so that the permission stances are enforced rather than
 //! reported.
 //!
-//! note: this is the part of the workspace where a permission stops being a decision point with a
-//! paper trail and becomes a boundary. The runtime cannot do it - it executes nothing, so it has
-//! nothing to confine - and it is exactly the sort of thing that belongs in the program that
-//! actually spawns the process.
+//! note: here a permission stops being only a decision with a record and becomes a boundary. The
+//! runtime cannot confine anything: it executes nothing. Confinement belongs in the program that
+//! spawns the process.
 //!
-//! note: [Landlock](https://landlock.io), which is a Linux LSM a process applies to *itself*: no
-//! privileges, no setuid helper, no container, no daemon. What it buys is that `network: deny` is
-//! refused by the kernel on the `connect` syscall rather than by a policy reading the word `curl`,
-//! which is the difference between a heuristic somebody can walk around and one they cannot. A
-//! model refused a `curl` can reach the same page with `python3 -c "import urllib.request"`;
-//! under this, that call gets `Permission denied` from the kernel.
+//! note: [Landlock](https://landlock.io) is a Linux LSM a process applies to itself: no privileges,
+//! no setuid helper, no container, no daemon. `network: deny` is refused by the kernel on the
+//! `connect` syscall, not by a policy reading `curl`. A model refused `curl` can use
+//! `python3 -c "import urllib.request"`; under this, that call gets `Permission denied` from the
+//! kernel.
 //!
-//! note: and it is TCP that Landlock buys, because TCP is what the `landlock` crate has:
-//! `ConnectTcp` and `BindTcp` are the only two network access rights it exposes. The kernel grew
-//! UDP rights in ABI 10, which is Linux 7.2, but the crate stops at ABI 9 and `AccessNet` is
-//! `#[non_exhaustive]` over a sealed trait, so those two bits cannot be handed to a ruleset from
-//! out here. The rest of the network is the gate's: [`crate::gate`] stops a confined command's
-//! `socket()` in every family but unix and netlink, which covers UDP and everything else a socket
-//! can leave the machine by, and either refuses it or holds it while the person is asked. Where
-//! the gate cannot be installed a UDP datagram still goes out, which is enough to put bytes in a
-//! DNS query, and [`Network::NoTcp`] is how that case is written everywhere it is shown rather
-//! than rounded up.
-//! What still holds against the rest is the filesystem: a command that cannot read a file has
-//! nothing to send.
+//! note: the `landlock` crate exposes only `ConnectTcp` and `BindTcp` as network rights, so
+//! Landlock confines only TCP here. The kernel grew UDP rights in ABI 10 (Linux 7.2), but the crate
+//! stops at ABI 9 and `AccessNet` is `#[non_exhaustive]` over a sealed trait, so UDP rights cannot
+//! be handed to a ruleset from this crate. The gate handles the rest of the network:
+//! [`crate::gate`] stops a confined command's `socket()` in every family but unix and netlink,
+//! covering UDP and everything else a socket can leave the machine by, and either refuses it or
+//! holds it while the person is asked. Where the gate cannot be installed, a UDP datagram still
+//! goes out, enough to put bytes in a DNS query; [`Network::NoTcp`] is how that case is written
+//! everywhere it is shown rather than rounded up. What still holds against the rest is the
+//! filesystem: a command that cannot read a file has nothing to send.
 //!
-//! note: a unix socket is the filesystem's rather than the network's, and Linux 7.1 is where the
-//! kernel grew the right for it - `AccessFs::ResolveUnix`, which the crate does expose. A command
-//! may connect to one it could have written to, and to no other. Below that kernel a `connect` is
-//! governed by nothing whatever, which leaves the session bus, the compositor and the container
-//! daemon reachable; each of those runs a command outside the domain on the caller's behalf, so
-//! the hole is worth more than the UDP one - a datagram carries bytes out, where `systemd-run
-//! --user` carries a command out and hands back the whole filesystem.
-//! [`confines_unix_sockets`] is where that is asked.
+//! note: a unix socket is a filesystem matter, not a network one. Linux 7.1 grew the right for it,
+//! `AccessFs::ResolveUnix`, which the crate exposes. A command may connect to a unix socket it
+//! could have written to, and to no other. Below that kernel a `connect` is ungoverned, leaving the
+//! session bus, the compositor and the container daemon reachable; each runs a command outside the
+//! domain on the caller's behalf, so the hole is worse than the UDP one: a datagram carries bytes
+//! out, while `systemd-run --user` carries a command out and hands back the whole filesystem.
+//! [`confines_unix_sockets`] asks about that.
 //!
 //! note: an abstract unix socket has no path for that right to name, and the X server listens on
-//! one that takes any process of the user's without a cookie - a connection that can type into the
-//! person's terminal. Linux 6.12 scopes it: a command may connect to an abstract socket made
+//! one that accepts any of the user's processes without a cookie - a connection that can type into
+//! the person's terminal. Linux 6.12 scopes it: a command may connect to an abstract socket made
 //! inside its own confinement, and to no other. [`confines_abstract_sockets`] asks.
 //!
 //! note: signals have a scope of the same age, and it is not in a command's own ruleset: each
-//! command confines itself in a domain of its own, so there it would refuse a command stopping a
-//! server an earlier call left running. The scope is checked per layer, so it goes on the one
-//! layer every command shares - this program's own, put on by [`scope_signals`] before it starts
-//! anything - and a command may signal this program and whatever it started, and nothing else.
-//! This program itself is inside that boundary, which keeping out would take a process of its own
-//! for every command to be started from. A confinement run by hand, with no session above it, has
-//! no such layer, and puts the scope on its own; see [`SESSION_FLAG`].
+//! command confines itself in its own domain, so it would refuse a command stopping a server an
+//! earlier call left running. The scope is checked per layer, so it goes on the one layer every
+//! command shares - this program's own, put on by [`scope_signals`] before it starts anything - and
+//! a command may signal this program and whatever it started, and nothing else. This program is
+//! inside that boundary; keeping it out would take a separate process to start each command from. A
+//! confinement run by hand, with no session above it, has no such layer and puts the scope on its
+//! own; see [`SESSION_FLAG`].
 //!
-//! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
-//! the command. The alternative is `CommandExt::pre_exec`, which runs between `fork` and `exec` in
-//! a process that has a `tokio` runtime's threads in it, where almost nothing is safe to call - the
-//! ruleset's own allocations among them. The child is deliberately not a `tokio` program: Landlock
-//! and the gate restrict the calling thread, and a single-threaded helper is the one shape where
-//! that needs no thought.
+//! note: applied by re-executing this program in a mode that confines itself and then runs the
+//! command. `CommandExt::pre_exec` is the alternative: it runs between `fork` and `exec` in a
+//! process with a `tokio` runtime's threads, where almost nothing is safe to call, including the
+//! ruleset's allocations. The child is deliberately not a `tokio` program: Landlock and the gate
+//! restrict the calling thread, and a single-threaded helper needs no thought.
 
 use std::{
     collections::BTreeSet,
@@ -91,11 +85,11 @@ pub const EXEC_FLAG: &str = "--confine-and-run";
 /// binds, and outside one it takes the scope from nobody but the caller.
 pub const SESSION_FLAG: &str = "--in-a-session";
 
-/// What the `shell` tool is allowed to reach.
+/// What the `shell` tool may reach.
 ///
-/// note: read is not a stance here. A command that cannot read `/usr/bin` cannot run at all, so
-/// the system directories are always readable and the interesting question is what is *writable*
-/// and whether the network is reachable - which are the two stances a person actually changes.
+/// note: a command that cannot read `/usr/bin` cannot run, so system directories are always
+/// readable. The stances a person changes are what is writable and whether the network is
+/// reachable.
 ///
 /// note: "the network" is every socket that can leave the machine where the gate holds, and TCP
 /// where it does not.
@@ -106,13 +100,12 @@ pub struct Sandbox {
     pub workdir: PathBuf,
     /// Extra paths the user asked for, read-write.
     pub extra: Vec<PathBuf>,
-    /// Extra paths the user asked for, readable and no more.
+    /// Extra paths the user asked for, readable only.
     ///
-    /// note: separate from `extra` rather than a flag on it, because the two are asked for by
-    /// different flags for different reasons and a command may hold both at once. What sends
-    /// most people here is a toolchain: `cargo` cannot start without `~/.rustup`, and a model
-    /// that can *replace* the toolchain it is about to run is a worse trade than the one anybody
-    /// meant to make.
+    /// note: separate from `extra` because they are asked for by different flags for different
+    /// reasons, and a command may hold both at once. What sends most people here is a toolchain:
+    /// `cargo` cannot start without `~/.rustup`, and a model that can replace the toolchain it is
+    /// about to run is a worse trade than anybody meant to make.
     pub readable: Vec<PathBuf>,
     /// Whether the working directory is writable, or only readable.
     pub writable: bool,
@@ -126,7 +119,8 @@ pub struct Sandbox {
     ///
     /// note: a served session takes a client's answer to a permission question, so a command that
     /// could reach it could answer its own. Under `Open`, and under `Asked` once somebody said yes,
-    /// Landlock is asked to refuse these and nothing else; `NoTcp` and `Shut` refuse them already.
+    /// Landlock is asked to refuse these ports and nothing else. `NoTcp` and `Shut` refuse them
+    /// already.
     pub closed: Vec<u16>,
 }
 
@@ -148,11 +142,11 @@ pub enum Network {
     NoTcp,
     /// Every network socket is refused by the gate, and TCP by Landlock as well.
     Shut,
-    /// Every network socket is held by the gate until the person is asked, once per command.
+    /// The gate holds every network socket until the person is asked, once per command.
     ///
-    /// note: Landlock leaves TCP alone here, but for [`Sandbox::closed`], because a ruleset cannot
-    /// be lifted and a `yes` has to be able to let the connection through. What stands in the way is the gate alone, which is
-    /// why this is never asked for where the gate cannot be installed.
+    /// note: Landlock leaves TCP alone here, except for [`Sandbox::closed`], because a ruleset
+    /// cannot be lifted and a `yes` must be able to let the connection through. The gate alone
+    /// stands in the way, so this is never asked for where the gate cannot be installed.
     Asked,
 }
 
@@ -194,11 +188,10 @@ impl fmt::Display for Network {
 impl Sandbox {
     /// The confinement a command should run under, given what the policy currently answers.
     ///
-    /// note: the network is reachable only if the stance is an outright `allow`, or if this
-    /// particular call was allowed by a person who was asked about it. A stance of `ask` that
-    /// nobody has been asked about yet is not permission - and where the gate holds it is not a
-    /// refusal either: the command runs, and is asked about if it reaches out. See
-    /// [`Careful::gates_the_network`].
+    /// note: the network is reachable only if the stance is `allow`, or if this call was allowed by
+    /// a person who was asked about it. A stance of `ask` that nobody has been asked about yet is
+    /// not permission. Where the gate holds, the command still runs and is asked about if it
+    /// reaches out, so the stance is not a refusal either. See [`Careful::gates_the_network`].
     pub fn of(
         policy: &Careful,
         workdir: PathBuf,
@@ -315,10 +308,10 @@ impl Sandbox {
     /// note: reading rather than writing, because every use of this is about a command that was
     /// refused one. A path under a read-only root answers `true` here and is still unwritable.
     ///
-    /// note: resolved on both sides, so that a symlink and a `../` are the same question they are
-    /// for [`Reach::allows`]. A path that is not there resolves through its parent - which is the
-    /// common case, since a command that named a file it could not open often could not `stat`
-    /// its directory either.
+    /// note: both sides are resolved, so a symlink and a `../` are the same question as for
+    /// [`Reach::allows`]. A path that is not there resolves through its parent, which is the common
+    /// case: a command that named a file it could not open often could not `stat` its directory
+    /// either.
     fn reaches(&self, path: &Path, scratch: Option<&Path>) -> bool {
         let Some(resolved) = resolve(path) else {
             return false;
@@ -382,27 +375,27 @@ impl Sandbox {
         self.note_for_in(stderr, None)
     }
 
-    /// [`Sandbox::note_for`], for a command that was handed `scratch` as its `TMPDIR`.
+    /// [`Sandbox::note_for`] for a command given `scratch` as `TMPDIR`.
     ///
-    /// note: [`confine`] grants that directory reading and writing, even where the working
-    /// directory is only read, so a refusal in it is the file's own permissions and blaming the confinement for one is the hedge
-    /// `note_for` exists not to make. It is the caller's to name, because only whoever spawned the
-    /// command knows which directory it was given, and it has to still be there to be compared.
+    /// note: [`confine`] grants that directory reading and writing even where the working directory
+    /// is read-only, so a refusal in it is the file's own permissions. Blaming the confinement is
+    /// the hedge `note_for` exists not to make. The caller names it, because only whoever spawned
+    /// the command knows which directory it was given, and it must still be there to compare.
     pub(crate) fn note_for_in(&self, stderr: &str, scratch: Option<&Path>) -> Option<String> {
         let refusals: Vec<&str> = stderr.lines().filter(|line| refused(line)).collect();
         if refusals.is_empty() {
             return None;
         }
 
-        // `Vec::dedup` drops only neighbours, and a path is usually named by two lines that are
-        // not next to each other - a warning and the failure it led to.
+        // `Vec::dedup` drops only neighbours, but a path is usually named by two non-adjacent
+        // lines: a warning and the failure it led to.
         //
-        // note: and it stops at the three it will name, or at `LOOKED` paths judged. A command's
-        // standard error can be the whole of what `KEPT` holds, each path in it costs a dozen
-        // `canonicalize` calls, and `find /` names thousands this reaches, none of which counts
-        // towards the three: seconds of work after the command had already ended, with nothing to
-        // interrupt it. Stopped short with nothing named, it says the general sentence, since
-        // saying nothing would call every refusal after the last one judged the file's own
+        // note: it stops after naming three, or after judging `LOOKED` paths. A command's standard
+        // error can be all of what `KEPT` holds; each path costs a dozen `canonicalize` calls, and
+        // `find /` names thousands this reaches, none counting towards the three. That is seconds
+        // of work after the command ended, with nothing to interrupt it. Stopped short with nothing
+        // named, it says the general sentence, since saying nothing would call every refusal after
+        // the last one judged the file's own
         let (mut named, mut mentioned): (Vec<(String, Why)>, bool) = (Vec::new(), false);
         let (mut judged, mut stopped) = (std::collections::HashSet::new(), false);
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
@@ -414,9 +407,9 @@ impl Sandbox {
                 stopped = true;
                 break;
             }
-            // note: a relative path is judged where the command started, and named as it was
-            // written. A command that moved with `cd` first is judged from the wrong place, which
-            // is the rarer mistake than reading every relative path as the boundary's
+            // note: a relative path is judged where the command started and named as written. A
+            // command that moved with `cd` first is judged from the wrong place, which is the rarer
+            // mistake than reading every relative path as the boundary's
             let judged = self.workdir.join(&path);
             // a socket is judged by connecting and nothing else: see `connecting`
             let why = match self.connecting(&judged, scratch) {
@@ -447,8 +440,8 @@ impl Sandbox {
                 "[this command ran confined - {self} - so a permission error below may be that \
                  boundary rather than the file's own permissions.]"
             )),
-            // a socket the command could read the path of and not connect to, which "outside what
-            // this session reaches" would be false about
+            // a socket whose path the command can read but not connect to; "outside what this
+            // session reaches" would be false about it
             (false, _) if sockets.len() == named.len() => Some(format!(
                 "[{} {} outside what this session may write, and a confined command may \
                  connect only to a socket it could have written, so the permission error below \
@@ -481,9 +474,9 @@ impl Sandbox {
                 outside.join(", "),
                 are(&outside),
             )),
-            // note: refused for more than one reason, each path said with its own. One sentence
-            // for all of them calls a path the session may read "outside what this session
-            // reaches", and a model takes that for the whole rule and never reads it
+            // note: each path is refused for its own reason and said with it. One sentence for all
+            // of them calls a readable path "outside what this session reaches", and a model takes
+            // that for the whole rule and never reads it
             (false, _) => {
                 let said = [
                     (outside, "is", "are", "outside what this session reaches"),
@@ -517,15 +510,14 @@ impl Sandbox {
         }
     }
 
-    /// Whether `path` is somewhere a confined command may read and not write, which the person
-    /// could have written to: a refusal there is the confinement's and not the file's.
+    /// Whether `path` is somewhere a confined command may read but not write, and the person could
+    /// have written to it. A refusal there is the confinement's, not the file's own permissions.
     ///
-    /// note: a path this session reaches is otherwise called the file's own permissions, which is
-    /// right for `cat /etc/shadow` and wrong for a write into a directory the session holds
-    /// read-only - under `--auto-deny fs:write`, the working directory itself. Asked of the
-    /// person's permissions with `access(2)` from this process, which is not confined, on the path
-    /// or the nearest part of it that is there, since what a write is refused is often a file it
-    /// was going to make.
+    /// note: a refusal at a reachable path is otherwise blamed on the file's own permissions, which
+    /// is right for `cat /etc/shadow` but wrong for writing to a directory the session holds
+    /// read-only - under `--auto-deny fs:write`, the working directory itself. The check uses
+    /// `access(2)` from this unconfined process, on the path or the nearest part of it that exists,
+    /// because a refused write is often a file being created.
     fn reads_only(&self, path: &Path, scratch: Option<&Path>) -> bool {
         let Some(resolved) = resolve(path) else {
             return false;
@@ -561,20 +553,19 @@ impl Sandbox {
             })
     }
 
-    /// Whether a confined command may not connect to `path`, if it is a socket; `None` if it is
-    /// not one.
+    /// Whether a confined command may not connect to `path`, if it is a socket; `None` if it is not
+    /// one.
     ///
     /// note: the other half of [`Sandbox::reaches`], which asks about reading. A socket is held to
-    /// the writing half of the ruleset, so a session can read the path of one under `/run` and be
-    /// refused the connection - and `docker ps` came back `Permission denied` with nothing said,
-    /// because the path was one the session reaches. By the file's type rather than by the words of
-    /// the error, which a client chooses; and only where [`confines_unix_sockets`] says the kernel
-    /// governs sockets at all, since below that the refusal really is the socket's own permissions.
+    /// the writing half of the ruleset, so a session can read the path of a socket under `/run` and
+    /// be refused the connection. It is judged by the file's type, not by the error's words, which
+    /// a client chooses. Only where [`confines_unix_sockets`] says the kernel governs sockets;
+    /// below that, the refusal is the socket's own permissions.
     ///
-    /// note: and a socket is judged by this alone, not by [`Sandbox::reaches`] as well. Below that
-    /// kernel a connection is not something the ruleset is consulted about, even to a socket in a
-    /// directory the session cannot read, so blaming the confinement for that directory is
-    /// blaming it for a refusal it did not make.
+    /// note: a socket is judged by this alone, not by [`Sandbox::reaches`] as well. Below that
+    /// kernel, the ruleset is not consulted about a connection, even to a socket in a directory the
+    /// session cannot read; blaming the confinement for that directory blames it for a refusal it
+    /// did not make.
     fn connecting(&self, path: &Path, scratch: Option<&Path>) -> Option<bool> {
         use std::os::unix::fs::FileTypeExt as _;
 
@@ -625,37 +616,37 @@ impl Sandbox {
     }
 }
 
-/// Whether the policy leaves the reach writable: a refusal of `write` reaches the shell too, and
-/// anything short of a refusal leaves the working directory writable, because a shell that cannot
-/// write in it is not one anybody can work with.
+/// Whether the policy leaves the reach writable. A `Deny` for `write` reaches the shell too; any
+/// other verdict leaves the working directory writable, because a shell that cannot write there is
+/// unusable.
 ///
-/// note: one function for [`Sandbox::of`] and [`Reach`]'s refusals, which describe the same session
-/// and should not come to two answers about it.
+/// note: one function serves [`Sandbox::of`] and [`Reach`]'s refusals: they describe the same
+/// session and must not produce two answers about it.
 fn writes(policy: &Careful) -> bool {
     policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny
 }
 
 /// The deepest existing part of a path, resolved, with whatever is left over joined back on.
 ///
-/// note: a file about to be created has no canonical form of its own, and a path handed to
-/// `write` is usually one of those. It is resolved through its parent instead, because a file
-/// cannot be created outside a directory it is not in.
+/// note: a file about to be created has no canonical form, and a path handed to `write` is usually
+/// such a file. Resolve it through its parent instead, because a file cannot be created outside a
+/// directory it is not in.
 ///
-/// note: one function rather than two, so that [`Reach::allows`] and [`Sandbox::reaches`] cannot
-/// come to different answers about the same path.
+/// note: one function rather than two, so [`Reach::allows`] and [`Sandbox::reaches`] cannot give
+/// different answers about the same path.
 ///
-/// note: a symlink to something that is not there has no canonical form either, and it is *not* a
-/// file about to be created: writing through it creates its target, wherever that is. So it is
-/// followed, the way the open will follow it, rather than stepped past as though it were a name
-/// with nothing behind it - which would let `write` create a file outside the directory through a
-/// link made inside it. `LINKS` bounds the following, because two links can point at each other.
+/// note: a symlink to a missing target has no canonical form either, but it is not a file about to
+/// be created: writing through it creates the target, wherever that is. Follow it as the open will,
+/// rather than step past it as a name with nothing behind it; stepping past would let `write`
+/// create a file outside the directory through a link made inside it. `LINKS` bounds the following,
+/// because two links can point at each other.
 ///
-/// note: `None` where that bound runs out with a link still in hand and no link seen twice. Taken
-/// for a name with nothing behind it, the last link was allowed as a file about to be made in the
-/// directory it sits in, and the open then followed the rest of the chain wherever it went - out
-/// of the directory, on a kernel with no `openat2` to stop it there. A loop is not that: every
-/// link in it has been seen, it leads nowhere, and the open refuses it, so it is answered where it
-/// is - inside or outside, like any other name.
+/// note: return `None` when that bound runs out with a link still unresolved and no link seen
+/// twice. Treating it as a name with nothing behind it would allow the last link as a file about to
+/// be made in its directory, and the open would then follow the rest of the chain wherever it went,
+/// out of the directory, on a kernel with no `openat2` to stop it there. A loop is different: every
+/// link in it has been seen, it leads nowhere, and the open refuses it, so answer it where it is,
+/// inside or outside, like any other name.
 pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
     const LINKS: usize = 40;
 
@@ -688,8 +679,8 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
                     break Some(joined(existing, &rest));
                 };
                 followed += 1;
-                // a relative target is relative to the directory the link is in, and an absolute
-                // one replaces the lot, which is what `join` does with each
+                // `join` handles both: a relative target is relative to the link's directory, and
+                // an absolute target replaces the whole path
                 existing = match existing.parent() {
                     Some(parent) => parent.join(target),
                     None => target,
@@ -697,11 +688,10 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
             }
             Err(_) => match (existing.file_name(), existing.parent()) {
                 (Some(name), Some(parent)) => {
-                    // note: and the same guard here, for the same reason. Without it every path
-                    // that does not exist yet comes back with a separator on the end, so `write`
-                    // can create no file at all: `notes.txt/` is a directory, and the tool
-                    // reports `Is a directory (os error 21)` for a file it has just been asked to
-                    // make
+                    // note: the same guard here, for the same reason. Without it every path that
+                    // does not exist yet would come back with a trailing separator, so `write`
+                    // could create no file at all: `notes.txt/` is a directory, and the tool
+                    // reports `Is a directory (os error 21)` for a file it was just asked to create
                     rest = match rest.as_os_str().is_empty() {
                         true => PathBuf::from(name),
                         false => Path::new(name).join(&rest),
@@ -739,13 +729,13 @@ pub fn device(path: &Path) -> Option<PathBuf> {
     })
 }
 
-/// Whether a line of standard error looks like something was refused permission.
+/// Whether a line of standard error looks like a permission refusal.
 ///
-/// note: three spellings because three layers write them: a C program's `strerror`, Rust's
-/// `io::Error` display, and the errno name itself. All three are the same refusal.
+/// note: there are three spellings because three layers write them: a C program's `strerror`,
+/// Rust's `io::Error` display, and the errno name itself. All three mean the same refusal.
 ///
-/// note: the lowercase spelling too, which is Go's - `docker` says `connect: permission denied`,
-/// and a refused socket is the refusal a Go client is most often the one reporting.
+/// note: the lowercase spelling is included because it is Go's. `docker` says `connect: permission
+/// denied`, and a refused socket is the refusal a Go client most often reports.
 fn refused(line: &str) -> bool {
     line.contains("Permission denied")
         || line.contains("permission denied")
@@ -767,8 +757,8 @@ enum Why {
     ReadOnly,
 }
 
-/// The verb for the paths a note names: a command that writes one file and reads another is
-/// refused twice, and the note names both.
+/// The verb for the paths a note names. A command that writes one file and reads another is refused
+/// twice, and the note names both.
 fn are(named: &[String]) -> &'static str {
     match named.len() {
         1 => "is",
@@ -776,26 +766,24 @@ fn are(named: &[String]) -> &'static str {
     }
 }
 
-/// The paths a line of standard error mentions: absolute ones, and relative ones with a `/` in
-/// them, as written.
+/// The paths a line of standard error mentions: absolute paths, and relative paths that contain
+/// `/`, as written.
 ///
-/// note: a token that is a path once the punctuation a message wraps one in has been taken off.
-/// Stripped *first* and tested afterwards, because a message such as `could not read settings
-/// file: '/home/you/.rustup/settings.toml': Permission denied` has the token `'/home/...':`, which
-/// does not start with a slash at all.
+/// note: a token counts as a path after the punctuation around it is stripped. Strip before
+/// testing: in `could not read settings file: '/home/you/.rustup/settings.toml': Permission
+/// denied`, the token is `'/home/...':`, which does not start with a slash.
 ///
-/// note: opening quotes and brackets from the front, and closing ones and a sentence's punctuation
-/// from the back - never a `.` from the front, which turned a relative `./x` into an absolute `/x`
-/// outside the reach, and the note then blamed the confinement for the file's own permissions. And
-/// a trailing `.` only after a name, so `../..` keeps its meaning.
+/// note: strip opening quotes and brackets from the front, and closing quotes, brackets, and
+/// sentence punctuation from the back. Never strip a `.` from the front: that turned a relative
+/// `./x` into an absolute `/x` outside the reach, and the note then blamed the confinement for the
+/// file's own permissions. Strip a trailing `.` only after a name, so `../..` keeps its meaning.
 ///
-/// note: a relative path needs a `/` to count, because every refusal has words in it, and a word
-/// taken for a path in the working directory would be a path reached - silencing the general
-/// sentence a refusal naming nothing is owed. A URL is not a path.
+/// note: a relative path must contain `/` to count, because every refusal contains words, and a
+/// word mistaken for a path in the working directory would be treated as a path reached. That would
+/// silence the general sentence owed when a refusal names no path. A URL is not a path.
 ///
 /// note: it misses a path with a space in it, which is the right way round: a caller that gets
-/// nothing says something general instead, and one that gets a wrong path would say something
-/// false.
+/// nothing says something general, and a caller that gets a wrong path would say something false.
 fn paths_in(line: &str) -> Vec<String> {
     line.split_whitespace()
         .map(bare)
@@ -945,12 +933,11 @@ pub(crate) fn began(pid: u32) {
         .insert(pid);
 }
 
-/// Whether the process `pid` is in the session of a command confined from here, or cannot be told
-/// apart from one.
+/// Whether the process `pid` is in the session of a command confined from here, or cannot be
+/// distinguished from one.
 ///
-/// note: `SO_PEERCRED` is what hands a served socket this pid, and a process that has gone since
-/// has no session left to ask about. Nothing is lost by refusing it, since there is nobody there to
-/// serve.
+/// note: `SO_PEERCRED` gives a served socket this pid. A process that has since exited has no
+/// session left to ask about, and refusing it loses nothing because there is nobody there to serve.
 pub(crate) fn from_a_command(pid: u32) -> bool {
     let session = i32::try_from(pid)
         .ok()

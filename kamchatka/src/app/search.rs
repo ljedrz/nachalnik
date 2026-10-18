@@ -25,9 +25,9 @@ pub struct Search {
     pub query: String,
     /// Where the next character goes, as a byte offset into [`Search::query`].
     ///
-    /// note: a byte offset rather than a character index, because every use of it is a slice of
-    /// the query and a character index would be converted at each one. It is kept on a character
-    /// boundary by the only six methods that move it, which is what makes those slices safe.
+    /// note: a byte offset rather than a character index, because every use of it is a slice of the
+    /// query and a character index would be converted at each one. The six methods that move it
+    /// keep it on a character boundary, which is what makes those slices safe.
     at: usize,
     /// The parsed form of it, rebuilt whenever the query changes.
     pattern: Pattern,
@@ -78,7 +78,6 @@ impl Search {
     /// Removes the character under the cursor; at the end of the query, nothing.
     ///
     /// note: distinct from `backspace` only because there is a cursor for something to be under.
-    /// Without one, the two would be two names for the same rub-out.
     pub fn delete(&mut self) {
         if self.at < self.query.len() {
             self.query.remove(self.at);
@@ -110,11 +109,11 @@ impl Search {
         self.at = self.query.len();
     }
 
-    /// The query on either side of the cursor, for whatever is drawing it.
+    /// The query on either side of the cursor, for drawing.
     ///
-    /// note: two slices rather than the offset, so that the one place that knows the cursor is a
-    /// byte index is this file. A caller handed the number would have to trust it lands on a
-    /// character boundary; handed the halves, it cannot get that wrong.
+    /// note: two slices rather than the offset, so that the only place that knows the cursor is a
+    /// byte index is this file. A caller given the offset would have to trust that it lands on a
+    /// character boundary; given the halves, it cannot get that wrong.
     pub fn parts(&self) -> (&str, &str) {
         self.query.split_at(self.at)
     }

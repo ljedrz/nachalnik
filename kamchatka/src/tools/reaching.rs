@@ -35,9 +35,9 @@ pub struct Reaching {
     waiting: Mutex<Vec<(Reached, oneshot::Sender<bool>)>>,
     /// The next question's identifier.
     ///
-    /// note: never reused while the process runs, which is as long as a question can be waiting.
-    /// A question is not kept in a snapshot - a command does not survive a restart - so nothing
-    /// from before one could be answered by mistake.
+    /// note: never reused while the process runs, which is as long as a question can be waiting. A
+    /// question is not kept in a snapshot. A command does not survive a restart, so nothing from
+    /// before could be answered by mistake.
     next: AtomicU64,
     /// Moved on whenever a question arrives or goes, for the loops that have to wake for one.
     changed: watch::Sender<u64>,

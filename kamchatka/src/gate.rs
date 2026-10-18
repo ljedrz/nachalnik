@@ -1,27 +1,26 @@
 //! The gate a confined command's network goes through: a seccomp filter that holds every attempt to
 //! open a socket that can leave the machine until the process that spawned the command answers it.
 //!
-//! note: what it is for is knowing a command wants the network from its *trying*. Landlock refuses
-//! a `connect` and tells nobody unprivileged, so from outside a refused call looks like nothing at
-//! all - which left reading the command line for program names as the only way to know when to
-//! ask. `socket()` is the first thing any use of the network does, a DNS lookup included, and
-//! seccomp user notification is the mechanism that lets another process see that call and answer
-//! it. Every family is held but the two that cannot leave the machine; see `LOCAL`. The filter
-//! reads only the call's integer arguments, so there is no address a command could change after
-//! the answer, and nothing is decided per destination.
+//! note: its purpose is to know that a command wants the network from its *trying*. Landlock
+//! refuses a `connect` and tells nobody unprivileged, so from outside a refused call looks like
+//! nothing at all. That left reading the command line for program names as the only way to know
+//! when to ask. `socket()` is the first thing any use of the network does, a DNS lookup included.
+//! Seccomp user notification lets another process see that call and answer it. Every family is
+//! held except the two that cannot leave the machine; see `LOCAL`. The filter reads only the call's
+//! integer arguments, so there is no address a command could change after the answer, and nothing
+//! is decided per destination.
 //!
-//! note: the one module in this crate that writes `unsafe`. `seccomp(2)` and the notification
-//! `ioctl`s have no safe wrapper that does not link the C `libseccomp`, which every target a
-//! release ships would then have to build, the static one included. What is unsafe is four system
+//! note: the only module in this crate that writes `unsafe`. `seccomp(2)` and the notification
+//! `ioctl`s have no safe wrapper that does not link the C `libseccomp`; every target a release
+//! ships would then have to build it, the static one included. The unsafe parts are four system
 //! calls and a `prctl` on values this module owns, taking ownership of the descriptor one of them
 //! returns, and the all-zero notification another is handed, each with its reason beside it.
 //! Everything else - the socket pair, handing a descriptor over, polling - goes through `rustix`,
 //! which is safe.
 //!
-//! note: a filter is a program written against one architecture's system call numbers, and these
-//! are x86_64's and aarch64's, which are the two this crate builds for. What reads the command for
-//! program names instead is left for a kernel that cannot hold a call - see [`holds`] - and for
-//! `--no-sandbox`.
+//! note: a filter is a program written against one architecture's system call numbers. These are
+//! x86_64's and aarch64's, the two this crate builds for. Reading the command for program names
+//! instead is left for a kernel that cannot hold a call - see [`holds`] - and for `--no-sandbox`.
 
 #![allow(unsafe_code)]
 
@@ -40,9 +39,9 @@ use rustix::{
 };
 use tokio::io::unix::AsyncFd;
 
-// note: the audit architecture values from `linux/audit.h`, which `libc` does not carry. A
-// filter that compares the call number without first comparing these is the classic way
-// round one: the same number means a different call in a 32-bit process
+// note: the audit architecture values from `linux/audit.h`, which `libc` does not carry. A filter
+// must compare these before the call number: the same number means a different call in a 32-bit
+// process
 #[cfg(target_arch = "x86_64")]
 const NATIVE: u32 = 0xC000_003E;
 #[cfg(target_arch = "x86_64")]
@@ -54,9 +53,9 @@ const FOREIGN: u32 = 0x4000_0028;
 
 /// The bit an x32 call carries in its number on an x86_64 kernel.
 ///
-/// note: cleared rather than refused, because x32 shares `socket` and `io_uring_setup` with
-/// the native table and differs only in that bit - so a filter that compared the number as it
-/// arrived would let `0x40000029` through as a call it has never heard of, and it is `socket`
+/// note: cleared rather than refused, because x32 shares `socket` and `io_uring_setup` with the
+/// native table and differs only in that bit. A filter that compared the number as it arrived would
+/// let `0x40000029` through as a call it has never heard of, and it is `socket`.
 #[cfg(target_arch = "x86_64")]
 const X32: Option<u32> = Some(0x4000_0000);
 #[cfg(target_arch = "aarch64")]
@@ -76,13 +75,13 @@ const IO_URING_SETUP: u32 = libc::SYS_io_uring_setup as u32;
 /// opens one
 const LOCAL: [u32; 2] = [libc::AF_UNIX as u32, libc::AF_NETLINK as u32];
 
-/// `socket`, and `socketcall` where there is one, in the table of the 32-bit processes this
-/// kernel also runs.
+/// `socket`, and `socketcall` where there is one, in the table of the 32-bit processes this kernel
+/// also runs.
 ///
-/// note: `socketcall` multiplexes every socket call behind its first argument and keeps the
-/// real arguments in memory, which a filter cannot read. So the family of a `socketcall`
-/// socket cannot be known, and one is held or refused whatever it is for: the cost is a
-/// question about a 32-bit program's unix socket, which is the right way round to be wrong.
+/// note: `socketcall` multiplexes every socket call behind its first argument and keeps the real
+/// arguments in memory, which a filter cannot read. So the family of a `socketcall` socket cannot
+/// be known, and one is held or refused whatever it is for. The cost is a question about a 32-bit
+/// program's unix socket, which is the right way round to be wrong.
 #[cfg(target_arch = "x86_64")]
 const FOREIGN_SOCKET: u32 = 359;
 #[cfg(target_arch = "x86_64")]
@@ -96,13 +95,12 @@ const SYS_SOCKET: u32 = 1;
 /// `io_uring_setup` is the same number in both tables.
 const FOREIGN_IO_URING_SETUP: u32 = 425;
 
-/// Where the parts of `struct seccomp_data` a filter reads are.
+/// Offsets in `struct seccomp_data` that a filter reads.
 ///
-/// note: the low half of the first argument, and only the low half. `socket` takes its family
-/// as an `int` and the kernel drops the upper 32 bits before it looks, so a comparison of the
-/// whole 64 bits is one a command walks round by setting a high bit - the family the kernel
-/// reads is still `AF_INET`, and the filter has seen something else. Little-endian on both
-/// architectures, so the low half is first
+/// note: `ARG0` is the low half of the first argument, and only the low half. `socket` takes its
+/// family as an `int`, and the kernel drops the upper 32 bits before it reads it, so comparing all
+/// 64 bits can be bypassed by setting a high bit: the kernel still reads `AF_INET` while the filter
+/// sees something else. Both architectures are little-endian, so the low half comes first.
 const NR: u32 = 0;
 const ARCH: u32 = 4;
 const ARG0: u32 = 16;
@@ -179,8 +177,8 @@ fn program() -> Vec<libc::sock_filter> {
         Op::Mark(ForeignNumber),
         Op::Load(NR),
         Op::Is(FOREIGN_SOCKET, ForeignFamily, ForeignCall),
-        // its own copy of the test above rather than a jump back to it, since a filter only
-        // jumps forward; a 32-bit call's arguments are the low halves of the same slots
+        // This repeats the test above instead of jumping back to it, because a filter only jumps
+        // forward. A 32-bit call's arguments are the low halves of the same slots
         Op::Mark(ForeignFamily),
         Op::Load(ARG0),
         Op::Is(LOCAL[0], Allow, ForeignNetlink),
@@ -363,8 +361,8 @@ fn hand_over(to: BorrowedFd<'_>, listener: &OwnedFd) -> io::Result<()> {
 pub struct Arriving(OwnedFd);
 
 impl Arriving {
-    /// The listener, once the child has sent it; `None` where the child ended without sending
-    /// one, which is a child that never got as far as running the command.
+    /// The listener after the child has sent it. `None` means the child ended without sending one,
+    /// so it never got as far as running the command.
     pub async fn listener(self) -> io::Result<Option<Listener>> {
         let from = AsyncFd::new(self.0)?;
         loop {

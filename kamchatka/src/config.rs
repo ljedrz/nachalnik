@@ -43,17 +43,17 @@ pub struct Settings {
     pub api: Option<Api>,
     /// Whether to ask a second model to rate the shell commands a question is about.
     ///
-    /// note: not behind the `shell-advisor` feature, for the reason `mcp` is not: one file works
-    /// for every build of this program, and a build without it refuses the key rather than
-    /// ignoring it - see `Args::under`.
+    /// note: not behind the `shell-advisor` feature, for the same reason as `mcp`: one file works
+    /// for every build, and a build without it refuses the key rather than ignoring it. See
+    /// `Args::under`.
     pub rate_shell_commands: Option<bool>,
     /// A system prompt, pinned, for a session that is starting - a resumed one already has the
     /// one it started with.
     pub system_prompt: Option<String>,
     /// MCP servers to run, as `[name=]command`.
     ///
-    /// note: not behind the `mcp` feature, so that one file works for every build of this program.
-    /// A build without it refuses the key rather than ignoring it - see `Args::under`.
+    /// note: not behind the `mcp` feature: one file works for every build, and a build without it
+    /// refuses the key rather than ignoring it. See `Args::under`.
     pub mcp: Option<Vec<String>>,
     /// How many requests one turn may make before it stops; `0` is no limit.
     pub max_requests_per_turn: Option<usize>,
@@ -67,20 +67,19 @@ pub struct Settings {
     pub flat_tool_arguments: Option<bool>,
     /// Whether the model's turns go back with their thinking, as `--send-reasoning` does.
     pub send_reasoning: Option<bool>,
-    /// Which of this program's tools to offer, by id; left out, all of them are.
+    /// Which of this program's tools to offer, by id. Left out, all of them are offered.
     ///
     /// note: a key with no argument behind it, for the reason `border-color` is one: which tools a
     /// project wants its agent to have is settled once and then not thought about again.
-    /// `/tools toggle` changes it at any point in a session, and this says where the toggles start.
+    /// `/tools toggle` changes it during a session, and this says where the toggles start.
     ///
-    /// note: an empty list offers none of them, which is a session with whatever an MCP server
-    /// brought and nothing else. A name that is not a tool is refused at startup, like an unknown
-    /// key - a settings file asking for `contxt` and quietly getting a session with no context
-    /// tool is the failure worth naming.
+    /// note: an empty list offers none of them, leaving only whatever an MCP server brought. A name
+    /// that is not a tool is refused at startup, like an unknown key: a settings file asking for
+    /// `contxt` and quietly getting a session with no context tool is the failure worth naming.
     ///
-    /// note: `null` is refused rather than read as "all of them". Beside `[]` for none, a `null`
-    /// reads as none just as well, and a key that can be read both ways is read the wrong way by
-    /// somebody; the shipped file lists every tool instead, and all of them is leaving the key out.
+    /// note: `null` is refused rather than read as "all of them". `[]` means none, and `null` could
+    /// be read as none too, but a key that can be read both ways is read the wrong way by somebody.
+    /// The shipped file lists every tool instead; all of them is leaving the key out.
     #[serde(default, deserialize_with = "not_null")]
     pub tools: Option<Vec<String>>,
     /// Whether to run with no confinement at all, as `--no-sandbox` does: the shell unconfined,
@@ -116,19 +115,17 @@ pub struct Settings {
     pub send_oversized_requests: Option<bool>,
     /// Whether to leave the session unwritten when it ends.
     pub no_record: Option<bool>,
-    /// The colour the window's frame is drawn in, as `#rrggbb`: left out, [`BORDER_COLOR`]; `null`,
-    /// the terminal's own foreground colour.
+    /// The colour the window's frame is drawn in, as `#rrggbb`. Left out, it is [`BORDER_COLOR`];
+    /// `null`, the terminal's own foreground colour.
     ///
-    /// note: a key with no argument behind it, which is a decision rather than an oversight. Nearly
-    /// every setting stands in for something somebody would otherwise type, and nobody types a
-    /// colour twice - it is picked once to sit beside a terminal theme and then never thought about
-    /// again, which is the thing a file is for and the command line is not. A `--border-color`
-    /// would also have to be `tui`-gated, and would put a colour in the `--help` of a program half of whose
-    /// runs have no screen.
+    /// note: a key with no argument behind it, which is a decision rather than an oversight. A
+    /// colour is picked once to sit beside a terminal theme and never typed again, so it belongs in
+    /// a file, not on the command line. A `--border-color` would also have to be `tui`-gated, and
+    /// would put a colour in the `--help` of a program half of whose runs have no screen.
     ///
     /// note: not gated here, for the reason `mcp` is not: one file works for every build. A
     /// headless build reads this and has nothing to draw with it, which costs nothing and grants
-    /// nothing - unlike an MCP server it cannot run, which is worth refusing over.
+    /// nothing, unlike an MCP server it cannot run, which is worth refusing over.
     ///
     /// note: the one key where leaving it out and saying `null` are two different things, because
     /// they are two different colours: the outer `Option` is whether the file said anything, the
@@ -281,11 +278,11 @@ where
 
 /// A `#rrggbb` colour, as the three bytes it names.
 ///
-/// note: `#rrggbb` and nothing else. Not the sixteen colour *names*, because the terminal already
-/// has those and this setting exists for somebody whose palette is not one of them; not `#rgb`,
-/// because supporting two spellings of the same thing is two things to document and one more way
-/// to typo. The error says the form rather than only that the value was wrong, since a settings
-/// file has no `--help` beside it.
+/// note: only `#rrggbb`. The sixteen colour names are not accepted because the terminal already has
+/// them and this setting is for a palette that is not one of them. `#rgb` is not accepted because
+/// two spellings of the same colour are two things to document and one more way to typo. The error
+/// states the form, not only that the value was wrong, because a settings file has no `--help`
+/// beside it.
 pub fn rgb(hex: &str) -> Result<(u8, u8, u8), String> {
     let digits = hex.strip_prefix('#').unwrap_or(hex);
     if digits.len() != 6 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -300,11 +297,11 @@ pub fn rgb(hex: &str) -> Result<(u8, u8, u8), String> {
 }
 
 impl Settings {
-    /// Reads one, or says what is wrong with it in a sentence naming the file.
+    /// Reads the settings file, or returns an error naming the file and what is wrong.
     ///
-    /// note: the path is in every error, including the parse ones. A program reading a file
-    /// somebody named on the command line has no excuse for an error that could be about any file,
-    /// and `serde_json`'s own message carries the line and column but not the name.
+    /// note: every error names the path, including parse errors. `serde_json`'s message gives the
+    /// line and column but not the file name, and an error about a file named on the command line
+    /// must say which file it is about.
     pub fn read(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
@@ -324,9 +321,9 @@ impl Settings {
             }
         })?;
 
-        // note: the home directory is looked up once rather than per path, which is also what
-        // makes the expansion itself a function of a home rather than of the environment - see
-        // below. Nothing to expand against leaves every path exactly as it was written.
+        // note: the home directory is looked up once, not per path, so expansion depends on the
+        // home directory rather than the environment. If there is nothing to expand against, every
+        // path is left exactly as written.
         if let Some(home) = home() {
             for paths in [&mut settings.sandbox_write, &mut settings.sandbox_read]
                 .into_iter()
@@ -345,40 +342,37 @@ impl Settings {
 /// What a settings file is called wherever this program looks for one without being told.
 pub const FILE: &str = "kamchatka.json";
 
-/// The settings file this crate ships, built into the binary so that `--print-config` can hand it
-/// over.
+/// The settings file this crate ships, built into the binary so `--print-config` can output it.
 ///
-/// note: `cargo install` copies no files. Without this, the starting point would reach whoever
-/// cloned the repository, unpacked the `.crate` or downloaded a release archive, and nobody who
-/// took the road the readme recommends.
+/// note: `cargo install` copies no files, so without this only repository clones, unpacked `.crate`
+/// files and release archives would carry the starting point, not the install the readme
+/// recommends.
 ///
-/// note: the same bytes the file has rather than a copy written out from [`Settings::default`],
-/// which would write `null` over every default the file states on purpose. The suite already holds
-/// that file to naming every field of the struct, so this is exactly what the repository ships and
-/// stays so.
+/// note: the same bytes as the file, not a copy generated from [`Settings::default`], which would
+/// write `null` over every default the file states on purpose. The test suite holds the file to
+/// naming every field of the struct, so this is exactly what the repository ships, and it stays
+/// that way.
 pub const SHIPPED: &str = include_str!("../kamchatka.json");
 
-/// The settings file to read when the command line named none: the working directory's, then the
-/// one under this person's config directory.
+/// The settings file read when the command line names none: the working directory's, then the one
+/// under this person's config directory.
 ///
-/// note: the working directory first, because a file that sits next to the thing it describes is
-/// the one somebody means. Nothing walks *up* from there - `.gitignore` does and a settings file
-/// should not, because the surprise grows with the distance and the cost of typing
-/// `--config-file` is one flag.
+/// note: the working directory first, because a file next to the thing it describes is the one
+/// somebody means. Nothing walks up from there; `.gitignore` does and a settings file should not,
+/// because surprise grows with distance and `--config-file` costs one flag.
 ///
-/// note: a file that applies because of where you are standing is a file that can surprise you,
-/// and the answer to that is not to hide it: what is read is said out loud, into the conversation
-/// every projection carries, before anything else happens. A session that picked something up is
-/// a session that says which file and where from. The working directory's is also asked about
-/// first; see [`underfoot`].
+/// note: a file that applies because of where you are standing can surprise you, so what is read is
+/// said out loud, into the conversation every projection carries, before anything else happens. A
+/// session that picked something up says which file and where from. The working directory's is also
+/// asked about first; see [`underfoot`].
 ///
-/// note: `XDG_CONFIG_HOME` and then `~/.config`, which is where the people who set the variable
-/// expect it to be read from.
+/// note: `XDG_CONFIG_HOME` and then `~/.config`, where the people who set the variable expect it to
+/// be read from.
 ///
-/// note: either only where it is an absolute path. An empty or relative one names a directory
-/// under wherever the program was started, so the file found there is the repository's and not
-/// the person's, and it would be read without the question [`underfoot`] asks. The XDG spec says
-/// an empty value is unset and a relative one is ignored.
+/// note: only where it is an absolute path. An empty or relative one names a directory under
+/// wherever the program was started, so the file found there is the repository's and not the
+/// person's, and it would be read without the question [`underfoot`] asks. The XDG spec says an
+/// empty value is unset and a relative one is ignored.
 pub fn found() -> Option<PathBuf> {
     let beside = PathBuf::from(FILE);
     if beside.is_file() {
@@ -396,12 +390,11 @@ pub fn found() -> Option<PathBuf> {
     config.is_file().then_some(config)
 }
 
-/// Whether this is the settings file in the working directory, which is read only once somebody
-/// says it may be.
+/// Whether this is the working directory's settings file, read only once somebody says it may be.
 ///
-/// note: that one and not the one under the config directory, because what the working
-/// directory holds is whoever wrote the repository's, and the config directory is the person's
-/// own. A file there that starts a server is a server the person asked for.
+/// note: that one and not the config directory one, because the working directory holds the
+/// repository's and the config directory is the person's own. A file there that starts a server is
+/// a server the person asked for.
 pub fn underfoot(path: &Path) -> bool {
     path == Path::new(FILE)
 }
@@ -409,9 +402,8 @@ pub fn underfoot(path: &Path) -> bool {
 /// The keys a settings file may set that start a program or grant something, by the name the file
 /// spells them with.
 ///
-/// note: the list SECURITY.md gives for a file found underfoot. `auto-deny` and
-/// `auto-deny-server` are not on it, because a file that only refuses is a file that can only take
-/// something away.
+/// note: the list SECURITY.md gives for a file found underfoot. `auto-deny` and `auto-deny-server`
+/// are not on it, because a file that only refuses can only take something away.
 pub const GRANTING: [&str; 8] = [
     "mcp",
     "no-sandbox",
@@ -423,13 +415,13 @@ pub const GRANTING: [&str; 8] = [
     "sandbox-device",
 ];
 
-/// The keys among [`GRANTING`] that these settings give a value this program would not have
-/// chosen by itself.
+/// The keys among [`GRANTING`] that these settings give a value this program would not have chosen
+/// by itself.
 ///
-/// note: measured against [`SHIPPED`] rather than against `null`, because the shipped file is
-/// every key at the program's own default and a copy of it is the commonest settings file there
-/// is. Its `sandbox-device` lists five devices and its `on-ask` says `deny`, and a question
-/// naming those would be a question about nothing.
+/// note: measured against [`SHIPPED`] rather than `null`, because the shipped file is every key at
+/// the program's own default and a copy of it is the commonest settings file. Its `sandbox-device`
+/// lists five devices and its `on-ask` says `deny`, and a question naming those would be a question
+/// about nothing.
 pub fn granting(settings: &Settings) -> Vec<&'static str> {
     let shipped: serde_json::Value =
         serde_json::from_str(SHIPPED).expect("the shipped settings are JSON");
@@ -443,13 +435,13 @@ pub fn granting(settings: &Settings) -> Vec<&'static str> {
         .collect()
 }
 
-/// Asks whoever is at the terminal whether the settings file found underfoot is read, and answers
+/// Asks the person at the terminal whether the settings file found underfoot is read, and answers
 /// `true` only for a yes.
 ///
-/// note: what the file grants is named in the question, because a question with nothing in it
-/// gets answered by reflex, and the keys are the difference between a file that picks a model and
-/// one that starts somebody else's programs. The answer is read as the line it is: anything that
-/// is not `y` or `yes`, the end of the input included, leaves the file unread.
+/// note: what the file grants is named in the question, because a question with nothing in it gets
+/// answered by reflex, and the keys are the difference between a file that picks a model and one
+/// that starts somebody else's programs. The answer is read as the line it is: anything that is not
+/// `y` or `yes`, end of input included, leaves the file unread.
 pub fn trusted(
     path: &Path,
     granting: &[&str],
@@ -493,22 +485,20 @@ fn home() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-/// A leading `~`, made into the home directory it stands for.
+/// Expands a leading `~` into the home directory.
 ///
-/// note: this is the one place in this crate that expands one, and the exception is narrower than
-/// it looks: every *other* way of giving these paths has a shell in front of it, which expanded
-/// `~` before the program saw anything. A settings file has nothing in front of it, so not
-/// expanding here would not be one rule applied evenly - it would be `--sandbox-read ~/.rustup`
-/// working and the same path in a file silently reaching nothing. The tools refuse a leading `~`
-/// rather than expanding it and that stays: those paths are written by a *model*, and expanding
-/// one there is how `~/.ssh/id_rsa` becomes a real path on a string it made up. This one is
-/// written by the person whose home it is.
+/// note: this is the only place in this crate that expands `~`. Every other way of giving these
+/// paths has a shell in front of it, which expands `~` before the program sees anything. A settings
+/// file has nothing in front of it, so not expanding here would mean `--sandbox-read ~/.rustup`
+/// works while the same path in a file silently reaches nothing. The tools still refuse a leading
+/// `~`: those paths are written by a model, and expanding one there is how `~/.ssh/id_rsa` becomes
+/// a real path on a string it made up. This path is written by the person whose home it is.
 ///
-/// note: `~user` is left alone. Resolving somebody else's home means asking the password database,
-/// and a path that is quietly not what it says is worse than one that is obviously wrong.
+/// note: `~user` is left alone. Resolving another user's home means asking the password database,
+/// and a path that is quietly wrong is worse than one that is obviously wrong.
 ///
-/// note: the home is an argument rather than something this reads for itself, which is what lets
-/// the test below say what it is rather than depend on the machine running it.
+/// note: the home is an argument so the test can say what it is instead of depending on the machine
+/// running it.
 fn expanded(path: PathBuf, home: &Path) -> PathBuf {
     let Some(rest) = path.to_str().and_then(|text| text.strip_prefix('~')) else {
         return path;
@@ -530,9 +520,9 @@ mod tests {
 
     /// A colour is six hex digits, and the error for anything else says so.
     ///
-    /// note: the message is asserted rather than only the failure, because a settings file has no
-    /// `--help` beside it: the error *is* the documentation, and one saying "invalid value" would
-    /// leave somebody guessing between `#rgb`, `rgb()`, `yellow` and a bare number.
+    /// note: the message is asserted, not only the failure, because a settings file has no `--help`
+    /// beside it: the error is the documentation. An error saying "invalid value" would leave
+    /// somebody guessing between `#rgb`, `rgb()`, `yellow` and a bare number.
     #[test]
     fn a_border_is_six_hex_digits_and_says_so_when_it_is_not() {
         assert_eq!(rgb("#7aa2f7"), Ok((0x7a, 0xa2, 0xf7)));

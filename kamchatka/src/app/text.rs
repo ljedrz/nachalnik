@@ -1,13 +1,12 @@
-//! Turning what the runtime hands out into what a person reads.
+//! Turns what the runtime hands out into what a person reads.
 //!
-//! note: every function in here takes a value the kernel made and returns a `String`. None of
-//! them touch [`super::App`], which is what makes them the part of the screen that can be read
-//! without knowing what a tab is.
+//! note: every function takes a value the kernel made and returns a `String`. None touch
+//! [`super::App`], so they can be read without knowing what a tab is.
 //!
-//! note: and none of them draw, which is why the ones under *figures* are here rather than in
-//! `ui`. `thousands` is in every line this program puts a token count on, and half of those lines
-//! are read by a model through `context` rather than by a person off a screen - so a build with
-//! no screen needs them, and the feature that draws cannot own them.
+//! note: none draw, so the *figures* functions are here rather than in `ui`. `thousands` is on
+//! every line with a token count, and half of those lines are read by a model through `context`,
+//! not by a person off a screen. A build with no screen needs them, so the drawing feature cannot
+//! own them.
 
 use nachalnik::{
     Block, Content, ContextItem, ContextKind, Event, GrantSource, Kernel, StopReason, Usage,
@@ -21,9 +20,8 @@ use serde_json::{Map, Value};
 
 /// An event's name, and one line of whatever else it has to say.
 ///
-/// note: `pub(crate)` for the same reason as the ones under *figures*: the trace pane reads these
-/// lines off a screen and the `log` tool reads them to a model. Two accounts of one event written
-/// in two places can be shown the same session and disagree about it.
+/// note: `pub(crate)` because the trace pane reads these lines off a screen and the `log` tool
+/// reads them to a model. Two accounts of one event in two places can disagree in the same session.
 pub(crate) fn trace_line(event: &Event) -> (String, String) {
     let name = event.name();
 
@@ -80,9 +78,9 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             (Some(id), false) => {
                 format!("{subject}: {verdict} from now on, answering question {id}")
             }
-            // note: a ruling for no question is a command answered at the network gate, which
-            // asks about the command rather than a call. Read as a standing rule, it tells a model
-            // whose one command was refused that every command after it will be refused too
+            // note: a ruling for no question is a command answered at the network gate, which asks
+            // about the command rather than a call. As a standing rule, it tells a model whose one
+            // command was refused that every command after it will be refused too
             (None, true) => format!("{subject}: {verdict}, for one command alone"),
             (None, false) => format!("{subject}: {verdict} from now on"),
         },
@@ -112,9 +110,9 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             (false, _) => "room again".to_owned(),
         },
         Event::ModelFailed { error, .. } | Event::StepFailed { error, .. } => one_line(error),
-        // note: everything below here has its own arm rather than the catch-all, which prints a
-        // name against an empty line. Each of them carries something worth reading, and a log
-        // that names an event and then says nothing about it is the shape of a log nobody opens
+        // note: each event below here has its own arm instead of the catch-all, which prints a name
+        // against an empty line. Each carries something worth reading; a log that names an event
+        // and says nothing is one nobody opens
         Event::SessionStarted { session } => format!("session {session}"),
         Event::SessionResumed {
             session,
@@ -141,7 +139,7 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
                 .join(", ")
         ),
         // the one event that carries content, because it is the only operation that overwrites
-        // something - so the first line of what went is worth the room
+        // something. The first line of what went is worth the room
         Event::ContextReplaced {
             id,
             tokens_before,
@@ -177,8 +175,8 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             format!("[{id}] {}", one_line(&meta.to_string()))
         }
         Event::ModelChanged { from, to } => {
-            // the address beside each name where the two differ by it, which is the only way a
-            // switch that kept the name reads as one at all
+            // the address beside each name where the two differ. It is the only way a switch that
+            // kept the name reads as one at all
             let moved = from.as_ref().and_then(|i| i.endpoint.as_ref())
                 != to.as_ref().and_then(|i| i.endpoint.as_ref());
             let named = |info: &Option<nachalnik::ModelInfo>| match info {
@@ -203,8 +201,8 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
         Event::ToolUnknown { tool, .. } => {
             format!("`{tool}` was asked for and is not registered")
         }
-        // the parser's sentence and not what was written, which can be as long as a file; the
-        // model was answered with the part of it around the fault
+        // the parser's sentence, not what was written, which can be as long as a file. The model
+        // was answered with the part around the fault
         Event::ToolUnparsed { tool, error, .. } => {
             format!("`{tool}` was asked for with arguments that did not parse: {error}")
         }
@@ -213,19 +211,19 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             true => format!("gave a call the identifier `{call}`: {reason}"),
             false => format!("`{was}` → `{call}`: {reason}"),
         },
-        // and this is the line that says where a repair further down got "earlier in the session"
+        // this is the line that says where a repair further down got "earlier in the session"
         // from, in a session that read somebody else's
         Event::ToolCallsReserved { reserved } => {
             format!("{reserved} identifier(s) a loaded session had already used")
         }
-        // the names, not the count: `4 tools` is a number somebody has to go and look up, and
-        // this line exists because what the model is offered changed
+        // the names, not the count: `4 tools` is a number somebody has to look up. The line exists
+        // because what the model is offered changed
         Event::ToolsChanged { tools } => match tools.is_empty() {
             true => "none; the model is offered no tools at all".to_owned(),
             false => format!("{} offered: {}", tools.len(), tools.join(", ")),
         },
-        // a seam being swapped names what went out and what came in; the trace is where somebody
-        // reading a session finds out that the thing projecting its requests changed half way
+        // a swapped seam names what went out and what came in. The trace is where somebody reading
+        // a session finds out that the projector changed mid-session
         Event::PolicyChanged { from, to }
         | Event::ProjectorChanged { from, to }
         | Event::CounterChanged { from, to } => format!("{} → {}", short(from), short(to)),
@@ -246,10 +244,10 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
 
 /// The request the kernel would send, or what stopped it building one.
 pub(super) fn request_preview(kernel: &Kernel, keys: bool) -> String {
-    // "why is that not in there?" is the question somebody opens this to answer, and the JSON on
-    // its own can only say what *is* in there. The projection knows what it left out and what it
-    // had to change to keep the request valid, so both go above it - and above the reason there
-    // is no request at all, which is where they are worth most
+    // "why is that not in there?" is what somebody opens this to answer, and the JSON alone can
+    // only say what is in there. The projection knows what it left out and what
+    // it had to change to keep the request valid, so both go above it - and above the reason when
+    // there is no request at all, which is where they are worth most
     let projection = kernel.project();
     let mut header = String::new();
     for left_out in &projection.skipped {
@@ -261,17 +259,17 @@ pub(super) fn request_preview(kernel: &Kernel, keys: bool) -> String {
     for repair in &projection.repairs {
         header.push_str(&format!("  repaired: {repair}\n"));
     }
-    // note: and the moves, under their own word. The conversation does not name them: nothing is
-    // lost by one, so a line about it in the chat reads like an alarm about the layout rule
-    // working. This is the page where "why is the order not the context's order?" is the question
-    // being asked, so it is the one place they are worth the room
+    // note: the moves, under their own word. The conversation does not name them: nothing is lost
+    // by a reorder, so a line about it in the chat reads like an alarm about the layout rule
+    // working. They are worth the room here, where the question is why the order is not the
+    // context's order
     for moved in &projection.reordered {
         header.push_str(&format!("  reordered: {moved}\n"));
     }
 
     let request = match kernel.preview_request() {
-        // through `pretty`, so that a picture in the context is named here rather than printed:
-        // this is the view somebody opens to see the *shape* of a request
+        // through `pretty`, so a picture in the context is named here rather than printed. This
+        // view shows the shape of a request
         Ok(request) => match serde_json::to_value(&request) {
             Ok(value) => pretty(&value),
             Err(e) => format!("it will not serialize: {e}"),
@@ -289,18 +287,17 @@ pub(super) fn request_preview(kernel: &Kernel, keys: bool) -> String {
     )
 }
 
-/// Why there is no request to show, in a sentence somebody can do something about.
+/// Why there is no request to show, in a sentence the reader can act on.
 ///
-/// note: `the context projects to an empty request` is the runtime's own sentence and it is
-/// accurate - `step` refuses to send a request with no messages in it, and it says so in the
-/// vocabulary of the thing that refused. It is the wrong answer to "what would go next?" asked
-/// in a session nobody has typed into yet, where what happened is that nothing has been said and
-/// the projector is working perfectly. And when the context is *not* empty, this is the moment
-/// the list of what was left out is worth most, so `request_preview` builds that list before it
+/// note: `the context projects to an empty request` is the runtime's own sentence, and it is
+/// accurate: `step` refuses to send a request with no messages and says so in its own vocabulary.
+/// It is the wrong answer to "what would go next?" in a session nobody has typed into yet, because
+/// nothing has been said and the projector is working correctly. When the context is not empty, the
+/// list of what was left out matters most here, so `request_preview` builds that list before it
 /// asks for the request and prints it above this sentence.
 ///
-/// note: `keys` is [`super::App::keys`]: the way back is a key on the context tab where there is
-/// one, and `/restore` where the caller has no keys to press.
+/// note: `keys` is [`super::App::keys`]. The way back is a context-tab key where one exists, and
+/// `/restore` where the caller has no keys to press.
 pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String {
     match kernel.items().len() {
         0 => "nothing yet: there is nothing in the context to send. Whatever you type next goes \
@@ -318,13 +315,12 @@ pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String 
     }
 }
 
-/// What a compaction pass moved, in the word belonging to each mechanism.
+/// What a compaction pass moved, using the word for each mechanism.
 ///
 /// note: removing and eliding are two mechanisms, and naming only the first misreports the
-/// compactor that ships here. It never removes anything - it elides, so that the call each result
-/// answers keeps its answer - so a count of removals would announce every pass it makes as
-/// `0 items out`, in the line and the trace row that are the only account a person gets of a
-/// context changing under them.
+/// compactor that ships here. It never removes anything; it elides, so the call each result answers
+/// keeps its answer. A count of removals would therefore report every pass as `0 items out` in the
+/// line and trace row, which are the only account a person gets of a context changing under them.
 pub(super) fn moved(report: &nachalnik::CompactionReport) -> String {
     match (report.removed.len(), report.elided.len()) {
         (0, 0) => "nothing moved".to_owned(),
@@ -387,17 +383,17 @@ pub(super) fn pretty(value: &Value) -> String {
 
 /// The same JSON with its base64 payloads taken out and named.
 ///
-/// note: `/request`, `/payload` and `/raw` all print JSON that can carry a
-/// [`nachalnik::Content::Blob`], and a blob on this screen is several megabytes of `AAAAAAAA`
-/// where somebody was looking for the shape of a request. What they need to know is the same two
-/// things the context tab's own row says - that it is there, and how much of it there is - so
-/// this says them and drops the rest. The record keeps the whole of it: this is a view.
+/// note: `/request`, `/payload` and `/raw` all print JSON that can carry
+/// [`nachalnik::Content::Blob`]. A blob on this screen is several megabytes of `AAAAAAAA` where
+/// somebody was looking for the shape of a request. They need the same two things the context tab
+/// row says: that it is there, and how much of it there is. This says them and drops the rest. The
+/// record keeps the whole of it; this is a view.
 ///
-/// note: by *shape* rather than by length, because a long tool result is a thing somebody opened
-/// this to read and must not be cut. The three shapes below are the three this workspace
+/// note: by shape rather than by length, because a long tool result is something somebody
+/// opened this to read and must not be cut. The three shapes below are the three this workspace
 /// produces: the kernel's own `Content::Blob`, a `data:` URI in the conventional dialect, and
-/// Google's `inline_data`. A dialect nobody here speaks goes through unelided, which is the right
-/// failure - it shows too much rather than hiding something.
+/// Google's `inline_data`. A dialect this workspace does not produce goes through unelided; showing
+/// too much is better than hiding something.
 fn without_blobs(value: &Value) -> Value {
     match value {
         // `data:image/png;base64,AAAA...`, wherever it sits
@@ -661,15 +657,15 @@ pub(crate) fn one_line(text: &str) -> String {
     }
 }
 
-/// The same text without the blank lines a provider put in front of it.
+/// The same text without leading blank lines.
 ///
-/// note: a presentation fix, not a correction to the record. The newlines are the provider's -
-/// `inception/mercury` opens every message with two - and the item keeps exactly what arrived,
-/// because a runtime whose record is "what arrived, tidied up" cannot answer what arrived. What
-/// they must not do is cost rows of a screen.
+/// note: a presentation fix, not a correction to the record. The newlines are the provider's:
+/// `inception/mercury` opens every message with two. The item keeps exactly what arrived, because a
+/// runtime whose record is "what arrived, tidied up" cannot answer what arrived. They must not cost
+/// rows of a screen.
 ///
-/// note: leading blank *lines*, not leading whitespace. Trimming the latter takes the indentation
-/// off the first line of a message that opens with a code block.
+/// note: leading blank lines, not leading whitespace. Trimming whitespace takes the indentation off
+/// the first line of a message that opens with a code block.
 pub(super) fn unpadded(text: &str) -> &str {
     let mut rest = text;
     loop {
@@ -685,11 +681,11 @@ pub(super) fn unpadded(text: &str) -> &str {
 
 /// The first few lines of something, and a mark if there was more.
 pub(super) fn head(text: &str, lines: usize) -> String {
-    // the blank ones first, or a provider that opens every message with two of them spends two
-    // of the rows a tool result gets to make its case in, and truncates two lines early
+    // Strip blank lines first, or a provider that opens every message with two of them spends two
+    // of a tool result's rows and truncates two lines early
     let text = unpadded(text);
-    // note: one line past the ones kept is all the mark needs. This runs for every tool result on
-    // the chat tab every frame, and counting to the end walked the whole of each one
+    // note: one line past the kept ones is all the mark needs. This runs for every tool result on
+    // the chat tab every frame; counting to the end walked the whole of each one
     let mut all = text.lines();
     let mut kept: Vec<&str> = all.by_ref().take(lines).collect();
     if all.next().is_some() {
@@ -701,22 +697,21 @@ pub(super) fn head(text: &str, lines: usize) -> String {
 
 // ----------------------------------------------------------------------------------- figures
 
-/// What a provider said one response cost, as `30 out` or `1,412 out, 1,139 of it reasoning`.
+/// What one response cost, as `30 out` or `1,412 out, 1,139 of it reasoning`.
 ///
-/// note: one renderer for the three places that report it - the trace, `/budget`, and the
-/// `context budget` a model reads about itself - so that there is one sentence about the same two
-/// numbers to get right rather than three. What it must never do is add the two:
-/// [`Usage::reasoning_tokens`] is a part of [`Usage::output_tokens`], so they are shown as a whole
-/// and a share of it.
+/// note: one renderer for the trace, `/budget`, and the `context budget` a model reads about
+/// itself, so there is one sentence about the same two numbers to get right rather than three. It
+/// must never add the two: [`Usage::reasoning_tokens`] is part of [`Usage::output_tokens`], so
+/// they are shown as a whole and a share of it.
 ///
-/// note: a reasoning model that returns none of its reasoning, `mercury-2.5` among them, can still
-/// spend most of a turn on it. Without this there is nowhere in this program to find that out, on
-/// tokens somebody paid for. `None` is silence rather than zero: a provider that does not report
-/// reasoning is not a provider reporting none of it.
+/// note: a reasoning model that returns none of its reasoning, such as `mercury-2.5`, can still
+/// spend most of a turn on it. Without this there is nowhere to find that out on tokens somebody
+/// paid for. `None` is silence, not zero: a provider that does not report reasoning is not one
+/// reporting none of it.
 ///
-/// note: and a zero is said, as `none of it reasoning`, rather than left out like the silence. It
-/// is the endpoint saying the model did not think - asked not to, or one that does not - which is
-/// worth knowing for somebody who may not know which kind of model they picked.
+/// note: a zero is said as `none of it reasoning` rather than left out like the silence. The
+/// endpoint is saying the model did not think - asked not to, or one that does not - which is worth
+/// knowing for somebody who may not know which kind of model they picked.
 pub(crate) fn charged(usage: &Usage) -> String {
     let Some(out) = usage.output_tokens else {
         return "nothing reported".to_owned();
@@ -732,17 +727,17 @@ pub(crate) fn charged(usage: &Usage) -> String {
     }
 }
 
-/// What a loop with no chat prints for a reference that went into the context, read off the
-/// event that says so.
+/// What a loop with no chat prints for a reference that went into the context, read off the event
+/// that says so.
 ///
-/// note: the chat draws a line for every reference from the item itself, which is the only thing
-/// `/attach` and `/note` say for themselves - so with no chat they said nothing at all. The event
-/// is all a `--connect` client has, and `--headless` says the same words so that the two stay a
-/// drop-in for each other.
+/// note: the chat draws a line for every reference from the item itself, the only thing `/attach`
+/// and `/note` say for themselves, so with no chat they said nothing at all. A `--connect` client
+/// has only the event, and `--headless` says the same words so the two remain drop-ins for each
+/// other.
 ///
-/// note: no count, which is where this parts from the chat's line. The event carries the counter's
-/// figure and not how much of the item it could not price, and `0 tokens` about an attached
-/// picture is the one figure that reads as good news when it is the opposite.
+/// note: no count; that is where it differs from the chat's line. The event carries the counter's
+/// figure and not how much of the item it could not price. `0 tokens` for an attached picture reads
+/// as good news when it is the opposite.
 pub(crate) fn went_in(event: &Event) -> Option<String> {
     match event {
         Event::ContextAdded {
@@ -758,12 +753,12 @@ pub(crate) fn went_in(event: &Event) -> Option<String> {
     }
 }
 
-/// Why a model stopped before it had finished, in a line; `None` where it finished, or where
-/// something else says why.
+/// Why a model stopped before finishing, in a line; `None` where it finished or where something
+/// else says why.
 ///
-/// note: `interrupted` is the person's own act, which says nothing where it worked, and `cut off`
-/// is a stream the provider saw break, which its own notice reports. `unreported` is an endpoint
-/// that names no reason at all, and a line after every turn it answers would say nothing.
+/// note: `interrupted` is the person's own act and says nothing where it worked; `cut off` is a
+/// stream the provider saw break, reported by its own notice; `unreported` names no reason, so a
+/// line after every turn would say nothing.
 pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
     match stop {
         StopReason::Length if asked => Some(
@@ -797,12 +792,11 @@ pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
 /// What a command that changes the context says when a turn is running or waiting on an answer.
 pub(super) const MID_TURN: &str = "not while a turn is running or a call is waiting to be answered";
 
-/// What the policy's tab says where there is nothing to list, which is what `/permissions` prints then.
+/// What the policy's tab says where there is nothing to list; `/permissions` prints it then.
 ///
-/// note: here rather than in the pane that draws it, because `/permissions` is answered in a build with
-/// no screen at all - and a page of prose about the absence of decisions is answerable there.
-/// The tab reads this same string, so the two cannot say different things about what an empty
-/// policy means.
+/// note: here rather than in the drawing pane, because `/permissions` is answered in a build with
+/// no screen. The tab reads this same string, so the two cannot disagree about what an empty policy
+/// means.
 pub(crate) const NOTHING_DECIDED: &str = "nothing has been decided yet, which is why this list is \
      empty rather than permissive.\n\nAnswer a question with `a` and everything it was judged by \
      arrives here, where it can be changed; `y` and `n` answer that one call and record nothing. \
@@ -860,15 +854,15 @@ pub(crate) fn thousands(n: usize) -> String {
 
 /// A gap worth reporting, as a word; `None` when it is too short to be news.
 ///
-/// note: the threshold is what keeps this from being a column of numbers. Nearly everything in a
-/// session happens between one frame and the next, and a log that stamped all of it would be
-/// asking somebody to find the slow line by reading every line. What is left is the model
-/// thinking, a command running, and a provider that has gone quiet.
+/// note: the threshold keeps this from being a column of numbers. Nearly everything in a session
+/// happens between one frame and the next, and stamping all of it would make somebody read every
+/// line to find the slow one. What is left is the model thinking, a command running, and a provider
+/// that has gone quiet.
 ///
-/// note: here rather than in `ui/tabs.rs`, under the rule the rest of this module is here for: a
-/// *client* can reach it, so it cannot live behind the feature that draws. The trace
-/// goes out on the wire and the figure beside a line has to read the same in a browser as it does
-/// in a terminal, which is one formatter rather than two that agree today.
+/// note: here rather than in `ui/tabs.rs` because a client can reach it, so it cannot live behind
+/// the feature that draws. The trace goes out on the wire and the figure beside a line must read
+/// the same in a browser as in a terminal, so there is one formatter rather than two that agree
+/// today.
 pub fn waited_since(gap: std::time::Duration) -> Option<String> {
     let millis = gap.as_millis();
     match millis {
@@ -932,8 +926,8 @@ mod tests {
         trace_line(event).1
     }
 
-    /// An item's state change names the item and what it became, which is the question "what did
-    /// that answer do to it?" and one nothing else on the trace answers.
+    /// An item's state change names the item and what it became; nothing else on the trace answers
+    /// that.
     #[test]
     fn an_item_that_changed_says_which_one_and_what_it_became() {
         assert_eq!(
@@ -947,8 +941,8 @@ mod tests {
         );
     }
 
-    /// A question names the tool and the number of the question, because the answer is typed
-    /// against that number and nothing else on the trace carries it.
+    /// A question names the tool and the question number, because the answer is typed against that
+    /// number and nothing else on the trace carries it.
     #[test]
     fn a_question_names_the_tool_and_the_question() {
         assert_eq!(
@@ -1032,8 +1026,8 @@ mod tests {
         );
     }
 
-    /// A failure says what it said, and says it in one line: the model's failure and the step's
-    /// are the same sentence to whoever is reading them.
+    /// A failure says what it said, in one line: the model's failure and the step's are the same
+    /// sentence to whoever reads them.
     #[test]
     fn a_failure_says_what_went_wrong() {
         assert_eq!(
@@ -1052,8 +1046,8 @@ mod tests {
         );
     }
 
-    /// The three events with nothing in the payload, each of which still carries a sentence of its
-    /// own: a name against an empty line is a row nobody can read.
+    /// The three empty-payload events each carry a sentence of their own; a name against an empty
+    /// line is a row nobody can read.
     #[test]
     fn the_events_with_nothing_in_them_say_what_they_were() {
         assert_eq!(

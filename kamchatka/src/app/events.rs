@@ -54,10 +54,9 @@ impl App {
                 // request is only built from `Idle`, so every call they were given for has run
                 self.policy.forget_network_grants();
                 self.close();
-                // note: split here rather than when the response lands, because *here* is the
-                // one moment the two are the same thing: the context has just been projected
-                // into that request and has not moved yet. Asked later, an item elided in the
-                // meantime would look as though it had gone out as a marker
+                // note: split here rather than when the response lands, because here the context
+                // has just been projected into the request and has not moved yet. Asked later, an
+                // elided item would look as though it had gone out as a marker
                 let going = self.going();
                 self.pending = items.iter().fold(Anchor::default(), |mut anchor, id| {
                     match self
@@ -127,10 +126,10 @@ impl App {
             } => {
                 self.unanswered = None;
                 // note: the tokens are real and the words are gone. Some endpoints bill for
-                // reasoning and return none of it - `mercury-2.5`'s stream carries no reasoning
-                // field at all - so the context tab shows a turn with nothing in it where the
-                // thinking was, and the only trace of where the money went is a number in
-                // `/budget`. Said once, because it is true of the endpoint rather than of this turn
+                // reasoning and return none of it: `mercury-2.5`'s stream carries no reasoning
+                // field. The context tab shows a turn with nothing where the thinking was;
+                // `/budget` shows the only trace of where the money went. Said once, because this
+                // is true of the endpoint, not of this turn
                 if !self.thought_unseen
                     && usage.is_some_and(|it| it.reasoning_tokens.is_some_and(|n| n > 0))
                     && self
@@ -155,11 +154,10 @@ impl App {
                         ..std::mem::take(&mut self.pending)
                     });
                 }
-                // the turn is recorded, so whatever streamed is now the item's to say. This is
-                // also what makes a provider that does not stream work on a screen without being
-                // detected: there was nothing on it and there is an item, and the item is what
-                // gets drawn either way. A loop that prints fragments has to print the item
-                // itself; see `Headless::say`
+                // the turn is recorded, so whatever streamed is now part of the item. This also
+                // lets a non-streaming provider work on a screen without being detected: the screen
+                // had nothing, and the item is drawn either way. A loop that prints fragments must
+                // also print the item itself; see `Headless::say`
                 self.caught_up(item);
                 // note: said, because nothing else says it. The screen draws a turn cut short as a
                 // turn, a pipe prints it and exits `0`, and the record's `stop` was the only place
@@ -172,8 +170,8 @@ impl App {
                     self.say(Speaker::Note, why);
                 }
             }
-            // the same fact from the two places that can know it, and the second line says which
-            // of them it is: one is a count and the other is a guess
+            // the same fact can come from two places, and the second line says which of the two it
+            // was: one is a count, the other is a guess
             Event::ModelFailed { error, overrun } => {
                 self.unanswered = Some(error.clone());
                 self.close();
@@ -185,11 +183,10 @@ impl App {
                 self.say_error(error);
                 self.overran(overrun, false);
             }
-            // note: a refusal the policy made on its own, which nobody was asked about and which
-            // the tool result records only as `the call was not permitted`. When the tool's own
-            // capability is `allow` - `shell` usually is - that leaves a refused call with nothing
-            // on screen accounting for it, and "why was that refused?" is the question the
-            // permissions tab exists to answer
+            // note: the policy refused the call on its own; no one was asked, and the tool result
+            // records it only as `the call was not permitted`. When the tool's own capability is
+            // `allow` (`shell` usually is), that leaves a refused call with nothing on screen
+            // accounting for it. The permissions tab exists to answer why the call was refused
             Event::PermissionDecided {
                 call,
                 tool,
@@ -205,9 +202,9 @@ impl App {
             // once the undo window closes; the viewer reads it back off `←` and `→`
             Event::ContextReplaced { id, was, .. } => self.remember(id, was),
             Event::ToolStarted { .. } => self.streamed_bytes = 0,
-            // note: nothing. The calls a turn asked for are on the turn's own item and are
-            // drawn from it, so they arrive with the answer rather than one event later - and
-            // they go when it goes, without anybody having to remember which turn proposed them
+            // note: nothing. The calls a turn asked for are on the turn's own item and are drawn
+            // from it, so they arrive with the answer instead of one event later. They go when the
+            // item goes, so there is no need to track which turn proposed them
             Event::ToolRequested { .. } => {}
             Event::ToolOutput { call, chunk, .. } => self.append_output(&call, &chunk),
             Event::ToolFinished { call, item, .. } => {
@@ -285,10 +282,10 @@ impl App {
             ),
             // the window the output limits are held to moves with the model; see `Limits`
             Event::ModelChanged { .. } => super::held_to_window(&self.kernel, &self.limits),
-            // note: a file added to the context is not said out loud here. The chat already draws
-            // a line for it off the item, and a second one off this event would say it twice, one
-            // above the other, for every `-f` and every `/attach`. The derived line is the one
-            // that cannot go out of date, so it is the one that stays. See `App::as_conversation`
+            // note: a file added to the context is not announced here. The chat already draws a
+            // line for it off the item, and a second line off this event would say it twice for
+            // every `-f` and every `/attach`. The derived line cannot go out of date, so it stays.
+            // See `App::as_conversation`
             _ => {}
         }
     }

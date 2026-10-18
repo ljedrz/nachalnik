@@ -1,10 +1,10 @@
 //! `Careful`: what may run, what has to be asked about, and what is refused outright.
 //!
-//! note: a heuristic over a command line, and honest about it. What it reads is the tool name and
-//! the arguments, both as data - nothing a model says about its own permissions reaches here -
-//! and what it produces is a stance somebody can read back on the permissions tab and change.
-//! `Shell` subsumes every other capability, so the answers about the rest are reports rather than
-//! boundaries, which is why the path rules exist and why the tab says as much.
+//! note: it judges a command line by a heuristic, and does not claim to be more than that. It
+//! reads the tool name and arguments as data; nothing a model says about its own permissions
+//! reaches here. It produces a stance that can be read back on the permissions tab and changed.
+//! `Shell` subsumes every other capability, so answers about the rest are reports rather than
+//! boundaries. That is why the path rules exist, and why the tab says as much.
 
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -23,18 +23,16 @@ use super::reaching::Reaching;
 
 /// Something [`Careful`] holds an opinion about.
 ///
-/// note: four kinds, and they are four different questions about one call. *What* is being done
-/// is the operation (`fs:read`) and the domain it is in (`fs`); *to what* is the path; *whose
-/// tool* is the server. Only the first two are a hierarchy, and the resolution rule in
-/// [`Careful::stance`] is about those two alone - a path and a server are facts the arguments and
-/// the registry carry, and they fold in with the strictest-wins rule like anything else.
+/// note: four questions about one call: what (operation and domain), to what (path), whose tool
+/// (server). Only operation and domain are a hierarchy; [`Careful::stance`] resolves those two
+/// alone. Path and server come from the arguments and registry and fold in with the strictest-wins
+/// rule.
 ///
-/// note: a capability is not fine enough on its own. `fs:read: allow` is a reasonable thing to
-/// want and `fs:read .env: allow` is not, and the difference is a property of the *file* rather
-/// than of the tool that opened it - which is why a path rule is one subject rather than one per
-/// tool, and binds every tool that is handed a path as its `path` argument. A tool from an MCP
-/// server names its own arguments, and one calling its path `file_path` meets only the rules about
-/// its server; see [`Careful::judges`].
+/// note: a capability is not fine enough on its own. `fs:read: allow` is reasonable;
+/// `fs:read .env: allow` is not. The difference is a property of the file, not of the tool that
+/// opened it, so a path rule is one subject rather than one per tool and binds every tool handed a
+/// path as its `path` argument. A tool from an MCP server names its own arguments; one calling its
+/// path `file_path` meets only the rules about its server. See [`Careful::judges`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Subject {
     /// One operation in one domain: `fs:read`.
@@ -90,21 +88,19 @@ impl Subject {
 /// `mcp:call`: the subject every tool from a server declares, meaning "somebody else's tool, and
 /// nobody has vouched for what it does".
 ///
-/// note: named once rather than spelled in each of the three places that need it, because the two
-/// of them that *report* on it have to agree with the one that decides by it. See
-/// [`Careful::judges`], which answers for it with the server's own name where it knows the server,
-/// and [`Careful::decides`], which is how a table says so.
+/// note: named once so the two places that report on it agree with the one that decides by it. See
+/// [`Careful::judges`], which answers with the server's own name where it knows the server, and
+/// [`Careful::decides`], which is how a table says so.
 fn unvouched() -> Capability {
     Capability::of(Domain::Other("mcp".into()), "call")
 }
 
 /// The paths a fresh policy has something to say about.
 ///
-/// note: a short list of the names that are credentials by convention, and every one of them is
-/// `ask` rather than `deny`, like everything else here. What they are for is the moment somebody
-/// answers `always` for `read`: the capability goes to `allow` and these stay where they are, so
-/// reading `src/main.rs` goes silent and reading `.env` is still a question. A rule finer than a
-/// capability is only worth having once the capability is open.
+/// note: a short list of names that are credentials by convention; every one is `ask` rather than
+/// `deny`. When somebody answers `always` for `read`, the capability goes to `allow` and these stay
+/// where they are, so reading `src/main.rs` goes silent and reading `.env` is still a question. A
+/// rule finer than a capability is only worth having once the capability is open.
 const SUSPECT: &[&str] = &[
     ".env*",
     "*.pem",
@@ -119,29 +115,27 @@ const SUSPECT: &[&str] = &[
     ".gnupg/",
 ];
 
-/// Whether a path is one this pattern is about.
+/// Whether a path matches this pattern.
 ///
-/// note: a pattern ending in `/` is a directory: it matches a path with that component anywhere in
-/// it. Anything else is matched against the file name, with `*` standing for any run of
-/// characters. That is less than a glob crate would give and it is what these rules need; a
-/// pattern language nobody can predict is worse on a permissions screen than a small one.
+/// note: a pattern ending in `/` is a directory: it matches any path containing that component.
+/// Anything else is matched against the file name, with `*` standing for any run of characters.
+/// That is less than a glob crate would give and is what these rules need: a pattern language
+/// nobody can predict is worse on a permissions screen than a small one.
 ///
-/// note: the path is read as a [`Path`] rather than split on `/`, so that the name a rule is
-/// matched against is the name the file will actually be opened under. It is the same string
-/// [`Reach::allows`](crate::sandbox::Reach::allows) resolves, and the two must not disagree. Split
-/// on slashes, `.env/` has no last component and no rule would match it, while resolving it
-/// produces `.env` and reads it. A trailing slash, a `.` in the middle, a doubled separator - none
-/// of them changes which file is meant, and none of them may change which rule applies.
+/// note: the path is read as a [`Path`] rather than split on `/`, so the name matched is the name
+/// the file is opened under. It is the same string [`Reach::allows`](crate::sandbox::Reach::allows)
+/// resolves, and the two must not disagree. Splitting on slashes would make `.env/` have no last
+/// component and match nothing, while resolving it produces `.env` and reads it. A trailing slash,
+/// a `.` in the middle, or a doubled separator changes neither the file nor the rule.
 ///
-/// note: what this cannot see is a *symlink*. A rule is about a name, and a name that resolves
-/// somewhere else resolves after this has answered. `fs` checks where the link led once it has
-/// resolved it - see `search::led_past` - and the boundary that does not care about names at all
-/// is the sandbox, which is the kernel's - see [`crate::sandbox`].
+/// note: this cannot see a symlink. A rule is about a name, and a name that resolves elsewhere
+/// resolves after this has answered. `fs` checks where the link led once resolved - see
+/// `search::led_past` - and the sandbox boundary does not care about names - see
+/// [`crate::sandbox`].
 ///
 /// note: names are compared exactly, because that is how the filesystem here compares them: `.ENV`
-/// is another file than `.env`, and a rule folded to match it would reach files it was not written
-/// for. A backslash is a character a name may hold, as it is everywhere else here, and not a
-/// separator.
+/// is another file than `.env`, and folding a rule would reach files it was not written for. A
+/// backslash is a character a name may hold, not a separator.
 pub fn path_matches(pattern: &str, path: &str) -> bool {
     let path = Path::new(path);
 
@@ -166,7 +160,7 @@ const GRAMMAR: &str = "a path rule is a file name in which `*` stands for any ru
                        `*.pem`, `.env*` - or one directory name with a slash after it - \
                        `secrets/` - which is about that directory wherever it sits in a path";
 
-/// What is wrong with a path rule, where something is.
+/// What is wrong with a path rule, if anything.
 ///
 /// note: the grammar [`path_matches`] reads is small, and a pattern outside it would be taken all
 /// the same: `--auto-allow 'src/**'` would go onto the permissions tab and be consulted about every
@@ -174,24 +168,22 @@ const GRAMMAR: &str = "a path rule is a file name in which `*` stands for any ru
 /// because a `--auto-deny` that refuses nothing reads as given - so it is refused where it is
 /// entered, and the refusal says what there is.
 ///
-/// note: refused rather than taught to the matcher. Whole-path patterns bring anchoring, absolute
-/// against relative, and `**` - and a pattern language on a permissions screen is worth more small
-/// than complete.
+/// note: refused rather than taught to the matcher. Whole-path patterns would add anchoring,
+/// absolute versus relative, and `**`; a permissions screen is worth more small than complete.
 ///
-/// note: a `*` before the slash is refused too, and that one is legal rather than impossible: a
-/// directory really can be called `sec*`, and the directory branch compares the name as it is
-/// written. `secrets*/` is somebody expecting `secrets-old/` to be covered, which is the same
-/// silence by another route.
+/// note: a `*` before the slash is refused too. A directory can really be called `sec*`, and the
+/// directory branch compares the name as written, so `secrets*/` would silently fail to cover
+/// `secrets-old/`.
 pub fn objection_to(pattern: &str) -> Option<String> {
     let objection = |why: &str| Some(format!("`{pattern}` {why}; {GRAMMAR}"));
 
     if pattern.is_empty() {
         return objection("is not a rule at all");
     }
-    // a rule without a slash is about the last name in a path, and no path's last name is either
-    // of these. With the slash they are directory rules, and `../` does match - every path that
-    // climbs out - so it is the bare two that are refused, and `./`, which is no directory a path
-    // is in but a way of spelling one
+    // a rule without a slash is about the last name in a path, and no path's last name is `.` or
+    // `..`. With a slash they are directory rules, and `../` matches every path that climbs out, so
+    // only the bare two are refused; `./` is a way of spelling a directory, not a directory a path
+    // is in
     if matches!(pattern, "." | "..") {
         return objection("cannot match: no file is called that");
     }
@@ -313,11 +305,11 @@ pub struct Careful {
     networked: Mutex<BTreeSet<ToolCallId>>,
     /// What each of the session's own tools declares, by its identifier.
     ///
-    /// note: for the one refusal a rule is the wrong thing to blame. A call whose operation cannot
-    /// be read declares everything its tool does, and a rule about one of those then refuses a
-    /// call that meant to do another; saying only the rule sends a model to retry the same call,
-    /// when what is wrong is its arguments. Knowing the tool's declaration is how a refusal can
-    /// tell - see `ops::unnamed_operation` - and it is told here by whoever installs the tools.
+    /// note: a rule is the wrong thing to blame for one refusal. A call whose operation cannot be
+    /// read declares everything its tool does, and a rule about one of those refuses a call that
+    /// meant to do another; saying only the rule sends a model to retry the same call when its
+    /// arguments are wrong. Knowing the tool's declaration is how a refusal can tell - see
+    /// `ops::unnamed_operation` - and whoever installs the tools tells it here.
     offered: Mutex<BTreeMap<String, ToolSpec>>,
     /// The tools among [`Careful::offered`] taken off offer for now, by `/tools toggle`.
     withdrawn: Mutex<BTreeSet<String>>,
@@ -326,12 +318,11 @@ pub struct Careful {
     unanswered: Mutex<Option<Verdict>>,
     /// Why the last few refusals were refused, by the call they refused.
     ///
-    /// note: the policy is the only thing that knows this, and nothing carries it out: the
-    /// kernel is handed a `Verdict` and records `the call was not permitted`, which is true and
-    /// unhelpful when the tool's own capability is `allow` and something else refused it. That is
-    /// exactly the `shell: allow` / `network: deny` pair, and a refusal nobody can account for is
-    /// the one thing this program is not for. So it is written down here, where it is known, and
-    /// [`Careful::why`] hands it out.
+    /// note: only the policy knows this, and nothing carries it out: the kernel is handed a
+    /// `Verdict` and records `the call was not permitted`, which is true and unhelpful when the
+    /// tool's own capability is `allow` and something else refused it - the `shell: allow` /
+    /// `network: deny` pair. A refusal nobody can account for is not what this program is for. It
+    /// is written down here, where it is known, and [`Careful::why`] hands it out.
     refusals: Mutex<VecDeque<(ToolCallId, String)>>,
     /// Whether a confined command's network is asked about when it tries, rather than read off its
     /// name; see [`Careful::gate_the_network`].
@@ -344,10 +335,9 @@ pub struct Careful {
 ///
 /// note: a queue rather than a map, and the oldest goes rather than all of them. Emptying it
 /// outright when full would throw away the entry it is most likely to need: a refusal is written
-/// down when the policy answers and read when the kernel builds the tool result, so the live one
-/// is among the newest. What makes a bound the right shape here is that nobody is obliged to read
-/// one at all - which is exactly what is not true of the grants above, every one of which is read
-/// by the call it was given for.
+/// down when the policy answers and read when the kernel builds the tool result, so the live one is
+/// among the newest. A bound is right because nobody is obliged to read one at all - that is not
+/// true of the grants above, every one of which is read by the call it was given for.
 const REMEMBERED: usize = 64;
 
 impl Default for Careful {
@@ -389,13 +379,12 @@ impl Careful {
         }
     }
 
-    /// Says that a confined command's attempt to open a network socket is held by the gate, so
-    /// that the network is asked about when a command tries rather than from what it is called.
+    /// Marks that a confined command's network socket attempt is held by the gate, so the network
+    /// is asked about when the command tries, not from what it is called.
     ///
-    /// note: told by whoever builds the shell, once the probe has found that the gate holds - see
-    /// [`crate::sandbox::available`]. From then on [`Careful::judges`] stops reading a command for
-    /// program names, and an allowed `exec:run` runs without a question until a command actually
-    /// reaches out.
+    /// note: set by whoever builds the shell, once [`crate::sandbox::available`] confirms the gate
+    /// holds. From then on [`Careful::judges`] stops reading a command for program names, and an
+    /// allowed `exec:run` runs without a question until a command reaches out.
     pub fn gate_the_network(&self) {
         self.gated.store(true, Ordering::Relaxed);
     }
@@ -412,25 +401,25 @@ impl Careful {
 
     /// Everything this policy consults about one call, in the order it reads them out.
     ///
-    /// note: the capabilities the call needs - which name the operation it picks, since
-    /// [`Tool::needs`](nachalnik::Tool::needs) is asked per call - plus the two things only the
-    /// arguments can say: that a command reaches for the network, and that a path is one there is
-    /// a rule about. It is one list rather than separate checks because everything downstream
-    /// wants the same thing: the question asks about these, `always` answers for these, and a
-    /// refusal is blamed on whichever of these said no. A one-off `yes` to a `curl` that then runs
-    /// with the network cut is the shape of bug that comes of having several of them.
+    /// note: the capabilities the call needs, which name the operation it picks since
+    /// [`Tool::needs`](nachalnik::Tool::needs) is asked per call, plus two things only the
+    /// arguments say: that a command reaches for the network, and that a path has a rule about it.
+    /// One list rather than separate checks because downstream wants the same thing: the question
+    /// asks about these, `always` answers for these, and a refusal is blamed on whichever said no.
+    /// Several lists produce bugs like a one-off `yes` to `curl` that then runs with the network
+    /// cut.
     pub fn judges(&self, request: &PermissionRequest) -> Vec<Subject> {
-        // note: the arguments as the tool will read them. This program's own tools take theirs
-        // inside a `call` object, and reading the outside of that finds neither the `cmd` a
-        // network rule is about nor the `path` a path rule is about - so both would quietly stop
-        // being consulted, which is the one failure a permission policy does not get to have.
+        // note: read the arguments as the tool reads them. This program's tools take theirs inside
+        // a `call` object; reading outside it finds neither the `cmd` a network rule is about nor
+        // the `path` a path rule is about, so both would quietly stop being consulted - the one
+        // failure a permission policy must not have.
         //
-        // note: a `call` object is read through whoever's tool it belongs to. Somebody else's
-        // tool may take an argument called `call` and mean something else by it, and its `path`
-        // is then read as a path. That is the direction to be wrong in: a rule consulted about a
-        // string that is not a path asks a question nobody needed, where skipping it is a rule
-        // that stops being one. `inner` only reads through a `call` that is the whole of the
-        // arguments, so nothing on the outside of one is passed over for it
+        // note: a `call` object is read through the tool it belongs to. Another tool's `call`
+        // argument may mean something else, and its `path` is then read as a path. That is the
+        // direction to be wrong in: consulting a rule about a string that is not a path asks a
+        // question nobody needed, where skipping it makes a rule stop being one. `inner` only reads
+        // through a `call` that is the whole of the arguments, so nothing outside one is passed
+        // over for it
         let args =
             super::ops::inner(&request.args).unwrap_or(std::borrow::Cow::Borrowed(&request.args));
 
@@ -441,17 +430,17 @@ impl Careful {
             .map(Subject::Capability)
             .collect();
 
-        // note: read off the command's name only where the gate does not hold. Where it does, the
-        // question is the command's own attempt, asked while it runs - see `crate::gate` - and a
-        // `net:reach` consulted here as well would ask about `git status` a second time for nothing
+        // note: read the command's name only where the gate does not hold. Where it holds, the
+        // question is the command's own attempt, asked while it runs - see `crate::gate`.
+        // Consulting `net:reach` here too would ask about `git status` a second time for nothing
         if request.capabilities.contains(&Capability::exec("run"))
             && !self.gates_the_network()
             && command(&args).is_some_and(reaches_the_network)
         {
             judged.push(Subject::Capability(Capability::net("reach")));
         }
-        // note: the path a *tool* was handed, which is not the same as a path named inside a shell
-        // command; see the note on `Careful` for why the second is not attempted
+        // note: the path a tool was handed, not a path named inside a shell command; see the note
+        // on `Careful` for why the second is not attempted
         if let Some(path) = args.get("path").and_then(|path| path.as_str()) {
             judged.extend(
                 self.paths
@@ -462,21 +451,20 @@ impl Careful {
             );
         }
 
-        // note: where the tool came from, which is the one thing about a call that is neither an
-        // act nor an argument. A tool from an MCP server is answerable as that server whatever it
-        // claims to do, and it is a fact this program holds because it spawned the server - not
-        // one read off a name, which a server can choose.
+        // note: where the tool came from, the one thing about a call that is neither an act nor an
+        // argument. A tool from an MCP server is answerable as that server whatever it claims, and
+        // this program knows the server because it spawned it - not from a name, which a server can
+        // choose.
         //
-        // note: and it answers for `mcp:call`, which is the subject every tool from a server
-        // declares and means "somebody else's tool, and nobody has vouched for what it does".
-        // Naming the server is the same statement made precisely, so consulting both would make
-        // `--auto-allow-server files` grant nothing until `mcp:call` had been answered too - two
-        // flags for one decision. Whatever the server's *annotations* claimed is untouched: a tool
-        // that says it writes is still judged against `fs:write`.
+        // note: it answers for `mcp:call`, which every tool from a server declares and means
+        // "somebody else's tool, and nobody has vouched for what it does". Naming the server is the
+        // same statement made precisely, so consulting both would make `--auto-allow-server files`
+        // grant nothing until `mcp:call` had been answered too. Server annotations are untouched: a
+        // tool that says it writes is still judged against `fs:write`.
         //
         // note: except where somebody refused it. The server stands in for `mcp:call`'s question,
-        // not for a `--auto-deny mcp:call` or a `--auto-deny mcp`, and dropping one of those would
-        // let `--auto-allow-server` talk its way past a refusal - which no rule here may do
+        // not for `--auto-deny mcp:call` or `--auto-deny mcp`. Dropping one would let
+        // `--auto-allow-server` bypass a refusal, which no rule may do
         let unvouched = Subject::Capability(unvouched());
         let refused = self.stance(&unvouched) == Verdict::Deny;
         if let Some(server) = self.servers.lock().get(&request.tool) {
@@ -489,8 +477,8 @@ impl Careful {
         judged
     }
 
-    /// Whether a rule about `subject` has anything to say about a call to `tool`, asked of the
-    /// tool rather than of a call it has not made yet.
+    /// Whether a rule about `subject` has anything to say about a call to `tool`, asked of the tool
+    /// rather than of a call it has not made yet.
     ///
     /// note: for the two tables that say what a rule covers - the permissions tab and
     /// `setup: permissions` - which would otherwise answer from
@@ -503,9 +491,9 @@ impl Careful {
     /// `deny` for it is consulted, and covers them.
     ///
     /// note: it takes a name and not a [`PermissionRequest`], so a path rule - which is about the
-    /// argument of one call rather than about the tool - is not something it can answer. Those
-    /// two tables have their own section for path rules, which is the honest place for a subject
-    /// whose coverage is not a property of any tool.
+    /// argument of one call rather than about the tool - is not something it can answer. Those two
+    /// tables have their own section for path rules, the place for a subject whose coverage is not
+    /// a property of any tool.
     pub fn decides(&self, subject: &Subject, tool: &str) -> bool {
         match subject {
             Subject::Capability(capability) if *capability == unvouched() => {
@@ -530,11 +518,11 @@ impl Careful {
             .map(|subject| self.stance(subject))
             .fold(Verdict::Allow, Verdict::strictest);
 
-        // note: a question about a call this program's own tool cannot read is one whose `yes`
-        // runs nothing: the tool reads its arguments before anything else and answers with what
-        // is wrong with them. So it is let through to say that, rather than put to a person who
-        // is shown a wrapper they cannot judge. A refusal stays a refusal, and somebody else's
-        // tool is still asked about - a server's tool may take a `call` that means something else
+        // note: a question about a call this program's own tool cannot read is one whose `yes` runs
+        // nothing: the tool reads its arguments before anything else and answers with what is wrong
+        // with them. So it is let through to say that, rather than put to a person shown a wrapper
+        // they cannot judge. A refusal stays a refusal, and somebody else's tool is still asked
+        // about - a server's tool may take a `call` that means something else
         match verdict == Verdict::Ask && self.unreadable(request) {
             true => Verdict::Allow,
             false => verdict,
@@ -548,15 +536,15 @@ impl Careful {
             && super::ops::inner(&request.args).is_err()
     }
 
-    /// What it answers about one subject; asking is what it does about anything unmentioned.
+    /// What it answers about one subject; anything unmentioned gets `Ask`.
     ///
-    /// note: **the most specific rule that has an answer decides, and a `deny` above it
-    /// overrules.** `--auto-allow fs` covers `fs:read` because nothing finer was said;
+    /// note: the most specific rule that has an answer decides, and a `deny` above it overrules.
+    /// `--auto-allow fs` covers `fs:read` because nothing finer was said;
     /// `--auto-allow fs --auto-deny fs:edit` refuses the edit and allows the rest;
     /// `--auto-allow fs:read` allows reading while `fs` is still a question, which is what naming
-    /// one operation plainly means. What it cannot do is talk its way past a refusal - a domain
-    /// somebody denied stays denied however finely an operation of it is named - so `--auto-deny`
-    /// is still the last word and the strictest of everything consulted still wins.
+    /// one operation plainly means. A domain somebody denied stays denied however finely
+    /// an operation of it is named, so `--auto-deny` is the last word and the strictest of
+    /// everything consulted wins.
     pub fn stance(&self, subject: &Subject) -> Verdict {
         match subject {
             Subject::Capability(capability) => {
@@ -653,10 +641,10 @@ impl Careful {
 
     /// Why the given call was refused, if this is what refused it.
     ///
-    /// note: copied rather than taken out, because there are two callers and they want different
-    /// things with it: the screen tells the person, and the kernel puts it into the tool result
-    /// the *model* reads - see [`PermissionPolicy::why`]. Handing it over once would give it to
-    /// whichever asked first and tell the other nothing.
+    /// note: copied rather than taken out because two callers want different things: the screen
+    /// tells the person, and the kernel puts it into the tool result the model reads - see
+    /// [`PermissionPolicy::why`]. Handing it over once would give it to whichever asked first and
+    /// tell the other nothing.
     pub fn why(&self, call: &ToolCallId) -> Option<String> {
         self.refusals
             .lock()
@@ -665,8 +653,8 @@ impl Careful {
             .map(|(_, why)| why.clone())
     }
 
-    /// The rule that keeps an `allow` for the file name `name` from ever deciding, where one does:
-    /// another path rule, not itself an allow, that matches the name.
+    /// The rule that keeps an `allow` for the file name `name` from ever deciding: another path
+    /// rule, not itself an allow, that matches the name.
     ///
     /// note: every path rule that matches a call is consulted and the strictest wins, so beside
     /// `.env*: ask` an allow for `.env` changes nothing, and taken without a word it reads as
@@ -763,9 +751,9 @@ impl Careful {
         offered && self.permits(capability)
     }
 
-    /// The half of [`Careful::reachable`] that is the policy's own: that a call needing
-    /// `capability` would not be refused, by a rule or by a question nobody is there to answer -
-    /// for a caller that knows better than this what is on offer.
+    /// The policy's own half of [`Careful::reachable`]: a call needing `capability` would not be
+    /// refused, by a rule or by an unanswered question, for a caller that knows better than this
+    /// what is on offer.
     pub fn permits(&self, capability: &Capability) -> bool {
         match self.stance(&Subject::Capability(capability.clone())) {
             Verdict::Allow => true,
@@ -774,20 +762,19 @@ impl Careful {
         }
     }
 
-    /// Records that a tool came from an MCP server, so that calls to it are answerable as that
-    /// server as well as by what they do.
+    /// Records that a tool came from an MCP server, so calls to it are answerable as that server as
+    /// well as by what they do.
     ///
-    /// note: told rather than worked out. A server chooses the names its tools carry and the
-    /// prefix is optional, so the only thing that reliably knows where a tool came from is
-    /// whatever installed it.
+    /// note: told rather than worked out. A server chooses its tools' names and the prefix is
+    /// optional, so only whatever installed the tool reliably knows where it came from.
     pub fn came_from(&self, tool: impl Into<String>, server: impl Into<String>) {
         self.servers.lock().insert(tool.into(), server.into());
     }
 
     /// Which MCP server a tool came from, if it came from one.
     ///
-    /// note: what the permissions tab needs: a row about a server has to say which tools it
-    /// covers, and a server's name is not something a tool's id can be asked for.
+    /// note: the permissions tab needs it: a row about a server has to say which tools it covers,
+    /// and a tool's id cannot be asked for a server's name.
     pub fn server_of(&self, tool: &str) -> Option<String> {
         self.servers.lock().get(tool).cloned()
     }
@@ -887,12 +874,11 @@ fn command(args: &serde_json::Value) -> Option<&str> {
     args.get("cmd")?.as_str()
 }
 
-/// The programs this counts as going out to the network.
+/// The programs counted as going out to the network.
 ///
-/// note: short on purpose, and made of what a model actually writes. Every entry here is a
-/// program whose *whole point* is the network, so a false positive is nearly impossible; the
-/// misses are the other way round, and are the subject of the note on
-/// [`reaches_the_network`].
+/// note: short on purpose, and made of what a model actually writes. Every entry here is a program
+/// whose whole point is the network, so a false positive is nearly impossible; misses are false
+/// negatives, and are the subject of the note on [`reaches_the_network`].
 const NETWORKED: &[&str] = &[
     "curl",
     "wget",
@@ -946,9 +932,9 @@ const NETWORKED: &[&str] = &[
 
 /// Whether a shell command names one of them.
 ///
-/// note: consulted only where the gate does not hold - under `--no-sandbox`, and on a kernel that
-/// cannot hold a call - since where it does, a command is asked about when it tries.
-/// See [`Careful::gate_the_network`].
+/// note: consulted only where the gate does not hold: under `--no-sandbox`, and on a kernel that
+/// cannot hold a call. Where the gate holds, a command is asked about when it tries. See
+/// [`Careful::gate_the_network`].
 ///
 /// note: a heuristic over the command as it was written. It catches `curl https://…`,
 /// `pip install x` and `git push`, which is what a model writes when it wants the network, and it

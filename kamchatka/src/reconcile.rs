@@ -126,10 +126,10 @@ struct Shared {
     states_differ: bool,
 }
 
-/// Whether two forks' items at one place are the same item, whatever each has since said in it.
+/// Whether items at one place in two forks are the same item, whatever each has since said.
 ///
-/// note: everything that does not change once an item is added. Content is the one exception that
-/// can, by a revision, and is compared by the caller; state, note, metadata and the counts are
+/// note: everything that does not change once an item is added. Content is the one exception: it
+/// can change by a revision, and the caller compares it. State, note, metadata and the counts are
 /// what a fork does to an item, not what the item is.
 fn same_item(a: &ContextItem, b: &ContextItem) -> bool {
     a.id == b.id
@@ -139,11 +139,11 @@ fn same_item(a: &ContextItem, b: &ContextItem) -> bool {
         && a.included_because == b.included_because
 }
 
-/// How much of an item reaches the model, for choosing between the states the forks left it in.
+/// How much of an item reaches the model, to choose between the states the forks left it in.
 ///
-/// note: the most included wins. Nothing is destroyed by it - an item moved out of a request is
-/// moved back in, and a compactor elides it again if the session needs the room - and a pin is a
-/// promise somebody made in one of the forks that the others had no reason to break.
+/// note: the most included wins. Nothing is destroyed: an item moved out of a request is moved back
+/// in, and a compactor elides it again if the session needs the room. A pin is a promise made in
+/// one fork that the others had no reason to break.
 fn reach(state: ContextState) -> u8 {
     match state {
         ContextState::Pinned => 3,
@@ -181,10 +181,10 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
         return Err("a reconcile takes two forks or more".to_owned());
     }
 
-    // note: every way a fork comes about keeps the session's name - `-r`, a copy of the file, two
-    // `/save`s - and two sessions that are not forks of each other can still begin alike, with
-    // the same `-s` or a project's settings file. Their shared part would be the instruction, and
-    // what this made of them a session that never was
+    // note: every way a fork is made keeps the session's name: `-r`, copying the file, or two
+    // `/save`s. Two sessions that are not forks can still begin alike, with the same `-s` or a
+    // project's settings file, but their shared part is only the instruction and merging them would
+    // invent a session that never was
     if let Some(other) = forks
         .iter()
         .find(|fork| fork.snapshot.session != forks[0].snapshot.session)
@@ -457,12 +457,11 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
         },
         merged,
     );
-    // note: the model the forks were talking to, said in the fresh log as `-r` reads a model out
-    // of one: a snapshot holds the conversation and not the model, and a session resumed with
-    // none sends nothing. A provider that only says what it is, and is never asked anything -
-    // nothing here runs a turn. The address goes with it where every fork's log names the same
-    // one, and where they differ none is said, since `-r` would report the first as where the
-    // session had been talking
+    // note: the model the forks talked to is written to the fresh log as `-r` reads a model out of
+    // one. A snapshot holds the conversation and not the model, and a session resumed with none
+    // sends nothing. A provider that only identifies itself and is never asked anything runs no
+    // turn here. The address goes with it where every fork's log names the same one; where they
+    // differ, none is said, since `-r` would report the first as where the session had been talking
     if let (Some(_), Some(Some(first))) = (&model, talked_to.first()) {
         let mut info = first.clone();
         if !talked_to.iter().all(|info| {
@@ -716,8 +715,8 @@ fn manifest(
 
 /// Writes `reconciled` beside itself under `into`, refusing to write over anything there.
 ///
-/// note: refused rather than overwritten, unlike `/save`. What is at that path may be one of the
-/// forks, and a reconcile written over its own source is the one fork that is gone for good.
+/// note: refused rather than overwritten, unlike `/save`. The path may be a fork, and overwriting
+/// it destroys that fork for good.
 pub fn write(reconciled: &Reconciled, into: &str) -> Result<(String, String), String> {
     let (log, state) = crate::check::pair(into);
     let (log, state) = (log.display().to_string(), state.display().to_string());

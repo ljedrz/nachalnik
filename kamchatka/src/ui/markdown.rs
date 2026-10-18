@@ -1,11 +1,11 @@
-//! What a model wrote, turned into styled lines: markdown, fenced code, and the chunking that
-//! tells one from the other.
+//! Turns a model's answer into styled lines: markdown, fenced code, and the chunking that separates
+//! them.
 //!
-//! note: a model's answer is markdown whether or not anybody asked for it, so the choice is
-//! between rendering it and showing the punctuation. What is rendered is deliberately narrow -
-//! emphasis, headings, rules, lists, code - and a fenced block is handed to the highlighter
-//! rather than to the markdown renderer, which is why the two live in one file. Tables are the
-//! third case and are big enough to have their own: see [`super::table`].
+//! note: a model's answer is markdown whether or not anyone asked for it, so the choice is between
+//! rendering it and showing the punctuation. What is rendered is deliberately narrow: emphasis,
+//! headings, rules, lists, code. A fenced block goes to the highlighter, not the markdown renderer,
+//! which is why both live in one file. Tables are the third case and are big enough to have their
+//! own: see [`super::table`].
 
 use ratatui::{
     style::{Color, Style},
@@ -79,13 +79,13 @@ fn token(name: &str) -> Style {
 /// How many spaces the highlighter draws a tab as.
 const TAB: usize = 4;
 
-/// Each line of `text`, in pieces coloured the way [`token`] colours them - or all of it in cyan,
-/// where nothing recognises `extension`.
+/// Each line of `text`, in pieces coloured as [`token`] colours them, or all of it in cyan when
+/// nothing recognises `extension`.
 ///
-/// note: the text is handed to the highlighter whole, so that a string or a comment running
-/// across lines is one token rather than several guesses.
+/// note: the text is handed to the highlighter whole, so that a string or comment running across
+/// lines is one token rather than several guesses.
 ///
-/// note: the pieces are not the text byte for byte - a tab comes back as [`TAB`] spaces - so an
+/// note: the pieces are not the text byte for byte: a tab comes back as [`TAB`] spaces, so an
 /// offset into `text` is moved by [`drawn_at`] before it is used on them.
 fn tokens(extension: &str, text: &str) -> Vec<Vec<(String, Style)>> {
     let source: Vec<String> = text.lines().map(str::to_owned).collect();
@@ -113,8 +113,8 @@ fn tokens(extension: &str, text: &str) -> Vec<Vec<(String, Style)>> {
 
 /// Draws a fenced block: a rule down the left, and its tokens in this program's own colours.
 ///
-/// note: a language nothing here recognises still gets the rule and the wrapping - it is a code
-/// block whether or not anybody can colour it.
+/// note: a language nothing here recognises still gets the rule and the wrapping; it is a code
+/// block whether or not anyone can colour it.
 pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<'static>> {
     let bar = Span::styled("│ ", faint());
     let room = width.saturating_sub(2).max(8);
@@ -131,12 +131,12 @@ pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<
     drawn
 }
 
-/// The colour a command's own joints are picked out in.
+/// The colour a command's joints are picked out in.
 ///
-/// note: cyan, which in the table above belongs to `struct`, `namespace`, `type` and `key` -
-/// none of which a shell produces, so in this one context it is a colour nothing else is using.
-/// It is also none of green, yellow or red, which the panel above this has spent on the advisor's
-/// rating and cannot afford to have echoed by punctuation.
+/// note: cyan, which in the table above belongs to `struct`, `namespace`, `type` and `key` - none
+/// of which a shell produces - so it is a colour nothing else is using here. It is also none of
+/// green, yellow or red, which the panel above has spent on the advisor's rating and cannot afford
+/// to have echoed by punctuation.
 fn joint() -> Style {
     Style::default().fg(Color::Cyan).bold()
 }
@@ -180,14 +180,12 @@ pub(super) fn command(
 
     let mut drawn = Vec::new();
     for spans in tokens("sh", cmd) {
-        // note: `refit` rather than `fit`, which is the one place this parts company with a fenced
-        // block. `fit` cuts where the room runs out, because reflowing a block of code would be
-        // showing something the model did not write - and a command is one logical line, so
-        // breaking it at a space is wrapping rather than reflowing. Cut, `cargo build` would
-        // arrive as `carg` at the end of one row and `o build` at the start of the next, which is
-        // a worse thing to put in front of somebody deciding whether to run it than any argument
-        // for fidelity supports. The rule down the left is what makes this safe: it says the
-        // second row is a continuation, which the margin cannot say
+        // note: `refit` rather than `fit`, the one difference from a fenced block. `fit` cuts where
+        // the room runs out, because reflowing would show something the model did not write. A
+        // command is one logical line, so breaking at a space is wrapping, not reflowing. Cut,
+        // `cargo build` would arrive as `carg` at the end of one row and `o build` at the start of
+        // the next, worse for anyone deciding whether to run it. The rule down the left makes this
+        // safe: it marks the second row as a continuation, which the margin cannot say
         let styled = Line::from(
             accented(spans, &picked, worst)
                 .into_iter()
@@ -207,8 +205,8 @@ pub(super) fn command(
 /// A byte range into `cmd` as a range into what the highlighter made of it, where every tab is
 /// [`TAB`] spaces.
 ///
-/// note: without it every joint and underline after a tab lands `TAB - 1` bytes early for each
-/// one, and `ls\t&& rm -rf target` underlines `&& rm -rf tar`.
+/// note: without it, every joint and underline after a tab lands `TAB - 1` bytes early per tab.
+/// `ls\t&& rm -rf target` underlines `&& rm -rf tar`.
 fn drawn_at(cmd: &str, (from, to): (usize, usize)) -> (usize, usize) {
     let tabs = |at: usize| cmd.bytes().take(at).filter(|byte| *byte == b'\t').count();
     let moved = |at: usize| at + (TAB - 1) * tabs(at);
@@ -217,21 +215,20 @@ fn drawn_at(cmd: &str, (from, to): (usize, usize)) -> (usize, usize) {
 
 /// The same pieces, cut where a joint or the worst stage starts and ends, and restyled there.
 ///
-/// note: the highlighter's spans and the joints are two readings of one string and neither is
-/// built from the other, so this walks the pieces keeping a byte offset rather than trusting them
-/// to line up. A piece that straddles the start of a joint is split; what is inside a joint's
-/// range takes [`joint`]'s style whatever the highlighter made of it, because the highlighter's
-/// opinion of `|` is that it is not a token at all.
+/// note: the highlighter's spans and the joints are two independent readings of one string, so this
+/// walks the pieces keeping a byte offset instead of trusting them to line up. A piece straddling a
+/// joint's start is split; inside a joint's range it takes [`joint`]'s style whatever the
+/// highlighter made of it, because the highlighter treats `|` as not a token.
 ///
-/// note: the worst stage is a third reading, and it is cut at the same time as the other two rather
-/// than in a pass of its own. A stage is a run *between* joints, so its edges fall where no joint's
-/// do, and two passes would each split pieces the other had already split - the offsets are what
-/// everything here is keyed on, and re-walking them is where they would come apart. So every offset
-/// a style can change at is collected first and one walk honours all of them.
+/// note: the worst stage is a third reading, cut at the same time as the other two rather than in a
+/// separate pass. A stage is a run between joints, so its edges fall where no joint's do; two
+/// passes would split pieces the other had already split. Offsets key everything here, and
+/// re-walking them is where they come apart. So every offset where a style can change is collected
+/// first, and one walk honours all of them.
 ///
-/// note: the worst stage takes an underline on top of whatever it already had rather than instead
-/// of it. What it marks is a *run* of the command, several tokens long, and a run repainted in
-/// one colour would take away the highlighting that says which of those tokens is the path.
+/// note: the worst stage takes an underline on top of what it already had, not instead of it. It
+/// marks a run of several tokens, and repainting a run in one colour would remove the highlighting
+/// that shows which token is the path.
 fn accented(
     spans: Vec<(String, Style)>,
     picked: &[(usize, usize)],
@@ -262,8 +259,8 @@ fn accented(
                 .find(|edge| *edge > at)
                 .unwrap_or(usize::MAX);
             let take = rest.len().min(until.saturating_sub(at));
-            // a boundary inside a character cannot happen - every joint is ASCII and a stage's
-            // edges are trimmed to one - but slicing on a guess is not worth the certainty
+            // Every joint is ASCII and a stage's edges are trimmed to one, so no boundary falls
+            // inside a character. But slicing on a guess is not worth the certainty
             let take = match rest.is_char_boundary(take) {
                 true => take,
                 false => rest.len(),
@@ -288,14 +285,13 @@ fn accented(
 
 /// Breaks a run of styled pieces into rows no wider than `room`, keeping every style.
 ///
-/// note: code is not prose and is not wrapped like it. A line that is too long is cut where the
-/// room runs out rather than at a word boundary, because the alternative - reflowing - would be
-/// showing something the model did not write.
+/// note: code is not prose and is not wrapped like it. A line too long is cut where the room runs
+/// out, not at a word boundary, because reflowing would show something the model did not write.
 ///
 /// note: the room is columns and the cut is between graphemes, so a row of CJK holds half as many
-/// characters as a row of Latin and every one of them arrives. Cut by character count instead,
-/// the rows would be twice as wide as the pane, and a `Paragraph` that does not wrap drops the
-/// right-hand end - out of a block whose whole claim is that it is what the model wrote.
+/// characters as a row of Latin and every one arrives. Cut by character count instead, the rows
+/// would be twice as wide as the pane, and a `Paragraph` that does not wrap drops the right-hand
+/// end of a block that claims to be what the model wrote.
 fn fit(spans: Vec<(String, Style)>, room: usize) -> Vec<Vec<Span<'static>>> {
     let mut rows = vec![Vec::new()];
     let mut used = 0;
@@ -305,9 +301,9 @@ fn fit(spans: Vec<(String, Style)>, room: usize) -> Vec<Vec<Span<'static>>> {
         while !rest.is_empty() {
             let left = room.saturating_sub(used);
             let take = prefix_within(rest, left);
-            // what is left of the row is narrower than the next grapheme, which is not the same
-            // as the row being full: one cell can be free and the character need two. Close the
-            // row rather than let it over-run by a cell
+            // The remaining space is narrower than the next grapheme. That is not the same as a
+            // full row: one cell may be free while the character needs two. Close the row rather
+            // than let it over-run by a cell
             if columns(&rest[..take]) > left && used != 0 {
                 rows.push(Vec::new());
                 used = 0;
@@ -353,14 +349,13 @@ pub(super) enum Chunk<'a> {
 
 /// Splits an answer at its fences.
 ///
-/// note: done here rather than left to the markdown renderer, which is otherwise perfectly able
-/// to handle a code block, because colouring one needs three things the renderer does not hand
-/// back: the language the fence claimed, the whole block at once - a string or a comment can run
-/// across lines, and a highlighter shown one line at a time gets those wrong - and the fact that
-/// it *is* a block, which is what earns it the rule down its left.
+/// note: done here rather than left to the markdown renderer, because colouring a block needs three
+/// things the renderer does not hand back: the language the fence claimed, the whole block at once
+/// (a string or comment can run across lines, and a line-at-a-time highlighter gets those wrong),
+/// and the fact that it is a block, which earns it the rule down its left.
 ///
 /// note: an unterminated fence runs to the end of the answer rather than being read as prose,
-/// because every code block is unterminated for as long as it is still arriving.
+/// because a code block is unterminated while it is still arriving.
 pub(super) fn chunks(text: &str) -> Vec<Chunk<'_>> {
     /// The fence a line opens or closes with: its character and how many of them.
     fn fence(line: &str) -> Option<(char, usize)> {
@@ -379,8 +374,8 @@ pub(super) fn chunks(text: &str) -> Vec<Chunk<'_>> {
     let mut prose = 0;
     let mut open: Option<(char, usize, usize)> = None;
     let mut at = 0;
-    // where the row above the one being read starts, so that a delimiter row can hand back the
-    // header it belongs to; a table is only a table because of the line *after* its first
+    // where the row above starts, so a delimiter row can hand back its header. A table is only a
+    // table because of the line after its first
     let mut previous: Option<usize> = None;
     let mut table: Option<usize> = None;
 
@@ -465,12 +460,12 @@ fn start_of_line(text: &str, end: usize) -> usize {
         .unwrap_or(0)
 }
 
-/// How markdown is dressed for a terminal that does not know what colour the background is.
+/// How markdown is styled for a terminal with an unknown background colour.
 ///
-/// note: The defaults put a cyan slab behind an H1 and a black one behind every code block, which
-/// looks like a redaction on a dark theme and a bruise on a light one. Weight and colour say the
-/// same thing and survive both. The `#` and the ``` are dropped: they are the punctuation of the
-/// format, and what is wanted is what they mean.
+/// note: The defaults put a cyan slab behind an H1 and black behind every code block, which looks
+/// like a redaction on a dark theme and a bruise on a light one. Weight and colour say the same
+/// thing and survive both. The `#` and ``` are dropped: they are the format's punctuation, and what
+/// is wanted is what they mean.
 #[derive(Clone)]
 pub(super) struct Markdown;
 
@@ -558,12 +553,11 @@ mod tests {
         }
     }
 
-    /// A line of a block with nothing in it is drawn as the rule and nothing beside it.
+    /// An empty line in a block is drawn as the rule and nothing beside it.
     ///
     /// note: a model puts an empty line inside a block to space two pieces of code apart, and
     /// dropping the row would show the block one line shorter than the model wrote it. An empty
-    /// line elsewhere in the same block arriving whole is what says it was not a row that fell off
-    /// the end.
+    /// line arriving whole elsewhere in the block shows it was not a row that fell off the end.
     #[test]
     fn a_blank_line_inside_a_block_is_drawn() {
         let drawn: Vec<String> = highlighted("rust", "fn main() {\n\n    let x = 1;\n}\n", 40)
@@ -574,12 +568,12 @@ mod tests {
         assert_eq!(drawn, ["│ fn main() {", "│ ", "│     let x = 1;", "│ }"]);
     }
 
-    /// Three spaces of indent is a fence; four is an indented block, and nothing here.
+    /// Three spaces of indent is a fence; four is an indented block.
     ///
-    /// note: CommonMark's boundary, and it is a real one - a list's contents are indented four and
-    /// their fences are not fences. Read the other way round, a block the model indented by three
-    /// arrives as prose, so the answer loses its rule down the left and its colours, and the code
-    /// is set as an indented block instead.
+    /// note: CommonMark's boundary: a list's contents are indented four, and their fences are not
+    /// fences. Read the other way round, a block the model indented by three arrives as prose, so
+    /// the answer loses its rule down the left and its colours, and the code is set as an indented
+    /// block instead.
     #[test]
     fn a_fence_indented_by_three_spaces_is_still_a_fence() {
         assert_eq!(
@@ -624,12 +618,12 @@ mod tests {
         );
     }
 
-    /// A drawn block's tokens wear the colours [`token`] gives those names.
+    /// A drawn block's tokens take the colours [`token`] gives them.
     ///
-    /// note: through [`highlighted`] rather than by asking `token` directly, because a colour the
-    /// highlighter never emits is a colour nothing can observe - the names here are chosen to be
-    /// the ones a fence declaring that language actually produces, and the claim under test is
-    /// that each of them arrives in its own colour on the row it is drawn in.
+    /// note: through [`highlighted`] rather than `token` directly, because a colour the highlighter
+    /// never emits cannot be observed. The names are the ones a fence declaring that language
+    /// actually produces. The claim under test is that each arrives in its own colour on the row it
+    /// is drawn in.
     #[test]
     fn a_fenced_blocks_tokens_are_drawn_in_their_own_colours() {
         for (language, body, token, colour) in [
@@ -654,12 +648,12 @@ mod tests {
         }
     }
 
-    /// A grapheme that will not fit in what is left of the row closes the row rather than
+    /// A grapheme that does not fit in what is left of the row closes the row instead of
     /// over-running it.
     ///
-    /// note: `used != 0` is the whole of the second half of that condition. On an empty row there
-    /// is nothing to over-run - the row has all the room there is - so the character goes in at
-    /// its full width and the row is a cell over rather than the character being dropped.
+    /// note: `used != 0` is the second half of the condition. On an empty row there is nothing to
+    /// over-run, so the character goes in at full width and the row is a cell over rather than the
+    /// character being dropped.
     #[test]
     fn a_wide_character_never_starts_a_row_it_does_not_fit_in() {
         // eight cells of room, three taken: `de` fits, and `一` needs two more than are left
@@ -668,12 +662,11 @@ mod tests {
         assert_eq!(rows_of(&["abc", "de一丁"], 9), ["abcde一丁"]);
     }
 
-    /// A row is closed when it is full and there is more to come, and not one character sooner.
+    /// A row closes when it is full and more text follows, not sooner.
     ///
-    /// note: the zero-width space is the case here. It is a character that occupies no cells, so
-    /// `used >= room` is false after it and `used < room` is true - the row must *not* be closed
-    /// on it, or a row with a cell free comes out empty and the text after it is pushed down a
-    /// row for nothing.
+    /// note: the zero-width space occupies no cells, so `used >= room` is false after it and
+    /// `used < room` is true. The row must not close on it, or a row with a cell free comes out
+    /// empty and the text after it is pushed down a row for nothing.
     #[test]
     fn a_row_is_not_closed_before_it_is_full() {
         // eight cells exactly, then a character that takes none of them, then two more
@@ -690,11 +683,10 @@ mod tests {
         );
     }
 
-    /// What [`fit`] draws for one body at one width, as its rows of text.
+    /// What [`fit`] draws for one body at one width: its rows of text.
     ///
-    /// note: the pieces go in as one call rather than several, because a row can be filled across
-    /// a boundary between two of the highlighter's tokens, and a helper that fitted each piece on
-    /// its own would never put them in the same row.
+    /// note: the pieces go in as one call because a row can span a boundary between two of the
+    /// highlighter's tokens; fitting each piece separately would never put them in the same row.
     fn rows_of(pieces: &[&str], room: usize) -> Vec<String> {
         let style = Style::default();
         let spans: Vec<(String, Style)> = pieces
@@ -707,11 +699,10 @@ mod tests {
             .collect()
     }
 
-    /// A divider is three of one mark and nothing else, whichever of the three marks it is.
+    /// A divider is three of one mark and nothing else.
     ///
-    /// note: markdown spells a rule as `-`, `*` or `_`, and a model can reach for any of the
-    /// three - an escaped run is a divider to it and punctuation to the reader - so all three have
-    /// to arrive as a rule rather than only the one.
+    /// note: markdown spells a rule as `-`, `*` or `_`, and a model can reach for any of the three,
+    /// so all three must arrive as a rule.
     #[test]
     fn a_line_of_marks_is_a_rule() {
         for text in ["---", "***", "___"] {
@@ -738,15 +729,11 @@ mod tests {
             .collect()
     }
 
-    /// A closing fence is the character the block opened with, and no shorter than the one that
-    /// opened it.
+    /// A closing fence is the same character as the opening fence and no shorter.
     ///
-    /// note: CommonMark says a fence closes on a run of the same character *at least as long*, so
-    /// the run's length is half of what closes a block and the other half is that the rest of the
-    /// line is nothing but that character. Read as either half alone, the ``` inside a ```` block
-    /// would end it - and a block the model indented with four backticks to hold a three-backtick
-    /// snippet is the ordinary way of saying that, not a corner of the format. The tilde fence is
-    /// the other direction: it is not the character the block opened with, so it is content.
+    /// note: CommonMark requires a run of the same character at least as long, and the rest of the
+    /// line must be nothing but that character. A ``` inside a ```` block would otherwise end it. A
+    /// tilde fence is content unless it matches the opening character.
     #[test]
     fn a_fence_closes_a_block_only_if_it_is_the_same_character_and_no_shorter() {
         assert_eq!(

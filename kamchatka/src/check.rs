@@ -20,8 +20,8 @@ use std::{
 use nachalnik::{ContextId, ContextState, Event, FORMAT, Record, Snapshot};
 use serde_json::Value;
 
-/// The log and the snapshot a path names: `NAME.jsonl` and `NAME.json`, whether it was given as
-/// either of those or as `NAME`.
+/// The log and the snapshot a path names: `NAME.jsonl` and `NAME.json`, given as either or as
+/// `NAME`.
 ///
 /// note: the spellings `/load` takes, so a path that loads is a path that checks.
 pub fn pair(path: &str) -> (PathBuf, PathBuf) {
@@ -176,11 +176,11 @@ fn numbering(records: &[(usize, Record)], findings: &mut Vec<String>) {
     }
 }
 
-/// Whether the log begins where a session does, so that what came before its first record is
-/// nothing rather than something it does not say.
+/// Whether the log begins where a session does, so what came before its first record is nothing
+/// rather than something it does not say.
 ///
 /// note: a caller may drain a kernel's log and keep only what came after, and that log starts in
-/// the middle of a session. Read as a whole one, every item and every call from before the cut
+/// the middle of a session. Read as a whole session, every item and every call from before the cut
 /// would be named as something the log never added or never asked for.
 fn begins(records: &[(usize, Record)]) -> bool {
     records.first().is_none_or(|(_, record)| {
@@ -191,11 +191,10 @@ fn begins(records: &[(usize, Record)]) -> bool {
     })
 }
 
-/// Calls asked for and never finished, and calls finished that were never asked for.
+/// Calls that were asked for but never finished, and calls that finished but were never asked for.
 ///
-/// note: a session at a time. Nothing waiting is carried across a resume - a resumed kernel starts
-/// with no calls pending - so a call left open when the next session begins stays open for good,
-/// and that is where it is said.
+/// note: one session at a time. A resumed kernel starts with no calls pending, so a call left open
+/// when the next session begins stays open for good; this function reports it.
 fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
     let mut open: Vec<(String, String, u64)> = Vec::new();
     let mut asked: HashSet<String> = HashSet::new();
@@ -300,8 +299,8 @@ fn agrees(records: &[(usize, Record)], snapshot: &Snapshot, findings: &mut Vec<S
     let mut items: HashMap<ContextId, Option<ContextState>> = HashMap::new();
     // how many items there are, where a resume began from some the log does not name
     let mut resumed: Option<usize> = None;
-    // where the log begins part way through a session, what came before its first record is
-    // not known, and the count is not either
+    // where the log begins part way through a session, the records before its first record are
+    // unknown, and so is the count
     let mut cut = !begins(&records[..=taken]);
     let count = |resumed: &mut Option<usize>, by: isize| {
         if let Some(count) = resumed {

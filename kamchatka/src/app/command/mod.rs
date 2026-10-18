@@ -1,9 +1,8 @@
 //! The slash commands: everything typed at the prompt that is not a message.
 //!
-//! note: a command is answered here and now rather than turned into anything the kernel has to
-//! know about. `/seams`, `/budget` and `/request` read public values off a
-//! [`nachalnik::Kernel`] and print them; nothing in this file is a capability the runtime had to
-//! grow.
+//! note: a command is answered here and now rather than turned into anything the kernel has to know
+//! about. `/seams`, `/budget` and `/request` read public values off a [`nachalnik::Kernel`] and
+//! print them; nothing in this file is a capability the runtime had to grow.
 //!
 //! note: this file reads the line and dispatches it, and answers the commands that are about the
 //! session itself; the rest are answered by topic, in `model.rs`, `context.rs` and `tools.rs`.
@@ -24,17 +23,15 @@ mod tools;
 impl App {
     /// Sends a message, or runs a command: one line of what somebody types at the prompt.
     ///
-    /// note: `pub` because the prompt is not the only thing entitled to say a line. Every verb
-    /// this program has - `/model`, `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools
-    /// toggle` - is reachable only through here, and without it the only way in would be to
-    /// synthesize a key press. A caller that is not a person at a terminal hands the same line to
-    /// the same function.
+    /// note: `pub` because the prompt is not the only caller. Every verb - `/model`, `/exclude`,
+    /// `/limit`, `/step`, `/save`, `/load`, `/tools toggle` - is reachable only through here;
+    /// without it, the only way in is to synthesize a key press. A non-terminal caller hands the
+    /// same line to the same function.
     ///
-    /// note: what it says still goes where the screen reads it - [`App::say`] for a line and
-    /// `App::preview` for a page - *and* comes back in the [`Reply`], because those are two
-    /// different questions. A screen re-reads [`App::loose`] and [`App::overlay`] every frame and
-    /// wants the whole of both; a caller answering one line wants what that line produced, and
-    /// should not have to watch the two of them change to find out. The copy is cheap, and the
+    /// note: output goes to [`App::say`] for a line and `App::preview` for a page, and comes back
+    /// in the [`Reply`]; those are two different questions. A screen re-reads [`App::loose`] and
+    /// [`App::overlay`] every frame and wants the whole of both; a caller answering one line wants
+    /// what that line produced and should not have to watch both change. The copy is cheap; the
     /// alternative is a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
         self.submitted(line, false).await
@@ -44,13 +41,12 @@ impl App {
     /// waited its turn in the queue, and is not held behind what is still in it.
     pub(super) async fn submitted(&mut self, line: &str, released: bool) -> Reply {
         let (from, pages) = (self.loose.len(), self.previews);
-        // a command still out at the endpoint is finished before this line is read, so that
-        // nothing acts on a session part-way through changing model, or on a list somebody has not
-        // been shown yet. Held rather than waited for, so that the loop goes on; see
-        // `App::in_flight` and `App::release`
+        // a command still out at the endpoint finishes before this line is read, so nothing acts on
+        // a session part-way through changing model, or on a list nobody has been shown yet. Held
+        // rather than waited for, so the loop goes on; see `App::in_flight` and `App::release`.
         //
-        // note: except `/stop`, which is what ends the wait. Held, it stopped a turn only once the
-        // listing it was held behind came back, which is the one thing it was typed to avoid
+        // note: except `/stop`, which ends the wait. Held, it stopped a turn only once the listing
+        // it was held behind came back, which is what it was typed to avoid
         if self.in_flight() && line.trim() != "/stop" {
             self.held.push_back((line.to_owned(), self.keys));
             self.say(
@@ -61,12 +57,12 @@ impl App {
 
             return self.replied(Did::Queued, from, pages);
         }
-        // note: a switch of model or endpoint typed into a running turn waits for the end of it,
-        // as a message does, rather than changing the model under a request in flight - the rest
-        // of the turn would go to a model it did not start with, and the counter's calibration
-        // was reset under it. Held with the lines that wait for a command, and released by the
-        // same loop once the turn is over; see `App::release`. What is typed after it waits
-        // behind it, so a message sent after a switch is answered by the model switched to
+        // note: a switch of model or endpoint typed into a running turn waits for the end of it, as
+        // a message does, rather than changing the model under a request in flight. The rest of the
+        // turn would go to a model it did not start with, and the counter's calibration was reset
+        // under it. Held with the lines that wait for a command, and released by the same loop once
+        // the turn is over; see `App::release`. What is typed after it waits behind it, so a
+        // message sent after a switch is answered by the model switched to
         if !released
             && line.trim() != "/stop"
             && (self.held_switch() || self.mid_turn() && switches(line))
@@ -88,10 +84,9 @@ impl App {
         // The next line the trace draws is the one that gap belongs to
         self.acted = true;
         // and it is the line `up` puts back, whatever it turns out to be. Kept here rather than
-        // read off the newest user item, because the two are not the same thing: a command never
-        // becomes an item, and an item can be rewritten afterwards - so the item would answer
-        // "what does the context say now", and what somebody pressing `up` is after is the line
-        // they typed
+        // read off the newest user item, because they are not the same thing: a command never
+        // becomes an item, and an item can be rewritten afterwards. The item answers "what does the
+        // context say now"; somebody pressing `up` wants the line they typed
         self.last_sent = Some(line.to_owned());
 
         if let Some(command) = line.strip_prefix('/') {
@@ -101,24 +96,23 @@ impl App {
         }
 
         // note: a message sent while a turn is running waits for the end of it rather than going
-        // into the context there and then. Both of the obvious alternatives are worse. Pushed
-        // immediately, it lands *before* the answer the model is still writing - so the next
-        // request ends with a model turn, which Google refuses outright with `requests ending with
-        // a model turn are not supported`, and which every other provider answers by replying to
-        // itself. Pushed mid-tool-loop it is worse still: it lands between an assistant's call and
-        // that call's result, which is a shape most of these APIs reject. What it costs is that a
-        // message typed to steer a turn does not reach it - it is answered after, not during.
-        // The same holds while a question is open: the turn is paused rather than over, and the
-        // call it is waiting on still has a result to come
+        // into the context there and then. Pushed immediately, it lands before the answer the model
+        // is still writing, so the next request ends with a model turn; Google refuses that with
+        // `requests ending with a model turn are not supported`, and other providers answer by
+        // replying to themselves. Pushed mid-tool-loop, it lands between an assistant's call and
+        // that call's result, a shape most of these APIs reject. The cost is that a message typed
+        // to steer a turn does not reach it: it is answered after, not during. The same holds while
+        // a question is open: the turn is paused rather than over, and the call it is waiting on
+        // still has a result to come.
         //
-        // note: checked before the line is said rather than after, so that the one path which
-        // says a message *without* an item to tie it to is the one path that has no item yet.
-        // Everywhere else goes through `App::ask`, which cannot forget the third step
+        // note: checked before the line is said rather than after, so the only path that says a
+        // message without an item to tie it to is the only path with no item yet. Everywhere else
+        // goes through `App::ask`, which cannot forget the third step
         if self.mid_turn() {
             self.typed_ahead.push_back(line.to_owned());
             self.follow = true;
-            // said out loud, because until the turn ends this is the one thing on the screen that
-            // the context does not have: a session saved now would not contain it
+            // said out loud, because until the turn ends this is the one thing on the screen the
+            // context does not have: a session saved now would not contain it
             let ahead = self.typed_ahead.len() - 1;
             self.say(
                 Speaker::Note,
@@ -134,10 +128,10 @@ impl App {
             return self.replied(Did::Queued, from, pages);
         }
 
-        // note: a session resting with messages still waiting - the turn they waited for was
-        // stopped or failed, which takes one in without a turn and leaves the rest - keeps their
-        // order. This line goes behind them and the oldest goes in now, rather than this one
-        // overtaking every line that was sent before it
+        // note: a session resting with messages still waiting keeps their order. The turn they
+        // waited for was stopped or failed, which takes one in without a turn and leaves the rest.
+        // This line goes behind them and the oldest goes in now, rather than this one overtaking
+        // every line sent before it
         if let Some(oldest) = self.typed_ahead.pop_front() {
             self.typed_ahead.push_back(line.to_owned());
             self.say(
@@ -181,13 +175,13 @@ impl App {
 
     /// Why a turn started without a message would send the model nothing new, if it would.
     ///
-    /// note: read off the projection rather than off the state, because the state does not know.
-    /// A request ending on the model's own answer, with no call left for a result to follow, is
-    /// that answer asked for again: the model repeats itself at the price of a request, and some
+    /// note: read off the projection rather than off the state, because the state does not know. A
+    /// request ending on the model's own answer, with no call left for a result to follow, is that
+    /// answer asked for again: the model repeats itself at the price of a request, and some
     /// endpoints refuse a request ending on a model turn outright. `/load` and `-r` leave the
-    /// machine `Idle` over a conversation ending that way, and a bare `/step` after a finished
-    /// turn is the same request as a `/continue` after one - while a turn whose answer was
-    /// excluded ends on the question again, and has something to answer.
+    /// machine `Idle` over a conversation ending that way, and a bare `/step` after a finished turn
+    /// is the same request as a `/continue` after one. A turn whose answer was excluded ends on the
+    /// question again, and has something to answer.
     ///
     /// note: except an answer that was cut short - out of room, or interrupted - while the machine
     /// still names it as where the turn stopped. A request ending on that answer is how carrying on
@@ -227,8 +221,8 @@ impl App {
         }
     }
 
-    /// Runs the rest of the turn, unless there is nothing for it to answer: `/continue`, and
-    /// `ctrl+r` where there are keys to press.
+    /// Runs the rest of the turn unless there is nothing to answer: `/continue`, and `ctrl+r` where
+    /// there are keys to press.
     pub(super) fn carry_on(&mut self) {
         match self.nothing_to_answer() {
             Some(why) => self.say(Speaker::Note, why),
@@ -251,11 +245,10 @@ impl App {
             "help" | "?" => self.help(),
             // note: the same function `u` and `U` reach on the context tab, and the same line
             // afterwards. A run with no keys to press - down a pipe, through `--connect`, from a
-            // browser - was otherwise left with no way to take a change back at all, and every
-            // message this program says about undoing something named the key rather than the
-            // line. So the key is the shorthand and the command is the verb
+            // browser - had no way to take a change back, and the program's undo messages named the
+            // key rather than the line. The key is the shorthand; the command is the verb.
             //
-            // note: and a count after either is refused rather than dropped. `/undo 5` answered
+            // note: a count after either is refused rather than dropped. `/undo 5` answered
             // `undone` for the one change it took back, which reads as five
             "undo" | "redo" if !rest.is_empty() => self.say(
                 Speaker::Error,
@@ -318,7 +311,7 @@ impl App {
             // itself `/resume`, and `/clear` is answered by `no_such_command`
             "cleanup" => self.clear_notices(),
             // with a message, because otherwise the only way to reach the first transition is to
-            // send one - which runs the whole turn, and there is nothing left to step through
+            // send one, which runs the whole turn and leaves nothing to step through
             "step" => {
                 // note: the guard `App::submit` puts on a message, for the reason its note gives -
                 // an item pushed into a running turn lands between a call and its result, which
@@ -369,9 +362,8 @@ impl App {
                 };
                 self.preview("the provider's last answer, verbatim", body);
             }
-            // the registry is live rather than fixed at startup, and taking a tool out of it and
-            // putting it back is the plainest demonstration of that: the next request simply does
-            // not mention it, and the one after that does again
+            // the registry is live rather than fixed at startup: taking a tool out and putting it
+            // back means the next request does not mention it, and the one after that does again
             "tools" => match rest.split_once(char::is_whitespace).unwrap_or((rest, "")) {
                 ("", _) => self.tools(),
                 ("toggle", id) => self.toggle_tool(id.trim()),
@@ -390,34 +382,33 @@ impl App {
             "requests" => self.requests_command(rest),
             "budget" => self.budget(),
             // note: a command as well as the `y` on the context tab, because on the chat tab the
-            // keys belong to the prompt - a bare `y` there is a `y` typed into a message, which
-            // is the rule the permission question is built around too. This is the same act
-            // reached from where somebody is standing when they want it
+            // keys belong to the prompt - a bare `y` there is a `y` typed into a message, which is
+            // the rule the permission question is built around too
             "copy" => self.copy_command(rest),
             "compact" => self.compact().await,
             "seams" => self.seams(),
             "web" => self.web_page(),
             // the tab rather than a line naming the allowed capabilities: it has the ones that are
-            // refused as well, the ones nobody has decided about yet, and what each of them covers
-            // - and every row can be changed where it is read
+            // refused as well, the ones nobody has decided about yet, and what each of them covers.
+            // Every row can be changed where it is read.
             //
-            // note: the tab *and* the page, and both are the same answer. A caller with no screen
-            // is asking the same question as somebody at a desk, and it used to be answered with
-            // nothing at all down a pipe: the rules are the whole of what this command is for, and
-            // they are printed from what the tab draws, so the two cannot drift apart. The tab is
-            // still switched, because a person at one is asking to be there rather than to be told
+            // note: the tab and the page give the same answer. A caller with no screen asks the
+            // same question as somebody at a desk. The rules are the whole of what this command is
+            // for, and they are printed from what the tab draws, so the two cannot drift apart. The
+            // tab is still switched because a person at one is asking to be there rather than to be
+            // told
             "permissions" => self.permissions_page(),
             // note: the same function `-f` goes through. Putting a file in the context at startup
-            // and putting one there at the prompt are the same act at two moments, and a second
-            // implementation of it is a second place for the media types to go stale
+            // and at the prompt are the same act; a second implementation is a second place for the
+            // media types to go stale
             "attach" => self.attach(rest),
             // the same act as `/attach` with nothing to open: something the model should have,
             // put where it will read it, without asking it to say anything back
             "note" => self.note(rest),
-            // note: one word per mechanism, and the mechanism here is a state. The command moves
-            // an item to `excluded` and every place the result is read back says `excluded`, so it
-            // is named for that - and `context`'s own moves are named the same way, so the person
-            // and the model reach for the same word
+            // note: one word per mechanism, and the mechanism here is a state. The command moves an
+            // item to `excluded`, and every read back says `excluded`, so it is named for that.
+            // `context`'s moves are named the same way, so the person and the model reach for the
+            // same word
             "exclude" => self.by_selector("exclude", rest),
             "pin" => self.by_selector("pin", rest),
             "restore" => self.by_selector("restore", rest),
@@ -432,12 +423,11 @@ impl App {
                     self.switch(async move {
                         provider.set_model(model).await;
                         // a session started without `-m` has held no provider until now, and this
-                        // is what ends that - after the switch rather than before it, so that
-                        // nothing reads a model whose name is still the empty one it was built
-                        // with. Where the kernel has one already it is this same object, switched in
-                        // place, so the kernel is told rather than handed it again: setting it
-                        // would ask it what it was after the switch, and record the change as from
-                        // the new model to itself
+                        // ends that - after the switch rather than before it, so nothing reads a
+                        // model whose name is still empty. Where the kernel has one already, it is
+                        // this same object, switched in place, so the kernel is told rather than
+                        // handed it again: setting it would ask what it was after the switch and
+                        // record the change as from the new model to itself
                         match kernel.model_info() {
                             None => {
                                 kernel.set_provider(provider);
@@ -473,14 +463,13 @@ impl App {
                     ),
                 }
             }
-            // the ids an endpoint serves are its own - `google/gemini-3.5-flash` at one address
-            // and `gemini-3.5-flash` at another - so after `/endpoint` this is how to find out what
-            // to hand `/model` rather than guess it. The provider already fetches this list, to
-            // say when a model is not on it; this is the same call with the answer shown rather
-            // than checked.
+            // the ids an endpoint serves are its own - `google/gemini-3.5-flash` at one address and
+            // `gemini-3.5-flash` at another - so after `/endpoint` this finds what to hand `/model`
+            // rather than guessing. The provider already fetches this list to say when a model is
+            // not on it; this is the same call with the answer shown rather than checked.
             //
             // note: sent out as the two switches are, and finished in `listed` when it comes back,
-            // so that an endpoint slow to answer holds nothing but the lines after this one
+            // so a slow endpoint holds nothing but the lines after this one
             "models" => {
                 let provider = self.provider.clone();
                 let (filter, keys) = (rest.trim().to_lowercase(), self.keys);
@@ -496,14 +485,13 @@ impl App {
             "endpoint" => self.endpoint(rest),
             "params" => self.params(rest),
             "save" => self.save(rest),
-            // note: not aliased `/resume`. `--resume` at startup is the *other* answer to the
-            // same file - a fresh session built around the snapshot - and two things a keystroke
-            // apart that differ in what happens to the context you already have is a trap
+            // note: not aliased `/resume`. `--resume` at startup is the other answer to the same
+            // file: a fresh session built around the snapshot. Two things a keystroke apart that
+            // differ in what happens to the context you already have is a trap
             "load" => self.load(rest),
-            // note: `/help` and not `F1`, which is the same panel and is the key for it on a
-            // screen. A line typed at a headless run that is not a command is answered here too,
-            // and there is no function key down a pipe - so an answer naming `F1` would point
-            // somewhere that run cannot go
+            // note: `/help` and not `F1`, the same panel and its key on a screen. A line typed at a
+            // headless run that is not a command is answered here too, and there is no function key
+            // down a pipe, so an answer naming `F1` would point somewhere that run cannot go
             other => self.say(Speaker::Error, no_such_command(other)),
         }
     }
@@ -519,20 +507,19 @@ pub(super) fn switches(line: &str) -> bool {
 /// What a line beginning with `/` that is not a command is answered with.
 ///
 /// note: here rather than an arm of its own in the dispatch above, because `/clear` is not a
-/// command and an arm would make it one - `every_command_that_exists_is_in_the_help` reads those
-/// arms and is right to: a name the prompt answers to is one `/help` has to list. These are names
-/// the prompt *refuses*, and the refusal says where the thing went.
+/// command and an arm would make it one: `every_command_that_exists_is_in_the_help` reads those
+/// arms, and a name the prompt answers to is one `/help` has to list. These are names the prompt
+/// refuses, and the refusal says where the thing went.
 ///
-/// note: `/clear` is the one there is, and it is worth a sentence because it is what somebody
-/// arriving from any other agent types. There the word means the conversation; here the thing
-/// with that shape is `/exclude all` and the thing that had that name is `/cleanup`, so a refusal
-/// that said only "there is no `/clear`" would leave them looking for both. It is the trap
-/// `/load` declines to set by not calling itself `/resume`.
+/// note: `/clear` is what somebody arriving from any other agent types. There it means the
+/// conversation; here `/exclude all` has that shape and `/cleanup` had that name, so a refusal that
+/// said only "there is no `/clear`" would leave them looking for both. `/load` does not call itself
+/// `/resume`, so it does not set that trap.
 ///
-/// note: the name goes into the refusal through `one_line`, as every other line this program
-/// quotes back to somebody does. A name is one word, and a word with nothing else on the line is
-/// as long as somebody cares to make it - so a mistyped command of a hundred thousand characters
-/// was a hundred thousand characters of refusal, where every other notice is cut at 96.
+/// note: the name goes into the refusal through `one_line`, as every other line this program quotes
+/// back does. A name is one word, and a word with nothing else on the line is as long as somebody
+/// cares to make it, so a mistyped command of a hundred thousand characters was a hundred thousand
+/// characters of refusal, where every other notice is cut at 96.
 fn no_such_command(name: &str) -> String {
     match name {
         "clear" => "there is no `/clear`; `/cleanup` takes this program's own lines off the \
@@ -550,8 +537,8 @@ impl App {
     /// The page's address and a QR code of it, for a phone to open; see `qr`.
     ///
     /// note: a command as well as a line at startup, because the screen is drawn over whatever was
-    /// printed before it, and the address is what somebody wants at the moment they pick up the
-    /// phone rather than the moment they started the program.
+    /// printed before it, and the address is what somebody wants when they pick up the phone rather
+    /// than when they start the program.
     pub fn web_page(&mut self) {
         let Some(address) = self.web.clone() else {
             self.say(

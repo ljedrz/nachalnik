@@ -1,9 +1,7 @@
 //! When an event happened, on the clock a person reads.
 //!
-//! note: here rather than beside the pane that draws it, because the stamp is not only painted -
-//! it is part of what a search over the trace matches on, and the filtering lives with the data.
-//! A pane that searched one string and displayed another would be a pane that finds nothing where
-//! it says there is something.
+//! note: defined here rather than beside the pane that draws it, because the stamp is part of what
+//! a trace search matches on and filtering lives with the data.
 
 use std::{sync::OnceLock, time::SystemTime};
 
@@ -32,18 +30,17 @@ pub fn note_local_offset(seconds: Option<i32>) {
 /// When something happened, on the clock a person reads: the date, the time of day, and whether
 /// the two are local or UTC.
 ///
-/// note: `time` does the calendar rather than three divisions here. Turning seconds into
-/// `HH:MM:SS` is arithmetic; turning them into a *date* is leap years, and the crate is already
-/// compiled for this build. The date matters because a session can outlast a day, and a pane that
-/// showed `00:15` against two different Tuesdays would be worse than one showing no clock at all.
+/// note: `time` does the calendar rather than three divisions here. Seconds to `HH:MM:SS` is
+/// arithmetic; seconds to a date is leap years, and the crate is already compiled for this build.
+/// The date matters because a session can outlast a day.
 ///
-/// note: the offset arrives as a plain `i32` so that nothing below the screen has to know about
-/// time zones to record when something happened - `app` keeps a `SystemTime` and no more.
+/// note: the offset arrives as a plain `i32` so nothing below the screen has to know about time
+/// zones to record when something happened; `app` keeps a `SystemTime` and no more.
 ///
-/// note: a `When` rather than an `Option` of one, because there is always an answer: a zone that
-/// cannot be read is UTC, said as UTC. And `local` is whether the offset *was used*, not whether
-/// one was recorded - an offset `time` refuses falls back to UTC like a missing one, and a clock
-/// that said it was local while showing UTC would be the thing the fallback exists to prevent.
+/// note: `When` rather than `Option` because there is always an answer: a zone that cannot be read
+/// is UTC, said as UTC. `local` is whether the offset was used, not whether one was recorded. An
+/// offset `time` refuses falls back to UTC like a missing one; a clock that said local while
+/// showing UTC is what the fallback prevents.
 pub fn read_off(wall: SystemTime) -> When {
     read_at(wall, LOCAL_OFFSET.get().copied().flatten())
 }
@@ -82,10 +79,10 @@ mod tests {
 
     use super::*;
 
-    /// A clock is local only where the local offset was used, and UTC, said as UTC, otherwise.
+    /// A clock is local only where the local offset was used; otherwise UTC, said as UTC.
     ///
-    /// note: an offset `time` refuses - past a day either way - fell back to UTC and was still
-    /// reported as local, which is a column of times that are out by the zone and do not say so.
+    /// note: an offset `time` refuses (past a day either way) fell back to UTC but was still
+    /// reported as local, producing times out by the zone that do not say so.
     #[test]
     fn a_clock_says_local_only_where_it_is() {
         let noon = UNIX_EPOCH + Duration::from_secs(12 * 3600);
@@ -101,12 +98,11 @@ mod tests {
         }
     }
 
-    /// The offset `main` notes is the one `read_off` reads, and it is what says the clock local.
+    /// The offset `main` notes is the one `read_off` reads, and it is what says the clock is local.
     ///
-    /// note: the global can only be set once per process, so this is the test that notes one, and
-    /// `read_at` above is what covers the rest. A zone east of Greenwich is the case that matters:
-    /// an offset nobody kept leaves every stamp in the run at UTC and says UTC, which is a quiet
-    /// answer rather than a wrong one and so nothing else would catch.
+    /// note: the global can only be set once per process, so this test notes one and `read_at`
+    /// covers the rest. A zone east of Greenwich is the case that matters: an offset nobody kept
+    /// leaves every stamp at UTC and says UTC, a quiet answer nothing else would catch.
     #[test]
     fn a_noted_offset_is_the_one_the_clock_reads() {
         note_local_offset(Some(2 * 3600));

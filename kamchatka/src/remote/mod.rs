@@ -105,12 +105,12 @@ use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-/// How long a connection may sit idle before the kernel starts asking whether the peer is there.
+/// How long a connection may sit idle before the kernel starts probing whether the peer is there.
 ///
-/// note: short, for a protocol most of whose sessions are idle most of the time. A session waiting
-/// on a permission answer is doing nothing *by design*, and the whole difficulty is that a peer
-/// which is thinking and a peer whose laptop has closed look identical from here - so the probes
-/// have to start while the silence is still ordinary, or they are not telling the two apart.
+/// note: short, because most sessions are idle most of the time and a session waiting on a
+/// permission answer is idle by design. A peer that is thinking and a peer whose laptop has closed
+/// look identical, so the probes must start while the silence is still ordinary; otherwise they
+/// cannot tell the two apart.
 const IDLE: Duration = Duration::from_secs(30);
 
 /// How long between those probes once they have started.
@@ -118,24 +118,22 @@ const PROBE: Duration = Duration::from_secs(10);
 
 /// Sets the two things on a port that a socket file never needed.
 ///
-/// note: neither matters on loopback, and both matter the moment the bytes go near a network.
+/// note: neither matters on loopback; both matter on a network.
 ///
-/// note: **`TCP_NODELAY`**, because Nagle's algorithm holds a small write back until the last one
-/// is acknowledged, and every frame this protocol sends is small: a key somebody pressed, a
-/// fragment of a model's sentence, an answer to a question. Batching those is the wrong trade for a
-/// stream whose whole value is that it is live.
+/// note: `TCP_NODELAY`, because Nagle's algorithm holds a small write back until the previous one
+/// is acknowledged, and every frame this protocol sends is small. Batching them would delay a live
+/// stream.
 ///
-/// note: **keepalive**, because a half-open connection has no other end to it. A peer that sends a
-/// `FIN` is noticed at once; a peer whose machine slept, lost its wifi or was unplugged sends
-/// nothing at all, and a read on this side waits for ever. On the session that is a connection task
-/// holding a `Kernel` and never reporting the client as gone; on a client it is a process waiting
-/// on a host that is not coming back, with the reconnection it was written to do never starting.
+/// note: keepalive, because a half-open connection has no other end to it. A peer that sends a
+/// `FIN` is noticed at once; a peer whose machine slept, lost wifi, or was unplugged sends nothing,
+/// and a read on this side waits for ever. On a session, the connection task holds a `Kernel` and
+/// never reports the client as gone; on a client, the process waits on a host that is not coming
+/// back, and the reconnection it was written to do never starts.
 ///
-/// note: a failure is ignored rather than refused. These are an improvement on a connection that
-/// already works, so a kernel that will not take one of them - or a sandbox in front of one - is a
-/// reason to go without it and not a reason to refuse somebody a session. The count of probes is
-/// left to the kernel: `socket2` puts it behind a feature and the two that are set here are the two
-/// that decide how soon anybody finds out.
+/// note: a failure is ignored rather than refused. These options improve a connection that already
+/// works, so a kernel that will not take one, or a sandbox in front of one, is a reason to go
+/// without it and not a reason to refuse a session. The probe count is left to the kernel:
+/// `socket2` puts it behind a feature, and the two set here decide how soon anybody finds out.
 pub(crate) fn tuned(stream: &tokio::net::TcpStream) {
     use socket2::{SockRef, TcpKeepalive};
 
@@ -144,10 +142,10 @@ pub(crate) fn tuned(stream: &tokio::net::TcpStream) {
         .set_tcp_keepalive(&TcpKeepalive::new().with_time(IDLE).with_interval(PROBE));
 }
 
-/// Whichever kind of connection this is, at either end.
+/// A connection of either kind, at either end.
 ///
-/// note: an enum implementing the two traits by hand rather than a `Box<dyn>`, because the pair of
-/// them is not object-safe together in a form `tokio::io::split` will take.
+/// note: an enum implementing the two traits by hand rather than a `Box<dyn>`, because the pair is
+/// not object-safe together in a form `tokio::io::split` will take.
 pub(crate) enum Connection {
     Unix(tokio::net::UnixStream),
     Tcp(tokio::net::TcpStream),
@@ -207,12 +205,11 @@ impl AsyncWrite for Connection {
 mod tests {
     use super::*;
 
-    /// Both options can actually be set on a socket here.
+    /// Both options can be set on a socket here.
     ///
-    /// note: what this is for is the *kernel*, not the logic - there is no logic. The call builds
-    /// wherever this crate does, so what is left to check is that the kernel it runs on takes it.
-    /// Nothing about the protocol can see either option, so this is the only place they are
-    /// observable at all.
+    /// note: this checks the kernel, not the logic; there is no logic. The call compiles wherever
+    /// this crate does, so the only thing left to check is that the kernel it runs on accepts it.
+    /// The protocol cannot see either option, so this is the only place they are observable.
     #[tokio::test]
     async fn a_port_takes_both_of_the_options_it_is_given() {
         use socket2::{SockRef, TcpKeepalive};

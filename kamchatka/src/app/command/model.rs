@@ -9,11 +9,11 @@ use crate::{
     tools::Limits,
 };
 
-/// Parameters that shape how an answer is delivered rather than what the model does, which every
-/// endpoint of the dialect reads and no model lists.
+/// Parameters that shape how an answer is delivered rather than what the model does. Every endpoint
+/// of the dialect reads them; no model lists them.
 ///
-/// note: kept out of what is said to be ignored, because they are not: `stream: false` turns the
-/// answer into one body, on a model whose list has no word for it.
+/// note: they are not ignored, so they are not listed as ignored. `stream: false` turns the answer
+/// into one body even on a model whose list has no word for it.
 const TRANSPORT: [&str; 2] = ["stream", "stream_options"];
 
 /// The fields of a request that any dialect builds from the session - the context, the tools
@@ -50,8 +50,8 @@ impl App {
             Some((url, model)) => (url.to_owned(), Some(model.trim().to_owned())),
             None => (rest.to_owned(), None),
         };
-        // refused before anything is announced or changed, so the session keeps talking to
-        // the address it had rather than to one no request can reach
+        // refused before anything is announced or changed, so the session keeps its address rather
+        // than switching to one no request can reach
         if !crate::endpoint::is_an_address(&url) {
             self.say(
                 Speaker::Error,
@@ -65,8 +65,8 @@ impl App {
             return;
         }
         let provider = self.provider.clone();
-        // the address the requests will go to, which is this without the trailing `/` a
-        // copied address often carries - said as typed, it named one the provider trims
+        // the address requests will go to: this without the trailing `/` that a copied address
+        // often carries. Said as typed, it named an address the provider trims
         let shown = crate::endpoint::shown(url.trim_end_matches('/'));
         self.say(
             Speaker::Note,
@@ -77,17 +77,17 @@ impl App {
                      this started with",
                     info.model
                 ),
-                // a session that has not picked one yet: there is no name to carry over,
-                // and saying it is "still asking for" nothing reads as a model called
-                // nothing rather than as the gap it is
+                // a session that has not picked a model: there is no name to carry over. Saying
+                // it is "still asking for" nothing reads as a model called nothing, not as the gap
+                // it is
                 (None, None) => format!(
                     "requests now go to {shown}; there is still no model, and `/models` \
                      lists what this one serves"
                 ),
             },
         );
-        // for the reason `/model` drops them, and more so: the same name at a different
-        // address is a different model, and this is the command that says so
+        // for the reason `/model` drops them. The same name at a different address is a different
+        // model, and this command says so
         self.forget_the_last_model();
         // the new endpoint has a context limit of its own, and a list of what it serves;
         // both are round trips, the screen should not stop for them, and the next line does
@@ -115,13 +115,13 @@ impl App {
         });
     }
 
-    /// `/params`: one parameter set to a JSON value or taken away with `null`, and then what is
-    /// set and what the model makes of it.
+    /// `/params` sets one parameter to a JSON value or takes it away with `null`, then shows what
+    /// is set and what the model makes of it.
     ///
-    /// note: a key with a `.` in it is a path into a parameter - `generationConfig.temperature`
-    /// is `temperature` inside `generationConfig` - because that is where Google's dialect keeps
-    /// its sampling knobs, and setting the whole of `generationConfig` to change one of them would
-    /// take the rest away. No parameter of the other dialects has a `.` in its name.
+    /// note: a key with a `.` is a path into a parameter: `generationConfig.temperature` is
+    /// `temperature` inside `generationConfig`. Google's dialect keeps its sampling knobs there,
+    /// and setting the whole of `generationConfig` to change one would take the rest away. No
+    /// parameter of the other dialects has a `.` in its name.
     pub(super) fn params(&mut self, rest: &str) {
         // a key alone is half a command, and taken as `/params` it listed the parameters
         // as if it had done something - which reads as the key having been set, or taken
@@ -186,20 +186,20 @@ impl App {
         let json = serde_json::to_string(&params).unwrap_or_default();
         self.say(Speaker::Note, format!("parameters: {json}"));
 
-        // note: before the listing is consulted, because this is not a claim about what
-        // the model takes - it is one about what this program can read back. A parameter
-        // that makes the stream send the whole answer again is one whose effect lands in
-        // the transcript, the context and the log, and an endpoint publishing no list at
-        // all (ollama, a bare proxy) returns early below and would never have been told
+        // note: this runs before the listing is consulted, because it is not a claim about what the
+        // model takes but about what this program can read back. A parameter that makes the stream
+        // send the whole answer again has its effect in the transcript, the context and the log. An
+        // endpoint publishing no list at all (ollama, a bare proxy) returns early below and would
+        // never be told
         for (name, does) in nachalnik_providers::openai::NOT_A_STREAM {
             if params.get(name).is_some_and(|set| set != false) {
                 self.say(Speaker::Error, format!("{name} {does}"));
             }
         }
 
-        // an empty list means the endpoint published none, not that the model takes none;
-        // ollama and a bare OpenAI-compatible proxy both say nothing here, and inventing
-        // a restriction out of their silence would be worse than saying nothing back
+        // an empty list means the endpoint published none, not that the model takes none. ollama
+        // and a bare OpenAI-compatible proxy both say nothing here, and inventing a restriction
+        // from their silence would be worse than saying nothing back
         let Some(info) = self
             .kernel
             .model_info()
@@ -211,23 +211,21 @@ impl App {
         // what is set, by the names the listing would give it
         let set = by_name(&params, &info.parameters);
 
-        // the failure worth naming: a parameter the model does not take is not refused.
-        // It is sent, it is ignored, and the run it was supposed to change is the same
-        // run it would have been - a `seed` that buys no reproducibility, silently
+        // A parameter the model does not take is not refused: it is sent and ignored, and the run
+        // it was supposed to change is the same run it would have been - a `seed` that buys no
+        // reproducibility, silently
         let ignored: Vec<&str> = set
             .iter()
             .map(|(key, _)| key.as_str())
             .filter(|key| !takes(key) && !TRANSPORT.contains(key))
             .collect();
         if !ignored.is_empty() {
-            // note: two messages, because the list supports two different claims. Where it
-            // is everything the model takes, a parameter missing from it is sent and
-            // ignored, and that is what the error says. Where the endpoint published its
-            // *sampling* parameters only, the same absence settles nothing:
-            // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so
-            // reporting it as ignored would be this program inventing a restriction out of
-            // a list that never claimed to be complete. It says what it actually knows,
-            // and an error is downgraded to a note with it - not knowing is not a fault
+            // note: two messages because the list supports two different claims. Where the list is
+            // everything the model takes, a missing parameter is sent and ignored, and the error
+            // says so. Where it lists only sampling parameters, absence settles nothing:
+            // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so calling it
+            // ignored would invent a restriction from an incomplete list. It says what it actually
+            // knows, so the error is downgraded to a note: not knowing is not a fault
             let (speaker, said) = match self.provider.lists_every_parameter() {
                 true => (
                     Speaker::Error,
@@ -280,9 +278,9 @@ impl App {
                 true => "also takes",
                 false => "also takes, of the ones it publishes",
             };
-            // note: one to a line, with what the endpoint published about each beside it.
-            // A type or a range it did not publish is not made up here: a default is a
-            // value, so its type shows in it, and that is all there is to go on
+            // note: one to a line, with what the endpoint published about each beside it. A type or
+            // range it did not publish is not made up: a default is a value, so its type shows in
+            // it, and that is all there is to go on
             let wide = spare.iter().map(|name| name.len()).max().unwrap_or(0) + 2;
             let rows = spare
                 .iter()
@@ -306,22 +304,20 @@ impl App {
 
     /// Drops the two figures that were one model's tokenizer counting one model's request.
     ///
-    /// note: the anchor is what the provider charged for the last request, and carrying it across
-    /// is the corner reporting what the *last* model would have charged for a request going to a
-    /// different one. `App::anchored` says it falls back after a change of model; this is the line
-    /// that makes that true.
+    /// note: the anchor is what the provider charged for the last request; carrying it across
+    /// reports what the last model would have charged for a request to a different one.
+    /// `App::anchored` falls back after a model change; this line makes that true.
     ///
     /// note: and the correction, for the same reason. `Calibrating` is the ratio between what this
-    /// counter guessed and what a provider billed, cumulative over every observation - so a scale
-    /// learnt from one tokenizer goes on correcting the next one's figures, and a fresh
-    /// observation from the new model is averaged into the old model's totals rather than
-    /// replacing them, settling on a scale that is neither model's. It is reset through
-    /// `Kernel::recalibrate` because that recounts the items as well, which is the half that keeps
-    /// the `sending` column and the budget on one scale.
+    /// counter guessed and what a provider billed, cumulative over every observation. A scale
+    /// learnt from one tokenizer corrects the next model's figures, and a fresh observation from
+    /// the new model is averaged into the old model's totals rather than replacing them, settling
+    /// on a scale that is neither model's. It is reset through `Kernel::recalibrate` because that
+    /// recounts the items too, keeping the `sending` column and budget on one scale.
     ///
-    /// note: and what has been said once about the endpoint - that it hides its reasoning, that it
+    /// note: and what was said once about the endpoint - that it hides its reasoning, that it
     /// reports no usage - because it was said about the endpoint that is gone, and the next one may
-    /// be just the same.
+    /// be the same.
     pub(super) fn forget_the_last_model(&mut self) {
         self.anchor = None;
         self.kernel.recalibrate(Calibration::default());
@@ -389,8 +385,8 @@ impl App {
             if !rest.trim().is_empty() {
                 self.say(
                     Speaker::Error,
-                    // `<subject>`, which is what the rows are and what the table two lines down
-                    // calls them. A limit is not a tool's, because one tool does five things
+                    // `<subject>`, which is what the rows and the table call them. A limit is not a
+                    // tool's, because one tool does five things
                     "`/limit <subject> <bytes>`, or `/limit` on its own to see them",
                 );
                 return;
@@ -461,9 +457,9 @@ impl App {
                      onwards{}",
                     thousands(was),
                     thousands(bytes),
-                    // a limit that took, on something nothing here declares - which is a real
-                    // thing to set up ahead of a toggle and a confusing thing to be told nothing
-                    // about, since "from its next call onwards" implies there will be one
+                    // a limit that took, on something nothing here declares: a real thing to set up
+                    // ahead of a toggle, and confusing to be told nothing about, since "from its
+                    // next call onwards" implies there will be one
                     match offered.iter().any(|it| it == tool) {
                         true => String::new(),
                         false => format!(
@@ -544,10 +540,10 @@ impl App {
     }
 }
 
-/// Sets the parameter a key names, the key a path into it where it has a `.`.
+/// Sets the parameter named by a key. The key is a path into it, split on `.`.
 ///
-/// note: what is in the way is replaced - a path through a number makes it an object - since
-/// the value asked for is the one thing this was told to keep.
+/// note: anything in the way is replaced; a path through a number makes it an object, because the
+/// requested value is what must be kept.
 fn put(params: &mut Params, key: &str, value: Value) {
     let mut path = key.split('.');
     let Some(top) = path.next() else {
@@ -566,10 +562,10 @@ fn put(params: &mut Params, key: &str, value: Value) {
     *at = value;
 }
 
-/// Takes away the parameter a key names, and whatever it leaves empty on the way out.
+/// Removes the parameter named by a key, and anything left empty on the way out.
 ///
-/// note: an emptied `generationConfig` would still be sent, as `{}`, and would read on the
-/// `/params` line as a parameter still in force.
+/// note: an emptied `generationConfig` would still be sent as `{}`, so `/params` reads it as a
+/// parameter still in force.
 fn taken(params: &mut Params, key: &str) {
     match key.split_once('.') {
         None => {

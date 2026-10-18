@@ -40,20 +40,19 @@ use nachalnik::{
 
 use crate::app::named_calls;
 
-/// Elides what the conversation is done with as it goes, and drops its oldest exchanges once the
-/// context gets full - and says so.
+/// Elides what the conversation is done with as it goes, drops its oldest exchanges once the
+/// context gets full, and says so.
 ///
-/// note: it does not summarize what it takes, and nothing it leaves behind claims more than that
-/// the content existed, was read, and is gone - a compactor that invented a paraphrase of output
-/// it never read would be putting words in a tool's mouth. Every change is reversible: the items
-/// keep what they hold, they stay in the context pane with it counted as held back, and restoring
-/// one is a keystroke. Anything pinned is left where it is.
+/// note: it does not summarize what it takes, and nothing left behind claims more than that the
+/// content existed, was read, and is gone; a compactor that paraphrased output it never read would
+/// be putting words in a tool's mouth. Every change is reversible: items keep what they hold, stay
+/// in the context pane counted as held back, and restoring one is a keystroke. Anything pinned is
+/// left where it is.
 ///
-/// note: blobs go as soon as they have been shown, on principle rather than on measurement, and
-/// the principle is that this is a *terminal* client. It renders no pictures and is not going to,
-/// so a blob here is a cost the person cannot see, paid out of a budget that cannot count it, for
-/// a payload the screen will only ever name. A client that shows pictures should want a different
-/// rule, which is why this one is `kamchatka`'s and not the runtime's.
+/// note: blobs go as soon as they have been shown, on principle rather than measurement. This
+/// terminal client renders no pictures, so a blob is a cost the person cannot see, paid from a
+/// budget that cannot count it, for a payload the screen only names. A client that shows pictures
+/// should use a different rule; this one is `kamchatka`'s, not the runtime's.
 pub struct Shedder {
     /// How full the context has to be before exchanges start going.
     pub threshold: f64,
@@ -85,11 +84,10 @@ impl Shedder {
 
 #[async_trait]
 impl Compactor for Shedder {
-    /// note: always, because the first rule is not about the budget. A result is done with once
-    /// its turn is over however empty the context is, and the only one who can tell that is
-    /// `plan`, which has the items. What it costs is one walk of them per request, which is what
-    /// the projection already does twice; and `plan` answers `None` when there is nothing to do,
-    /// which is most requests inside a turn.
+    /// note: always. The first rule is not about the budget. A result is done with once its turn is
+    /// over, however empty the context is. Only `plan` can tell that; it has the items. It costs
+    /// one walk of the items per request. The projection already does two. `plan` returns `None`
+    /// when there is nothing to do, which is most requests in a turn.
     fn should_compact(&self, _: &Budget) -> bool {
         true
     }
@@ -109,24 +107,24 @@ impl Compactor for Shedder {
         let scale = scale(items);
         let full = self.wants_room(budget);
 
-        // written before anything is chosen, because what one elision recovers depends on them:
-        // the kernel makes the pass's reason the note on every item it elides, and the note is
-        // the marker. The model reads it too, in the brackets the projector puts round it, so each
-        // is written to be read by both - what happened, why, and what to do about it
+        // written before anything is chosen, because what one elision recovers depends on them. The
+        // kernel makes the pass's reason the note on every item it elides, and the note is the
+        // marker. The model reads it too, in the brackets the projector puts round it. Each is
+        // written to be read by both: what happened, why, and what to do about it.
         //
         // note: one reason for every item in a pass, so it has to be true of all of them. Both say
-        // the model had read what they stand in for, which no pass takes anything but: a model
-        // reading a marker that said only "compacted" decided it had never seen the files it had
-        // just summarised, and withdrew its summaries
+        // the model read what they stand in for. No pass takes anything but that. A model reading a
+        // marker that said only "compacted" decided it had never seen the files it had just
+        // summarised, and withdrew its summaries.
         //
         // note: the one about room asks for the part rather than the whole, because a model told
-        // only that it may read something again reads a file too big for the context again, and
-        // again, every read discarded on arrival - and the part it needs is what `grep` is for
+        // only that it may read something again reads a file too big for the context, again and
+        // again, every read discarded on arrival. The part it needs is what `grep` is for.
         //
-        // note: the percentage is of the *context* - `context_tokens`, the figure the report's
-        // `tokens_before` and `tokens_after` are counted on - rather than `fraction_used`, which has
-        // the tool definitions in it, and a share that rounds to nothing is said as under one
-        // percent rather than as `0%`, which reads as a pass run on an empty context
+        // note: the percentage is of the context (`context_tokens`), the figure the report's
+        // `tokens_before` and `tokens_after` are counted on, not `fraction_used`, which has the
+        // tool definitions in it. A share that rounds to nothing is said as under one percent, not
+        // `0%`, which reads as a pass run on an empty context
         let limit = budget.limit.unwrap_or_default();
         let reached = match limit {
             0 => "0%".to_owned(),
@@ -144,21 +142,21 @@ impl Compactor for Shedder {
              {limit}-token limit. If you still need it, ask for the part you need rather than the \
              whole - there is little room for it"
         );
-        // the longer of the two, so that whichever one the pass ends up with, nothing it takes is
-        // smaller than the line standing in for it
+        // the longer of the two. Whatever the pass ends up with, nothing it takes is smaller than
+        // the line standing in for it
         let marker = [&served, &room_made]
             .into_iter()
             .map(|reason| marker_tokens(reason, scale))
             .max()
             .unwrap_or_default();
 
-        // note: `sends_content` rather than `is_projected`. An elided item *is* projected - as a
-        // marker - so with `is_projected` every item a pass had already elided would come back as
-        // a candidate on the next one, and the plan would never be `None`
+        // note: `sends_content` rather than `is_projected`. An elided item is projected as a
+        // marker. With `is_projected`, every item a pass already elided would come back as a
+        // candidate on the next pass, and the plan would never be `None`.
         //
-        // note: and not a pinned one, which `sends_content` says yes to. The kernel refuses those
-        // - a pin is a promise - so proposing one produces a plan that moves nothing and still
-        // costs a turn of the screen saying it refused
+        // note: and not a pinned one, which `sends_content` says yes to. The kernel refuses those:
+        // a pin is a promise. Proposing one produces a plan that moves nothing and still costs a
+        // turn of the screen saying it refused.
         //
         // note: and not one whose call is no longer sent, which the projector leaves out and the
         // kernel will not elide
@@ -198,8 +196,8 @@ impl Compactor for Shedder {
                 && item.state != ContextState::Pinned
                 && match &item.kind {
                     ContextKind::ToolResult { call, .. } => asked.contains(call),
-                    // an attachment, which is a picture or a document brought in at the prompt;
-                    // one of text goes with its exchange rather than on its own
+                    // an attachment is a picture or a document brought in at the prompt. One of
+                    // text goes with its exchange rather than on its own
                     ContextKind::Reference => carries_blob(&item.content),
                     _ => false,
                 }
@@ -220,13 +218,13 @@ impl Compactor for Shedder {
         let mut used = budget.used();
         let mut routine = Vec::new();
 
-        // the first rule: what is done with. A result whose turn is over, and a picture that has
-        // been shown wherever it is
+        // the first rule sheds a result whose turn is over, and a picture that has been shown,
+        // wherever it is
         //
-        // note: not one carrying a note. The kernel sets none on a result, so a note is somebody
-        // having said something about this item - most often a person restoring it from the tab -
-        // and eliding it again before the next request would undo what they just did. The room
-        // rule still takes it with its exchange; a pin is what keeps something
+        // note: not one carrying a note. The kernel sets no note on a result, so a note means
+        // somebody said something about the item, most often a person restoring it from the tab.
+        // Eliding it before the next request would undo what they did. The room rule still takes it
+        // with its exchange. A pin keeps it
         for (index, item) in items.iter().enumerate() {
             if index >= seen || !sheddable(item) || item.note.is_some() {
                 continue;
@@ -237,13 +235,13 @@ impl Compactor for Shedder {
                 continue;
             }
             match carries_blob(&item.content) {
-                // what a blob recovers is credited as the counter has it - nothing, today - and is
-                // here for the counter behind `set_counter` that does know what a picture costs
+                // what a blob recovers is credited as the counter has it - nothing today. It is
+                // here for a counter behind `set_counter` that does know what a picture costs
                 true => used -= item.tokens.saturating_sub(marker).min(used),
                 false => {
-                    // a result no bigger than the marker is not worth eliding at all: the pass
-                    // would spend the person's undo and a line of the model's attention to make
-                    // the request bigger
+                    // a result no bigger than the marker is not worth eliding: the pass would spend
+                    // the person's undo and a line of the model's attention to make the request
+                    // bigger
                     let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
                         continue;
                     };
@@ -263,11 +261,10 @@ impl Compactor for Shedder {
             // what a pin holds on to: the kernel refuses to exclude either half of a pinned call
             // and its result, so naming one would be a refusal on the screen and nothing moved
             //
-            // note: and the whole of the turn a pinned result answers, not only its own call. The
-            // turn is kept for the pin's sake, so a result of it dropped beside the pinned one
-            // leaves a call in it with no answer, which the projector then has to take out of the
-            // turn on every request from then on - the same shape `/load` keeps whole for the same
-            // reason
+            // note: keep the whole turn a pinned result answers, not only its own call. The turn is
+            // kept because of the pin: if a result beside the pinned call is dropped, the turn
+            // holds a call with no answer, and the projector must remove it from the turn on every
+            // request. `/load` keeps the same shape whole for the same reason
             let mut pinned: HashSet<&ToolCallId> = items
                 .iter()
                 .filter(|item| item.state == ContextState::Pinned)
@@ -331,9 +328,9 @@ impl Compactor for Shedder {
             }
         }
 
-        // the room half leaves a summary behind, because what it removes leaves nothing behind of
-        // its own; the first rule does not, because every item it takes is a marker in its own
-        // place, saying what happened to it
+        // the room half leaves a summary behind because what it removes leaves nothing behind of
+        // its own. The first rule does not; every item it takes is a marker in its own place saying
+        // what happened to it
         let summary = (dropped != 0).then(|| summary(items, dropped));
 
         // note: what the room half is worth is what it freed less what its summary costs, and one
@@ -410,13 +407,13 @@ struct Exchange {
     end: usize,
 }
 
-/// The conversation as exchanges, oldest first; what comes before the person's first message - the
-/// system instruction and what the session was set up with - is in none of them.
+/// Exchanges, oldest first. Items before the person's first message - the system instruction and
+/// session setup - are in none of them.
 ///
-/// note: an exchange starts at the person's message, or at the files attached just before it,
-/// since `/attach` puts the file in and then the question. Starting it at the message would leave
-/// each attachment at the end of the exchange *before* the one it was brought in for, and dropping
-/// that one would take the file the current question is about.
+/// note: an exchange starts at the person's message or at files attached just before it, since
+/// `/attach` puts the file in and then the question. Starting at the message would put each
+/// attachment at the end of the previous exchange; dropping that exchange would lose the file the
+/// current question is about.
 fn exchanges(items: &[Arc<ContextItem>]) -> Vec<Exchange> {
     let mut starts = Vec::new();
     let mut floor = 0;
@@ -542,9 +539,9 @@ fn scale(items: &[Arc<ContextItem>]) -> f64 {
 /// [`LinearProjector`](nachalnik::LinearProjector) puts round it, at the scale [`scale`] has
 /// derived.
 ///
-/// note: the same scale as the [`ContextItem::tokens`] it is subtracted from, which is the whole
-/// of it. An estimate of a marker's size measured on a different ruler from the result it replaces
-/// is not a small inaccuracy: it decides which side of the line a result falls on.
+/// note: the same scale as [`ContextItem::tokens`], which it is subtracted from. A marker measured
+/// on a different scale from the result it replaces decides which side of the line the result falls
+/// on.
 ///
 /// note: taken from the reason rather than fixed, because the reason is what the marker says. A
 /// constant here would be a second place to remember when that sentence is reworded.
@@ -569,11 +566,11 @@ fn summary_tokens(text: &str, scale: f64) -> usize {
 /// Whether the content is a blob or has one somewhere inside it.
 ///
 /// note: [`Content::blobs`] does the walking rather than this. The nesting is the hard part - a
-/// sentence-and-a-screenshot turn is a blob one level down inside `Content::Blocks` - and
-/// `Content` and `Block` are both `#[non_exhaustive]`, so a walk written out here would answer
-/// `false` for a variant added later and a picture would quietly stop going first, with no arm
-/// this file could have written to catch it. The runtime's own counter needs the same walk for
-/// the same reason, and a second copy here would go stale without anybody noticing.
+/// sentence-and-a-screenshot turn is a blob one level down inside `Content::Blocks` - and `Content`
+/// and `Block` are both `#[non_exhaustive]`, so a walk written out here would answer `false` for a
+/// variant added later and a picture would quietly stop going first, with no arm this file could
+/// have written to catch it. The runtime's own counter needs the same walk, and a second copy here
+/// would go stale without anybody noticing.
 fn carries_blob(content: &Content) -> bool {
     !content.blobs().is_empty()
 }

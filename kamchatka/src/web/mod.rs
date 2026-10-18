@@ -63,9 +63,9 @@ const PAGE: &str = include_str!("browser.html");
 
 /// How long a browser waits before reconnecting a dropped stream, in milliseconds.
 ///
-/// note: sent once at the top of every stream. The browser's default is a few seconds and this is
-/// a session somebody is watching, so it is worth being quicker - and the reconnection costs only
-/// the records that were missed, because `Last-Event-ID` says where to start.
+/// note: sent once at the top of every stream. The browser's default is a few seconds, and this is
+/// a session somebody is watching, so it is worth being quicker. Reconnection costs only the
+/// records that were missed, because `Last-Event-ID` says where to start.
 const RETRY: u64 = 1_000;
 
 /// The longest request head this will read, in bytes.
@@ -77,17 +77,17 @@ const MAX_BODY: usize = 1024 * 1024;
 /// How long a connection has to send its request head before it is closed.
 ///
 /// note: the head is read before the key is checked, so anybody who can reach the port can open a
-/// connection and send nothing. Each one holds a file descriptor, and a process out of them can no
+/// connection and send nothing. Each holds a file descriptor, and a process out of them can no
 /// longer write the session's record or start a command. A browser sends its head as soon as it
-/// has connected.
+/// connects.
 const HEAD_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How many connections may be waiting for their request head at once. One more is closed as soon
 /// as it is accepted.
 ///
-/// note: [`HEAD_WAIT`] alone doesn't keep a peer without the key from using up the file
-/// descriptors: it only has to open them faster than they time out. A browser opens a few at a
-/// time, and a tab's stream has sent its head and no longer counts.
+/// note: [`HEAD_WAIT`] alone does not stop a peer without the key from using up file descriptors;
+/// it only has to open them faster than they time out. A browser opens a few at a time, and a tab's
+/// stream has sent its head and no longer counts.
 const WAITING: usize = 64;
 
 /// Where every attached tab's commands go.
@@ -95,11 +95,10 @@ type Tabs = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<Command>>>>;
 
 /// The session's own name, read off the first projection that goes past.
 ///
-/// note: remembered here because a browser's own reconnection opens a *new* connection to the
-/// session, which therefore has no projection of its own to read the name off - and a resume that
-/// cannot say which session it came from is the one `Command::Attach` describes as the quiet
-/// failure. The browser keeps its resume with no client code at all; naming the session is the
-/// relay's half of it.
+/// note: remembered here because a browser's reconnection opens a new connection to the session,
+/// which has no projection of its own to read the name off. A resume that cannot say which session
+/// it came from is the quiet failure `Command::Attach` describes. The browser keeps its resume with
+/// no client code; naming the session is the relay's half.
 type Named = Arc<Mutex<Option<String>>>;
 
 /// Receives errors from individual browser connections, which would otherwise go unreported.
@@ -123,13 +122,12 @@ struct Guessing {
 impl Guessing {
     /// Whether the page is closed to everybody, the right key included, for wrong ones.
     ///
-    /// note: the key is 32 bits, so that somebody can type it, and 32 bits is a few billion
-    /// guesses - which a device on the same network can make in days, one request at a time. A
-    /// hundred a minute is the better part of a century for half of them. The right key is refused
-    /// with the rest while it is closed, because a guess that was checked while closed would be a
-    /// guess that was not counted. It is a minute of a page that does not answer for the person it
-    /// is theirs, which is what something on their network guessing at it ought to cost them
-    /// anyway: it is said where they will read it.
+    /// note: the key is 32 bits so somebody can type it, and 32 bits is a few billion guesses. A
+    /// device on the same network can make them in days, one request at a time; a hundred a minute
+    /// is the better part of a century for half of them. The right key is refused with the rest
+    /// while it is closed, because a guess checked while closed would not be counted. The cost is a
+    /// minute in which the page does not answer its owner either, which something on their network
+    /// guessing at it ought to cost them anyway, and it is said where they will read it.
     fn closed(&mut self, now: std::time::Instant) -> bool {
         match self.closed_until {
             Some(until) if now < until => true,
@@ -153,9 +151,9 @@ impl Guessing {
     }
 }
 
-/// A listening page, ready to relay browsers to a session.
+/// A listening page that relays browsers to a session.
 ///
-/// Binding is separate from [`Web::run`] so that a bad address is reported at startup, before the
+/// Binding is separate from [`Web::run`] so a bad address is reported at startup, before the
 /// session is set up.
 pub struct Web {
     listener: TcpListener,
@@ -280,7 +278,7 @@ impl Web {
     /// so it has the actual port when bound to port 0.
     pub fn address(&self) -> String {
         match self.listener.local_addr() {
-            // note: without a trailing slash, which nobody types; the page is served at the key
+            // note: no trailing slash, because nobody types one. The page is served at the key
             // either way, and builds its routes from wherever it was opened
             Ok(at) => format!("http://{at}/{}", self.key),
             Err(_) => format!("port {}", self.port),
@@ -397,8 +395,8 @@ async fn serve(
     } = served;
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
-    // a connection that sends nothing in time is one that went away without a request, and is not
-    // reported: a browser opens connections ahead of the requests it may make, and leaves some idle
+    // a connection that sends nothing in time went away without a request, so it is not reported: a
+    // browser opens connections ahead of the requests it may make and leaves some idle
     let Ok(request) = tokio::time::timeout(HEAD_WAIT, head(&mut reader)).await else {
         return Ok(());
     };
@@ -473,8 +471,8 @@ async fn serve(
             stream(&mut write, session, tabs, named, tab, since).await
         }
         ("POST", "/do") => {
-            // a command that cannot be read is answered rather than hung up on, so that the page
-            // reports a refusal and not a network that failed
+            // a command that cannot be read is answered rather than hung up on, so the page reports
+            // a refusal and not a network failure
             let command = match body(&mut reader, &request).await.and_then(|body| {
                 serde_json::from_slice::<Command>(&body)
                     .map_err(|e| format!("that is not a command: {e}"))
@@ -499,22 +497,22 @@ async fn serve(
     }
 }
 
-/// Why a request did not come from this page, if it did not.
+/// The reason a request did not come from this page, if it did not.
 ///
-/// note: a port on loopback is not a boundary a browser keeps. Any page open in the same browser
-/// can put `/events` in a frame to open a tab and then post to `/do` - a POST with a text body is a
-/// simple request and needs no preflight - which is a line typed into the session, or a permission
-/// answered, by a page nobody meant to give either. And with no look at `Host`, a page whose name
-/// is made to resolve here is same-origin with this server and can read the stream as well. So the
-/// host has to be an address or `localhost` rather than a name, which is what a rebinding needs; a
-/// request that says where it came from has to have come from here; and a command has to say it is
-/// JSON, which a page elsewhere cannot send without a preflight this server never answers.
+/// note: a port on loopback is not a boundary a browser keeps. Any page in the same browser can put
+/// `/events` in a frame to open a tab and then post to `/do` with a text body; that POST is a
+/// simple request and needs no preflight, so an untrusted page could type a line into the session
+/// or answer a permission. Without a `Host` check, a page whose name resolves here is same-origin
+/// with this server and can read the stream. The host must be an address or `localhost`, not a
+/// name, because a rebinding needs a name. A request that says where it came from must have come
+/// from here. A command must say it is JSON; a page elsewhere cannot send JSON without a preflight
+/// this server never answers.
 ///
 /// note: `Origin` is not on every request. A browser leaves it off a page's own `EventSource`, and
-/// off a frame, an image or a no-cors fetch from anywhere else, so it cannot tell those apart; and
-/// opening `/events` takes the session from the tab that had it, which stops for good. A browser
-/// that says where a request came from with `Sec-Fetch-Site` is held to it: this page, or nowhere
-/// at all, which is an address typed or opened from the terminal.
+/// off a frame, an image or a no-cors fetch from anywhere else, so those requests cannot be told
+/// apart. Opening `/events` takes the session from the tab that had it, which stops for good. A
+/// browser that sends `Sec-Fetch-Site` must report this page or nowhere at all; nowhere means an
+/// address typed or opened from the terminal.
 fn foreign(request: &Request) -> Option<&'static str> {
     let Some(host) = request.header("host") else {
         return Some("a request names the host it is for");
@@ -604,12 +602,12 @@ async fn page<W: AsyncWrite + Unpin>(write: &mut W) -> Result<(), String> {
     reply(write, "200 OK", "text/html; charset=utf-8", PAGE.as_bytes()).await
 }
 
-/// Opens a connection to the session and relays it to this browser for as long as either lasts.
+/// Opens a connection to the session and relays it to this browser until either ends.
 ///
 /// note: one connection to the session per stream, rather than one shared between tabs. The
 /// protocol answers every command exactly once and in order *on a connection*, so two browsers
-/// sharing one would be reading each other's answers. A session serves one client at a time, so a
-/// second tab takes it from the first, which is told so and stops - see `browser.html`.
+/// sharing one would read each other's answers. A session serves one client at a time, so a second
+/// tab takes it from the first; the first is told so and stops. See `browser.html`.
 async fn stream<W: AsyncWrite + Unpin>(
     write: &mut W,
     session: &str,
@@ -618,9 +616,9 @@ async fn stream<W: AsyncWrite + Unpin>(
     tab: String,
     since: Option<u64>,
 ) -> Result<(), String> {
-    // note: the whole attach happens before the head goes out, which is what makes the retry below
-    // possible: nothing has been said to the browser yet, so a second attempt is the first one it
-    // hears about. A `200` on this route means "attached", and it is true when it is sent
+    // note: the whole attach happens before the head goes out, so nothing has been said to the
+    // browser yet and a second attempt is the first one it hears about, which is what makes the
+    // retry below possible. A `200` on this route means "attached", and it is true when it is sent
     let Some(Upstream {
         mut up,
         mut down,
@@ -630,9 +628,9 @@ async fn stream<W: AsyncWrite + Unpin>(
         return Ok(());
     };
 
-    // note: no `Content-Length` and no chunking - a response with neither is delimited by the
-    // connection closing, which is what a stream is. It is the one thing this saves by not being a
-    // real HTTP server, and it is exactly what `EventSource` expects
+    // note: no `Content-Length` and no chunking. A response with neither is delimited by the
+    // connection closing, as a stream is. It is the one thing this saves by not being a real HTTP
+    // server, and it is exactly what `EventSource` expects
     write
         .write_all(
             b"HTTP/1.1 200 OK\r\n\
@@ -691,21 +689,21 @@ struct Upstream {
     first: serde_json::Value,
 }
 
-/// Opens a connection to the session and attaches to it, starting again from nothing where the
-/// watermark this tab is holding belongs to a session that is not there any more.
+/// Opens a connection to the session and attaches to it. Where the watermark this tab holds belongs
+/// to a session that is not there any more, it starts again from nothing.
 ///
-/// note: what `remote::Client` does with the same answer, and for the same reason - a relay is a
-/// client. `/restart` leaves a session of its own behind this address, so a resume naming the one
-/// before it, or numbered from its log, is refused, which is the check doing its job. Passed on to
-/// the page, that refusal is a `failed` line, a closed stream, and a reconnection a second later
-/// carrying the same `Last-Event-ID`, for as long as the tab is open - and the new session, whose
-/// first line says where the old one was written, is never seen. Only a fresh attach can succeed,
-/// so this is where it is made: the `attached` that answers one carries the new session's `seq`,
-/// which is the `id:` that puts the browser's own watermark back where it belongs.
+/// note: this does what `remote::Client` does with the same answer, for the same reason: a relay is
+/// a client. `/restart` leaves a session of its own behind this address, so a resume naming the one
+/// before it, or numbered from its log, is refused. Passed on to the page, that refusal is a
+/// `failed` line, a closed stream, and a reconnection a second later carrying the same
+/// `Last-Event-ID`, for as long as the tab is open; the new session, whose first line says where
+/// the old one was written, is never seen. Only a fresh attach can succeed, so this is where it is
+/// made: the `attached` that answers one carries the new session's `seq`, which is the `id:` that
+/// puts the browser's own watermark back where it belongs.
 ///
-/// note: the answer is read here rather than left to the relay, because it is the only place both
-/// halves of the retry are still to hand - the connection to replace and the watermark to drop -
-/// and it is handed back so that the browser is told what it said like anything else.
+/// note: the answer is read here rather than left to the relay, because this is the only place both
+/// halves of the retry are still to hand: the connection to replace and the watermark to drop. It
+/// is handed back so the browser is told what it said, like anything else.
 ///
 /// note: a version refusal is passed on untouched, because nothing mends it: attaching again is
 /// refused for the same reason, and `remote::Client` gives up on it for the same one.
@@ -801,14 +799,13 @@ async fn forward<W: AsyncWrite + Unpin>(
     {
         *named.lock().expect("the name is not poisoned") = Some(session.to_owned());
     }
-    // note: the whole mapping. An `id:` is what a browser resumes from, so it goes on exactly the
-    // messages that *can* be resumed from - which is the numbered ones, which is the ones in the
-    // log
+    // note: an `id:` is what a browser resumes from, so it goes on exactly the messages that can be
+    // resumed from: the numbered ones, the ones in the log.
     //
-    // note: `projected` carries a `seq` that would be a valid one. It is an answer to a command
-    // rather than a place in the stream, and a browser resuming from it would be resuming from a
-    // message nobody can ask for again by number. The rule is what can be *re-sent*, not what has
-    // a number on it
+    // note: `projected` carries a `seq` that would be valid, but it is an answer to a command
+    // rather than a place in the stream. A browser resuming from it would resume from a message
+    // nobody can ask for again by number. The rule is what can be re-sent, not what has a number on
+    // it
     let id = matches!(is, Some("record" | "attached"))
         .then(|| message.get("seq").and_then(serde_json::Value::as_u64))
         .flatten();
@@ -845,11 +842,11 @@ impl Request {
 
 /// Reads a request line and its headers, or `None` where the connection just closed.
 async fn head<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Request>, String> {
-    // note: capped while each line arrives rather than once it has, for every line of the head and
-    // not only the first. `read_line` grows its buffer until a newline comes, so a limit checked
-    // against what it handed back is no defence against the case it is there for - a peer that
-    // never sends one. `take` stops at the limit whether or not a newline arrived, which is why
-    // each read is followed by the question of which of the two happened
+    // note: the cap applies while each line arrives, not after, and to every line of the head, not
+    // only the first. `read_line` grows its buffer until a newline arrives, so a limit checked
+    // against what it returned is no defence against the case it exists for: a peer that never
+    // sends one. `take` stops at the limit whether or not a newline arrived, so each read is
+    // followed by a check of which happened
     let mut line = String::new();
     if tokio::io::AsyncReadExt::take(&mut *reader, MAX_HEAD as u64)
         .read_line(&mut line)
@@ -929,9 +926,9 @@ async fn body<R: AsyncBufRead + Unpin>(
 /// Writes one whole response.
 ///
 /// note: no page may put one of these in a frame. A framed copy of the page opens its own stream,
-/// which takes the session, and stands under whatever the page around it draws over it. The
-/// header cannot stop a request that is not a frame - an image or a no-cors fetch of `/events`
-/// takes the session with nothing rendered - which is what `foreign` is for.
+/// which takes the session, and sits under whatever the page around it draws over it. The header
+/// cannot stop a request that is not a frame: an image or a no-cors fetch of `/events` takes the
+/// session with nothing rendered. That is what `foreign` is for.
 async fn reply<W: AsyncWrite + Unpin>(
     write: &mut W,
     status: &str,
@@ -954,8 +951,8 @@ async fn reply<W: AsyncWrite + Unpin>(
 
 /// One value out of a query string.
 ///
-/// note: no decoding, and nothing here needs any: the two parameters are a sequence number and an
-/// identifier the page made out of its own alphabet. A gateway that grew a route taking anything a
+/// note: no decoding, and nothing here needs any. The two parameters are a sequence number and an
+/// identifier the page made from its own alphabet. A gateway that grew a route taking anything a
 /// person typed would need a real one.
 fn param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
     query
@@ -1275,9 +1272,9 @@ mod tests {
         assert!(foreign(&from("same-site")).is_some());
     }
 
-    /// A session on a loopback port that answers each attach in turn with the next of `answers`,
-    /// and then closes every attach it is sent without answering. What each attach asked for is
-    /// kept, in the order they came.
+    /// A loopback session that answers each attach in turn with the next value in `answers`, then
+    /// closes every further attach without answering. It records what each attach asked for, in
+    /// order.
     async fn scripted(
         answers: Vec<serde_json::Value>,
     ) -> (String, Arc<Mutex<Vec<serde_json::Value>>>) {
@@ -1345,8 +1342,8 @@ mod tests {
         assert!(asked[1]["session"].is_null(), "{asked:?}");
     }
 
-    /// Only a refusal of an attach is retried: a message that is not a refusal, and a refusal about
-    /// anything else such as the version, are both passed on as the answer.
+    /// Only a refusal about an attach is retried. Any other message, including a refusal about
+    /// something else such as the version, is passed on as the answer.
     #[tokio::test]
     async fn only_a_refusal_of_the_attach_is_retried() {
         for answer in [
@@ -1365,7 +1362,7 @@ mod tests {
         }
     }
 
-    /// A refusal to a resume that had no watermark is passed on, because attaching again with none
+    /// A refusal to a resume that had no watermark is passed on. Attaching again with no watermark
     /// would be refused for the same reason.
     #[tokio::test]
     async fn a_refusal_with_no_watermark_is_passed_on() {
@@ -1380,8 +1377,8 @@ mod tests {
         assert_eq!(asked.lock().expect("not poisoned").len(), 1);
     }
 
-    /// The session names itself on its `attached` message, and on nothing else: the name is what
-    /// the next attach resumes under.
+    /// The session is named by its `attached` message only. The next attach resumes under that
+    /// name.
     #[tokio::test]
     async fn the_session_is_named_by_its_attached_message_only() {
         let named: Named = Arc::default();

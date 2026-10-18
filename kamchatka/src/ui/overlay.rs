@@ -1,10 +1,9 @@
 //! The panel that floats over a tab, and the question that takes the prompt's place.
 //!
-//! note: an overlay is drawn over whichever tab is open rather than instead of it, because what
-//! it holds is nearly always *about* something on the tab underneath - the whole of an item, the
-//! request that is about to go out, the answer a tool gave. A permission question is the one
-//! thing here that is not a panel: it stands where the prompt does, since answering it is the
-//! only thing to be typed at that moment.
+//! note: an overlay is drawn over the open tab rather than instead of it, because what it holds is
+//! nearly always about something on the tab underneath - the whole of an item, the request about to
+//! go out, the answer a tool gave. A permission question is not a panel: it stands where the prompt
+//! does, because answering it is the only thing to be typed at that moment.
 
 use ratatui::{
     Frame,
@@ -42,22 +41,21 @@ pub(super) fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
 /// What a waiting question is made of, at the width it will be drawn at.
 ///
 /// note: three regions rather than one paragraph, because the arguments are the only part with no
-/// bound on it. Sized as one block, a `revise` carrying a long replacement text would push the
-/// answers off the bottom and leave the panel with no way to read the rest and no way to see that
-/// `y` was still a key. The answers are pinned to the bottom, and the arguments scroll between
-/// them and the header.
+/// bound on it. Sized as one block, a `revise` with a long replacement text would push the answers
+/// off the bottom, leaving no way to read the rest or see that `y` is still a key. The answers are
+/// pinned to the bottom, and the arguments scroll between them and the header.
 ///
-/// note: the header is styled lines and the other two are strings, because the header is the one
-/// region with a colour in it - the advisor's rating - and it is also the one that is pinned above
-/// the scroll, which is where a rating has to be: a warning that can be scrolled out of view is a
-/// warning nobody is obliged to have seen.
+/// note: the header is styled lines and the other two are strings, because the header is the only
+/// region with a colour in it - the advisor's rating - and it is pinned above the scroll, where a
+/// rating has to be: a warning that can be scrolled out of view is a warning nobody is obliged to
+/// have seen.
 fn question_parts(
     app: &App,
     columns: usize,
     cut: bool,
 ) -> Option<(Vec<Line<'static>>, Vec<Line<'static>>, Vec<String>)> {
-    // a tool's question comes first where both are somehow open, because it is the one holding a
-    // turn still. A compaction holds nothing: it is somebody's own command, waiting on them
+    // a tool's question comes first where both are open, because it holds the turn. A compaction
+    // holds nothing: it is somebody's command, waiting on them
     let Some(request) = app.asked() else {
         return reach_parts(app, columns).or_else(|| compaction_parts(app, columns, cut));
     };
@@ -65,8 +63,7 @@ fn question_parts(
 
     // what the policy will actually consult, not what the tool declared: `shell` reaching for the
     // network and `read` handed a path there is a rule about are both judged against something the
-    // spec does not mention, and a question that named only the spec would be answering for less
-    // than it decides
+    // spec does not mention. A question naming only the spec answers for less than it decides
     let judged: Vec<String> = app
         .policy
         .judges(&request)
@@ -111,10 +108,10 @@ fn question_parts(
     .map(Line::raw)
     .collect();
     head.extend(rating(app, &request, columns));
-    // and why the list above is every operation the tool has, where it is because the call did
-    // not say which one it wanted. It goes in the pinned region with the rating, and for the same
-    // reason: it is the part that explains the question, and a line explaining the question is no
-    // use below the fold of the arguments it is about
+    // and why the list above is every operation the tool has, where that is because the call did
+    // not say which one it wanted. It goes in the pinned region with the rating, for the same
+    // reason: it explains the question, and a line explaining the question is no use below the fold
+    // of the arguments it is about
     if let Some(widened) = app.widened(&request) {
         head.extend(
             wrapped(&widened, columns, "")
@@ -148,9 +145,8 @@ fn question_parts(
 
     Some((
         head,
-        // `readable` puts a blank line after every field, so the last of them is a row of nothing
-        // at the bottom of the panel - and a row of nothing that does not fit is a panel saying
-        // there is more to read and then paging down to a blank
+        // `readable` puts a blank line after every field, so the last row is blank. A blank row
+        // that does not fit makes the panel say there is more to read, then pages down to a blank
         trimmed(shown),
         wrapped(&answers, columns, ""),
     ))
@@ -159,21 +155,19 @@ fn question_parts(
 /// What the advisor made of the command, as a line of the header - or why it could not say, or
 /// nothing at all where it was not asked.
 ///
-/// note: the colour is what this adds. Somebody answering a question about a command has to read
-/// the command either way - that is what the panel under this is for - and what a band of green,
-/// yellow or red buys is the half-second before that: whether this is the ordinary `cargo test` the
-/// turn has been full of, or the one call that is about to send something somewhere. It is above
+/// note: the colour is what this adds. A band of green, yellow or red gives the half-second before
+/// reading the command: whether it is ordinary or about to send something somewhere. It is above
 /// the arguments because that is the pinned region; see `question_parts`.
 ///
-/// note: the band and the words both come from [`Rated::shown`](crate::tools::Rated::shown), and
-/// the colour is the only thing decided here. `ui` does not read the score, does not know where the
-/// thresholds are, and cannot disagree with the sentence beside it - the same division `Exit` is
-/// drawn under, one file along.
+/// note: the band and the words come from [`Rated::shown`](crate::tools::Rated::shown), and the
+/// colour is the only thing decided here. `ui` does not read the score, does not know the
+/// thresholds, and cannot disagree with the sentence beside it - the same division `Exit` is drawn
+/// under, one file along.
 ///
-/// note: the percentage is on the line because the band it produced is not a fact about the
-/// command. `Rated::shown` will not draw an unsure rating green, so an uncertain reading arrives
-/// yellow - and a person who cannot tell that from a confident yellow has been told the advisor
-/// was sure when it was not.
+/// note: the percentage is on the line because the band is not a fact about the command.
+/// `Rated::shown` will not draw an unsure rating green, so an uncertain reading arrives yellow;
+/// without the percentage, somebody who cannot tell that from a confident yellow is told the
+/// advisor was sure when it was not.
 #[cfg(feature = "shell-advisor")]
 fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> Vec<Line<'static>> {
     use crate::tools::Rating;
@@ -217,16 +211,14 @@ fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'stat
 
 /// Which stage of the command earned the band, where the advisor took one apart.
 ///
-/// note: the pair with [`rating`] above, and it answers the question that one cannot. A band is
-/// how bad the command is and a long `&&` chain earns its colour from one link - so the line says
-/// *how bad* and this says *which part*, and the second is worth having exactly when the command
-/// is too long to find it in by eye. It costs no row: what it produces is an underline under a run
-/// of a command that is already on the screen.
+/// note: the pair with [`rating`], answering what that cannot. A band is how bad the command is; a
+/// long `&&` chain earns its colour from one link. The line says how bad, this says which part,
+/// worth having when the command is too long to find by eye. It costs no row: an underline under a
+/// run of the command already on the screen.
 ///
-/// note: `None` is every way of not having one and does not distinguish between them - no
-/// advisor, a command with no joints, one the advisor declined to take apart - the same way
-/// [`App::rating`] answers for the band. What it means on the screen is the same in each case:
-/// nothing underlined, and a command to read as a whole.
+/// note: `None` is every way of not having one and does not distinguish between them - no advisor,
+/// a command with no joints, one the advisor declined to take apart - as [`App::rating`] does for
+/// the band. On screen: nothing underlined, and a command to read as a whole.
 #[cfg(feature = "shell-advisor")]
 fn worst(app: &App, request: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
     app.rating(request)?.worst
@@ -252,10 +244,10 @@ fn code_line(_: &str) -> bool {
 
 /// A running command that reached for the network, waiting on a `y`.
 ///
-/// note: the command whole, where the arguments go, because it is what the question is about and
-/// nothing else is: the call was allowed to run already, so there is no tool, no capability and no
-/// rating to show, and the one fact the panel adds is that it tried. `a` says what it remembers, as
-/// the other panel's does, because `net:reach` allowed is every later command too.
+/// note: the command whole, where the arguments go, because that is what the question is about. The
+/// call was allowed to run already, so there is no tool, no capability and no rating to show; the
+/// one fact the panel adds is that it tried. `a` says what it remembers, as the other panel's does,
+/// because `net:reach` allowed is every later command too.
 fn reach_parts(
     app: &App,
     columns: usize,
@@ -287,13 +279,11 @@ fn reach_parts(
     Some((head, shown, wrapped(&answers, columns, "")))
 }
 
-/// The other question: a compaction pass, listed, waiting on a `y`.
+/// A compaction pass, listed, waiting on a `y`.
 ///
 /// note: the list goes where a tool's arguments go, so it scrolls the same way and the panel does
-/// not have to know it is reading something else. What a person needs to decide is the same shape
-/// in both cases - what is about to happen, to what - and the one thing this adds is that the
-/// items are named by identifier, because the answer to "not that one" is `p` on the context tab
-/// and that is the number it is found by.
+/// not have to know it is reading something else. The items are named by identifier, because `p` on
+/// the context tab finds an item by that number.
 fn compaction_parts(
     app: &App,
     columns: usize,
@@ -344,29 +334,30 @@ fn trimmed(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
     lines
 }
 
-/// What a question costs on top of the lines it holds: a border top and bottom, and the blank row
-/// between the arguments and the answers.
+/// The rows a question adds on top of the lines it holds: the border top and bottom, and the blank
+/// row between the arguments and the answers.
 ///
-/// note: named because two places have to agree about it - the height the panel asks for, and the
-/// reading of whether the arguments had to be cut, which is what puts `pgup / pgdn` on the answers.
-/// Disagreeing by one row is a panel that says there is more to read when there is not.
+/// note: named because two places have to agree on it - the height the panel asks for, and whether
+/// the arguments had to be cut, which is what puts `pgup / pgdn` on the answers. If they disagree
+/// by one row, the panel says there is more to read when there is not.
 pub(super) const BORDERS_AND_GAP: u16 = 3;
 
-/// The fewest rows a question is drawn in, whatever a short screen would rather give it: two of
-/// border, the header and the blank under it, a row of arguments and the two the answers are on.
+/// The fewest rows a question is drawn in, even on a short screen: two of border, the header and
+/// the blank under it, a row of arguments, and the two the answers are on.
 pub(super) const MIN_QUESTION: u16 = 7;
 
 /// What has to be left over when a question is taking the last of the screen: a row of the
 /// conversation, and the status line.
 pub(super) const BESIDES: u16 = 2;
 
-/// How much of the conversation a question leaves alone while there is any choice about it. The
-/// question is about something that was said up there, which is the whole reason it is pinned
-/// below it rather than laid over it.
+/// How much of the conversation a question leaves alone while there is any choice. The question is
+/// about something said in the conversation, which is why it is pinned below it rather than laid
+/// over it.
 pub(super) const MIN_CHAT: u16 = 5;
 
-/// How many rows the pinned question would like, or `0` when nothing is being asked. What it
-/// actually gets is [`draw`](super::draw)'s to decide, and is less on a screen with no room for it.
+/// How many rows the pinned question would like, or `0` when nothing is being asked.
+/// [`draw`](super::draw) decides what it actually gets, and gives it less on a screen with no room
+/// for it.
 pub(super) fn question_rows(app: &App, columns: usize) -> u16 {
     let Some((head, args, foot)) = question_parts(app, columns.saturating_sub(2), false) else {
         return 0;
@@ -401,13 +392,13 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
         return 0;
     };
 
-    // the accent when the keys are on it, so that "this is answerable right now" and "this is
-    // waiting for you to come back" are not the same picture. The title says how to reach it, the
-    // way the prompt's does when the keys are somewhere else
+    // the accent when the keys are on it, so that "answerable right now" and "waiting for you to
+    // come back" do not look the same. The title says how to reach it, as the prompt's does when
+    // the keys are elsewhere.
     //
-    // note: red stays red whatever the frame is. It is the one colour here that is not saying
-    // where the keys are - it is saying a tool is waiting on somebody - and a person who set the
-    // frame red would otherwise have configured that distinction away
+    // note: red stays red whatever the frame is. It is the one colour here that does not say where
+    // the keys are; it says a tool is waiting for someone. Otherwise a person who set the frame red
+    // would have configured that distinction away
     let asking = answering(app);
     let style = match asking {
         true => Style::default().fg(app.accent),
@@ -532,9 +523,9 @@ fn readable(
             _ => Style::default(),
         };
         match value {
-            // before the multi-line arm, so that a command which brought its own newlines - a
-            // heredoc, most often - is drawn as code too. `joints` declines to touch that one, so
-            // what it gets is the rule and the colours and none of the breaking
+            // before the multi-line arm, so a command that brought its own newlines - a heredoc,
+            // most often - is drawn as code too. `joints` does not touch that one, so it gets the
+            // rule and the colours and none of the breaking
             serde_json::Value::String(text) if tool == "shell" && name == "cmd" => {
                 out.extend(refit(&Line::raw(format!("{name}:")), columns));
                 out.extend(command(text, columns, worst));
@@ -565,10 +556,9 @@ fn readable(
 
 /// A bordered box over the middle of the screen; returns the offset it drew at.
 ///
-/// note: something with more than one face gets a strip of them along the top, drawn the way the
-/// window's own tabs are, because it is the same gesture: `←` and `→` move between them and the
-/// open one is the one in yellow. A single-page overlay - which is nearly all of them - has no
-/// strip.
+/// note: an overlay with more than one page gets a strip of them along the top, drawn like the
+/// window's own tabs: `←` and `→` move between them and the open one is yellow. A single-page
+/// overlay, which is nearly all of them, has no strip.
 fn panel(
     frame: &mut Frame,
     title: &str,
@@ -588,14 +578,15 @@ fn panel(
         false => 0,
     };
 
-    // no taller than it has anything to say: `/budget` is a handful of lines, and a box that took
-    // nine tenths of the screen to show them would be hiding the conversation for no reason
+    // no taller than it has anything to say: `/budget` is a handful of lines. A box taking nine
+    // tenths of the screen to show them hides the conversation for no reason.
     //
-    // note: measured at the width the box will have, which is less than `columns` on a narrow
-    // terminal - the borders and the padding take four of it, as `inner` below does
-    // note: a page with a QR code in it is as wide as the code, or as a line beside it that cannot
-    // be folded - the address it is a code of - where that is wider. The prose under it folds to
-    // fit, and a box twice the code's width is mostly empty space around a thing to photograph
+    // note: measured at the width the box will have, which on a narrow terminal is less than
+    // `columns` because borders and padding take four columns. `inner` below does the same.
+    //
+    // note: a page with a QR code is as wide as the code, or as wide as the unfolded line beside it
+    // (the address), whichever is wider. The prose under it folds to fit, and a box twice the
+    // code's width is mostly empty space around a thing to photograph
     let columns = match showing.body.lines().any(code_line) {
         true => showing
             .body
@@ -654,9 +645,8 @@ fn panel(
     if strip > 0 {
         frame.render_widget(Paragraph::new(Line::from(tabs(pages, page))), above);
     }
-    // note: a QR code's lines in colours of their own, white on black whatever the terminal's
-    // are, because a code drawn the wrong way round on a light background is one some cameras will
-    // not read; see `qr::Code::lines`
+    // note: QR code lines are white on black regardless of the terminal's colours, because an
+    // inverted code on a light background is one some cameras will not read. See `qr::Code::lines`
     let shown: Vec<Line> = in_view(lines, at, inner)
         .into_iter()
         .map(|line| match code_line(&line) {

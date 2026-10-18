@@ -1,10 +1,9 @@
 //! The wire: what a client may ask for, what a session says back, and how either is framed.
 //!
-//! note: every type here is a projection of something the runtime or [`App`] already has, and
-//! none of them is a second account of it. Where a runtime type serializes usefully it is carried
-//! verbatim - a [`Record`] is a `Record`, a [`PermissionRequest`] is a `PermissionRequest` - and
-//! the ones defined here exist because the thing they project is either borrowed
-//! ([`App::conversation`] hands out `Cow`s into the context) or is half screen state
+//! note: every type here projects something the runtime or [`App`] already has; none is a second
+//! account of it. A runtime type that serializes usefully is carried verbatim, as [`Record`] and
+//! [`PermissionRequest`] are. The types defined here exist because the thing they project is either
+//! borrowed ([`App::conversation`] hands out `Cow`s into the context) or is half screen state
 //! ([`crate::app::Overlay`] carries which page is open and how far down it is scrolled, neither of
 //! which is any client's business but its own).
 
@@ -28,18 +27,18 @@ pub use frames::{
 
 /// The version of this wire that this build speaks.
 ///
-/// note: here before anybody needs it, because it is the one field that cannot be added once two
-/// ends are deployed. `RUNNING.md` recommends reaching a session with `ssh -L` from another
-/// machine, which is exactly where two installed versions meet, and where a session that has grown
-/// a [`Message`] variant meets a client that has not. The rule is that a session refuses a version
-/// it does not know and serves an older one it does.
+/// note: the field exists before it is needed because it cannot be added once two ends are
+/// deployed. `RUNNING.md` recommends reaching a session with `ssh -L` from another machine, where
+/// two installed versions meet and where a session that has grown a [`Message`] variant meets a
+/// client that has not. A session refuses a version it does not know and serves an older version it
+/// does.
 ///
-/// note: the second half of that rule is not machinery yet, and there is nothing for it to do
-/// while this is `1`. Serving an older client means not sending it a message its version lacks,
-/// which needs the number kept per connection and every write asking about it; what stands in
-/// meanwhile is [`Message::Unknown`], which makes an unrecognised message something a client
-/// survives rather than something that ends it. The day this moves, both ends want the whole
-/// rule; `POSTPONED.md` says what that costs.
+/// note: the second half of that rule is not implemented yet, and has nothing to do while the
+/// version is `1`. Serving an older client means not sending it a message its version lacks, which
+/// needs the version number kept per connection and every write to check it. Meanwhile
+/// [`Message::Unknown`] makes an unrecognised message something a client survives rather than
+/// something that ends it. When the version moves past `1`, both ends need the whole rule;
+/// `POSTPONED.md` says what that costs.
 pub const VERSION: u32 = 1;
 
 /// What a client asks a session to do.
@@ -55,13 +54,13 @@ pub const VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum Command {
-    /// Begin, or resume, watching the session.
+    /// Begin or resume watching the session.
     ///
-    /// note: one message rather than an `attach` and a `resume`, because resuming *is* attaching
-    /// with a watermark. `since: None` says "I have nothing", and is answered with an
-    /// [`Attached`] and then the records after it; `since: Some(n)` says "I have everything
-    /// through n", and is answered with a [`Message::Done`] and the records after n. A client that
-    /// lost its process sends the first; one that only lost its socket sends the second.
+    /// note: one message covers `attach` and `resume` because resuming is attaching with a
+    /// watermark. `since: None` means "I have nothing"; the session answers with an [`Attached`]
+    /// and then the records after it. `since: Some(n)` means "I have everything through n"; the
+    /// session answers with a [`Message::Done`] and the records after n. A client that lost its
+    /// process sends the first; a client that only lost its socket sends the second.
     Attach {
         /// The last record the client is sure it has.
         since: Option<u64>,
@@ -100,8 +99,8 @@ pub enum Command {
         grant: Grant,
         /// Whether to remember it, so the policy stops asking. This is the `a` key.
         ///
-        /// note: with an allow only. What is remembered is every subject the policy consulted,
-        /// as allowed, and a refusal with this on is answered `failed` rather than taken.
+        /// note: use it with an allow only. It remembers every subject the policy consulted, as
+        /// allowed. A refusal with this on is answered `failed` rather than taken.
         remember: bool,
     },
     /// Answer a running command that reached for the network; see [`Message::Reaching`].
@@ -123,33 +122,31 @@ pub enum Command {
     },
     /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.
     ///
-    /// note: a command of its own rather than a [`Command::Submit`] of a line, which is how most
-    /// verbs reach a session from here. There is no line: `space` on the context tab is what does
-    /// this at a terminal, and the three moves are one ring rather than three commands, because
-    /// the step somebody wants most often is the middle one and it is the one with no name a
+    /// note: this is its own command rather than a [`Command::Submit`] line, because there is no
+    /// line to submit. `space` on the context tab does this at a terminal. The three moves are one
+    /// ring rather than three commands because the middle move is used most often and has no name a
     /// person types.
     ///
-    /// note: the session decides what the next state is and what to write beside it, not the
-    /// client. The note it leaves is read by the *model*, so a client picking its own words would
-    /// put a second account of one act in front of it - see [`crate::app::App::cycle`], which the
-    /// keys and this both go through.
+    /// note: the session decides the next state and the note written beside it, not the client. The
+    /// model reads that note, so a client choosing its own words would put a second account of one
+    /// act in front of it. See [`crate::app::App::cycle`], which the keys and this command both
+    /// call.
     Cycle {
         /// Which item.
         id: ContextId,
     },
     /// Put an edited item into the context in place of the one it came from.
     ///
-    /// note: a command of its own rather than a [`Command::Submit`] of a line, on the same
-    /// grounds as [`Command::Cycle`]: there is no line. `e` on the context tab is what does this
-    /// at a terminal, and what it opens is an editor holding the item - so the thing being handed
-    /// over is a body of text somebody has been editing, which is not something a person types at
-    /// a prompt in one go and not something a slash command could carry without quoting rules
-    /// nobody wants.
+    /// note: this is its own command rather than a [`Command::Submit`] line, for the same reason as
+    /// [`Command::Cycle`]: there is no line. `e` on the context tab does this at a terminal and
+    /// opens an editor holding the item. The command hands over a body of text somebody has been
+    /// editing, not a line typed at a prompt in one go and not something a slash command could
+    /// carry without quoting rules.
     ///
-    /// note: the session decides whether the item can be rewritten at all, not the client. Three
-    /// shapes cannot be - a picture, a turn recorded in blocks, and a turn that is nothing but a
-    /// call - and the reason is about the item rather than about who is asking; see
-    /// [`crate::app::App::revise`], which the keys and this both go through.
+    /// note: the session decides whether an item can be rewritten at all, not the client. Three
+    /// shapes cannot be rewritten: a picture, a turn recorded in blocks, and a turn that is nothing
+    /// but a call. The reason is the item's shape, not who is asking. See
+    /// [`crate::app::App::revise`], which the keys and this command both call.
     Revise {
         /// Which item.
         id: ContextId,
@@ -174,42 +171,41 @@ pub enum Command {
     /// Ask for the projection again, as it stands now.
     ///
     /// note: [`Command::Attach`] already answers with one and is deliberately not the way to do
-    /// this. A client takes an `attached` as *start again* - see [`Message::Projected`] - so a
-    /// client that only wants today's figures would be throwing away the conversation it already
-    /// had in order to refresh a token count.
+    /// this. A client takes an `attached` as *start again* (see [`Message::Projected`]), so a
+    /// client that only wants today's figures would throw away the conversation it already had to
+    /// refresh a token count.
     ///
-    /// note: what it is for is the half of a session that is not the conversation - the items, the
-    /// budget, what the policy will answer - which a client renders as a second view and which the
-    /// records deliberately cannot supply. `context.added` names an item and says nothing about
-    /// what the *next request* will do with it, and `going`, `left_out` and `marker` are answers
-    /// to that question rather than to the question of what happened. They are worked out by
-    /// projecting, so they are only ever true as of a moment, and this is how a client asks for
-    /// that moment to be now.
+    /// note: this is for the half of a session that is not the conversation: the items, the budget,
+    /// and what the policy will answer. A client renders this as a second view; the records
+    /// deliberately cannot supply it. `context.added` names an item and says nothing about what the
+    /// *next request* will do with it. `going`, `left_out` and `marker` answer that question, not
+    /// what happened. They are worked out by projecting, so they are only true as of a moment; this
+    /// is how a client asks for that moment to be now.
     Project,
     /// Ask what one context item actually says.
     ///
     /// note: this is why the protocol is not "events, and render them however you like". The
-    /// session log deliberately names things rather than copying them - `context.added`
-    /// carries an identifier, a kind, a label and a token count, and no content - which is what
-    /// keeps a log affordable enough to keep for ever. A client fed nothing but events can
-    /// therefore render a turn as it streams and cannot render one word of anything that happened
-    /// before it connected. It gets the conversation from [`Attached`] and the *whole* of any one
-    /// item from here, on demand, rather than from a stream fattened until it carried both.
+    /// session log deliberately names things rather than copying them: `context.added` carries an
+    /// identifier, a kind, a label and a token count, and no content. That keeps a log affordable
+    /// enough to keep for ever. A client fed nothing but events can render a turn as it streams,
+    /// but cannot render one word of anything that happened before it connected. It gets the
+    /// conversation from [`Attached`] and the *whole* of any one item from here, on demand, rather
+    /// than from a stream fattened until it carried both.
     Inspect {
         /// Which item.
         id: ContextId,
         /// Ask for the item's own text rather than the reading of it.
         ///
         /// note: two questions about one item, and they are not the same answer. The reading is
-        /// what the context tab shows - the content, and above it why the item is here, what the
-        /// turn was thinking, and the calls it carries - which is what somebody wants in front of
-        /// them. What [`Command::Revise`] takes is the content and nothing else, because that is
-        /// what `Kernel::replace` writes: a client that committed the reading back would put `it
-        /// is here because: …` inside the item it was describing.
+        /// what the context tab shows: the content, and above it why the item is here, what the
+        /// turn was thinking, and the calls it carries. That is what somebody wants in front of
+        /// them. [`Command::Revise`] takes the content and nothing else, because that is what
+        /// `Kernel::replace` writes. A client that committed the reading back would put
+        /// `it is here because: …` inside the item it was describing.
         ///
         /// note: a flag rather than a second field on [`Message::Item`] carrying both. An inspect
-        /// is the one message that exists to be large - it is how the whole of a four-hundred-line
-        /// tool result is fetched - and a client wants one of these per row, never both.
+        /// is the one message that exists to be large: it is how the whole of a four-hundred-line
+        /// tool result is fetched. A client wants one of these per row, never both.
         #[serde(default)]
         raw: bool,
         /// Which version to answer with: `None` for what the item says now, or `1` for the oldest
@@ -223,24 +219,22 @@ pub enum Command {
     },
     /// Something this build has no name for.
     ///
-    /// note: a newer client's verb, and it is answered with a [`Message::Failed`] rather than by
-    /// closing the connection - which keeps the invariant [`Message::Done`] states, since a client
-    /// that sent something is owed exactly one answer whether or not this end knows what it was.
-    /// Without it an unknown `do` would be a parse error, and a parse error takes the connection
-    /// with it.
+    /// note: a newer client's verb, answered with a [`Message::Failed`] rather than by closing the
+    /// connection. This keeps the invariant [`Message::Done`] states: a client that sent something
+    /// is owed exactly one answer whether or not this end knows what it was. Without it an unknown
+    /// `do` would be a parse error, and a parse error takes the connection with it.
     #[serde(other)]
     Unknown,
 }
 
 /// What a session says to a client.
 ///
-/// note: the split that matters is [`Message::Record`] against everything else, and it is the
-/// same split the runtime already draws. A record is numbered, is in the session log, and cannot
-/// be lost: a client that missed one asks for it by sequence and gets it. Everything else -
-/// fragments of a model still writing, what the program said for itself, the answer to a line -
-/// is in no log, is best-effort, and is gone once it has gone past. `Config::record_progress` is
-/// the runtime's own name for that line, and this protocol does not draw a second one somewhere
-/// else.
+/// note: the split that matters is [`Message::Record`] against everything else. It is the same
+/// split the runtime draws. `Config::record_progress` is the runtime's name for that line, and this
+/// protocol does not draw a second one. A record is numbered, is in the session log, and cannot be
+/// lost: a client that missed one asks for it by sequence and gets it. Everything else - fragments
+/// of a model still writing, what the program said for itself, the answer to a line - is in no log,
+/// is best-effort, and is gone once it has gone past.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "is", rename_all = "snake_case")]
 pub enum Message {
@@ -252,14 +246,14 @@ pub enum Message {
     /// The projection again, for a client that asked, and nothing else changes with it.
     ///
     /// note: the same payload as [`Message::Attached`] under a different name, and the name is what
-    /// matters. A client takes an `attached` as *start again* - it has just been handed the
+    /// matters. A client takes an `attached` as *start again*: it has just been handed the
     /// conversation and every record after it, so whatever it had drawn belongs to a stream it is
-    /// no longer on. This one changes nothing: the stream is where it was, the records already
-    /// sent are still the records, and only the figures are newer. A client that could not tell
-    /// the two apart would wipe its own screen to refresh a token count.
+    /// no longer on. This one changes nothing. The stream is where it was, the records already sent
+    /// are still the records, and only the figures are newer. A client that could not tell the two
+    /// apart would wipe its own screen to refresh a token count.
     ///
     /// note: it carries no `id:` where a gateway gives one, for the same reason [`Message::Item`]
-    /// does not: an id is what a browser resumes from, and this is an answer to a command rather
+    /// does not. An id is what a browser resumes from, and this is an answer to a command rather
     /// than a place in the stream.
     Projected(Box<Attached>),
     /// One entry of the session log, verbatim.
@@ -285,9 +279,9 @@ pub enum Message {
     },
     /// A fragment of something still arriving: a model writing, or a tool talking.
     ///
-    /// note: unnumbered on purpose - these are not in the log by default, so there is no sequence
-    /// to give them and nothing to recover them from. `after` is the last record the client was
-    /// sent, which is what tells it where the fragment hangs.
+    /// note: unnumbered on purpose. These are not in the log by default, so there is no sequence to
+    /// give them and nothing to recover them from. `after` is the last record the client was sent,
+    /// which tells it where the fragment hangs.
     Progress {
         /// The record this arrived after.
         after: u64,
@@ -297,15 +291,15 @@ pub enum Message {
     /// The program's own lines are gone: `/cleanup`, or `ctrl+l` at a terminal watching the same
     /// session.
     ///
-    /// note: what a client does with it is drop the [`Message::Said`] lines it has drawn and keep
-    /// everything else, because that is what was cleared - the conversation is the context and is
-    /// not this program's to take away.
+    /// note: a client drops the [`Message::Said`] lines it has drawn and keeps everything else,
+    /// because that is what was cleared. The conversation is the context and is not this program's
+    /// to take away.
     ///
-    /// note: unnumbered and best-effort, like the lines it is about. They were never in the log,
-    /// so there is nothing to recover and nothing that could recover it; a client that missed this
-    /// is carrying lines the session no longer has, and gets them taken away by the next
-    /// [`Message::Attached`], whose conversation does not have them either. That is the same
-    /// recovery a missed `Said` has, which is the argument for giving the two the same standing.
+    /// note: unnumbered and best-effort, like the lines it is about. They were never in the log, so
+    /// there is nothing to recover them from. A client that missed this is carrying lines the
+    /// session no longer has, and the next [`Message::Attached`] takes them away, because its
+    /// conversation does not have them either. That is the same recovery a missed `Said` has, which
+    /// is the argument for giving the two the same standing.
     Cleared,
     /// Something the program said for itself: a command's answer, a notice, an error.
     Said {
@@ -331,31 +325,29 @@ pub enum Message {
     /// Whether a turn is running, sent whenever that changes.
     ///
     /// note: on the wire because it cannot be worked out from the records. A turn is a loop over
-    /// transitions, so
-    /// `state.changed` reaches `Idle` *between two requests of one turn* and `Ready` in the instant
-    /// between a decision and the calls it decided running - which means every state a turn rests
-    /// in is also a state it passes through. Only the loop driving the kernel knows where a turn
-    /// begins and ends. A client that reads this as "the session is doing something on my behalf"
-    /// is reading it correctly, and [`Attached::busy`] is the same fact for one that has just
+    /// transitions, so `state.changed` reaches `Idle` between two requests of one turn and `Ready`
+    /// between a decision and the calls it decided running: every state a turn rests in is also a
+    /// state it passes through. Only the loop driving the kernel knows where a turn begins and
+    /// ends. A client that reads this as the session doing something on its behalf
+    /// is reading it correctly; [`Attached::busy`] is the same fact for a client that has just
     /// arrived.
     Busy {
         /// Whether a turn is running, or a command is still out at the endpoint; see
         /// [`App::working`](crate::app::App::working).
         busy: bool,
     },
-    /// The running commands waiting to hear whether they may reach the network, sent whenever
-    /// that changes and to a client that resumes: the whole list, oldest first, and empty once none
-    /// are.
+    /// The running commands waiting to hear whether they may reach the network, sent whenever that
+    /// changes and to a client that resumes: the whole list, oldest first, and empty once none are.
     ///
     /// note: the whole list rather than one arrival at a time, because nothing numbers these on the
     /// wire. The question is not the kernel's, so it is in no record - see
     /// [`crate::tools::Reaching`] - and a client that missed an arrival, or the answer somebody
-    /// else gave, would otherwise go on offering a question the session no longer has.
+    /// else gave, would otherwise offer a question the session no longer has.
     /// [`Attached::reaching`] is the same list for a client that has just arrived.
     ///
-    /// note: an older client reads this as [`Message::Unknown`] and cannot answer it, which leaves
-    /// the command waiting for somebody who can. That is the rule `Unknown` is for, and the
-    /// question is still on every screen that knows it.
+    /// note: an older client reads this as [`Message::Unknown`] and cannot answer it, leaving the
+    /// command waiting for somebody who can. That is the rule `Unknown` is for, and the question is
+    /// still on every screen that knows it.
     Reaching {
         /// The questions, oldest first.
         waiting: Vec<Reached>,
@@ -363,23 +355,23 @@ pub enum Message {
     /// Which model the requests are going to, sent whenever that changes and to a client that
     /// resumes.
     ///
-    /// note: on the wire as well as in the records, which since `Kernel::provider_changed` say
-    /// when the model changed. `/model` and `/endpoint` finish inside the
+    /// note: on the wire and in the records; `Kernel::provider_changed` says when the model
+    /// changed. `/model` and `/endpoint` finish inside the
     /// [`Dialect`](nachalnik_providers::Dialect) the kernel already holds, so the record comes when
-    /// the switch is done - and a client that follows the model on screen is told the moment the
-    /// session's answer changes, the way [`Message::Busy`] tells it the other thing a screen shows.
+    /// the switch is done. A client that follows the model on screen is told the moment the
+    /// session's answer changes, as [`Message::Busy`] tells it the other thing a screen shows.
     ///
-    /// note: broadcast rather than answered to whoever typed it, like every other notice. A
-    /// session two people are watching is one session, and the model is not one of them's.
+    /// note: broadcast rather than answered to whoever typed it, like every other notice. A session
+    /// two people are watching is one session, and the model is not one of them's.
     Model {
         /// The model the requests are going to, or nothing where there is no provider.
         model: Option<ModelInfo>,
     },
     /// What one submitted line did.
     ///
-    /// note: what it does *not* carry is the lines the program said about it. Those go to every
-    /// attached client as [`Message::Said`], because a session with two people watching has one
-    /// voice, and a reply that carried them too would print them twice for whoever asked.
+    /// note: it does not carry the lines the program said about it. Those go to every attached
+    /// client as [`Message::Said`], because a session with two people watching has one voice, and
+    /// carrying them in the reply would print them twice for whoever asked.
     Replied {
         /// What the line did.
         did: Did,
@@ -387,10 +379,9 @@ pub enum Message {
         page: Option<Printed>,
         /// Whether a turn is running, as of handing the line in.
         ///
-        /// note: carried rather than inferred from `did`, which is nearly the same thing and wrong
-        /// in the case that matters: a line that was `Asked` starts a turn *unless* the session has
-        /// spent its ceiling, and a client reading `Asked` as "a turn is running" would then wait
-        /// for the end of one that never started.
+        /// note: carried rather than inferred from `did`, because `Asked` starts a turn unless the
+        /// session has spent its ceiling, and inferring it from `did` would make a client wait for
+        /// the end of a turn that never started.
         busy: bool,
     },
     /// The whole of what one context item says.
@@ -402,39 +393,37 @@ pub enum Message {
         body: String,
         /// Which of the two this is.
         ///
-        /// note: carried back rather than remembered by the client, because both answers are
-        /// found by the same identifier and a client holding two places to put one - a line on
-        /// the chat and a box on the context tab - would otherwise fill the wrong one with the
-        /// wrong reading. It is the question echoed, which is the cheapest way to tell them
-        /// apart and the only one that survives two inspects crossing.
+        /// note: carried back rather than remembered by the client, because both answers are found
+        /// by the same identifier and a client holding two places to put one - a line on the chat
+        /// and a box on the context tab - would otherwise fill the wrong one with the wrong
+        /// reading. Echoing the question is the cheapest way to tell them apart and the only way
+        /// that survives two inspects crossing.
         #[serde(default)]
         raw: bool,
         /// Which version this is, echoed from [`Command::Inspect`]; `None` is what it says now.
         #[serde(default)]
         version: Option<usize>,
     },
-    /// How many fragments went past that this client was not sent: while it was not keeping up,
-    /// or one too long for a frame.
+    /// How many fragments the client was not sent: while it was not keeping up, or because one was
+    /// too long for a frame.
     ///
-    /// note: said rather than swallowed, and said with a number. The **records** are unaffected:
-    /// they are read out of the log, which drops nothing, so no record is ever lost this way. What
-    /// this counts is the half that is in no record to begin with - a model's fragments, and the
-    /// session's own lines, which the log names happening and does not copy - so a client told
-    /// the records hold what it missed is being sent after something that was never in them. The
-    /// number is exactly "you missed some of what was being said", and never "you missed
-    /// something that happened".
+    /// note: reported rather than swallowed, and reported with a number. The records are
+    /// unaffected: they are read from the log, which drops nothing, so no record is ever lost this
+    /// way. It counts what is in no record: a model's fragments and the session's own lines. The
+    /// log names these lines but does not copy them, so a client told that the records hold what it
+    /// missed is being sent after something that was never in them. The number means "you missed
+    /// some of what was being said", never "you missed something that happened".
     Missed {
         /// How many.
         frames: u64,
     },
     /// A command could not be done.
     ///
-    /// note: `about` is a command's name, or a few that name something else. `version`,
-    /// `projection` and `attach` refuse an attach, for the reasons `connection::Refused` gives;
-    /// `the connection` is one that failed; and `replaced` is a client let go of because another
-    /// has attached. A session serves one client
-    /// at a time, and a client replaced should not come back by itself: it would take the session
-    /// from whoever has just taken it.
+    /// note: `about` names a command, or something else. `version`, `projection` and `attach`
+    /// refuse an attach, for the reasons `connection::Refused` gives. `the connection` is one that
+    /// failed. `replaced` is a client let go of because another has attached. A session serves one
+    /// client at a time. A client replaced should not come back by itself: it would take the
+    /// session from whoever has just taken it.
     Failed {
         /// Which command it was about.
         about: String,
@@ -443,38 +432,37 @@ pub enum Message {
     },
     /// Something this build has no name for.
     ///
-    /// note: the rule that goes with it is **ignore what you do not know**, and it is what makes a
-    /// new variant something other than a break. A client written against version 1 and attached
-    /// to a session that has grown a message since reads this, prints nothing, and carries on with
-    /// the records. Without it the new message is a parse error, a closed connection, and a minute
-    /// of trying to get back to a session that was working perfectly.
+    /// note: the rule is **ignore what you do not know**. That makes a new variant something other
+    /// than a break. A client written against version 1, attached to a session that has grown a
+    /// message since, reads this, prints nothing, and carries on with the records. Without it, the
+    /// new message is a parse error and a closed connection, and a minute of trying to get back to
+    /// a session that was working.
     ///
-    /// note: what it cannot do is carry the payload, so a relay - the page in `web` - reads
-    /// the wire as JSON and passes it on rather than parsing each message and writing it out
-    /// again. Turning an unknown message into this one and back would be the relay deciding what a
-    /// page is allowed to hear.
+    /// note: it cannot carry the payload, so a relay - the page in `web` - reads the wire as JSON
+    /// and passes it on rather than parsing each message and writing it out again. Turning an
+    /// unknown message into this and back would let the relay decide what a page is allowed to
+    /// hear.
     #[serde(other)]
     Unknown,
 }
 
 /// Where a session stands, for a client that has just arrived.
 ///
-/// note: a projection rather than a [`nachalnik::Snapshot`], which is the obvious thing to send
-/// and the wrong one: a snapshot carries every item's whole content, blobs included, so attaching
-/// a browser to a session that has read four files would push megabytes at it before it had asked
-/// for anything. What a client needs in order to start rendering is the conversation, what each
-/// item *is*, and what the next request does with it; the whole of any one item is one
+/// note: a projection rather than a [`nachalnik::Snapshot`]: a snapshot carries every item's whole
+/// content, blobs included, so attaching a browser to a session that has read four files would push
+/// megabytes at it before it asked for anything. A client needs the conversation, what each item
+/// is, and what the next request does with it to start rendering. The whole of any one item is one
 /// [`Command::Inspect`] away.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Attached {
-    /// Which version of this wire the session speaks; see [`VERSION`].
+    /// The version of this wire the session speaks. See [`VERSION`].
     ///
-    /// note: the other half of [`Command::Attach`]'s `version`, and it is here now because it
-    /// cannot be added later on the same terms. A client learns what the session speaks from the
-    /// first thing it is sent, which is what tells it whether a command this build knows is worth
-    /// sending at all - and a field added once two ends are deployed is one a client can only read
-    /// as `Option`, which is the shape that means "and it might be anything".
+    /// note: the other half of [`Command::Attach`]'s `version`. It is here now because it cannot be
+    /// added later on the same terms. A client learns what the session speaks from the first thing
+    /// it is sent, which tells it whether a command this build knows is worth sending. A field
+    /// added after both ends are deployed is one a client can only read as `Option`, which means
+    /// "and it might be anything".
     pub version: u32,
     /// The session's name, which is also what its record is filed under.
     pub session: String,
@@ -513,9 +501,8 @@ pub struct Attached {
     pub overspent: bool,
     /// The conversation as it reads now.
     ///
-    /// note: whole, unless the whole of it is more than one frame carries - in which case the
-    /// longest lines are cut down to whatever length lets the rest fit, and each one cut says by
-    /// how much; see [`Line::clipped`].
+    /// note: whole unless it does not fit in one frame, in which case the longest lines are cut to
+    /// fit and each cut says by how much; see [`Line::clipped`].
     pub conversation: Vec<Line>,
     /// Every context item, named rather than carried.
     pub items: Vec<Listed>,
@@ -531,9 +518,8 @@ pub struct Attached {
     ///
     /// note: a list beside the questions rather than a field on them, and empty in every session
     /// that did not start with an advisor. Without it the rating exists only inside the terminal's
-    /// own drawing code, and a build with `shell-advisor` in it serves a browser exactly what a
-    /// build without it serves: the advisor runs and rates the question, and the one thing a
-    /// person was supposed to see never leaves the process.
+    /// drawing code: the advisor runs and rates the question, but nothing a person was supposed to
+    /// see leaves the process.
     pub rated: Vec<Judged>,
     /// Why the advisor has no rating for the questions it was asked about and could not answer.
     ///
@@ -550,34 +536,32 @@ pub struct Attached {
     pub policy: String,
     /// What it answers about anything nobody has told it about.
     ///
-    /// note: the line the permissions tab puts *above* the rules, and it goes with them for the
+    /// note: the line the permissions tab puts above the rules, and it goes with them for the
     /// reason it is above them there: a list of decisions is not a policy, and a client that drew
-    /// the rows alone would be answering "what will this session allow" with the part of the answer
-    /// somebody happened to have given already.
+    /// the rows alone would answer "what will this session allow" using only the part of the
+    /// answer somebody already gave.
     pub untold: nachalnik::Verdict,
     /// What the policy will answer about each capability and path rule somebody has decided.
     pub permissions: Vec<Stanced>,
     /// The trace, as the trace tab draws it: what happened, in this program's words.
     ///
-    /// note: capped where `App` caps it and not otherwise trimmed. The session log is unbounded
-    /// and is what `Command::Attach` streams; this is the pane, which is a ring of the last few
-    /// hundred lines because that is what a person reads.
+    /// note: capped where `App` caps it and not otherwise trimmed. The session log is unbounded and
+    /// is what `Command::Attach` streams; this pane is a ring of the last few hundred lines.
     pub trace: Vec<Tracing>,
-    /// How many more it holds an opinion about and will simply ask.
+    /// How many more it will ask about.
     ///
-    /// note: a count rather than rows, which is the same answer the permissions tab gives and for
-    /// its reason: a row for a `.aws` rule nobody has thought about is not information. What the
-    /// count is for is the other half of that - a client listing two decisions while standing for
-    /// eighteen answers is a different kind of dishonest, and a client cannot work this out from
-    /// the list above, because the list is exactly what it leaves out.
+    /// note: a count rather than rows, the same answer the permissions tab gives: a row for a
+    /// `.aws` rule nobody has thought about is not information. The count is for the other half: a
+    /// client listing two decisions while standing for eighteen answers is dishonest too, and a
+    /// client cannot work the count out from the list above, because the list is exactly what it
+    /// leaves out.
     pub undecided: usize,
     /// The next message somebody typed into the running turn, waiting for it to end.
     ///
-    /// note: cut where [`Attached::conversation`] is cut, and with nothing on it to say so. A
-    /// message waiting is also the last lines of the conversation, word for word, so the same
-    /// length cuts both the same way and the line there carries the [`Line::clipped`] this
-    /// cannot. Left whole, the one message would be carried twice in a projection that is being
-    /// cut down because it is too long.
+    /// note: cut where [`Attached::conversation`] is cut, with nothing on it to say so. A waiting
+    /// message is the last lines of the conversation, word for word, so the same length cuts both;
+    /// the line there carries [`Line::clipped`], which this cannot. Left whole, the message would
+    /// be carried twice in a projection being cut down because it is too long.
     pub queued: Option<String>,
     /// The ones waiting behind that one, oldest first; each gets a turn of its own.
     ///
@@ -591,17 +575,16 @@ pub struct Attached {
     pub confinement: Option<String>,
 }
 
-/// What the advisor made of the command one waiting question is about.
+/// What the advisor made of the command the waiting question is about.
 ///
 /// note: beside [`Attached::asking`] rather than on a question, because a question is a
-/// [`PermissionRequest`] and that is the runtime's type. The runtime has no advisor and is not
-/// going to grow a field for one - see the module note on carrying runtime types verbatim - so the
-/// rating travels as its own row, named by the question it is about.
+/// [`PermissionRequest`] and that is the runtime's type. The runtime has no advisor and will not
+/// grow a field for one (see the module note on carrying runtime types verbatim), so the rating
+/// travels as its own row, named by the question it is about.
 ///
-/// note: only for the questions something rated, which is `shell` commands in a build that has
-/// `shell-advisor` in it and a session started with `--rate-shell-commands`. A client draws the
-/// band where there is a row for the question it is drawing and draws nothing where there is not,
-/// which is the same thing the panel at a terminal does with the same absence.
+/// note: only for questions something rated: `shell` commands in a build with `shell-advisor` and a
+/// session started with `--rate-shell-commands`. A client draws the band where there is a row for
+/// the question and draws nothing where there is not, as the panel at a terminal does.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Judged {
@@ -611,9 +594,9 @@ pub struct Judged {
     pub band: Band,
     /// What that band is called, in the advisor's own words.
     ///
-    /// note: carried rather than left for the client to word from `band`, so that the sentence a
-    /// browser prints and the sentence a terminal prints are one string with one author. A client
-    /// that wrote its own would be a second account of a rubric it cannot see.
+    /// note: carried rather than left for the client to word from `band`, so the browser and
+    /// terminal print one string with one author. A client that wrote its own would be a second
+    /// account of a rubric it cannot see.
     pub said: String,
     /// How sure the advisor was, from 0 to 1.
     ///
@@ -680,10 +663,10 @@ impl Judged {
 
 /// The three bands a rated command is drawn as.
 ///
-/// note: what the advisor's rating is *shown* as rather than what it scored, which is a
-/// distinction [`crate::tools::Rated::shown`] owns and nothing on this side of the wire repeats.
-/// An uncertain reading is never sent as [`Band::Reads`], because green is the one colour that
-/// would say a command is safe.
+/// note: the band is what the advisor's rating is shown as, not what it scored;
+/// [`crate::tools::Rated::shown`] owns that distinction and nothing on this side of the wire
+/// repeats it. An uncertain reading is never sent as [`Band::Reads`], because green is the one
+/// colour that would say a command is safe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -711,25 +694,24 @@ pub struct Line {
     /// looking at. A tool result reads as its first six lines here, the same as it does on the
     /// chat tab, and this is how the other four hundred are reachable.
     pub item: Option<ContextId>,
-    /// How many bytes of what it says were left out of [`Line::text`], which is then the start of
-    /// it; `None` where it is whole.
+    /// How many bytes were left out of [`Line::text`], which is then the start of the line; `None`
+    /// where the line is whole.
     ///
-    /// note: only ever set where a projection would otherwise be longer than [`MAX_LINE`], which
-    /// a client cannot read and a session cannot skip. Nothing is cut until something has to be,
-    /// and then only the lines longer than the longest length that lets the whole projection fit,
-    /// down to that length - so whether a line arrives whole depends on how long the session is,
-    /// and one a projection carried whole can be cut in the next once the session has grown.
+    /// note: set only where a projection would otherwise be longer than [`MAX_LINE`], which a
+    /// client cannot read and a session cannot skip. Nothing is cut until it has to be, and then
+    /// only lines longer than the longest length that lets the whole projection fit, down to that
+    /// length. Whether a line arrives whole depends on the length of the session, so a line a
+    /// projection carried whole can be cut in the next projection once the session has grown.
     ///
-    /// note: where the rest is. Where the line is an item, [`Command::Inspect`] asks for all of
-    /// it, and is answered with it wherever the answer fits in a frame - which an item longer than
-    /// [`MAX_LINE`] on its own does not, and then it is refused, and a snapshot is what holds it
-    /// whole. Where the line is not an item - something the program said, or a message still
-    /// waiting for a turn to end - the rest is not anywhere a client can ask for, and the count is
-    /// all there is.
+    /// note: where the rest is. If the line is an item, [`Command::Inspect`] asks for all of it and
+    /// is answered wherever the answer fits in a frame. An item longer than [`MAX_LINE`] on its own
+    /// does not fit, so it is refused and a snapshot holds it whole. If the line is not an item -
+    /// something the program said, or a message still waiting for a turn to end - the rest is not
+    /// anywhere a client can ask for, and the count is all there is.
     ///
-    /// note: a field rather than a sentence on the end of the text, because the text is
-    /// somebody's message and a note in this program's voice glued onto it would read as part of
-    /// what they said. Drawing it is the client's, as everything else about a line is.
+    /// note: a field rather than a sentence at the end of the text, because the text is somebody's
+    /// message and a note in this program's voice would read as part of what they said. Drawing it
+    /// is the client's.
     #[serde(default)]
     pub clipped: Option<usize>,
 }
@@ -748,16 +730,16 @@ impl Line {
 
 /// One line of the trace, as the trace tab draws it.
 ///
-/// note: the trace rather than the records, and the difference is the point of the tab. A record
-/// says `context.compacted` and carries a `CompactionReport`; the trace line says what that pass
-/// took and what it left, in this program's words, because somebody reading a log wants the
-/// sentence and not the structure. A client that rendered the records itself would be writing a
-/// second vocabulary for the same events, and it would be the one nobody at the other end can see.
+/// note: the trace rather than the records. A record says `context.compacted` and carries a
+/// `CompactionReport`; the trace line says what that pass took and what it left, in this program's
+/// words, because a reader wants the sentence and not the structure. A client that rendered the
+/// records itself would write a second vocabulary for the same events, one nobody at the other end
+/// can see.
 ///
-/// note: the gap rather than two timestamps, and it is `app::text::waited_since` - the very
-/// formatter the pane uses, so the column reads the same in a browser as in a terminal. It is
-/// `None` under a tenth of a second, and `None` after a line that ended a wait for a *person*:
-/// however long somebody took to answer a question, it is not a step this program spent.
+/// note: the gap rather than two timestamps. It is `app::text::waited_since`, the formatter the
+/// pane uses, so the column reads the same in a browser as in a terminal. It is `None` under a
+/// tenth of a second, and `None` after a line that ended a wait for a *person*: however long
+/// somebody took to answer a question, it is not a step this program spent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Tracing {
@@ -770,9 +752,9 @@ pub struct Tracing {
     /// When it arrived, in milliseconds since the Unix epoch.
     ///
     /// note: the wall clock rather than the monotonic one, because this is the half a reader
-    /// matches against a server log or their own memory of the afternoon - and because an
-    /// `Instant` has no rendering as a time of day. The gap above is the other half, and it is
-    /// worked out from the monotonic clock, which a system clock being set cannot drag backwards.
+    /// matches against a server log or their own memory, and an `Instant` has no rendering as a
+    /// time of day. The gap above is the other half, worked out from the monotonic clock, which a
+    /// system clock being set cannot drag backwards.
     pub at: u64,
 }
 
@@ -831,8 +813,8 @@ impl Listed {
             tokens: item.tokens,
             uncounted: item.uncounted,
             state: item.state,
-            // `Going::sends_content` rather than the state, because a projector repairs a request
-            // to keep it valid and an item in a state that sends content can still be out of one
+            // Use `Going::sends_content`, not the state: a projector repairs a request to keep it
+            // valid, and an item in a state that sends content can still be out of that request
             going: going
                 .sends_content(item)
                 .then(|| going.costs.get(&item.id).copied())
@@ -847,13 +829,13 @@ impl Listed {
 
 /// One row of the permissions tab.
 ///
-/// note: the subject is its own spelling rather than a structure, and that is deliberate: for the
-/// three a `Subject` can be read back from, it reads back out of the same string it prints as,
-/// which is what makes `--auto-deny "$(a row off this list)"` mean what it says. Giving the wire a
-/// second shape for it would be a second thing to keep in step with `Subject::parse`. A server's
-/// row is the exception, and it is `Subject`'s rather than this one's: it prints as `server files`
-/// and is given back with `--auto-allow-server`, because a server's name and a domain are both bare
-/// words and nothing in either says which.
+/// note: the subject is deliberately its own spelling, not a structure. For the three subjects a
+/// `Subject` can be read back from, it reads back from the same string it prints as, so
+/// `--auto-deny "$(a row off this list)"` means what it says. A second wire shape for it would be a
+/// second thing to keep in step with `Subject::parse`. A server's row is the exception, and it is
+/// `Subject`'s rather than this type's: it prints as `server files` and is given back with
+/// `--auto-allow-server`, because a server's name and a domain are both bare words and nothing in
+/// either says which.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Stanced {
@@ -938,13 +920,13 @@ mod tests {
     ///
     /// note: an unsure reading is never sent as [`Band::Reads`], because green is the colour that
     /// says a command is safe and a spread distribution over a safety rubric is not evidence that
-    /// it is. That rule lives in [`crate::tools::Rated::shown`] and this asks it rather than
-    /// restating where the threshold is - what is under test is that the wire goes through
-    /// `shown` at all, which is what stops a browser drawing green where a terminal drew yellow.
+    /// it is safe. That rule lives in [`crate::tools::Rated::shown`], and this test asks it rather
+    /// than restating the threshold: what is under test is that the wire goes through `shown` at
+    /// all, which stops a browser drawing green where a terminal drew yellow.
     ///
-    /// note: the words travel with the band for the same reason. A client wording the band itself
-    /// would be a second account of a rubric it cannot see, and the first rewording of the rubric
-    /// is where the two would part.
+    /// note: the words travel with the band for the same reason. A client that worded the band
+    /// itself would be a second account of a rubric it cannot see; the first rewording of the
+    /// rubric would make them differ.
     #[cfg(feature = "shell-advisor")]
     #[test]
     fn a_rating_reaches_the_wire_as_the_band_it_is_drawn_as() {
@@ -976,10 +958,9 @@ mod tests {
 
     /// The stage that earned the band travels too, and a session that sent none is readable.
     ///
-    /// note: the second half is the one a client depends on. `worst` is newer than the message it
-    /// is on, so a client built against this version reads a record written before the field
-    /// existed, and it has to arrive as *nothing to point at* rather than as a message that will
-    /// not parse - which for a projection is a client with no session at all.
+    /// note: `worst` is newer than the message it is on. A client reading a record written before
+    /// the field existed must see `worst` as `None`, not a parse failure; a parse failure would
+    /// leave the client with no session at all.
     #[cfg(feature = "shell-advisor")]
     #[test]
     fn the_stage_that_earned_a_band_travels_with_it_and_is_optional() {
@@ -1009,13 +990,13 @@ mod tests {
         assert_eq!(older.band, Band::Grave);
     }
 
-    /// The one byte the reader and the writer have to agree about.
+    /// Reader and writer must agree on one byte: the limit is the frame without its trailing
+    /// newline.
     ///
-    /// note: [`Frames::next`] checks what it is *holding*, which is the frame without the newline
-    /// that ended it, so a message exactly on the limit is one the other end will read and one
-    /// more than that is not. Measured against the framed bytes here, because that is what the
-    /// caller has in its hand - and getting this off by one would either refuse a record every
-    /// client could have taken or send one none of them can.
+    /// note: [`Frames::next`] checks the frame it holds, without the newline that ended it. A
+    /// message exactly on the limit is read; one byte more is not. This measures the framed bytes,
+    /// because that is what the caller holds. An off-by-one error would either refuse a record
+    /// every client could take or send one none can read.
     #[test]
     fn the_limit_is_the_frame_without_the_newline_that_ends_it() {
         let framed = |bytes: usize| {
@@ -1032,13 +1013,12 @@ mod tests {
         assert_eq!(overlong(b""), None);
     }
 
-    /// The reader takes the frame sitting on the limit, and stops one byte past it.
+    /// The reader accepts a frame at the limit and refuses one byte past it.
     ///
-    /// note: the reader half of the test above, which only `overlong` answers for bytes already in
-    /// a hand. [`Frames`] is asked about what it is *holding* - the frame without the newline that
-    /// ended it - and it is the other end of every `write`: a reader that refused the limit itself
-    /// would refuse a message the writer measured as the one thing it sends whole, and the
-    /// projection cut to fit would be refused on arrival by every client that could have had it.
+    /// note: the reader half of the test above. [`Frames`] is the reader end of every `write` and
+    /// checks the frame without its trailing newline. If it refused the limit itself, it would
+    /// refuse a message the writer measured as whole, and every client that could have received it
+    /// would reject the projection on arrival.
     #[tokio::test]
     async fn a_frame_on_the_limit_is_read_and_one_over_it_is_refused() {
         // a JSON string of the given length, framed as a peer would send it

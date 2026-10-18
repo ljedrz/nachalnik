@@ -1,9 +1,8 @@
 //! A markdown table, measured and drawn.
 //!
-//! note: its own file rather than part of [`super::markdown`] because a table is the one block
-//! whose width has to be decided before any of it can be drawn - every cell in a column is
-//! measured, the columns are fitted to the room there is, and only then is a row a row. The
-//! chunker next door is what decides that a block *is* a table.
+//! note: separate from [`super::markdown`] because a table's width must be decided before anything
+//! is drawn: every cell in a column is measured, the columns are fitted to the available width, and
+//! only then is a row a row. The chunker decides whether a block is a table.
 
 use ratatui::text::{Line, Span};
 
@@ -32,14 +31,13 @@ pub(super) enum Align {
     Right,
 }
 
-/// Reads a pipe table out of the lines of one, or gives up.
+/// Reads a pipe table from lines, or gives up.
 ///
-/// note: the second line is what says this is a table at all - a row of dashes between pipes -
-/// and CommonMark says the header decides how many columns there are. A row with more cells than
-/// that has the extra ones dropped and one with fewer is padded, which is what every renderer
-/// does and what keeps the box rectangular.
+/// note: the second line, a row of dashes between pipes, marks the table. The header decides how
+/// many columns there are. A row with more cells has the extras dropped; a row with fewer is
+/// padded, which keeps the box rectangular.
 pub(super) fn table(block: &str) -> Option<Table> {
-    /// The cells of one row, without the pipes that are only there to hold them.
+    /// The cells of one row, without the delimiter pipes.
     ///
     /// note: one delimiter off each end rather than every pipe there, and a split that knows what
     /// `\|` is. Trimming them all would take the empty first cell of `|| a |` away with the
@@ -48,8 +46,8 @@ pub(super) fn table(block: &str) -> Option<Table> {
     /// drop whatever fell off the end. A table drawn from the model's own answer has to say what
     /// the answer said.
     ///
-    /// note: a trailing `\|` is a pipe in the last cell rather than the delimiter, so the end is
-    /// only stripped where the pipe is not escaped.
+    /// note: a trailing `\|` is a pipe in the last cell, not the delimiter, so the end is stripped
+    /// only when the pipe is not escaped.
     fn cells(line: &str) -> Vec<String> {
         let line = line.trim();
         let line = line.strip_prefix('|').unwrap_or(line);
@@ -128,20 +126,20 @@ pub(super) fn is_delimiter(line: &str) -> bool {
 
 /// Draws a table into the width there is, wrapping inside the cells rather than around them.
 ///
-/// note: this is why tables are chunked out rather than left to the markdown renderer. That one
-/// lays a table out at whatever width its contents want and hands back rows of box characters,
-/// and a row wider than the window would then be wrapped like a sentence - half a border on the
-/// next line, and the table come apart. A table is a fixed shape; the thing that has to give
-/// when it does not fit is the columns, and only this end knows what they have to fit into.
+/// note: this is why tables are chunked out rather than left to the markdown renderer. The renderer
+/// lays a table out at whatever width its contents want and returns rows of box characters; a row
+/// wider than the window would wrap like a sentence, with half a border on the next line, and the
+/// table would come apart. A table is a fixed shape; when it does not fit, the columns give way,
+/// and only this end knows what they have to fit into.
 ///
 /// note: the cells go through the markdown renderer first, so `\`Tool\`` is measured and drawn as
-/// `Tool` in the colour inline code gets. Measuring the raw text would spend two columns per cell
-/// on punctuation that is never drawn.
+/// `Tool` in the inline-code colour. Measuring the raw text would spend two columns per cell on
+/// punctuation that is never drawn.
 pub(super) fn draw_table(table: &Table, width: usize) -> Vec<Line<'static>> {
-    /// The narrowest a column is allowed to get before the next one is asked to give instead.
+    /// The narrowest a column may be before another column gives way.
     ///
-    /// note: eight, because that is the floor `refit` wraps to; asking for less would produce a
-    /// column narrower than the lines put in it.
+    /// note: eight, because that is the floor `refit` wraps to; a smaller value would make a column
+    /// narrower than the lines in it.
     const FLOOR: usize = 8;
 
     let columns = table.head.len();
@@ -155,9 +153,8 @@ pub(super) fn draw_table(table: &Table, width: usize) -> Vec<Line<'static>> {
         .map(|row| row.iter().map(|cell| inline(cell)).collect())
         .collect();
 
-    // every column as wide as its widest cell, then shaved down from the widest until the whole
-    // thing fits: taking it evenly would squeeze a column of `yes`/`no` for the benefit of one
-    // holding a sentence
+    // every column starts as wide as its widest cell; the widest columns are shaved until the table
+    // fits. Shaving evenly would squeeze a `yes`/`no` column for a sentence column
     let mut widths: Vec<usize> = (0..columns)
         .map(|n| {
             std::iter::once(&head)

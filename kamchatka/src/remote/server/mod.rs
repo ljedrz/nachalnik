@@ -45,32 +45,32 @@ use connection::serve;
 
 /// How many of the program's own lines a client may fall behind before it starts losing them.
 ///
-/// note: smaller than the kernel's own event queue by a lot, and it can be: a note is not
-/// something that streams. What goes through here is what a command answered, what the runtime had
-/// to say about a turn, and an error - a handful per turn against a thousand fragments - so a
-/// client this far behind on *these* has not been reading for a very long time.
+/// note: smaller than the kernel's event queue. A note is not a stream. What goes through here is
+/// what a command answered, what the runtime said about a turn, and an error - a handful per turn
+/// against a thousand fragments - so a client this far behind has not been reading for a very long
+/// time.
 const VOICE: usize = 256;
 
 /// How long an ended session waits for its connections to write what they still owe.
 ///
-/// note: a bound rather than a wait for all of them, because one of them may be a client that
-/// stopped reading, and this is what stands between it and a process that never exits. What they
-/// owe is the answer to the last command and `session.finished`, which is a few hundred bytes.
+/// note: a bound rather than waiting for all of them, because one client may stop reading, and
+/// waiting for all of them would mean a process that never exits. What they owe is the answer to
+/// the last command and `session.finished`, which is a few hundred bytes.
 const PARTING: Duration = Duration::from_secs(2);
 
 /// How long the listener is left alone after a connection failed to arrive.
 ///
-/// note: the usual failure is this process out of file descriptors, and the listener stays
-/// readable while the connection that could not be taken waits in the backlog - so a loop that
-/// asked again at once would fail again at once, as fast as it could go, and say so every time.
+/// note: the usual failure is this process out of file descriptors, and the listener stays readable
+/// while the unaccepted connection waits in the backlog. A loop that asked again at once would fail
+/// again at once and say so every time.
 pub(crate) const RESTING: Duration = Duration::from_secs(1);
 
 /// A session, and the socket somebody reaches it on.
 pub struct Server {
     listener: Listener,
-    /// Where the socket file is, when it is one this process made and has to take away again.
+    /// Where the socket file is, when this process made it and must take it away again.
     ///
-    /// note: with the device and inode the bind made, because the path is only a name. A file
+    /// note: with the device and inode from the bind, because the path is only a name. A file
     /// removed by hand and bound again by another session is that session's socket.
     unlink: Option<(std::path::PathBuf, u64, u64)>,
     /// The port, when it is one, closed to this process's confined commands while it is served.
@@ -78,18 +78,18 @@ pub struct Server {
     /// When to try again after a connection last failed to arrive; `None` once they have been
     /// arriving for a while. See [`Server::arrived`].
     ///
-    /// note: behind a lock because [`Server::arrived`] takes `&self`, for the `select!` it is a
-    /// branch of - and a future holding a `Cell` would not be `Send`.
+    /// note: behind a lock because [`Server::arrived`] takes `&self` in a `select!` branch, and a
+    /// future holding a `Cell` would not be `Send`.
     resting: std::sync::Mutex<Option<tokio::time::Instant>>,
     /// Why [`Server::run`] stopped before somebody said `/quit`, if a signal was the reason; see
     /// [`Server::stopped`].
     stopped: Option<crate::headless::Stop>,
     /// `SIGTERM` and `SIGHUP`, subscribed before the socket exists; see [`Server::terminated`].
     ///
-    /// note: behind a lock for the reason `resting` is. Made in [`Server::bind`] rather than in
-    /// [`Server::run`], because the socket appearing is what says a session is there to be
-    /// reached, and a signal sent between the two ended the process where it stood - status
-    /// `SIGTERM` rather than `143`, and a socket file left for every later `--serve` to refuse.
+    /// note: behind a lock for the same reason as `resting`. Made in [`Server::bind`] rather than
+    /// [`Server::run`], because the socket appearing is what says a session is there to be reached.
+    /// A signal sent between the two ended the process with status `SIGTERM` rather than `143`, and
+    /// left a socket file that every later `--serve` refuses.
     terminations: tokio::sync::Mutex<crate::stopping::Terminated>,
     /// `ctrl+c`, subscribed before the socket exists for the reason `terminations` is, and taken
     /// by [`Server::run`] for as long as it runs.
@@ -107,10 +107,10 @@ enum Listener {
 
 /// What the session loop says back about one command.
 ///
-/// note: an attach has more than the answer. A subscription to the program's own voice has to be
-/// taken in the same breath as the projection it goes with, and the session loop is the only place
-/// both can happen with nothing in between - see the note on `Attached::seq`, which makes the same
-/// argument about the records.
+/// note: an attach has more than the answer. A subscription to the program's own voice must
+/// accompany the projection it goes with, and the session loop is the only place both can happen
+/// with nothing in between - see the note on `Attached::seq`, which makes the same argument about
+/// the records.
 struct Answered {
     /// The message that answers it, where it has one; `None` means the records will carry it.
     message: Option<Message>,
@@ -119,17 +119,17 @@ struct Answered {
     /// Where the session stands on what the voice says only when it changes, for a resume.
     ///
     /// note: a resume is answered with no projection, and the model and the questions a running
-    /// command is waiting on are in no record - so a client that was away when either changed would
-    /// otherwise go on showing the old one, and answer a network question it had never heard of
-    /// with a `y` that went to the model as a message. Taken with the subscription, for its reason.
+    /// command is waiting on are not recorded. A client that was away when either changed would
+    /// otherwise keep showing the old one, and answer a network question it never heard of with a
+    /// `y` that went to the model as a message. Taken with the subscription, for its reason.
     standing: Vec<Message>,
 }
 
 /// One thing a client has asked for, waiting for the loop that owns the [`App`] to do it.
 ///
-/// note: opaque, and it is the shape of the seam rather than shyness about the type inside. A
-/// `select!` branch may borrow the receiver or the `App` and not both, so waiting and doing are two
-/// calls - [`Serving::asked`] and [`Serving::answer`] - and this is what passes between them.
+/// note: opaque because of the shape of the seam, not shyness about the type inside. A `select!`
+/// branch may borrow the receiver or the `App` but not both, so waiting and doing are two calls -
+/// [`Serving::asked`] and [`Serving::answer`] - and this is what passes between them.
 pub struct Asked(FromClient);
 
 /// A connection that has just arrived and has not been taken on yet.
@@ -154,12 +154,12 @@ enum FromClient {
         /// Which connection.
         client: u64,
     },
-    /// It fell behind the session's own lines, and wants the state they carry said again.
+    /// It fell behind the session's own lines and wants the state they carry said again.
     ///
-    /// note: `Busy`, `Model` and `Reaching` are said only when they change, so a client that
-    /// missed one of them is told how many lines it missed and nothing would say it again - a piped
-    /// `--connect` waiting for a `busy: false` that went past, or a network question it never saw.
-    /// What a resume is given, the connection is given again; see `connection::serve`.
+    /// note: `Busy`, `Model` and `Reaching` are said only when they change, so a client that missed
+    /// one is told how many lines it missed and nothing would say it again - a piped `--connect`
+    /// waiting for a `busy: false` that went past, or a network question it never saw. What a
+    /// resume is given, the connection is given again; see `connection::serve`.
     Standing {
         /// Where the state goes.
         answer: oneshot::Sender<Vec<Message>>,
@@ -209,13 +209,13 @@ impl Server {
         use std::os::unix::fs::{FileTypeExt as _, MetadataExt as _, PermissionsExt as _};
 
         let path = std::path::PathBuf::from(path);
-        // note: `symlink_metadata` and not `exists`, which follows a link and so sees nothing at
-        // all where one points nowhere - the one case that then reached the bind and came back as
-        // a bare `Address already in use`. A link at this path is named as a link and refused
-        // rather than followed, and that is a decision: `Drop` takes the file away by the device
-        // and inode the bind made, which for a link would be the link's and never the socket's, so
-        // a session served through one would leave the socket behind for every later `--serve` to
-        // refuse. The address a session is served on is its own path.
+        // note: `symlink_metadata` is used instead of `exists`, which follows links and sees
+        // nothing where a link points nowhere - that case reached bind and returned
+        // `Address already in use`. A link at this path is named as a link and refused rather than
+        // followed. `Drop` removes the file by the device and inode the bind made; for a link that
+        // is the link's, never the socket's, so a session served through a link would leave the
+        // socket behind for every later `--serve` to refuse. The address a session is served on is
+        // its own path.
         if let Ok(there) = std::fs::symlink_metadata(&path) {
             let what = match there.file_type() {
                 socket if socket.is_socket() => None,
@@ -268,13 +268,12 @@ impl Server {
         }
         let listener = tokio::net::UnixListener::bind(&path)
             .map_err(|e| format!("could not listen at {}: {e}", path.display()))?;
-        // note: after the bind, because there is nowhere earlier - the file is created by the bind
-        // itself, under whatever the umask says. The window is one syscall wide, and what closes it
-        // properly is the directory the socket is in, which is why the refusal above names the path
-        // rather than quietly taking it over
+        // note: after the bind; the bind creates the file under the umask, so there is nowhere
+        // earlier. The window is one syscall wide, and the directory the socket is in closes it
+        // properly, which is why the refusal names the path rather than quietly taking it over.
         //
-        // a socket that cannot be made private is removed here rather than left to be refused as
-        // stale next time: the listener is dropped on the way out without the `Drop` that would
+        // A socket that cannot be made private is removed here rather than left to be refused as
+        // stale next time. The listener is dropped on the way out without the `Drop` that would
         // remove it
         if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)) {
             let _ = std::fs::remove_file(&path);
@@ -406,7 +405,7 @@ impl Server {
     /// Takes whatever connected next.
     ///
     /// note: a port gets the two options a socket file has no use for; see [`super::tuned`]. It is
-    /// done here rather than on the listener because neither of them is inherited - they are
+    /// done here rather than on the listener because neither option is inherited: they are
     /// properties of a connection, so every accepted one has to be told.
     async fn accept(&self) -> std::io::Result<super::Connection> {
         match &self.listener {
@@ -422,12 +421,13 @@ impl Server {
         }
     }
 
-    /// Why the last [`Server::run`] stopped, where a signal rather than somebody's `/quit` was the
-    /// reason: `ctrl+c`, `SIGHUP` or `SIGTERM`, the first of them that arrived.
+    /// Why the last [`Server::run`] stopped, when the reason was a signal rather than somebody's
+    /// `/quit`: `ctrl+c`, `SIGHUP` or `SIGTERM`, the first to arrive.
     ///
-    /// note: what the program's exit status is made of, as [`crate::headless::Headless::stopped`]
-    /// is for a headless run. A served session ended by `SIGTERM` left with `0`, which a script or
-    /// a service manager reads as a session that finished rather than one that was stopped.
+    /// note: it is what the program's exit status is made of, as
+    /// [`crate::headless::Headless::stopped`] is for a headless run. A served session ended by
+    /// `SIGTERM` left with `0`, which a script or service manager reads as finished rather than
+    /// stopped.
     pub fn stopped(&self) -> Option<crate::headless::Stop> {
         self.stopped
     }
@@ -435,48 +435,46 @@ impl Server {
     /// Waits for the next `SIGTERM` or `SIGHUP`, from the moment this was bound; cancel-safe, as
     /// [`crate::stopping::Terminated::which_arrived`] is.
     ///
-    /// note: for a loop that serves this session with a screen as well, which has to read these
+    /// note: for a loop that serves this session with a screen as well, which must read these
     /// rather than subscribe again: a signal that arrives before a subscription is made reaches
-    /// only the ones already made, so a loop of its own would wait for it for ever.
+    /// only the ones already made, so a separate loop would wait for it for ever.
     pub async fn terminated(&self) -> crate::stopping::Ending {
         self.terminations.lock().await.which_arrived().await
     }
 
-    /// Serves the session until somebody says to stop, and returns when nothing is left in flight.
+    /// Serves the session until stopped, and returns when nothing is left in flight.
     ///
-    /// note: it does **not** stop when the last client leaves, and that is the invariant the
-    /// design is for: a session belongs to the host, not to whoever happens to be looking at it. A
-    /// turn carries on with nobody attached, a question waits for somebody to come back and answer
-    /// it, and a client picking the session up an hour later picks up the same session.
+    /// note: it does not stop when the last client leaves, and that is the invariant the design is
+    /// for: a session belongs to the host, not to whoever happens to be looking at it. A turn
+    /// continues with nobody attached, a question waits for someone to answer it, and a client can
+    /// reattach an hour later to the same session.
     pub async fn run(
         &mut self,
         app: &mut App,
         events: &mut broadcast::Receiver<Event>,
         finished: &mut mpsc::UnboundedReceiver<Outcome>,
     ) -> Result<(), String> {
-        // note: `App::keys` is **not** set here. It says whether whoever just asked has keys to
-        // press, and a client never does, whatever the loop has - so `apply` settles it per
-        // command, because a session can be drawn and served at once and the two audiences want
-        // different answers out of one `/help`. A loop with no screen leaves the flag alone:
-        // nothing local ever asks it anything
+        // note: `App::keys` is not set here. It says whether whoever asked has keys to press; a
+        // client never does, so `apply` settles it per command. A session can be drawn and served
+        // at once, and the two audiences want different answers from one `/help`. A loop with no
+        // screen leaves the flag alone; nothing local asks it
         let mut serving = Serving::new(app);
         let mut stopping = false;
-        // what wakes the loop for a running command's question, which is no event of the kernel's;
-        // `pump` at the top is what tells the clients
+        // what wakes the loop for a running command's question, which is not a kernel event; `pump`
+        // at the top tells the clients
         let mut reaching = app.policy.reaching().subscribe();
         let mut failed = None;
-        // subscribed once, in `bind`, because a second press arriving while the first is being
-        // handled is the one that means leave; see `crate::stopping`. A second `run` after the
-        // first took it back gets it again, and only one that failed before then subscribes anew
+        // subscribed once, in `bind`, because a second press while the first is being handled means
+        // leave; see `crate::stopping`. A second `run` after the first took it back gets it again,
+        // and only one that failed before then subscribes anew
         let mut presses = match self.presses.take() {
             Some(presses) => presses,
             None => crate::stopping::Stopping::new()
                 .map_err(|e| format!("could not listen for ctrl+c: {e}"))?,
         };
 
-        // set by whichever branch found a reason to stop, rather than each of them breaking where
-        // it stands: one of them is nested inside a second `select!`, and a `break` there ends the
-        // wrong loop
+        // set by whichever branch found a reason to stop, because one branch is nested inside a
+        // second `select!` and a `break` there would end the wrong loop
         let mut leaving = false;
         // what a provider says while it waits, which no event carries; `pump` hands it on
         let mut notices = tokio::time::interval(NOTICES);
@@ -492,9 +490,9 @@ impl Server {
             if leaving {
                 break;
             }
-            // and a first `ctrl+c` once the turn has stopped, which waits for a `/model` or
-            // `/endpoint` still settling as `/quit` does: its change is a record, and a session
-            // ended under it is one that changed model after it had finished
+            // a first `ctrl+c` after the turn has stopped waits for `/model` or `/endpoint` to
+            // finish settling, as `/quit` does. Its change is a record, so a session ended under it
+            // changed model after it had finished
             if stopping && !app.busy {
                 failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
                 break;
@@ -537,9 +535,9 @@ impl Server {
 
         // what never went in, said to whoever is still attached; see `App::unsent`
         app.unsent();
-        // note: the session is ended here rather than by the caller, for the reason `headless.rs`
-        // gives: `session.finished` is a record like any other, and a caller that ended it after
-        // this returned would have written every record but the last one
+        // note: the session is ended here rather than by the caller, because `session.finished` is
+        // a record like any other; a caller that ended it after this returned would have written
+        // every record but the last one
         app.kernel.finish();
         serving.last(app).await;
         self.presses = Some(presses);
@@ -560,13 +558,13 @@ pub(crate) fn run_is_over(
     resting.is_none_or(|until| now >= until + RESTING)
 }
 
-/// Says what the session has said, then hands in the lines that waited for a command still out,
-/// the desk's and the clients', once it has come back or been stopped, and says those too;
-/// `true` when there were any. See `App::in_flight`.
+/// Says what the session has said, then delivers the lines that waited for a command still in
+/// flight (the desk's and the clients') once it has come back or been stopped. Returns `true` when
+/// there were any. See `App::in_flight`.
 ///
-/// note: the pump comes first so that a client hears what the command came back with before
-/// what the lines after it did, and nothing is heard in an order it did not happen in. A loop
-/// with nobody attached hands the lines in all the same.
+/// note: the pump comes first so a client hears what the command came back with before the lines
+/// after it, and nothing is heard out of order. A loop with nobody attached still hands the lines
+/// in.
 pub async fn released(app: &mut App, mut serving: Option<&mut Serving>) -> bool {
     if let Some(serving) = serving.as_deref_mut() {
         serving.pump(app);
@@ -584,10 +582,9 @@ pub async fn released(app: &mut App, mut serving: Option<&mut Serving>) -> bool 
 /// Takes on a connection, or says why there is not one; one branch of both loops that serve a
 /// session.
 ///
-/// note: these are functions rather than bodies in the loops, because there are two loops that
-/// serve - [`Server::run`] and the terminal's own - and because the events have a second caller
-/// in the drain that catches up after a command held the `App`. Out of the loops they read as the
-/// things that happen to a served session, said the same way by both.
+/// note: these are functions rather than bodies in the loops because there are two loops that
+/// serve - [`Server::run`] and the terminal's own - and because the events have a second caller in
+/// the drain that catches up after a command held the `App`.
 pub fn apply_arrival(serving: &mut Serving, app: &mut App, incoming: std::io::Result<Arrived>) {
     match incoming {
         Ok(arrived) => serving.attend(app, arrived),
@@ -600,8 +597,8 @@ pub fn apply_arrival(serving: &mut Serving, app: &mut App, incoming: std::io::Re
 /// Takes in one thing the kernel said; `false` when the stream has ended and the session with it.
 ///
 /// note: what lagged is said rather than recovered. The stream keeps `App` up to date - the screen
-/// and the projections handed to clients - and the session log is the one that keeps everything:
-/// the clients read it for themselves, `/save` writes it, and it drops nothing.
+/// and the projections handed to clients - and the session log keeps everything: clients read it,
+/// `/save` writes it, and it drops nothing.
 pub fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvError>) -> bool {
     match event {
         Ok(event) => app.on_event(event),
@@ -651,11 +648,10 @@ fn apply_press(app: &mut App, stopping: &mut bool) -> bool {
 ///
 /// note: it exists because there are two loops that can own the [`App`] and either of them may be
 /// serving. [`Server::run`] is one - a session with a socket and nothing else - and the terminal's
-/// own loop in `main.rs` is the other, which is what lets a session be driven from the desk it is
-/// running on and from a browser at the same time. What that costs a loop is [`pump`] before it
-/// waits, [`asked`] as a branch to wait on and [`answer`] for what it yields, [`attend`] for each
-/// connection, and [`last`], awaited once the session has ended. The loop stays the loop, and this
-/// is the part neither should be writing twice.
+/// own loop in `main.rs` is the other, which lets a session be driven from the desk it is running
+/// on and from a browser at the same time. What that costs a loop is [`pump`] before it waits,
+/// [`asked`] as a branch to wait on and [`answer`] for what it yields, [`attend`] for each
+/// connection, and [`last`], awaited once the session has ended.
 ///
 /// [`pump`]: Serving::pump
 /// [`asked`]: Serving::asked
@@ -723,12 +719,12 @@ impl Serving {
         }
     }
 
-    /// Gives the session to the client that has just attached, and lets go of the one it had.
+    /// Gives the session to the newly attached client and releases the previous one.
     ///
-    /// note: before the attach is answered, so that there is no moment at which two clients both
-    /// hold it. The one replaced is told by its own connection, which flushes what it owes and
-    /// closes; a question it had not answered is left for the newcomer, as one is for anybody
-    /// arriving after a client that left.
+    /// note: this runs before the attach is answered, so no two clients hold the session at once.
+    /// The replaced client is told by its own connection, which flushes what it owes and closes. A
+    /// question it had not answered is left for the newcomer, as for anybody arriving after a
+    /// client that left.
     fn seated(&mut self, app: &mut App, client: u64) {
         if let Some(had) = self.seated.replace(client).filter(|had| *had != client) {
             if let Some(replaced) = self.replaced.remove(&had) {
@@ -743,10 +739,10 @@ impl Serving {
 
     /// Says whatever the session has said since the last look, and whatever has changed about it.
     ///
-    /// note: called before the loop waits rather than after something happens, because what it is
-    /// reading is [`App`] and anything at all may have changed it - a key, a client, a tool, the
-    /// model. A loop that broadcast from the places that cause changes would be a list of those
-    /// places to keep complete, and it would be wrong the first time somebody added one.
+    /// note: called before the loop waits rather than after something happens, because it reads
+    /// [`App`], which anything may have changed: a key, a client, a tool, or the model.
+    /// Broadcasting from the places that cause changes would mean keeping a list of those places
+    /// complete, and it would be wrong the first time somebody added one.
     pub fn pump(&mut self, app: &App) {
         // before the lines, because it is about the ones already sent: `/cleanup` takes the
         // program's own half of every attached client's screen away, and the watermark below goes
@@ -761,20 +757,19 @@ impl Serving {
         // the program has one voice and every client hears it, which is most of the difference
         // between a session several people are attached to and several sessions
         self.say(app);
-        // note: on a change and nothing else. What closes the gap between a client asking for
-        // something and being told what came of it is the *answer* to its command, which every
-        // command has and which carries this same figure - see `Message::Done`. A broadcast that
-        // also fired per command would reach every other client as news about a session that had
-        // not changed
+        // note: on a change and nothing else. The answer to a command closes the gap between a
+        // client asking for something and being told what came of it; every command has one, and it
+        // carries this same figure - see `Message::Done`. A broadcast that also fired per command
+        // would reach every other client as news about a session that had not changed
         if self.announced != app.working() {
             self.announced = app.working();
             let _ = self.voice.send(Arc::new(Message::Busy {
                 busy: self.announced,
             }));
         }
-        // and the same rule for the model: a switch finishes inside the provider the kernel
-        // already holds, and a client that did not ask for a fresh projection went on naming the
-        // model before it. See `Message::Model`
+        // the same rule for the model: a switch finishes inside the provider the kernel already
+        // holds, so a client that did not ask for a fresh projection kept naming the previous
+        // model. See `Message::Model`
         //
         // note: asked once rather than once per side of the comparison. `Kernel::model_info` builds
         // a `ModelInfo` each time it is called - two strings and the list of parameters the model
@@ -807,26 +802,26 @@ impl Serving {
         }
     }
 
-    /// The next thing a client wants, as a branch to wait on.
+    /// Waits for the next thing a client wants.
     ///
-    /// note: it borrows this and not the [`App`], which is why it is not one call with
-    /// [`Serving::answer`]. A `select!` branch holds its borrow for the length of the `select!`, so
-    /// a branch that took the `App` would leave no other branch able to touch it.
+    /// note: it borrows `self`, not the [`App`], so it is not one call with [`Serving::answer`]. A
+    /// `select!` branch holds its borrow for the length of the `select!`; a branch that took the
+    /// [`App`] would leave no other branch able to touch it.
     pub async fn asked(&mut self) -> Option<Asked> {
         self.asked.recv().await.map(Asked)
     }
 
     /// Does one of them, and answers whoever asked.
     ///
-    /// note: the doing happens here, in the caller's own loop, and it takes the [`App`] with it -
-    /// there is one of it, and answering anybody needs it. What it does not do is wait on an
-    /// endpoint: `/models`, a compaction pass and a switch are sent out and finished when they come
-    /// back, and a line arriving meanwhile is answered `queued` and handed in after - see
-    /// [`App::in_flight`]. So a client's command is answered in the time it takes to do, and the
-    /// loop goes back to everybody else.
+    /// note: the doing happens here, in the caller's own loop, and it takes the [`App`] with it.
+    /// There is one [`App`], and answering anybody needs it. It does not wait on an endpoint:
+    /// `/models`, a compaction pass and a switch are sent out and finished when they come back, and
+    /// a line arriving meanwhile is answered `queued` and handed in after - see [`App::in_flight`].
+    /// A client's command is answered in the time it takes to do, and the loop goes back to
+    /// everybody else.
     ///
-    /// note: what it does not cost is anything *lost*, as long as the kernel's broadcast is read
-    /// while it runs, which [`Serving::answered`] does for both loops.
+    /// note: nothing is lost, as long as the kernel's broadcast is read while it runs, which
+    /// [`Serving::answered`] does for both loops.
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
             // nothing to seat and nothing to change, so asked of whoever asks
@@ -852,10 +847,10 @@ impl Serving {
                 command,
                 answer,
             } => {
-                // note: the seat is asked here, where the command would be done, and not only by
-                // the replaced connection going. It is told to go and goes when it next looks, and
-                // a command it had read before then arrives after the newcomer has the session.
-                // An attach is the one command that takes the seat rather than needing it
+                // note: the seat is asked here, where the command would be done, not only when the
+                // replaced connection goes. It is told to go and goes when it next looks; a command
+                // it read before then arrives after the newcomer has the session. Only an attach
+                // takes the seat rather than needing it
                 if !matches!(command, Command::Attach { .. }) && self.seated != Some(client) {
                     let _ = answer.send(Answered {
                         message: Some(Message::Failed {
@@ -900,17 +895,16 @@ impl Serving {
     /// takes in what it read once the command is done; `false` when the stream ended meanwhile and
     /// the session with it.
     ///
-    /// note: the command holds the `App` for as long as it takes - there is one of it - so the
-    /// loop waits. What it keeps doing meanwhile is reading the broadcast, because that is the only
-    /// thing either loop reads that *loses* rather than queues: a subscription that falls behind
-    /// drops what it did not read, which is a hole in what the screen shows and in `App::trace`,
-    /// handed to every client that attaches afterwards.
+    /// note: the command holds the [`App`] for as long as it takes. There is one [`App`], so the
+    /// loop waits. Meanwhile it reads the broadcast, the only thing either loop reads that loses
+    /// rather than queues: a subscription that falls behind drops what it did not read, a hole in
+    /// what the screen shows and in `App::trace`, handed to every client that attaches afterwards.
     ///
-    /// note: the events and nothing else. The keys are in a stream, a connection waits in the
-    /// listen backlog, an outcome in an unbounded channel and a `ctrl+c` in its own stream: they
-    /// arrive late either way and none of them is dropped, so taking them early would buy an
-    /// ordering nobody can tell apart. What is still *held* is the next command, because answering
-    /// one needs the `App` and the `App` is lent out, for no longer than the command takes.
+    /// note: it reads the events and nothing else. Keys wait in a stream, connections in the listen
+    /// backlog, outcomes in an unbounded channel and `ctrl+c` in its own stream: they arrive late
+    /// either way and none is dropped, so taking them early buys an ordering nobody can tell apart.
+    /// The next command is still held, because answering one needs the [`App`] and the [`App`] is
+    /// lent out for no longer than the command takes.
     pub async fn answered(
         &mut self,
         app: &mut App,
@@ -941,11 +935,11 @@ impl Serving {
 
     /// Takes on a connection that has just arrived.
     pub fn attend(&mut self, app: &mut App, arrived: Arrived) {
-        // note: a command this process confined, or anything it left running in its session, is
-        // not a client, because a client answers permission questions and it would be answering its
-        // own. A socket file is reachable by every confined command below Linux 7.1, and from 7.1
-        // by one that may write where it is. A process a command started under a `setsid` of its
-        // own is in a session nothing here has seen, and gets through
+        // note: a confined command, or anything it left running in its session, is not a client,
+        // because a client answers permission questions and would answer its own. A socket file is
+        // reachable by every confined command below Linux 7.1, and from 7.1 by one that may write
+        // where it is. A process a command started under its own `setsid` is in a session nothing
+        // here has seen, and gets through
         if let super::Connection::Unix(stream) = &arrived.0
             && stream
                 .peer_cred()
@@ -1007,8 +1001,8 @@ impl Serving {
     pub fn last(mut self, app: &App) -> impl Future<Output = ()> + Send + use<> {
         self.say(app);
 
-        // and a command still waiting on the loop is answered with its refusal rather than kept
-        // waiting for a loop that has stopped
+        // a command still waiting on the loop is answered with its refusal rather than kept waiting
+        // for a loop that has stopped
         let Self {
             voice,
             asked,
@@ -1026,11 +1020,10 @@ impl Serving {
 }
 
 impl Drop for Server {
-    /// Takes the socket file away again, or opens the port to confined commands again.
+    /// Removes the socket file, or opens the port to confined commands again.
     ///
-    /// note: only the file this process made, and only because a socket file that outlives its
-    /// listener is a path every later client is refused at and every later `--serve` refuses as
-    /// stale.
+    /// note: only the file this process made, because a socket file that outlives its listener is a
+    /// path every later client is refused at and every later `--serve` refuses as stale.
     fn drop(&mut self) {
         if let Some(port) = self.closed {
             crate::sandbox::stopped_serving_on(port);
@@ -1055,13 +1048,12 @@ impl Drop for Server {
 /// earlier version is `App`'s to remember, so that one comes here.
 async fn apply(app: &mut App, command: Command) -> Option<Message> {
     match command {
-        // note: a resume is answered with a `done` rather than with nothing, and the reason is the
-        // invariant `Message::Done` states: every command gets exactly one answer. A resume that
-        // got none would leave a client with a count of answers owed that never came back down, and
-        // the two things that count on it - stdin closing, and the session going quiet - would stop
-        // working for the rest of the process. It carries `busy` because that is the other thing a
-        // reconnecting client cannot know: a turn may have ended while it was away, and no record
-        // says so
+        // note: a resume is answered with `Message::Done` rather than nothing, because
+        // `Message::Done` states the invariant that every command gets exactly one answer. A resume
+        // with no answer would leave a client with answers owed that never came back, and stdin
+        // closing and the session going quiet would stop working for the rest of the process. It
+        // carries `busy` because a reconnecting client cannot know whether a turn ended while it
+        // was away; no record says so
         Command::Attach { since, .. } => Some(match since {
             None => Message::Attached(Box::new(project(app))),
             Some(_) => Message::Done {
@@ -1072,10 +1064,10 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
         // note: the same projection under a name that does not mean "start again", which is the
         // difference a client cares about. See `Message::Projected`
         Command::Project => Some(Message::Projected(Box::new(project(app)))),
-        // note: answered with the projection rather than a bare `done`, because the answer to
-        // "move this item" is what the context now says - and the row the client is looking at is
-        // in it. Every *other* client hears about it as a `context.changed` record and asks for
-        // its own, which is the same round trip it would make anyway
+        // note: answered with the projection rather than a bare `done`, because the answer to "move
+        // this item" is what the context now says, and the row the client is looking at is in it.
+        // Other clients hear of it as a `context.changed` record and ask for their own, the same
+        // round trip they would make anyway
         Command::Cycle { id } => Some(match app.cycle(id) {
             Ok(_) => Message::Projected(Box::new(project(app))),
             Err(error) => Message::Failed {
@@ -1093,12 +1085,11 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 error,
             },
         }),
-        // note: answered with a projection, which is what `cycle` answers with and for its reason.
-        // An edit changes what the item says, what it costs, and therefore what the next request
-        // comes to - and a client could work out none of that from the `context.replaced` the
-        // stream is about to carry.
+        // note: answered with a projection, as `cycle` does and for its reason. An edit changes
+        // what the item says, what it costs, and therefore what the next request comes to; a client
+        // could work out none of that from the `context.replaced` the stream is about to carry.
         //
-        // note: a text that changes nothing is a `Done` rather than a projection, because nothing
+        // note: a text that changes nothing is `Done` rather than a projection, because nothing
         // moved: no record, no version page, no checkpoint. Saying so plainly is better than a
         // projection identical to the one the client already had, which reads as an edit that
         // silently did not take
@@ -1113,9 +1104,9 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 error,
             },
         }),
-        // note: refused here as well as at the two line drivers, because the protocol is open to
-        // any client and a blank line handed to `App::submit` is a message: an empty turn sent to
-        // the model, and a request some endpoints refuse outright
+        // note: refused here and at the two line drivers, because the protocol is open to any
+        // client and a blank line handed to `App::submit` is a message: an empty turn sent to the
+        // model, and a request some endpoints refuse outright
         Command::Submit { line } if line.trim().is_empty() => Some(Message::Failed {
             about: "submit".to_owned(),
             error: "a blank line is not a message, so nothing was sent".to_owned(),
@@ -1160,10 +1151,9 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             grant,
             remember,
         } => {
-            // note: `busy` read *after* the decision rather than before, because answering the
-            // last outstanding question is what starts the next turn - so a figure taken first
-            // would tell the client the session was quiet in the one moment it had just stopped
-            // being so
+            // note: `busy` is read after the decision, not before, because answering the last
+            // outstanding question starts the next turn. A figure taken first would tell the client
+            // the session was quiet in the moment it just stopped being so
             match app.decide(id, grant, remember) {
                 Ok(()) => Some(Message::Done {
                     about: "decide".to_owned(),
@@ -1175,8 +1165,8 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 }),
             }
         }
-        // note: on sight as well, and for a reason of its own: the question holds a call that is
-        // running, so there is no turn unwinding for an answer to land in the middle of
+        // note: applied on sight as well. The question holds a running call, so there is no turn
+        // unwinding for an answer to land in the middle of
         Command::Reach {
             id,
             grant,
@@ -1191,15 +1181,15 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 error,
             }),
         },
-        // note: only a question about an *earlier* version reaches here. What an item says now
-        // is answered by the connection off the kernel, without troubling this loop at all - so
-        // `None` here is that one, already answered. The viewer is what keeps the earlier
-        // versions, and the viewer is this side of the channel
+        // note: only a question about an earlier version reaches here. What an item says now is
+        // answered by the connection off the kernel, without troubling this loop, so `None` here is
+        // that one, already answered. The viewer keeps the earlier versions and is this side of the
+        // channel
         Command::Inspect { id, raw, version } => version.map(|at| match app.version(id, at) {
-            // note: the text, and no `stored` reading of it. What `stored` puts above an item is
-            // why it is here and what its turn was thinking, which are facts about the item as
-            // it stands rather than about what it used to say - printed over an old version they
-            // would be dated wrongly, and confidently
+            // note: the text, not a `stored` reading of it. What `stored` puts above an item is why
+            // it is here and what its turn was thinking - facts about the item as it stands, not
+            // what it used to say. Printed over an old version they would be dated wrongly, and
+            // confidently
             Some(was) => Message::Item {
                 id,
                 body: was.to_text().into_owned(),
@@ -1214,9 +1204,9 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 },
             },
         }),
-        // note: answered rather than left to close the connection, because a client that sent
-        // something is owed one answer whether or not this end knows what it was - see
-        // `Message::Done`. What reaches here is a client newer than this session
+        // note: answered rather than closing the connection, because a client that sent something
+        // is owed one answer whether or not this end knows what it was - see `Message::Done`. What
+        // reaches here is a client newer than this session
         Command::Unknown => Some(Message::Failed {
             about: "unknown".to_owned(),
             error: format!(
@@ -1227,13 +1217,13 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
     }
 }
 
-/// What the advisor made of the questions waiting, for the client that has to draw them.
+/// What the advisor made of the waiting questions, for the client that has to draw them.
 ///
-/// note: read at projection time out of what the advisor wrote down while the verdict was being
-/// worked out, which is the same moment and the same reading the terminal's panel takes - see
-/// [`App::rating`]. The kernel awaits the policy before it raises a question, so by the time a
-/// question is in a projection its rating is either already there or was never coming, and nothing
-/// on the wire has to describe a request in flight.
+/// note: read at projection time from what the advisor wrote down while the verdict was worked out,
+/// the same moment and the same reading the terminal's panel takes - see [`App::rating`]. The
+/// kernel awaits the policy before it raises a question, so by the time a question is in a
+/// projection its rating is either already there or never coming, and nothing on the wire has to
+/// describe a request in flight.
 #[cfg(feature = "shell-advisor")]
 fn rated(app: &App, asking: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
     asking
@@ -1287,16 +1277,16 @@ fn standing(app: &App) -> Vec<Message> {
 
 /// Where the session stands, in the form a client can start rendering from.
 ///
-/// note: abridged here rather than at either of the writes that send it, because there are two -
-/// an attach and a `project` - and a projection one of them cut and the other refused would be a
-/// session a browser can attach to and then never redraw. See [`Attached::abridge`].
+/// note: abridged here rather than at either write that sends it, because there are two - an attach
+/// and a `project` - and a projection cut by one and refused by the other would leave a session a
+/// browser can attach to but never redraw. See [`Attached::abridge`].
 fn project(app: &App) -> Attached {
-    // note: first, before anything it is the watermark for. A turn runs on a task of its own and
-    // goes on changing the kernel while this reads it, so a record written between reading the
-    // items and reading the number would be in neither the projection nor the stream after it -
-    // and one of those is a permission question, which a client that never sees it cannot answer.
-    // Taken first, such a record is in both instead, which every client here reads as the same
-    // thing twice
+    // note: read first, before anything it is the watermark for. A turn runs on its own task and
+    // keeps changing the kernel while this reads it, so a record written between reading the items
+    // and reading the number would be in neither the projection nor the stream after it - and one
+    // of those is a permission question, which a client that never sees it cannot answer. If read
+    // first, such a record is in both instead, which every client here reads as the same thing
+    // twice
     let seq = app.kernel.last_seq();
     let items = app.kernel.items();
     let going = app.going();
@@ -1324,10 +1314,10 @@ fn project(app: &App) -> Attached {
             .iter()
             .map(Line::of)
             .collect(),
-        // note: every item, rather than `App::listed`, which is the *screen's* list and leaves out
-        // what is not being sent when somebody has asked it to. Which rows to show is a decision
-        // belonging to whoever is reading, and a projection that had already made it would be one
-        // client's view of the context standing in for the context
+        // note: every item, not `App::listed`, which is the screen's list and leaves out what is
+        // not being sent when somebody has asked it to. Which rows to show is the reader's
+        // decision; a projection that had already made it would be one client's view standing in
+        // for the context
         items: items
             .iter()
             .map(|item| Listed::of(item, &going, app.versions(item.id)))
@@ -1351,14 +1341,13 @@ fn project(app: &App) -> Attached {
 /// The trace as the pane draws it, with the gap between lines worked out the pane's way.
 ///
 /// note: the whole ring rather than what a search left, because `App::traced` answers for a screen
-/// with a query typed into it and a client's view is its own. A filter is the client's to apply.
+/// with a query typed into it. A client's view is its own; a filter is the client's to apply.
 ///
 /// note: the gap is computed here rather than sent as two timestamps, because the rule for when
-/// there *is* one is a decision rather than a format: nothing under a tenth of a second, and
-/// nothing after a line that ended a wait for a person - however long somebody took to answer a
-/// question, that is not a step this program spent. A client left to work that out would get a
-/// column whose largest figure is how long the operator was thinking, which is the one number in
-/// there nobody should act on.
+/// there is one is a decision, not a format: nothing under a tenth of a second, and nothing after a
+/// line that ended a wait for a person. However long somebody took to answer a question, that is
+/// not a step this program spent. A client left to work that out would see a column whose largest
+/// figure is how long the operator was thinking - the one number in there nobody should act on.
 fn tracing(app: &App) -> Vec<Tracing> {
     let mut before = None;
     app.trace
@@ -1404,10 +1393,10 @@ fn name(command: &Command) -> &'static str {
 
 /// What a session about to be driven from somewhere else should say for itself.
 ///
-/// note: through [`App::say`] for the reason the headless opening gives: it is addressed to whoever
-/// is reading rather than to the model, so it goes where a `/save` cannot mistake it for something
-/// the model was told - and every client that attaches later reads it in the conversation, which is
-/// where somebody arriving wants to find out what they have joined.
+/// note: through [`App::say`], because it is addressed to whoever is reading rather than to the
+/// model, so a `/save` cannot mistake it for something the model was told. Every client that
+/// attaches later reads it in the conversation, where somebody arriving wants to find out what they
+/// have joined.
 pub fn opening(app: &mut App, address: &str) {
     app.say(
         Speaker::Note,
@@ -1481,12 +1470,12 @@ mod tests {
         assert!(run_is_over(resting, at(2_000)));
     }
 
-    /// The gap goes out where the program spent the time, and nowhere a person did.
+    /// The gap column shows where the program spent time, not where a person did.
     ///
-    /// note: this is a client reading it rather than a pane drawing it, which is the half only here
-    /// can see: a client handed two timestamps works the rule out itself and gets a column whose
-    /// largest figure is the operator reading. Both halves of the guard are in one trace, because
-    /// either alone is satisfied by a gap column that is always empty.
+    /// note: this is the client reading it, not a pane drawing it. A client given two timestamps
+    /// works out the rule itself and gets a column whose largest figure is the operator reading.
+    /// Both halves of the guard are in one trace because either alone is satisfied by a gap column
+    /// that is always empty.
     #[test]
     fn the_gap_column_leaves_out_the_wait_that_was_a_person() {
         use crate::app::Traced;
@@ -1507,9 +1496,9 @@ mod tests {
         let start = Instant::now();
         let wall = SystemTime::now();
 
-        // four seconds of somebody reading a question, and then a quarter of a second of the
-        // program doing what they allowed: both waits are longer than the tenth of a second the
-        // column reports at all, so the only thing telling them apart is whose they were
+        // four seconds of somebody reading a question and a quarter of a second of the program are
+        // both longer than the tenth of a second the column reports, so the only difference is
+        // whose wait they were
         for (name, after, theirs) in [
             ("permission.requested", 0, false),
             ("permission.decided", 4_000, true),
@@ -1553,14 +1542,13 @@ mod tests {
 
     /// The first `ctrl+c` stops what is running and does not leave; the second one leaves at once.
     ///
-    /// note: the pair, because either half on its own is a session that behaves. `Server::run`
-    /// leaves on the press branch rather than waiting for the loop top, so a first press that
-    /// also returned `true` ended the session with the turn still running and nothing said about
-    /// what was being kept - the note and the `interrupt` are what the first press is for. And a
-    /// press that never returned `true` is a session nothing can end but `/quit`: a served
-    /// session has no keys, so `ctrl+c` twice is how somebody at the other end of a socket stops
-    /// it, and a run with a tool in it that never answers stays up until a signal arrives from
-    /// outside the process.
+    /// note: two presses because either half alone is a session that behaves. `Server::run` leaves
+    /// on the press branch rather than waiting for the loop top, so a first press that returned
+    /// `true` ended the session with the turn still running and nothing said about what was being
+    /// kept; the note and the `interrupt` are what the first press is for. A press that never
+    /// returned `true` is a session nothing can end but `/quit`. A served session has no keys, so
+    /// `ctrl+c` twice is how somebody at the other end of a socket stops it, and a run with a tool
+    /// that never answers stays up until a signal arrives from outside the process.
     #[test]
     fn a_second_ctrl_c_is_what_leaves_a_served_session() {
         let Wired { mut app, .. } = session();
@@ -1584,14 +1572,13 @@ mod tests {
 
     /// The seat goes to the client that is here, and only its own departure takes it away.
     ///
-    /// note: the ordering, which is the whole of it. A replaced client is told so by its own
-    /// connection and only then goes - `connection::serve` sends `Left` on its way out - so the
-    /// departure that lands after a replacement is the one that was replaced, and taking the seat
-    /// off whoever holds it when it lands leaves the session served by nobody. The next client to
-    /// attach then finds an empty seat, replaces nobody and is served beside the one that was
-    /// holding it: two clients steering one agent, neither told about the other, and the newest
-    /// wins having evicted nobody. So a departure is asked whether it is the seated client's own
-    /// before the seat is cleared.
+    /// note: the ordering. A replaced client is told by its own connection and only then goes;
+    /// `connection::serve` sends `Left` on its way out. A departure that lands after a replacement
+    /// is the one that was replaced, and taking the seat from whoever holds it when it lands leaves
+    /// the session served by nobody. The next client to attach finds an empty seat, replaces
+    /// nobody, and is served beside the one that was holding it: two clients steering one agent,
+    /// neither told about the other, and the newest wins having evicted nobody. So a departure is
+    /// asked whether it belongs to the seated client before the seat is cleared.
     #[tokio::test]
     async fn the_departure_of_a_replaced_client_does_not_vacate_the_seat() {
         let Wired { mut app, .. } = session();
@@ -1780,8 +1767,8 @@ mod tests {
         let advised = Arc::new(Advised::new(Arc::new(Careful::new()), Arc::new(Rubric)));
         let mut app = session().app;
         app.advisor = Some(advised.clone());
-        // the verdict is the standing rules' either way; what the advisor wrote down while it was
-        // worked out is what is read afterwards
+        // the verdict comes from the standing rules. The advisor's notes from working it out are
+        // read afterwards
         for request in [&placed, &unplaceable] {
             assert_eq!(advised.evaluate(request).await, Verdict::Ask);
         }

@@ -5,24 +5,23 @@ use nachalnik::{Event, StopReason, Usage};
 use super::{App, Speaker, text::thousands};
 
 impl App {
-    /// Adds what a response cost to the session's total, and stops the session if that was the
-    /// last of what it was given.
+    /// Adds what a response cost to the session's total, and stops the session if that was the last
+    /// of what it was given.
     ///
-    /// note: from the event rather than from [`nachalnik::Budget`], which is the kernel's estimate
-    /// of the request it is *about to* build. What is added up here is what the provider charged
-    /// for the ones already sent - `input + output`, which [`Usage`] defines to be the whole of a
-    /// request's bill whichever dialect answered it - so this is a measurement rather than a
-    /// conversion. Tokens rather than money because nothing here carries a price list, and a
-    /// figure in money would be one: a table per model per endpoint, kept up to date by somebody,
-    /// wrong quietly.
+    /// note: from the event rather than [`nachalnik::Budget`], the kernel's estimate of the request
+    /// it is about to build. What is added is what the provider charged for the ones already sent -
+    /// `input + output`, which [`Usage`] defines as the whole of a request's bill whichever dialect
+    /// answered it - so this is a measurement rather than a conversion. Tokens rather than money
+    /// because nothing here carries a price list; a money figure would need a table per model per
+    /// endpoint, kept up to date by somebody, wrong quietly.
     ///
     /// note: a response the provider reported no figures for adds nothing, and the first time that
     /// happens it is said out loud. An endpoint that reports no usage is one this cannot see over,
-    /// and a limit quietly never reached is worse than no limit at all: whoever set it would be
-    /// reading the session as bounded when nothing is bounding it.
+    /// and a limit quietly never reached is worse than no limit at all: whoever set it reads the
+    /// session as bounded when nothing is bounding it.
     ///
     /// note: except for a response whose stream never finished. It never reaches the chunk the
-    /// figures ride on, so its silence is about the stream rather than the endpoint - and saying
+    /// figures ride on, so its silence is about the stream rather than the endpoint - saying
     /// otherwise after a ctrl+c, a `--max-run-seconds` or a dropped connection tells whoever set
     /// the ceiling it has stopped meaning anything when it has not. `interrupted` and `cut off` are
     /// the stop reasons both of `nachalnik-providers`' dialects give a stream they were told to
@@ -32,7 +31,7 @@ impl App {
     /// once as well: what is added up is then a floor, and a ceiling counted against a floor is
     /// reached late.
     ///
-    /// note: it stops *after* the response that crosses the line, because that is the first moment
+    /// note: it stops after the response that crosses the line, because that is the first moment
     /// anybody knows what the response cost. A ceiling is a stopping rule, not a cap: the session
     /// ends having spent a little more than it, and the line says how much.
     ///
@@ -41,8 +40,8 @@ impl App {
     /// under a ceiling that says there is one.
     pub(super) fn charge(&mut self, usage: Option<Usage>, stop: &StopReason) {
         let usage = usage.filter(|it| it.input_tokens.is_some() || it.output_tokens.is_some());
-        // said only where it changes something: with no ceiling, a total nobody set a limit on
-        // being short by one response is not news
+        // said only where it changes something: with no ceiling, being short by one response is not
+        // news
         let telling = self.spend.is_some() && !self.unreported;
         let Some(usage) = usage else {
             let unfinished = matches!(
@@ -79,10 +78,10 @@ impl App {
 
     /// Charges every response the log has recorded since the last one charged.
     ///
-    /// note: called on every event rather than on `model.finished` alone, because the event
-    /// that follows a lag is the first moment anybody here can know one was lost. That is always
-    /// before another request goes out: a lag keeps the latest events and drops the oldest, so
-    /// whatever follows the lost response is still on its way.
+    /// note: called on every event rather than `model.finished` alone, because the event after a
+    /// lag is the first moment anybody can know one was lost. That is always before another request
+    /// goes out: a lag keeps the latest events and drops the oldest, so whatever follows the lost
+    /// response is still on its way.
     pub(super) fn charge_since(&mut self) {
         // the cursor is moved in the same read, or a response recorded between two would be
         // passed over by both
@@ -105,9 +104,9 @@ impl App {
 
     /// Charges what the advisor has reported spending since the last look.
     ///
-    /// note: here, on every event, for the reason the responses are: an advisor is asked while a
-    /// call waits for its permission, and the question it was asked about is an event, so what
-    /// it cost is charged before that call can run - and before the next request goes out.
+    /// note: on every event, for the same reason as responses: an advisor is asked while a call
+    /// waits for its permission, and the question it was asked about is an event, so what it cost
+    /// is charged before that call can run and before the next request goes out.
     ///
     /// note: counted whichever key paid for it. Borrowed, it is the session's own account; with a
     /// key of its own it is a second bill, and still tokens this session spent. `/spend` says how
@@ -172,7 +171,7 @@ impl App {
         self.spend
     }
 
-    /// Whether the ceiling has been reached, so that nothing more will be sent.
+    /// Whether the ceiling has been reached, so nothing more will be sent.
     ///
     /// note: what a loop reads to decide whether to go on handing lines in. The refusal itself is
     /// [`App::start_turn`]'s, so a caller that does not ask still cannot spend anything; this is
@@ -185,7 +184,7 @@ impl App {
     /// for `/continue`.
     ///
     /// note: the last turn's, and cleared by the next one: a pause somebody carried on from is not
-    /// where the session stopped. What a headless run reads for its exit status - the records of a
+    /// where the session stopped. What a headless run reads for its exit status: the records of a
     /// paused turn read exactly as those of one the model ended in as many requests.
     pub fn paused(&self) -> bool {
         self.paused
@@ -212,13 +211,13 @@ impl App {
         })
     }
 
-    /// Whether a turn is being asked for after the session has spent what it was given, and says
-    /// so if it is.
+    /// Whether a turn is being asked for after the session has spent what it was given, and says so
+    /// if it is.
     ///
     /// note: it speaks, because the alternative is a message that goes into the context and is
-    /// never sent with nothing on the screen accounting for it - which is the failure the whole
-    /// program is against. Said on each attempt rather than once: every line somebody hands in
-    /// gets an answer, and the answer is the same one.
+    /// never sent with nothing on the screen accounting for it - the failure the whole program is
+    /// against. Said on each attempt rather than once: every line somebody hands in gets an answer,
+    /// and the answer is the same one.
     pub(super) fn broke(&mut self) -> bool {
         if !self.overspent {
             return false;
