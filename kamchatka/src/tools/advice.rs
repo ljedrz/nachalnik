@@ -17,9 +17,9 @@
 //! name, and [`ROOM`] caps what one call can send. Nothing else goes: not the conversation, not the
 //! system instruction, not the model's prose about why it wants the call.
 //!
-//! note: the invariant that nothing in a model's output reaches the policy holds twice over.
-//! Nothing here reaches a verdict at all, and what reaches the advisor is the tool name and
-//! arguments as data: a tool call that says it has been approved is a string in `args` like any
+//! note: the invariant that nothing in a model's output reaches the policy holds twice over:
+//! nothing here reaches a verdict at all, and what reaches the advisor is the tool name and
+//! arguments as data. A tool call that says it has been approved is a string in `args` like any
 //! other.
 
 use std::{
@@ -49,15 +49,14 @@ const REMEMBERED: usize = 32;
 ///
 /// note: a cap rather than a choice of which fields to send, because the fields are every tool's
 /// own and a list would go stale. Two kilobytes is more than every shell command line and path in
-/// this program's vocabulary, and less than a file's contents - the payload this is about. What is
-/// cut is replaced by a marker, not dropped silently, so the model is not told a truncated command
-/// is the whole of it.
+/// this program's vocabulary, and less than a file's contents, the payload this is about. What is
+/// cut is replaced by a marker, so the model is not told a truncated command is the whole of it.
 ///
 /// note: per argument, not over the serialised whole. `serde_json` sorts an object's keys, so
-/// `contents` comes before `path`. Cutting the rendered JSON at a byte count takes the path away
-/// and leaves two kilobytes of file, so the field the decision turns on goes first. Capping each
-/// value keeps every key, so a large file write arrives as the path it is writing to and a marker
-/// saying how much text came with it.
+/// `contents` comes before `path`, and cutting the rendered JSON at a byte count would take away
+/// the path, the field the decision turns on, and leave two kilobytes of file. Capping each value
+/// keeps every key, so a large file write arrives as the path it is writing to and a marker saying
+/// how much text came with it.
 const ROOM: usize = 2_048;
 
 /// Why there is no rating, where the advisor answered and nothing in the answer could be read.
@@ -113,30 +112,28 @@ const STAGE: &str = "stage";
 /// note: both, and folded, because engines are good at different halves of it. An ordinal `score`
 /// is the primitive some read worst - laya's own card calls it its weakest - and asked the same
 /// reading as a `noul` they find destructive commands the rubric misses; others read the rubric
-/// well and miss some of those commands when it is taken away. Folded with [`Rated::worst_of`],
-/// the reading that is right about a command carries it, whichever engine is asked.
+/// well and miss some of those commands when it is taken away. Folded with [`Rated::worst_of`], the
+/// reading that is right about a command carries it, whichever engine is asked.
 ///
 /// note: it costs a question and not a round trip. Every question in a call is answered in one
-/// pass - which is also what makes placing a command stage by stage affordable - so doubling them
+/// pass, which is also what makes placing a command stage by stage affordable, so doubling them
 /// costs milliseconds rather than a wait.
 const DANGER: &str = "danger";
 
 /// The most stages one command line is taken apart into before it is judged whole instead.
 ///
-/// note: a limit rather than a prefix. Placing the first eight of twelve and folding those would
-/// be a rating that silently covers part of a command, which is the failure [`ROOM`]'s marker
-/// exists to prevent one field along - so over this the stages are not asked about at all, and
-/// the whole-command answer stands on its own. Eight is past where a person reads a command line
-/// as stages anyway.
+/// note: a limit rather than a prefix. Placing the first eight of twelve and folding those would be
+/// a rating that silently covers part of a command, the failure [`ROOM`]'s marker prevents one
+/// field along, so over this the stages are not asked about at all and the whole-command answer
+/// stands on its own. Eight is past where a person reads a command line as stages anyway.
 const STAGES: usize = 8;
 
 /// Where a command lands on that rubric: what a colour in the question means.
 ///
-/// note: three, and ordered, because the question a colour answers is coarse - does this leave
-/// nothing behind, does it leave something that could be put back, or is it the kind of thing
-/// there is no undo for. A fourth band would be a distinction nobody makes at a glance, which is
-/// the only moment this is read; and the three map onto the green, yellow and red a terminal has
-/// had since before anyone had to be told what they meant.
+/// note: three, and ordered, because the question a colour answers is coarse: does this leave
+/// nothing behind, does it leave something that could be put back, or is it the kind of thing there
+/// is no undo for. A fourth band would be a distinction nobody makes at a glance, which is the only
+/// moment this is read, and the three map onto the green, yellow and red a terminal has always had.
 ///
 /// note: here rather than where it is drawn, for the reason [`Exit`](crate::tools::Exit) is: the
 /// band is worked out from an answer this module owns, and a colour worked out at the other end
@@ -187,11 +184,10 @@ pub enum Rating {
 /// clause of a longer command line. A level that misplaces it does so visibly.
 ///
 /// note: the levels are short because they are paid for on every request and are the part a small
-/// model has to hold in mind while reading a command. Nothing more is claimed for the length: what
-/// a rubric scores moves with the state as much as with the words,
-/// and a bare command is an easier question than the call the program sends. Anything added here
-/// should be measured against what the program sends: [`state`] and these words, not a bare command
-/// line.
+/// model has to hold in mind while reading a command. What a rubric scores moves with the state as
+/// much as with the words, and a bare command is an easier question than the call the program
+/// sends, so anything added here should be measured against what the program sends: [`state`] and
+/// these words, not a bare command line.
 pub(crate) const LEVELS: [&str; 3] = [
     "it only looks, or moves about - reads, lists, searches or changes directory - and leaves nothing changed",
     "it changes files inside the working directory - writing, building, formatting, committing - in a way git or a rebuild could undo",
@@ -211,10 +207,10 @@ impl Rating {
 
 /// A rating, and how sure the advisor was of it.
 ///
-/// note: both are kept apart because the number is not decoration. Confidence says how concentrated
-/// the distribution over the levels was. A command the advisor could not place is different from
-/// one it placed low. [`Rated::shown`] turns that difference into a colour, and it is the only
-/// place, so the words and the colour cannot disagree.
+/// note: both are kept, because confidence says how concentrated the distribution over the levels
+/// was, and a command the advisor could not place is different from one it placed low.
+/// [`Rated::shown`] turns that difference into a colour, and it is the only place, so the words and
+/// the colour cannot disagree.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct Rated {
@@ -289,7 +285,7 @@ impl Rated {
     ///
     /// note: the fold runs over [`Rated::shown`], not over the scores, and the order matters.
     /// `shown` lifts a reading nobody was sure of off green: a stage scored `0.4` at 95% and one
-    /// scored `0.1` at 30% become `Reads` and `Changes`, and `Changes` is the honest answer for the
+    /// scored `0.1` at 30% become `Reads` and `Changes`, and `Changes` is the right answer for the
     /// pair. Folding the scores first would pick `0.4` and draw the whole command green on the
     /// strength of the other stage's coin toss.
     /// `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to this; the fold is
@@ -304,8 +300,7 @@ impl Rated {
     /// note: the first stage to reach the worst band, when more than one part does, so the pointer
     /// marks where the command first gets as bad as it gets. The whole command is kept only where
     /// no stage reaches its band: a destructive link usually makes the whole command read as
-    /// destructive too, and keeping the whole on that tie would point at nothing in the chain the
-    /// pointer is for.
+    /// destructive too, and keeping the whole on that tie would point at nothing in the chain.
     ///
     /// note: nothing is pointed at where every stage reaches the band. A stage is worth pointing at
     /// only for being worse than the rest; where none is, the first of equals says nothing.
@@ -342,15 +337,15 @@ impl Rated {
 
     /// The band this is drawn as.
     ///
-    /// note: never safer than scored. Never [`Rating::Reads`] when the advisor is not sure
-    /// (`SURE`); an uncertain answer is worth having but not worth acting on as a certain one. A
-    /// spread distribution over a safety rubric is not evidence a command is safe; green is the
+    /// note: never safer than scored, and never [`Rating::Reads`] when the advisor is not sure
+    /// (`SURE`): an uncertain answer is worth having but not worth acting on as a certain one. A
+    /// spread distribution over a safety rubric is not evidence a command is safe, and green is the
     /// only colour that says a command is safe.
     ///
     /// note: confidence is shown beside the rating, not folded into it, so a reader can see whether
     /// a yellow line means the command changes something or nobody could tell.
     ///
-    /// note: idempotent, and the fold behind [`Rated::worst`] leans on it. It only ever raises a
+    /// note: idempotent, and the fold behind [`Rated::worst`] relies on it. It only ever raises a
     /// `Reads`, so asking about a band already answered returns that band. That lets `scored` hold
     /// a raw reading or a fold of several without the caller knowing which.
     pub fn shown(self) -> Rating {
@@ -394,16 +389,16 @@ impl Advised {
 
     /// Gives up on any rating in flight, and on any asked for until [`Advised::resume`].
     ///
-    /// note: this is what makes a stop immediate. The advisor is asked inside the permission
-    /// policy, which the kernel awaits while preparing calls and which does not read the interrupt.
-    /// An ask is up to four attempts with a wait between, so `ctrl+c` did nothing visible for as
-    /// long as the service took, two minutes at worst. A rating decides nothing, so giving up on
-    /// one cannot change a verdict: the question still comes, saying the advice was not waited for,
-    /// and the kernel honours the stop before any call runs.
+    /// note: this makes a stop immediate. The advisor is asked inside the permission policy, which
+    /// the kernel awaits while preparing calls and which does not read the interrupt. An ask is up
+    /// to four attempts with a wait between, so `ctrl+c` once did nothing visible for as long as
+    /// the service took, two minutes at worst. A rating decides nothing, so giving up on one cannot
+    /// change a verdict: the question still comes, saying the advice was not waited for, and the
+    /// kernel honours the stop before any call runs.
     ///
     /// note: a flag rather than a pulse, because the stop can land before the rating starts: the
     /// policy is asked after the interrupt, on the way to the kernel noticing it. A pulse nobody
-    /// was waiting on is a stop that did nothing.
+    /// was waiting on would be a stop that did nothing.
     pub fn stop(&self) {
         self.stopped.send_replace(true);
     }
@@ -426,11 +421,11 @@ impl Advised {
 
     /// Whatever the engine last wanted to say for itself, if anything.
     ///
-    /// note: passed through rather than kept here, because the thing with something to say is
-    /// the engine and this is the only handle a caller has on one. A local engine loads a
-    /// checkpoint before it can answer anything and says so as it goes; a hosted one says when
-    /// it is backing off. Both have to reach a screen during the session and not only at startup,
-    /// or an advisor that stops working mid-session stops silently.
+    /// note: passed through rather than kept here, because the engine is the thing with something
+    /// to say and this is the only handle a caller has on one. A local engine loads a checkpoint
+    /// before it can answer anything and says so as it goes; a hosted one says when it is backing
+    /// off. Both have to reach a screen during the session and not only at startup, or an advisor
+    /// that stops working mid-session stops silently.
     pub fn notice(&self) -> Option<String> {
         self.engine.notice()
     }
@@ -445,8 +440,8 @@ impl Advised {
     /// note: said rather than left as a missing line, because the failure is not random. The
     /// endpoints this program knows sit behind a firewall that refuses a request by what is in it,
     /// and what it refuses - `/etc/shadow`, a secret piped to `curl` - is the command the colour is
-    /// most for. A question with no line looks like one nobody had anything to say about, and a
-    /// person reading it that way has been told the command was not worth a colour.
+    /// most for. A question with no line looks like one nobody had anything to say about, which
+    /// tells a person the command was not worth a colour.
     pub fn why_unrated(&self, call: &ToolCallId) -> Option<String> {
         self.read(call)?.err()
     }
@@ -623,13 +618,13 @@ fn placing(stage: &str) -> Question {
 /// The byte ranges of a command line's stages, or nothing if this is not a call it can take apart.
 ///
 /// note: four ways of answering nothing, and each leaves the whole-command rating to stand on its
-/// own. A call whose `cmd` is not a string is not a command line this program knows. The rating is
+/// own. A call whose `cmd` is not a string is not a command line this program knows: the rating is
 /// asked for on [`Capability::exec`], which another tool may declare while taking its command under
 /// another name, and guessing that field would place a rubric on an argument nobody said was a
 /// command. A command with no joints is one stage, and one stage folded with the whole is the
-/// whole. Past [`STAGES`] there are too many to report on honestly - see the note there. Past
-/// [`ROOM`] the state shown to the advisor is a cut of this command, so a stage from beyond the cut
-/// would be placed against a command the model was never shown the end of.
+/// whole. Past [`STAGES`] there are too many to report on - see the note there. Past [`ROOM`] the
+/// state shown to the advisor is a cut of this command, so a stage from beyond the cut would be
+/// placed against a command the model was never shown the end of.
 fn stages(cmd: &str) -> Vec<(usize, usize)> {
     if cmd.len() > ROOM {
         return Vec::new();
@@ -657,7 +652,7 @@ fn stages(cmd: &str) -> Vec<(usize, usize)> {
 ///
 /// note: spaces either side of a `|` belong to neither stage, and a range carrying them is
 /// underlined as a stage with a gap. Trimming here rather than where it is drawn keeps the range
-/// the advisor was asked about and the range a client points at the same range.
+/// the advisor was asked about and the range a client points at the same.
 fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
     let piece = cmd.get(from..to)?;
     let from = from + (piece.len() - piece.trim_start().len());
@@ -733,9 +728,9 @@ impl PermissionPolicy for Advised {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         let standing = self.careful.evaluate(request).await;
 
-        // note: `Ask` only. An `Allow` is somebody's decision and runs without a question to draw
-        // a rating in, and a `Deny` has none either - so rating either would send the arguments
-        // of a call to a third party and put nothing on any screen in exchange
+        // note: `Ask` only. An `Allow` is somebody's decision and runs without a question to draw a
+        // rating in, and a `Deny` has none either, so rating either would send the arguments of a
+        // call to a third party and put nothing on any screen in exchange
         //
         // note: and `exec:run` only, which is the capability rather than the tool's name. The
         // rubric is written about a command, and `shell` is the tool that takes one; a tool that
@@ -913,10 +908,10 @@ mod tests {
     /// A claim lands on the top band when it holds, the bottom when it is confidently false, and
     /// the middle otherwise.
     ///
-    /// note: this pairs with `a_score_lands_on_the_band_it_is_nearest`; the middle case is the one
-    /// worth having it for. A `noul` at 0.51 means the advisor could not tell. Reading it by which
-    /// side of a half it fell on would be a coin toss - the same mistake `Rated::shown` exists to
-    /// stop. Here `shown` cannot undo it because that rule only ever raises a band.
+    /// note: this pairs with `a_score_lands_on_the_band_it_is_nearest`, and the middle case is why.
+    /// A `noul` at 0.51 means the advisor could not tell. Reading it by which side of a half it
+    /// fell on would be a coin toss, the same mistake `Rated::shown` exists to stop, and `shown`
+    /// cannot undo it here because that rule only ever raises a band.
     #[test]
     fn a_claim_lands_on_the_top_band_only_when_it_holds() {
         let band = |danger| Rated::claimed(danger).shown();
@@ -1306,11 +1301,11 @@ mod tests {
 
     /// A command of eight stages costs one round trip, the same as a command of one stage.
     ///
-    /// note: this is what makes taking a command apart worth doing, and why the advisor is this
-    /// kind of model rather than a chat one. Every stage is a question in the same request,
-    /// evaluated on its own against the same state, so no stage can be moved by another's answer
-    /// and the fold is paid for once. A question per request would be eight round trips in front of
-    /// somebody waiting to press `y`.
+    /// note: this makes taking a command apart worth doing, and is why the advisor is this kind of
+    /// model rather than a chat one. Every stage is a question in the same request, evaluated on
+    /// its own against the same state, so no stage can be moved by another's answer and the fold is
+    /// paid for once. A question per request would be eight round trips in front of somebody
+    /// waiting to press `y`.
     #[tokio::test]
     async fn every_stage_of_a_command_is_asked_about_in_one_request() {
         let engine = unreachable();

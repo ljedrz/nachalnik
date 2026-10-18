@@ -2,10 +2,10 @@
 //! them.
 //!
 //! note: a model's answer is markdown whether or not anyone asked for it, so the choice is between
-//! rendering it and showing the punctuation. What is rendered is deliberately narrow: emphasis,
-//! headings, rules, lists, code. A fenced block goes to the highlighter, not the markdown renderer,
-//! which is why both live in one file. Tables are the third case and are big enough to have their
-//! own: see [`super::table`].
+//! rendering it and showing the punctuation. What is rendered is narrow: emphasis, headings, rules,
+//! lists, code. A fenced block goes to the highlighter, not the markdown renderer, which is why
+//! both live in one file. Tables are the third case and are big enough to have their own: see
+//! [`super::table`].
 
 use ratatui::{
     style::{Color, Style},
@@ -131,30 +131,29 @@ pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<
 /// The colour a command's joints are picked out in.
 ///
 /// note: cyan, which in the table above belongs to `struct`, `namespace`, `type` and `key` - none
-/// of which a shell produces - so it is a colour nothing else is using here. It is also none of
-/// green, yellow or red, which the panel above has spent on the advisor's rating and cannot afford
-/// to have echoed by punctuation.
+/// of which a shell produces - so nothing else here uses it. It is also none of green, yellow or
+/// red, which the panel above has spent on the advisor's rating.
 fn joint() -> Style {
     Style::default().fg(Color::Cyan).bold()
 }
 
 /// A shell command, drawn as code with its own joints picked out.
 ///
-/// note: the same rule, the same highlighter and the same wrapping a fenced ```sh block gets, and
-/// one thing on top: the `|`, `&&`, `||` and `;` that join one stage to the next are coloured.
-/// They are what a person scanning the command is looking for - where it stops doing one thing and
-/// starts doing another - and unpicked out they are two grey characters in the middle of a run of
-/// flags and paths.
+/// note: the same rule, the same highlighter and the same wrapping a fenced
+/// ```sh block gets, and one thing on top: the `|`, `&&`, `||` and `;` that join one stage to the
+/// next are coloured. They are what a person scanning the command is looking for - where it stops
+/// doing one thing and starts doing another - and left plain they are two grey characters in the
+/// middle of a run of flags and paths.
 ///
 /// note: the joints come from [`joints`], which reads the command, rather than from the
 /// highlighter, which does not read it well enough. See the note there.
 ///
 /// note: `worst` is the stage the advisor liked least, and it is underlined rather than painted.
-/// The band above the panel is already saying how bad the command is; what this answers is
-/// *where*, which is the question a colour cannot answer and the one a long `&&` chain actually
-/// raises. Underlining adds a channel instead of spending one - the highlighter's colours still
-/// say which part of the stage is a path and which is a flag, and none of green, yellow or red
-/// is repeated down here where it would compete with the line that owns it.
+/// The band above the panel already says how bad the command is; this answers *where*, which a
+/// colour cannot answer and a long `&&` chain raises. Underlining adds a channel instead of
+/// spending one: the highlighter's colours still say which part of the stage is a path and which is
+/// a flag, and none of green, yellow or red is repeated down here where it would compete with the
+/// line that owns it.
 pub(super) fn command(
     cmd: &str,
     width: usize,
@@ -178,10 +177,10 @@ pub(super) fn command(
     for spans in tokens("sh", cmd) {
         // note: `refit` rather than `fit`, the one difference from a fenced block. `fit` cuts where
         // the room runs out, because reflowing would show something the model did not write. A
-        // command is one logical line, so breaking at a space is wrapping, not reflowing. Cut,
+        // command is one logical line, so breaking at a space is wrapping, not reflowing; cut,
         // `cargo build` would arrive as `carg` at the end of one row and `o build` at the start of
-        // the next, worse for anyone deciding whether to run it. The rule down the left makes this
-        // safe: it marks the second row as a continuation, which the margin cannot say
+        // the next. The rule down the left makes this safe: it marks the second row as a
+        // continuation, which the margin cannot say
         let styled = Line::from(
             accented(spans, &picked, worst)
                 .into_iter()
@@ -218,9 +217,9 @@ fn drawn_at(cmd: &str, (from, to): (usize, usize)) -> (usize, usize) {
 ///
 /// note: the worst stage is a third reading, cut at the same time as the other two rather than in a
 /// separate pass. A stage is a run between joints, so its edges fall where no joint's do; two
-/// passes would split pieces the other had already split. Offsets key everything here, and
-/// re-walking them is where they come apart. So every offset where a style can change is collected
-/// first, and one walk honours all of them.
+/// passes would split pieces the other had already split, and re-walking the offsets is where they
+/// come apart. So every offset where a style can change is collected first, and one walk honours
+/// all of them.
 ///
 /// note: the worst stage takes an underline on top of what it already had, not instead of it. It
 /// marks a run of several tokens, and repainting a run in one colour would remove the highlighting
@@ -458,7 +457,7 @@ fn start_of_line(text: &str, end: usize) -> usize {
 
 /// How markdown is styled for a terminal with an unknown background colour.
 ///
-/// note: The defaults put a cyan slab behind an H1 and black behind every code block, which looks
+/// note: the defaults put a cyan slab behind an H1 and black behind every code block, which looks
 /// like a redaction on a dark theme and a bruise on a light one. Weight and colour say the same
 /// thing and survive both. The `#` and ``` are dropped: they are the format's punctuation, and what
 /// is wanted is what they mean.

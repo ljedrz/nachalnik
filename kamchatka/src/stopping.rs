@@ -3,13 +3,13 @@
 //! note: [`tokio::signal::ctrl_c`] is an `async fn`, so the subscription is made when the future is
 //! first polled and dropped with the future. The future completes on the first ctrl+c after the
 //! initial `poll`. A `select!` that names it directly builds a new one every time round the loop,
-//! so nothing is subscribed between iterations and a signal in that window is gone, not late. The
+//! so nothing is subscribed between iterations and a signal in that window is lost, not late. The
 //! handler sets a flag, the driver broadcasts it, and a receiver made afterwards starts from the
 //! present.
 //!
-//! note: three loops read a second press as "leave now", so the window is worth closing. The press
-//! in it is the second one, arriving while the first is still being handled, and it means "leave
-//! now".
+//! note: three loops read a second press as "leave now", and the press that would fall in that
+//! window is the second one, arriving while the first is still being handled, so the window is
+//! worth closing.
 
 use std::io;
 

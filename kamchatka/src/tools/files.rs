@@ -3,8 +3,8 @@
 //!
 //! note: they run in this process with no shell in front of them, so what keeps them inside the
 //! working directory is their own code asking [`Reach`] rather than a kernel refusing an `open`.
-//! That is weaker in kind than what `shell` gets and the readmes say so; the reason it is worth
-//! having anyway is that a model reads a refusal here in the same words either way.
+//! That is weaker in kind than what `shell` gets and the readmes say so; it is worth having anyway
+//! because a model reads a refusal here in the same words either way.
 //!
 //! note: every open goes through [`Reach::open`] rather than a path handed to `tokio::fs`, so what
 //! is opened is what was checked; see there.
@@ -23,23 +23,23 @@ use crate::tools::{CEILING, Careful, KEPT, Limits, arg, number};
 
 /// What every tool here says about the path it takes.
 ///
-/// note: one string because it is one rule, and a copy per tool is a place to remember when the
-/// rule changes - which is why `grep` and `glob` read it too, though neither opens the path it is
-/// handed the way these three do. The `~` clause is the half a model cannot work out for itself:
-/// these tools run in process with no shell in front of them, so nothing expands it, and the
-/// alternative to saying so is a path that quietly becomes a directory called `~` under the
-/// working directory. `Reach::allows` says it again at the point of failure, which is the half
-/// that actually lands - a description is what makes the refusal legible when it arrives.
+/// note: one string because it is one rule, and a copy per tool would be a place to remember when
+/// the rule changes, which is why `grep` and `glob` read it too, though neither opens the path it
+/// is handed the way these three do. The `~` clause is the half a model cannot work out for itself:
+/// these tools run in process with no shell in front of them, so nothing expands it, and without
+/// saying so a path silently becomes a directory called `~` under the working directory.
+/// `Reach::allows` says it again at the point of failure, but the description is what makes the
+/// refusal legible when it arrives.
 ///
 /// note: "`fs` does not go through a shell" rather than "there is no shell here", which is the same
-/// fact about `fs` and reads as one about the session: a live model offered `shell` beside it
-/// said it had no way to run a command.
+/// fact about `fs` and reads as one about the session: a live model offered `shell` beside it said
+/// it had no way to run a command.
 ///
-/// note: and the literal-`~` spelling is here rather than in that refusal. A refusal is read
-/// under pressure to try something else, so every concrete path in one is read as a path to try:
-/// offered `./~` beside a refusal about `~/notes.txt`, a model reads `./~`, a file it neither
-/// wanted nor had. A schema is read while choosing, which is when a rare spelling is worth knowing
-/// and nobody is about to act on it.
+/// note: the literal-`~` spelling is here rather than in that refusal. A refusal is read under
+/// pressure to try something else, so every concrete path in one is read as a path to try: offered
+/// `./~` beside a refusal about `~/notes.txt`, a model reads `./~`, a file it neither wanted nor
+/// had. A schema is read while choosing, which is when a rare spelling is worth knowing and nobody
+/// is about to act on it.
 pub(super) const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not \
                         expanded, since `fs` does not go through a shell, and a path starting \
                         with one is refused; a file whose name really is `~` is `./~`";
@@ -181,22 +181,21 @@ pub const COUNTED: u64 = 64 * 1024 * 1024;
 /// calling its first line longer than the limit, and nothing of it.
 const HEADER: usize = 256;
 
-/// The lines `span` names of a file `allows` answered for, as text, stopping at the last whole
-/// line that fits `budget` and saying where to read on from; or a sentence saying why there is
-/// nothing to show.
+/// The lines `span` names of a file `allows` answered for, as text, stopping at the last whole line
+/// that fits `budget` and saying where to read on from; or a sentence saying why there is nothing
+/// to show.
 ///
 /// note: cut at a line, not at the kernel's output limit, which cuts at a byte and says only how
-/// many went. A model shown part of a file has to guess where it broke off and read on through
-/// `shell`, an `exec:run` call a session may be asking about, for a file it is allowed to read. The
-/// answer names the next line, and `from` reads on from it inside `fs:read`.
+/// many went. A model shown part of a file would have to guess where it broke off and read on
+/// through `shell`, an `exec:run` call a session may be asking about, for a file it is allowed to
+/// read. The answer names the next line, and `from` reads on from it inside `fs:read`.
 ///
 /// note: reads line by line, keeping only what is shown, so a file of any size can be read a part
 /// at a time. [`COUNTED`] bounds the counting. A file larger than that is not read to its end to
 /// count its lines; the answer says more follow instead of how many.
 ///
 /// note: returns the whole file with nothing added where it fits and nothing narrower was asked
-/// for. A line of bookkeeping on every small file is a toll on the common case for the sake of the
-/// rare one.
+/// for, so the common case pays no bookkeeping for the rare one.
 fn read(
     reach: &Reach,
     path: &Path,

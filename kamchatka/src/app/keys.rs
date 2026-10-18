@@ -107,11 +107,11 @@ impl App {
     /// What the prompt does with a key nothing above took: types it, or moves the cursor with it.
     ///
     /// note: these keys and no others, because a key the help does not name should do nothing.
-    /// `TextArea::input` brings an emacs keymap with it - `ctrl+u` undoing, `ctrl+k` cutting to
-    /// the end of the line, `alt+<` jumping to the top, a shift-arrow selection only its own
-    /// `ctrl+x` could use - and none of it was ever on a help line, so a chord pressed by mistake
-    /// changed the message in a way nothing on the screen could account for. A chord is dropped,
-    /// as it is on the tabs.
+    /// `TextArea::input` brings an emacs keymap with it - `ctrl+u` undoing, `ctrl+k` cutting to the
+    /// end of the line, `alt+<` jumping to the top, a shift-arrow selection only its own `ctrl+x`
+    /// could use - none of it on a help line, so a chord pressed by mistake once changed the
+    /// message in a way nothing on the screen could account for. A chord is dropped, as it is on
+    /// the tabs.
     fn edit(&mut self, key: KeyEvent) {
         if key
             .modifiers
@@ -139,15 +139,15 @@ impl App {
     /// sent.
     ///
     /// note: one key reaches two things because they are one thing to the person pressing it. A
-    /// waiting message is taken out of the queue; a message already sent is copied. Leaving a
-    /// waiting message in the queue would mean editing a copy of something still to be sent. A copy
-    /// is a way to read it back or send it again.
+    /// waiting message is taken out of the queue, since leaving it there would mean editing a copy
+    /// of something still to be sent; a message already sent is copied, to read it back or send it
+    /// again.
     ///
     /// note: the context tab already holds every message, so the prompt recalls only the last one.
     ///
-    /// note: a copy is silent; a take is announced. Only a take changes what the session is about
-    /// to do. A taken message stops being drawn at the end of the conversation, and a row never
-    /// vanishes without an account of why.
+    /// note: a copy is silent; a take is announced, because only a take changes what the session is
+    /// about to do. A taken message stops being drawn at the end of the conversation, and a row
+    /// never vanishes without an account of why.
     pub(super) fn put_back(&mut self) {
         let waiting = self.typed_ahead.pop_back();
         let Some(line) = waiting.clone().or_else(|| self.last_sent.clone()) else {
@@ -196,28 +196,27 @@ impl App {
     ///
     /// note: [`Kernel::replace`](nachalnik::Kernel::replace) rather than
     /// [`Kernel::supersede`](nachalnik::Kernel::supersede), so the item keeps its identifier, its
-    /// kind, its state and its place in the conversation, and what it said before becomes a
-    /// version page like every other rewrite. Superseding would leave a second, excluded row
-    /// saying what the `v1` page already says, and would need three things kept upright. A state
-    /// carried over by hand, because a new item starts Active: an edit to an excluded one would
-    /// quietly come back into the request, and an edit to the excluded whole of a shortened output
-    /// would put all of an oversized output into it. A kind rebuilt whole, because an assistant
-    /// turn carries its tool calls inside it and rebuilding it without them orphans their results.
-    /// And a `replaces` hint, so the conversation could read the new words back into the old
-    /// place. Replacing needs none of those: there is nothing to carry over, because nothing
-    /// moved.
+    /// kind, its state and its place in the conversation, and what it said before becomes a version
+    /// page like every other rewrite. Superseding would leave a second, excluded row saying what
+    /// the `v1` page already says, and would need three things kept right. A state carried over by
+    /// hand, because a new item starts Active: an edit to an excluded one would silently come back
+    /// into the request, and an edit to the excluded whole of a shortened output would put all of
+    /// an oversized output into it. A kind rebuilt whole, because an assistant turn carries its
+    /// tool calls inside it and rebuilding it without them orphans their results. And a `replaces`
+    /// hint, so the conversation could read the new words back into the old place. Replacing needs
+    /// none of those, because nothing moved.
     ///
     /// note: [`Kernel::supersede`](nachalnik::Kernel::supersede) is the right shape for a caller
     /// whose next round replaces the last while the earlier ones stay readable -
-    /// `examples/panel.rs` in the runtime is exactly that - which is why
-    /// [`super::App::in_order`] still places an item that carries the hint, and why a session
-    /// saved by an older build that superseded still draws in the order the request has. It is not
-    /// the shape of a person fixing a sentence.
+    /// `examples/panel.rs` in the runtime is that - which is why [`super::App::in_order`] still
+    /// places an item that carries the hint, and why a session saved by an older build that
+    /// superseded still draws in the order the request has. It is not the shape of a person fixing
+    /// a sentence.
     ///
     /// note: the whole of the act is [`App::revise`], which a client over [`crate::remote`] also
-    /// commits through. What is left here is the half that belongs to the keys: taking the item
-    /// out of `editing`, giving the focus back, and saying what happened on the chat - because a
-    /// person who pressed `enter` is owed a sentence and a protocol is owed a return value.
+    /// commits through. What is left here is the half that belongs to the keys: taking the item out
+    /// of `editing`, giving the focus back, and saying what happened on the chat, because a person
+    /// who pressed `enter` is owed a sentence and a protocol is owed a return value.
     fn commit_edit(&mut self, text: &str) {
         let Some(id) = self.editing.take() else {
             return;
@@ -314,7 +313,7 @@ impl App {
             KeyCode::Char('e') => match beyond_a_prompt(&picked) {
                 // note: a panel over this tab rather than a line on the chat. Other notes from the
                 // pane go to the conversation, which suits something worth finding later but not
-                // the answer to a key just pressed: the tab is not the one being looked at, so a
+                // the answer to a key just pressed: the chat is not the tab being looked at, so a
                 // refused `e` would read as an `e` that did nothing. This one is about the row
                 // under it and is gone on the next key
                 Some(why) => self.preview(
@@ -331,13 +330,13 @@ impl App {
                     self.focus = Focus::Input;
                 }
             },
-            // how much of an item the model gets, in three steps out and one back: all of it,
-            // then a marker where it was, then nothing at all
+            // how much of an item the model gets, in three steps out and one back: all of it, then
+            // a marker where it was, then nothing at all
             //
             // note: the ring itself, and why its middle step earns a key, is [`super::App::cycle`],
-            // because the page in `web/browser.html` puts a button on every row that does
-            // this and the notes it writes are read by the model. Two callers writing their own
-            // words for one act is two accounts of it in the context
+            // because the page in `web/browser.html` puts a button on every row that does this and
+            // the notes it writes are read by the model. Two callers writing their own words for
+            // one act would put two accounts of it in the context
             KeyCode::Char(' ') => {
                 if let Err(e) = self.cycle(picked.id) {
                     self.say(Speaker::Error, e);
@@ -489,9 +488,9 @@ impl App {
 
     /// Keys the search box wants while open; `false` lets the pane underneath have it.
     ///
-    /// note: `up`, `down` and paging are deliberately *not* taken. Filtering eight hundred events
-    /// to nine is to read the nine; swallowing scroll keys would close the search, losing the
-    /// filter, just to look at what it found.
+    /// note: `up`, `down` and paging are *not* taken. Filtering eight hundred events to nine is to
+    /// read the nine; swallowing scroll keys would close the search, losing the filter, just to
+    /// look at what it found.
     ///
     /// note: `left`, `right`, `home` and `end` *are* taken because, in a box being typed into, they
     /// are the box's, as in the prompt. The cost is the ends of the list while the box is open: `g`
@@ -613,15 +612,15 @@ impl App {
     ///
     /// note: this is the guard, rather than a consequence of the layout. The question has the
     /// prompt's place, so there is nothing to type into and nothing for `enter` to send, and both
-    /// matter. The answers are bare letters. A question that took the keys on arrival would read
-    /// the `a` of a word being typed as `always` and keep it for the rest of the session; an
+    /// matter. The answers are bare letters: a question that took the keys on arrival would read
+    /// the `a` of a word being typed as `always` and keep it for the rest of the session, and an
     /// `enter` that reached the prompt would send the half-written message the question
     /// interrupted, starting a turn nobody asked for. `tab` gets past this, and the panel's title
     /// says so.
     ///
     /// note: what stays working moves the conversation, because reading is not answering. The
     /// question is pinned rather than modal so somebody can look at what it is about before
-    /// deciding; a guard that also froze the transcript would undo what the pinning bought.
+    /// deciding; a guard that also froze the transcript would undo that.
     pub(super) fn locked_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Up => self.scroll_by(-1),

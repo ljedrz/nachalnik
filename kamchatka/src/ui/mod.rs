@@ -54,10 +54,10 @@ pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt
 ///
 /// note: `TextArea` wraps when it draws and does not report how many rows that came to, so this
 /// counts them the same way `WrapMode::WordOrGlyph` breaks them: fill up to the width, go back to
-/// the last space if there is one, and split a word that would not fit on a line of its own. It
-/// has to agree with the widget about the *number* of rows rather than about where the breaks
-/// fall, and the screen test is what holds the two together - if they ever disagree, the box is
-/// the wrong size and text goes missing, which is the thing worth failing a build over.
+/// the last space if there is one, and split a word that would not fit on a line of its own. It has
+/// to agree with the widget about the *number* of rows rather than about where the breaks fall, and
+/// the screen test holds the two together: if they ever disagree, the box is the wrong size and
+/// text goes missing.
 pub fn wrapped_rows(lines: &[String], width: usize) -> usize {
     if width == 0 {
         return lines.len().max(1);
@@ -162,10 +162,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 /// Text that is secondary but still meant to be read.
 ///
-/// note: `Gray`, not `DarkGray`. `DarkGray` is the terminal's bright black and sits a shade off
-/// the background on many themes. Everything that is not the answer - why an item is not being
-/// sent, what an event says, the whole trace - is meant to be read. Anything a person is meant to
-/// read is this.
+/// note: `Gray`, not `DarkGray`. `DarkGray` is the terminal's bright black and sits a shade off the
+/// background on many themes. Everything that is not the answer - why an item is not being sent,
+/// what an event says, the whole trace - is meant to be read, and so is drawn in this.
 pub(super) fn quiet() -> Style {
     Style::default().fg(Color::Gray)
 }
@@ -180,17 +179,16 @@ pub(super) fn faint() -> Style {
 
 /// The window: a strip of tabs, and whichever one is open filling everything under it.
 ///
-/// note: the border is the frame of the open window and says so, in the same colour the open
-/// tab's name is written in on the strip above it. It does not go faint when the keys are off the
-/// tab's body, because on the chat tab they never are on it: `Focus::Body` there means the pinned
+/// note: the border is the frame of the open window and says so, in the same colour the open tab's
+/// name is written in on the strip above it. It does not go faint when the keys are off the tab's
+/// body, because on the chat tab they never are on it: `Focus::Body` there means the pinned
 /// question, which has a box of its own. The tab a session is mostly spent on would be the one
 /// window that could never look open, and "unfocused window" reads as "this is not where you are".
 ///
 /// note: what has the keys *within* the window is said by the box that has them - the prompt and
 /// the question take the accent colour, and grey or red when the keys are elsewhere - and, on the
 /// two list tabs, by the selected row, which is reversed under the keys and underlined without
-/// them. Both of those sit next to the thing they are describing, which a border a whole window
-/// away does not.
+/// them. Both sit next to the thing they describe, which a border a whole window away does not.
 fn draw_body(
     frame: &mut Frame,
     app: &mut App,
@@ -207,11 +205,11 @@ fn draw_body(
         if !strip.is_empty() {
             strip.push(Span::styled("│", faint()));
         }
-        // note: `chat` goes red while a tool is waiting to be told whether it may run, or a
-        // running command whether it may reach the network. The question is pinned there rather
-        // than laid over the screen, which is what makes it possible to walk away from it and
-        // look at what it is about - so something has to say, from the other three tabs, that
-        // walking back is what the session is waiting for
+        // note: `chat` goes red while a tool is waiting to be told whether it may run, or a running
+        // command whether it may reach the network. The question is pinned there rather than laid
+        // over the screen, so it is possible to walk away from it and look at what it is about, and
+        // something has to say, from the other three tabs, that the session is waiting for somebody
+        // to walk back
         strip.push(Span::styled(
             format!(" {} ", tab.name()),
             match (tab == app.tab, tab == Tab::Chat && asked) {
@@ -370,8 +368,8 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
             format!("{} events", app.trace.len()),
             "/save keeps them all".to_owned(),
         ],
-        // note: the caveat comes first because it is non-negotiable. A registered shell that is not
-        // refused can read, write and reach the network whatever the other rows answer; a tab
+        // note: the caveat comes first because it overrides the rows. A registered shell that is
+        // not refused can read, write and reach the network whatever the other rows answer; a tab
         // listing five verdicts and saying nothing about it would report four restrictions that are
         // not there.
         //
@@ -542,9 +540,9 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     // room for it here
     //
     // note: a session with no model gets a placeholder in the model's place rather than a corner
-    // with one fewer thing in it, because the gap is the one thing nobody can act on - a corner
-    // that simply leaves the model out reads as a corner that has not caught up yet. The address
-    // is still shown: it is settled, and it is what `/models` is about to list
+    // with one fewer thing in it, because the gap is the one thing nobody can act on: a corner
+    // that leaves the model out reads as a corner that has not caught up yet. The address is
+    // still shown: it is settled, and it is what `/models` is about to list
     match app.kernel.model_info() {
         Some(info) => add(format!("{} @ {}", info.model, app.provider.host()), dim),
         None => add(
@@ -586,11 +584,11 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
             None => dim,
         },
     );
-    // note: past the limit the figure above stops describing the next request, and without this
-    // it reads as a catastrophe that resolves itself on the next keystroke. A tool loop leaves the
+    // note: past the limit the figure above stops describing the next request, and without this it
+    // reads as a catastrophe that resolves itself on the next keystroke. A tool loop leaves the
     // context fat - compaction runs when a request is *built*, not when a turn ends - so the corner
-    // can be red and far over the limit while the request that follows is well under it. What this
-    // adds is not a number but the mechanism between the two.
+    // can be red and far over the limit while the request that follows is well under it. This adds
+    // the mechanism between the two, not a number.
     //
     // note: "runs", not "will fix it". Whether the pass finds anything it may take is its own
     // business - everything it wants may be pinned - so this says what is certain and leaves
@@ -651,12 +649,12 @@ const MODEL_FLOOR: usize = 12;
 
 /// The same spans with the `model @ host` shortened to claw back `over` columns.
 ///
-/// note: a ladder, because there is more than one thing here that can give way and they are not
-/// worth the same. The host goes first, then the model's vendor prefix, then the model itself from
-/// the left - and the figures at the right end, which is what all of this is protecting, never do.
-/// The host alone is not enough: a name like `dots-studio/dots-3-note-preview:free` is ordinary on
-/// OpenRouter, this program's default endpoint, and a line carrying one can lose its last figure
-/// off the right edge with the address already gone.
+/// note: a ladder, because more than one thing here can give way and they are not worth the same.
+/// The host goes first, then the model's vendor prefix, then the model itself from the left, and
+/// the figures at the right end, which all of this protects, never do. The host alone is not
+/// enough: a name like `dots-studio/dots-3-note-preview:free` is ordinary on OpenRouter, this
+/// program's default endpoint, and a line carrying one can lose its last figure off the right edge
+/// with the address already gone.
 fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
     spans
         .into_iter()

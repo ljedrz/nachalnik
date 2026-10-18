@@ -18,14 +18,14 @@ use crate::app::text::thousands;
 
 /// How many terminal columns `text` occupies.
 ///
-/// note: it is the one place that answers this, and everything deciding what fits goes through it.
-/// A character is not a column: CJK characters and emojis take two cells, so a row measured in
+/// note: the one place that answers this, and everything deciding what fits goes through it. A
+/// character is not a column: CJK characters and emojis take two cells, so a row measured in
 /// characters holds twice what it is told. A non-wrapping `Paragraph` clips overflow at the right
 /// edge, and the clipped end is not reachable by scrolling.
 ///
-/// note: that does not make every character count wrong. A cut made in the text - the first
-/// ninety-six characters of a summary, a window into a long line - is about the text and stays in
-/// characters. This answers "will this fit" questions; the answer is columns.
+/// note: not every character count is wrong. A cut made in the text - the first ninety-six
+/// characters of a summary, a window into a long line - is about the text and stays in characters.
+/// This answers "will this fit" questions, in columns.
 pub(super) fn columns(text: &str) -> usize {
     text.width()
 }
@@ -142,7 +142,7 @@ pub(super) fn gutter(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
 /// and hanging the continuations under whatever the line was indented by.
 ///
 /// note: `Paragraph` can wrap, but it wraps at render time, and this program counts lines to know
-/// where it is scrolled to - a widget that quietly turned forty lines into sixty would put the
+/// where it is scrolled to; a widget that silently turned forty lines into sixty would put the
 /// scrolling out by twenty. So the wrapping happens here, where the count is taken.
 pub(super) fn refit(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
     let width = width.max(8);
@@ -358,13 +358,13 @@ pub(super) fn compact(n: usize) -> String {
 /// abbreviation when it does not.
 ///
 /// note: `held` is where an unbounded number can land. What is being *sent* is bounded by the
-/// window it is being sent to; what is being *held* is whatever a tool actually produced, since
-/// `keep_truncated_output` keeps the whole of it - and a `grep` that wanders into a build
-/// directory holds millions. Seven columns stop at `999,999`, and a wider figure does not widen
-/// the column - `{:>7}` pads and never truncates, so it takes the columns it needs from its
-/// neighbours: `0` and `1,400,000` would arrive as `01,400,000`, and the row would lose its last
-/// two characters to the clip. Precision is the right thing to give up instead, because nobody
-/// acts on the last three digits of something that is not going anywhere.
+/// window it is being sent to; what is being *held* is whatever a tool produced, since
+/// `keep_truncated_output` keeps the whole of it, and a `grep` that wanders into a build directory
+/// holds millions. Seven columns stop at `999,999`, and a wider figure does not widen the column:
+/// `{:>7}` pads and never truncates, so it takes the columns it needs from its neighbours, and `0`
+/// and `1,400,000` would arrive as `01,400,000`, with the row losing its last two characters to the
+/// clip. Precision is the right thing to give up, because nobody acts on the last three digits of
+/// something that is not going anywhere.
 pub(super) fn fitted(n: usize, width: usize) -> String {
     match thousands(n) {
         exact if exact.len() <= width => exact,

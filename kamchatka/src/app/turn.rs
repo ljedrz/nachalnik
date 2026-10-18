@@ -21,7 +21,7 @@ pub enum Outcome {
     /// A command's request came back, and the command can be finished; see [`App::in_flight`].
     ///
     /// note: on the same channel as a turn's end rather than one of its own, because every loop
-    /// already waits on this one and hands what it reads to [`App::on_outcome`] - so a loop learns
+    /// already waits on this one and hands what it reads to [`App::on_outcome`], so a loop learns
     /// nothing new to finish a command, and a command cannot be finished by a loop that forgot to
     /// listen for it. It is not a turn ending: nothing about the turn changes.
     Returned(Returned),
@@ -62,8 +62,8 @@ impl App {
     ///
     /// note: this is the runtime's own shape, made visible. A turn is a loop over `step`, and
     /// running it a transition at a time is the only way to stand in [`State::Ready`] and look at
-    /// what the model has asked for *before* any of it runs - which the kernel documents as a
-    /// resting state on purpose, and which a whole turn walks straight through.
+    /// what the model has asked for *before* any of it runs, a resting state the kernel documents
+    /// and a whole turn walks straight through.
     pub fn start_step(&mut self) {
         self.launch(true);
     }
@@ -178,14 +178,14 @@ impl App {
     /// compaction pass being worked out.
     ///
     /// note: what a loop asks before handing in the next line, and what [`App::submit`] holds a
-    /// line for. A command that waits on an endpoint used to wait *in* `submit`, holding the `App`
+    /// line for. A command that waits on an endpoint once waited *in* `submit`, holding the `App`
     /// and so the loop: a served session answered nobody, a drawn one stopped redrawing, and a
     /// headless deadline could not be reached. It is sent out instead and finished by
-    /// [`App::on_outcome`] when it comes back - but the line after it must still not act on a
+    /// [`App::on_outcome`] when it comes back, but the line after it must still not act on a
     /// session part-way through it: `/models` and then `/model` from the list, or a message on the
     /// line after a switch. So lines wait while one is out, and the loop goes on drawing, reading
     /// the kernel, and taking `ctrl+c`, which stops a listing or a pass. A switch is never stopped:
-    /// half an `/endpoint` is a worse thing to leave than a wait.
+    /// half an `/endpoint` is worse to leave than a wait.
     pub fn in_flight(&self) -> bool {
         self.settling.is_some() || self.errand.is_some()
     }
@@ -221,9 +221,9 @@ impl App {
     /// of them sends out another.
     ///
     /// note: for the loops a line arrives at whenever somebody sends one: the drawn one, from the
-    /// keys, and a served one, from its clients - each of which was answered `queued` when it
-    /// was held, so that a client's next command, an interrupt among them, is not stuck behind it.
-    /// The headless loop reads no line while a command is in flight.
+    /// keys, and a served one, from its clients, each of which was answered `queued` when it was
+    /// held, so that a client's next command, an interrupt among them, is not stuck behind it. The
+    /// headless loop reads no line while a command is in flight.
     ///
     /// note: each is handed in as whoever sent it, keys or none. A page one of them opens for
     /// somebody with no screen to open it on is said instead, since the answer that would have
@@ -401,7 +401,7 @@ impl App {
             // goes nowhere: `App::decide` calls `start_turn`, `start_turn` refuses because the old
             // turn is still marked running, and the session stops for good with every question
             // answered and nothing to answer. The window is narrow but real: the gap between a
-            // client's socket and this loop. `headless.rs` stays out by only answering while the
+            // client's socket and this loop. `headless.rs` avoids it by only answering while the
             // kernel rests; the keys and a socket cannot, because a person answers when they
             // answer, so it is closed here once for all three
             Outcome::Stopped(State::Deciding { .. })
@@ -457,9 +457,9 @@ impl App {
     /// snapshot the end of the turn rewrites anyway. At rest the events are a person's, and each -
     /// an exclusion, a note, an undo - is a change the snapshot should show.
     ///
-    /// note: a record that cannot be written stops being kept and says so once. Saying it on every
-    /// event would be a red line per event for the rest of the session, and the end of the run
-    /// still tries once more, as a session with no recorder is written.
+    /// note: a record that cannot be written stops being kept and says so once, rather than a red
+    /// line per event for the rest of the session; the end of the run still tries once more, as a
+    /// session with no recorder is written.
     pub(super) fn keep_record(&mut self) {
         let Some(recorder) = &self.recorder else {
             return;

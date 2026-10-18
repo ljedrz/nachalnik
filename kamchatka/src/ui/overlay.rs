@@ -47,8 +47,7 @@ pub(super) fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
 ///
 /// note: the header is styled lines and the other two are strings, because the header is the only
 /// region with a colour in it - the advisor's rating - and it is pinned above the scroll, where a
-/// rating has to be: a warning that can be scrolled out of view is a warning nobody is obliged to
-/// have seen.
+/// rating has to be: a warning that can be scrolled out of view may never be seen.
 fn question_parts(
     app: &App,
     columns: usize,
@@ -75,9 +74,9 @@ fn question_parts(
     // instead of taking a line of its own, which costs two rows.
     //
     // note: a line above them appears until the keys are here, because until then none of them does
-    // anything. It goes when `tab` is pressed, when the options start being true. `y` is swallowed
-    // deliberately, so `[y] once` is not listed beside it - that would promise a key that is not
-    // there. The one key that works is named instead
+    // anything. It goes when `tab` is pressed, when the options start being true. `y` is swallowed,
+    // so `[y] once` is not listed beside it, which would promise a key that is not there. The one
+    // key that works is named instead
     let answers = format!(
         "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
         until_keys(app),
@@ -158,12 +157,12 @@ fn question_parts(
 ///
 /// note: the band and the words come from [`Rated::shown`](crate::tools::Rated::shown), and the
 /// colour is the only thing decided here. `ui` does not read the score, does not know the
-/// thresholds, and cannot disagree with the sentence beside it - the same division `Exit` is drawn
+/// thresholds, and cannot disagree with the sentence beside it, the same division `Exit` is drawn
 /// under, one file along.
 ///
 /// note: the percentage is on the line because the band is not a fact about the command.
 /// `Rated::shown` will not draw an unsure rating green, so an uncertain reading arrives yellow;
-/// without the percentage, somebody who cannot tell that from a confident yellow is told the
+/// without the percentage, somebody who cannot tell that from a confident yellow would think the
 /// advisor was sure when it was not.
 #[cfg(feature = "shell-advisor")]
 fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> Vec<Line<'static>> {
@@ -209,13 +208,13 @@ fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'stat
 /// Which stage of the command earned the band, where the advisor took one apart.
 ///
 /// note: the pair with [`rating`], answering what that cannot. A band is how bad the command is; a
-/// long `&&` chain earns its colour from one link. The line says how bad, this says which part,
-/// worth having when the command is too long to find by eye. It costs no row: an underline under a
-/// run of the command already on the screen.
+/// long `&&` chain earns its colour from one link. The line says how bad, this says which part, for
+/// a command too long to find it by eye. It costs no row: an underline under a run of the command
+/// already on the screen.
 ///
-/// note: `None` is every way of not having one and does not distinguish between them - no advisor,
-/// a command with no joints, one the advisor declined to take apart - as [`App::rating`] does for
-/// the band. On screen: nothing underlined, and a command to read as a whole.
+/// note: `None` is every way of not having one, without distinguishing them - no advisor, a command
+/// with no joints, one the advisor declined to take apart - as [`App::rating`] does for the band.
+/// On screen: nothing underlined, and a command to read as a whole.
 #[cfg(feature = "shell-advisor")]
 fn worst(app: &App, request: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
     app.rating(request)?.worst
@@ -335,8 +334,8 @@ fn trimmed(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
 /// row between the arguments and the answers.
 ///
 /// note: named because two places have to agree on it - the height the panel asks for, and whether
-/// the arguments had to be cut, which is what puts `pgup / pgdn` on the answers. If they disagree
-/// by one row, the panel says there is more to read when there is not.
+/// the arguments had to be cut, which puts `pgup / pgdn` on the answers. If they disagree by one
+/// row, the panel says there is more to read when there is not.
 pub(super) const BORDERS_AND_GAP: u16 = 3;
 
 /// The fewest rows a question is drawn in, even on a short screen: two of border, the header and
@@ -688,9 +687,9 @@ fn tabs(pages: &[Page], page: usize) -> Vec<Span<'static>> {
 
 /// A rectangle in the middle, at most `columns` by `rows`, and never bigger than what it is in.
 ///
-/// note: the smallest a box is allowed to be comes *before* the size of the thing it is in, and
-/// the last word is the terminal's. A box has to be about twenty columns and four rows to be worth
-/// drawing at all, but a terminal narrower or shorter than that is not a reason to draw outside the
+/// note: the smallest a box is allowed to be comes *before* the size of the thing it is in, and the
+/// last word is the terminal's. A box has to be about twenty columns and four rows to be worth
+/// drawing, but a terminal narrower or shorter than that is not a reason to draw outside the
 /// buffer, which is a panic: `F1` in a one-row window would take the whole program down and the
 /// session with it, and a window is one row for as long as somebody is dragging its edge.
 fn centred(area: Rect, columns: u16, rows: u16) -> Rect {

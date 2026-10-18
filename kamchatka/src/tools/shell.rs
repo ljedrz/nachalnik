@@ -32,8 +32,8 @@ const HEARTBEAT: Duration = Duration::from_millis(120);
 ///
 /// note: three variants, not one per shape, because a colour answers a coarse question: did the
 /// command say it worked, say it failed, or never get to say. `1` from `grep` meaning no match is
-/// not included, because telling that from a fault means knowing the command, and this program
-/// would be guessing. A guess that colours a working pipeline red, or a real failure yellow, is
+/// not singled out, because telling that from a fault means knowing the command, and this program
+/// would be guessing; a guess that colours a working pipeline red, or a real failure yellow, is
 /// worse than the number itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
@@ -75,7 +75,7 @@ impl Exit {
 /// note: ranges rather than a rewritten command. Breaking the line at each joint costs a row per
 /// stage on a panel whose rows are scarce, and `sh` would not take back a broken command, so the
 /// panel would show a spelling nobody could act on. Colouring the joints in place says the same
-/// thing at a glance, in a command still written the way the model wrote it.
+/// thing at a glance, in the command as the model wrote it.
 ///
 /// note: worked out here rather than from the highlighter. `synoptic`'s `sh` mode calls every
 /// flag's hyphen an operator - `-n`, `-u`, `-5` - and does not tokenise `|` or `;`, so painting its
@@ -83,11 +83,11 @@ impl Exit {
 ///
 /// note: quote-aware, and it gives up rather than guessing.
 /// [`reaches_the_network`](crate::tools::reaches_the_network) splits on these same characters
-/// without caring where they are, because a policy that over-reads a command asks a question it
-/// need not have, and that is the right way for a policy to be wrong. A panel that over-reads tells
-/// somebody a quoted `|` is a pipe on the screen where they decide whether to run it. So an
-/// unterminated quote, an unclosed `$(` or a trailing backslash comes back empty and the command is
-/// drawn with nothing picked out.
+/// wherever they are, because a policy that over-reads a command only asks a question it need not
+/// have, which is the right way for a policy to be wrong. A panel that over-reads tells somebody a
+/// quoted `|` is a pipe on the screen where they decide whether to run it. So an unterminated
+/// quote, an unclosed `$(` or a trailing backslash comes back empty and the command is drawn with
+/// nothing picked out.
 ///
 /// note: a command that already has newlines is left alone without being scanned. What is inside a
 /// heredoc is arbitrary text - the `|` in the middle of a Python string is not a joint, and nothing
@@ -219,21 +219,19 @@ pub struct Shell {
     pub devices: Vec<PathBuf>,
     /// The binary that knows how to confine itself and run a command; `None` runs `sh` directly.
     ///
-    /// note: a path settled once at startup rather than `current_exe()` per call, for two
-    /// reasons. On Linux `current_exe()` reads `/proc/self/exe`, and a binary replaced while the
-    /// program is running - `cargo build` in the very repository it is working on, an upgrade -
-    /// makes that a path ending in ` (deleted)`, so every command comes back
-    /// `No such file or directory` and nothing on screen accounts for it. And this crate is a
-    /// library as well as a program: `current_exe()` in somebody else's process is somebody
-    /// else's binary, which would be handed `--confine-and-run` and would make of it whatever it
-    /// liked.
+    /// note: a path settled once at startup rather than `current_exe()` per call, for two reasons.
+    /// On Linux `current_exe()` reads `/proc/self/exe`, and a binary replaced while the program is
+    /// running - `cargo build` in the repository it is working on, an upgrade - makes that a path
+    /// ending in ` (deleted)`, so every command comes back `No such file or directory` with no
+    /// explanation on screen. And this crate is a library as well as a program: `current_exe()` in
+    /// somebody else's process is somebody else's binary, which would be handed `--confine-and-run`
+    /// and do whatever it liked with it.
     pub confiner: Option<PathBuf>,
     /// How much of a command's output the model is shown.
     ///
     /// note: on the struct rather than assigned by [`super::builtin`], because this is a public
-    /// type that somebody constructs and registers directly (`builtin` is a convenience, not the
-    /// only route); a limit set by one route is a limit `/limit` silently fails to change on the
-    /// other.
+    /// type that somebody can construct and register directly; a limit set by one route is a limit
+    /// `/limit` silently fails to change on the other.
     pub limits: Limits,
     /// What a command left running when its call ended, for whoever ends the session to stop;
     /// see [`Stragglers`].
@@ -245,25 +243,25 @@ pub struct Shell {
 
 /// What the commands of this session left running when their calls ended.
 ///
-/// note: `sleep 300 &`, a server, a watcher - a job put in the background survives the call, and
-/// it survived the program too, reparented to init with nothing left that answers its network
-/// questions or records what it does. The call says so while the session lasts; this is what makes
-/// the end of the session say it, and stop them - [`Stragglers::stop`] - unless somebody asked to
-/// leave them running.
+/// note: `sleep 300 &`, a server, a watcher - a job put in the background survives the call, and it
+/// once survived the program too, reparented to init with nothing left that answers its network
+/// questions or records what it does. The call says so while the session lasts; this makes the end
+/// of the session say it, and stop them - [`Stragglers::stop`] - unless somebody asked to leave
+/// them running.
 ///
 /// note: a command's processes are known by a mark, not by their process group. Every command is
 /// started with [`CALL_VAR`] in its environment, naming this session and the call, and everything
-/// it starts inherits it - so a job that left the group is found as surely as one that stayed in
-/// it: `setsid sleep 300 &`, a daemon's double fork, `nohup`. A model asked for a job that outlives
-/// its call wraps it in `setsid` as often as not, and found by group, that job outlived the session
-/// unnamed. What escapes is what clears its own environment - `env -i` - which is a command saying
-/// it wants nothing of where it came from, and what is not this user's to read.
+/// it starts inherits it, so a job that left the group is found as surely as one that stayed in it:
+/// `setsid sleep 300 &`, a daemon's double fork, `nohup`. A model asked for a job that outlives its
+/// call wraps it in `setsid` as often as not, and found by group, that job outlived the session
+/// unnamed. What escapes is what clears its own environment - `env -i`, a command saying it wants
+/// nothing of where it came from - and what is not this user's to read.
 ///
-/// note: and by the mark, not by a number remembered. A process identifier is handed out again
-/// once its process is gone, and a session is long: a number written down when a call ended can be
-/// somebody else's process by the time the session does. The processes are looked for when they
-/// are about to be stopped, each one signalled through a `pidfd` opened on it and read again
-/// through `/proc` after, so that what is signalled is a process that carries the mark.
+/// note: by the mark, not by a number remembered. A process identifier is handed out again once its
+/// process is gone, and a number written down when a call ended can be somebody else's process by
+/// the time the session ends. The processes are looked for when they are about to be stopped, each
+/// one signalled through a `pidfd` opened on it and read again through `/proc` after, so that what
+/// is signalled is a process that carries the mark.
 ///
 /// note: shared, since the tool marks and whoever ends the session stops; a clone is the same.
 #[derive(Clone)]
@@ -429,10 +427,10 @@ impl Tool for Shell {
         // that really is protected, and a model that cannot tell those apart spends its turns
         // trying `sudo`
 
-        // note: the figure rather than "long output", because what a model does about a limit it
-        // cannot see is find out by spending it - and read off the table rather than written into
-        // the sentence, since `/limit exec:run` moves it and a description is built afresh for
-        // every request. Bare, the way the marker a cut output carries is bare: the model reads
+        // note: the figure rather than "long output", because a model finds out about a limit it
+        // cannot see by spending it - and read off the table rather than written into the sentence,
+        // since `/limit exec:run` moves it and a description is built afresh for every request.
+        // Bare, like the marker a cut output carries: the model reads
         // `[... 4000 bytes truncated by an output limit ...]` against this, and the two should be
         // the same kind of number
         let cut = match self.limits.for_call(&[Capability::exec("run")]) {
@@ -444,8 +442,8 @@ impl Tool for Shell {
         // failure, where the rest of the confinement is accounted for. `Sandbox::note_for` says
         // nothing about a refusal naming a path this session reaches, on the grounds that such a
         // refusal is the file's own permissions. That is right until `fs:write` is refused, and
-        // then every write inside the working directory is the boundary and reads the same way.
-        // Standard error does not say whether a refusal was a read or a write, so the sentence
+        // then every write inside the working directory hits the boundary and reads the same way.
+        // Standard error does not say whether a refusal was a read or a write, so the only sentence
         // that can be certain is this one, before anything is run
         let confined = self.confiner.is_some().then(|| {
             Sandbox::of(
@@ -459,9 +457,8 @@ impl Tool for Shell {
         let read_only = confined.as_ref().is_some_and(|sandbox| !sandbox.writable);
         // note: the paths that were opened are named, because a model told only about "the working
         // directory and the system paths" has no reason to try `~/.rustup` even when somebody
-        // opened it for exactly that. Read the confinement the command runs under rather than the
-        // flags, because a refusal of `fs:write` makes the paths `--sandbox-write` opened read-only
-        // there
+        // opened it for that. Read the confinement the command runs under rather than the flags,
+        // because a refusal of `fs:write` makes the paths `--sandbox-write` opened read-only there
         let (extra, readable) = match &confined {
             Some(sandbox) => (&sandbox.extra, &sandbox.readable),
             None => (&self.extra, &self.readable),
@@ -475,10 +472,10 @@ impl Tool for Shell {
                     .map(|path| format!("{} read-only", path.display())),
             )
             .collect();
-        // note: what the stance makes of the network, said as exactly as it is known. Where the
+        // note: what the stance makes of the network, said as precisely as it is known. Where the
         // gate does not hold, a call can still be granted the network on its own, so the sentence
-        // there hedges; where it does, a command that reaches out waits on a person; a model that
-        // does not know that reads a long silence as a hang
+        // there hedges; where it does, a command that reaches out waits on a person, and a model
+        // that does not know that reads a long silence as a hang
         let network = match confined.as_ref().map(|sandbox| sandbox.network) {
             Some(Network::NoTcp) => ", and TCP may be closed",
             Some(Network::Shut) => ", and it has no network",
@@ -843,8 +840,8 @@ impl Tool for Shell {
         //
         // note: stopped is reported here, not after the standard error, because an output limit
         // cuts from the end. A stopped command that said more than the limit would lose the line
-        // explaining why output stops mid-sentence; the truncation marker replaces it, and the
-        // model is misled. The first line survives anything
+        // explaining why output stops mid-sentence, and the truncation marker in its place would
+        // mislead the model. The first line survives anything
         let waited = match waited {
             Some(waited) => waited,
             None => child.wait().await,
@@ -884,10 +881,10 @@ impl Tool for Shell {
             },
             (false, Err(e)) => (Exit::Stopped, format!("exit: unknown ({e})")),
         };
-        // note: this is the one place the line and its meaning are checked together, and it costs
-        // nothing in a release build. A test that runs a real command then also tests that the line
-        // says what the run meant; a separate table of strings could not, since it would keep
-        // agreeing with itself after the wording changed
+        // note: the one place the line and its meaning are checked together, at no cost in a
+        // release build. A test that runs a real command then also tests that the line says what
+        // the run meant; a separate table of strings could not, since it would keep agreeing with
+        // itself after the wording changed
         debug_assert_eq!(
             Exit::of(&status),
             Some(meant),
@@ -910,11 +907,11 @@ impl Tool for Shell {
             let _ = tokio::fs::remove_dir_all(scratch).await;
         }
         // note: what came of it, where the command reached for the network. Up here with the rest,
-        // for the reason they all are, and said because the output alone cannot say it: a refused
-        // socket is `Permission denied` from the kernel, the same words a file's own permissions
-        // produce, and a refused name lookup is `Temporary failure in name resolution`, which reads
-        // as a network having trouble. A model that does not know it was refused looks for another
-        // way out rather than asking
+        // for the same reason, and said because the output alone cannot say it: a refused socket is
+        // `Permission denied` from the kernel, the same words a file's own permissions produce, and
+        // a refused name lookup is `Temporary failure in name resolution`, which reads as a network
+        // having trouble. A model that does not know it was refused looks for another way out
+        // rather than asking
         let refused = "so every network socket it asked for was refused with `Permission \
                        denied`, and a name it tried to look up failed with `Temporary failure in \
                        name resolution`";
@@ -953,7 +950,7 @@ impl Tool for Shell {
             ),
         };
         // note: standard error before standard output because an output limit cuts from the end,
-        // and a command that failed after printing a lot would lose the line saying why. Errors are
+        // and a command that failed after printing a lot would lose the line saying why; errors are
         // usually the shorter stream. A build whose warnings fill the limit pushes its output off
         // the end into the excluded whole; cutting standard output to make room would lose it
         // outright, since the whole holds only what the tool returned
@@ -1077,8 +1074,8 @@ impl Gatekeeper {
     }
 }
 
-/// The process group of a command still running, killed if the call is dropped before it ends,
-/// and the temporary directory it was given, removed then.
+/// The process group of a command still running, killed if the call is dropped before it ends, and
+/// the temporary directory it was given, removed then.
 ///
 /// note: what `kill_on_drop` does for the child alone, done for its group. A call is dropped when
 /// the process is on its way out - a runtime shut down with a turn still going, a panic - and the
@@ -1152,8 +1149,9 @@ fn signal_name(signal: i32) -> String {
 ///
 /// note: it signals the group rather than the process, because a shell command is rarely one
 /// process: `make` starts a compiler and `npm test` starts a runner. A signal to the shell alone
-/// leaves those running. They are confined by the inherited domain but still write in the working
-/// directory, with nothing left to report them. Someone who pressed escape was told it stopped.
+/// leaves those running, confined by the inherited domain but still writing in the working
+/// directory, with nothing left to report them, after someone who pressed escape was told it
+/// stopped.
 ///
 /// note: a process that left the group is not reached. One run under `setsid`, or a daemon that
 /// detaches itself, runs on, confined still, after the call has said it stopped. Holding the whole
@@ -1340,7 +1338,7 @@ mod tests {
 
     /// An argument `run` does not take is refused by name, and nothing is run.
     ///
-    /// note: `path` beside a command is the mistake this rule prevents - a call that ignored it
+    /// note: `path` beside a command is the mistake this rule prevents: a call that ignored it
     /// would answer with the command's whole output as though the narrowing it asked for had
     /// happened. The refusal reads off the same table the schema is built from, so the two cannot
     /// disagree about what `shell` takes.
@@ -1793,14 +1791,14 @@ mod tests {
     ///
     /// note: the advice for a command too long to start says to write it to a file and run the
     /// file, which is right for an argument list the kernel refused and wrong for a confiner that
-    /// is not there - and a model told to write a 200000-byte command to a file, when nothing about
-    /// the command was the problem, goes looking for a length it cannot find. The two refusals are
-    /// told apart by the kind of the error behind them, so a test that only ever started a command
-    /// that was too long never saw the other one.
+    /// is not there; a model told to write a 200000-byte command to a file, when nothing about the
+    /// command was the problem, goes looking for a length it cannot find. The two refusals are told
+    /// apart by the kind of the error behind them, so a test that only ever started a command that
+    /// was too long never saw the other one.
     ///
-    /// note: a confiner that is not there is the way to reach it. The spawn fails before a single
-    /// byte is run, so nothing of the command's own output can be mistaken for the reason, and the
-    /// reason says which file is missing.
+    /// note: a missing confiner is how to reach it. The spawn fails before a single byte is run, so
+    /// nothing of the command's own output can be mistaken for the reason, and the reason says
+    /// which file is missing.
     #[tokio::test]
     async fn a_command_that_could_not_start_is_not_told_it_was_too_long() {
         let said = {
@@ -1990,9 +1988,9 @@ mod tests {
     /// What a command reported is what its first line says, for every shape the tool writes.
     ///
     /// note: real commands rather than a table of the strings this file writes. A table would keep
-    /// agreeing with itself after somebody reworded the status line, which is the one failure worth
-    /// catching here. The `debug_assert` in `invoke` is the same check from the other side, run by
-    /// every test in this crate that runs a command.
+    /// agreeing with itself after somebody reworded the status line, the one failure worth catching
+    /// here. The `debug_assert` in `invoke` is the same check from the other side, run by every
+    /// test in this crate that runs a command.
     ///
     /// note: `kill -9 $$` for the third, because a signal is the only way to leave a status with no
     /// code in it, and SIGKILL is the one a shell cannot decline.

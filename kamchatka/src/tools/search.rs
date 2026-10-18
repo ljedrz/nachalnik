@@ -3,15 +3,15 @@
 //! note: ripgrep's own engine rather than a search written here or a call out to `rg`. The binary
 //! is these four crates plus a printer - `grep-searcher` is the search loop, `grep-regex` the
 //! matcher, `ignore` the walker that knows what a `.gitignore` means, and `globset` the patterns
-//! both tools filter with - so linking them is not implementing a search, and it costs no `rg` on
-//! the machine. The printer is the half this program wants of its own: one that cuts at *matches*
-//! rather than at bytes and says how many it did not show, because a search truncated mid-file
-//! with nothing accounting for the rest is the thing that makes a model run it again.
+//! both tools filter with - so linking them is not implementing a search, and it needs no `rg` on
+//! the machine. The printer is the part this program writes itself: one that cuts at *matches*
+//! rather than at bytes and says how many it did not show, because a search truncated mid-file with
+//! nothing accounting for the rest makes a model run it again.
 //!
 //! note: what the pair buys is which capability they ride. Without them, finding a symbol means
-//! `shell`, which subsumes every other capability - so a session that only wants to be asked
-//! about the repository has to hand over the one permission that answers for everything. These
-//! declare `fs:grep` and `fs:glob`, and the path rules that bind a read bind them too: see
+//! `shell`, which subsumes every other capability, so a session that only wants to be asked about
+//! the repository has to hand over the one permission that answers for everything. These declare
+//! `fs:grep` and `fs:glob`, and the path rules that bind a read bind them too: see
 //! [`Looking::barred`], which is the part that had to be built rather than linked.
 
 use std::{
@@ -36,9 +36,9 @@ use crate::{
 
 /// How many matching lines one `grep` answers with.
 ///
-/// note: matches rather than bytes, and the two are not the same cut. A byte limit takes the tail
-/// of the last file searched, so the model believes it has seen the whole of the rest; this stops
-/// the search and says it stopped, which the model can act on by narrowing the pattern or naming a
+/// note: matches rather than bytes, and the two are different cuts. A byte limit takes the tail of
+/// the last file searched, so the model believes it has seen the whole of the rest; this stops the
+/// search and says it stopped, which the model can act on by narrowing the pattern or naming a
 /// directory. The byte limit is still in force underneath as a backstop for the pathological line,
 /// not as the thing that shapes the answer.
 pub(super) const MATCHES: usize = 100;
@@ -48,7 +48,7 @@ pub(super) const PATHS: usize = 200;
 
 /// How many lines either side of a match `context` will go to.
 ///
-/// note: said out loud when a call asks for more, rather than clamped quietly. An answer that does
+/// note: said out loud when a call asks for more, rather than clamped silently. An answer that does
 /// not say what it did with an argument reads as an answer to the argument given, so a model
 /// clamped in silence asks again for more and gets the same answer back, a request spent on a
 /// number nothing told it was a ceiling.
@@ -57,9 +57,9 @@ const CONTEXT: u64 = 10;
 /// How much of one line is shown, in characters.
 ///
 /// note: enough for any line somebody wrote and not enough for a minified one. `MATCHES * WIDTH` is
-/// deliberately under the byte limit, so the two cuts do not both fire on an ordinary answer
-/// without context lines. With context lines, a hundred matches can pass the limit, and the answer
-/// becomes the files the matches are in.
+/// under the byte limit, so the two cuts do not both fire on an ordinary answer without context
+/// lines. With context lines, a hundred matches can pass the limit, and the answer becomes the
+/// files the matches are in.
 pub(super) const WIDTH: usize = 200;
 
 /// What both tools say about a glob.
@@ -90,13 +90,13 @@ impl Looking {
     /// note: this is why a search is not simply `read` in a loop. [`Careful::judges`] matches path
     /// rules against the path in the call. A search names a directory, so files under it are never
     /// judged: `.env*: ask` would otherwise bind `read` and let `grep` through. A rule that is not
-    /// `allow` bars the file from the walk. The answer says how many it barred and which kind.
+    /// `allow` bars the file from the walk, and the answer says how many it barred and which kind.
     /// `ask` cannot be honoured once for every file in a walk, so the answer does not read them and
     /// says so. A refusal is counted apart from an ask: the first is closed, the second is a
     /// question this answer is not.
     ///
     /// note: this does not cover the path the call itself names. That goes through `judges` like
-    /// any other, so `grep` in `.env` is a question exactly as `read` of it is. A file somebody has
+    /// any other, so `grep` in `.env` is a question as `read` of it is, and a file somebody has
     /// just answered that question about is not then skipped for the same rule. The distinction is
     /// between what was asked about and what was merely walked over.
     fn barred(&self) -> Vec<(String, Verdict)> {
@@ -210,10 +210,10 @@ pub(super) fn led_past<'a>(
 /// What a walk left behind, and why.
 ///
 /// note: counted rather than listed, so an answer accounts for itself: a model can tell "it is not
-/// there" from "eleven files were not opened". The names are longer and, for path rules, exactly
-/// what somebody did not want handed over.
+/// there" from "eleven files were not opened". The names are longer and, for path rules, what
+/// somebody did not want handed over.
 ///
-/// note: a path that is not a file is among them, as the tool's own description promised: the walks
+/// note: a path that is not a file is among them, as the tool's own description promises: the walks
 /// count everything they passed over, and a pipe passed over in silence makes a model conclude the
 /// pipe is not there. What is left out is a directory, which the walk descended into rather than
 /// passed over.
@@ -288,11 +288,10 @@ impl Skipped {
 /// anybody wrote. The walker does not follow links: each one is yielded as itself, and [`followed`]
 /// decides about it one at a time; a link is a question about reach, not walking.
 ///
-/// note: `require_git(false)` makes the tool's description true. The walker honours a `.gitignore`
-/// only inside a git repository by default, and `fs` tells the model it obeys one unconditionally;
-/// outside a repository a session would be handed build output while its definition said it had
-/// been spared it. A `.gitignore` says what it says wherever it is found; whether the directory has
-/// been committed is a fact about a workflow, not about which files somebody meant.
+/// note: `require_git(false)` makes the tool's description true. By default the walker honours a
+/// `.gitignore` only inside a git repository, and `fs` tells the model it obeys one
+/// unconditionally; outside a repository a session would be handed build output while its
+/// definition said it had been spared it. A `.gitignore` says what it says wherever it is found.
 fn walk(root: &Path) -> ignore::Walk {
     WalkBuilder::new(root)
         .hidden(false)
@@ -315,7 +314,7 @@ struct Seen {
 /// interrupted it, and the count.
 ///
 /// note: one walk for the two tools, because what a walk passes over and why is the boundary a
-/// search is held to, and a copy of it per tool was two answers to what a search may open. What
+/// search is held to, and a copy per tool once gave two answers to what a search may open. What
 /// differs is what each does with a file, which is `each`'s, including the counts only a search can
 /// make - a file that would not open or turned out binary - which is why it is handed the count as
 /// well.
@@ -412,19 +411,19 @@ fn walked(
 ///
 /// note: a link is not refused for being a link. Where every crate in a workspace carries a
 /// `LICENSE-MIT` link to the file at the root, refusing them all would lead every answer to every
-/// search with a count of skipped links - noise on a line whose whole job is that it is rare, and
-/// a claim that something was withheld when nothing was. A link inside the working directory is
+/// search with a count of skipped links: noise on a line that is only useful because it is rare,
+/// and a claim that something was withheld when nothing was. A link inside the working directory is
 /// an ordinary file with a second name.
 ///
 /// note: the question is answered by [`Reach::allows`], which resolves before it compares - the
 /// same call, with the same answer, that `read` makes about the same path. So "outside the reach"
-/// means here exactly what it means there, rather than being a second opinion that can drift.
+/// means here what it means there, rather than being a second opinion that can drift.
 ///
-/// note: a link to a *directory* is left alone rather than descended. Where it points beneath
-/// the directory walked, the walk arrives at those files by their real names anyway, and
-/// following it as well would report each of them twice - or walk a cycle for ever, so nothing
-/// is said of it. Where it points elsewhere, nothing of what it leads to is searched, and an
-/// answer that said nothing of it would read as that directory having no matches.
+/// note: a link to a *directory* is left alone rather than descended. Where it points beneath the
+/// directory walked, the walk arrives at those files by their real names anyway, and following it
+/// as well would report each of them twice - or walk a cycle for ever, so nothing is said of it.
+/// Where it points elsewhere, nothing of what it leads to is searched, and an answer that said
+/// nothing of it would read as that directory having no matches.
 enum Link {
     /// A file with a second name: search it, by its first.
     Read(PathBuf),
@@ -648,8 +647,8 @@ impl Grep {
 
         // note: the walk is blocking and `ignore` has no async form, so it goes on a thread that
         // may block. A blocking task cannot be aborted, so the loop asks the sink whether somebody
-        // has pressed escape rather than relying on being cancelled. A search of a large tree that
-        // nobody can stop is the one way this could be worse than the shell
+        // has pressed escape rather than relying on being cancelled; a search of a large tree that
+        // nobody could stop would be worse than the shell
         let found = tokio::task::spawn_blocking(move || {
             let mut searcher = SearcherBuilder::new()
                 .binary_detection(BinaryDetection::quit(b'\x00'))
@@ -951,11 +950,11 @@ impl Glob {
 /// Paths in the shape `ls -R` prints them: each directory's path and a `:`, the names in it one to
 /// a line, and a blank line before the next directory; `.` is the working directory.
 ///
-/// note: `ls -R`'s shape exactly, not one of this program's own, because a model has read it a
-/// great deal and the tool's description explains it in a sentence. Every directory is written once
-/// rather than on every line: a `glob` usually matches most of a tree, and the prefixes were most
-/// of its tokens. The cost is a model now and then reading a bare name as a path, one failed call
-/// it recovers from, cheaper than paying for the prefixes on every answer.
+/// note: `ls -R`'s shape, not one of this program's own, because a model has read it a great deal
+/// and the tool's description explains it in a sentence. Every directory is written once rather
+/// than on every line: a `glob` usually matches most of a tree, and the prefixes were most of its
+/// tokens. The cost is a model now and then reading a bare name as a path, one failed call it
+/// recovers from, cheaper than paying for the prefixes on every answer.
 ///
 /// note: directories are in the order `ls -R` walks them, a directory before those under it, which
 /// is the order `Path` compares in; names are in the order the walk found them, by name. Only what

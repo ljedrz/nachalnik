@@ -48,9 +48,9 @@ pub use crate::tools::{
 ///
 /// note: one function per domain rather than a constant per operation, because the operations are
 /// each tool's own vocabulary and the domain is the part that has to agree across them. `context`
-/// is the one worth pointing at: one tool both reads this session's items and changes them, and a
-/// rule about `context` is about the object, not about either kind of operation. Naming it here is
-/// what keeps the reading and the changing from drifting into two domains.
+/// is the example: one tool both reads this session's items and changes them, and a rule about
+/// `context` is about the object, not about either kind of operation. Naming it here keeps the
+/// reading and the changing from drifting into two domains.
 pub mod domains {
     use nachalnik::{Capability, Domain};
 
@@ -126,8 +126,8 @@ pub(crate) fn what(value: &Value) -> &'static str {
 ///
 /// note: a numeric string is taken as the number: it costs nothing and saves a turn, and models
 /// quote numbers often enough that refusing one refuses a spelling, not a mistake. A word is not,
-/// because `as_u64().unwrap_or(..)` returns the default, which reads as a tool that did what it was
-/// asked.
+/// because `as_u64().unwrap_or(..)` would return the default, which reads as a tool that did what
+/// it was asked.
 ///
 /// note: the same rule `introspect::log` applies to `take` and `since`: `take: "3"` read as `None`
 /// is what leaving `take` out does - a summary where three lines were asked for, with nothing
@@ -206,8 +206,8 @@ pub(crate) fn yes_or_no(args: &Value, name: &str) -> Result<bool, String> {
 ///
 /// note: two places need this number, and one is not a row in this table. Every tool this program
 /// ships has a row; a tool from an MCP server has none and no handle to this, so
-/// [`Config::default_tool_output_limit`](nachalnik::Config) stops it filling a context. Set to this
-/// in `wiring` and held to the window with the rows; see [`Limits::held`].
+/// [`Config::default_tool_output_limit`](nachalnik::Config) stops it filling a context. It is set
+/// to this in `wiring` and held to the window with the rows; see [`Limits::held`].
 pub(crate) const CEILING: usize = 32_000;
 
 /// The most of one call's output a tool keeps here, in bytes: what a command writes to each of its
@@ -232,7 +232,7 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// `context:look` and `log`'s records.
 ///
 /// note: a lower number buys a tripwire where the limit never fires anyway. The seven answers are
-/// bounded because of how each is built, so if one arrives cut, that has quietly stopped being
+/// bounded because of how each is built, so if one arrives cut, that has silently stopped being
 /// true: a `budget` that listed every item, or a `revise` that echoed what it wrote.
 /// `tests/introspect/shared.rs` holds the seven to this size, so such a change should be caught
 /// there; this is what happens if it is not.
@@ -251,18 +251,17 @@ pub(crate) const REPORT: usize = 8_000;
 /// twelve, from a listing of items to a line confirming a pin. A number per tool would fit
 /// whichever operation somebody thought of first.
 ///
-/// note: this is a shared handle rather than a number beside each `spec`, because `/limit`, which
-/// changes the rows, is in another file from the tools that declare specs, and because `/limit`
-/// lists the table and a person raising one row wants to see the others. It is read afresh for
-/// every call, so a change lands on the next call rather than needing a restart. `/tools toggle`
-/// leans on the same property.
+/// note: a shared handle rather than a number beside each `spec`, because `/limit`, which changes
+/// the rows, is in another file from the tools that declare specs, and because `/limit` lists the
+/// table and a person raising one row wants to see the others. It is read afresh for every call, so
+/// a change lands on the next call without a restart; `/tools toggle` relies on the same property.
 ///
-/// note: raising a limit does not recover a result that was already shortened, and it does not need
-/// to: the whole result is excluded alongside the shortened copy the model was shown, and one
-/// keystroke on the context tab sends the whole instead. The projector pairs a call with one
-/// result, so the whole result is used for that call and the shortened copy is dropped. The new
-/// limit applies to the next call. `fs:read` is an exception: it stops at a line under the limit
-/// and says where to read on from, so the file is the whole result and nothing was cut.
+/// note: raising a limit does not recover a result that was already shortened, and need not: the
+/// whole result is excluded alongside the shortened copy the model was shown, and one keystroke on
+/// the context tab sends the whole instead. The projector pairs a call with one result, so the
+/// whole result is used for that call and the shortened copy is dropped. The new limit applies to
+/// the next call. `fs:read` is an exception: it stops at a line under the limit and says where to
+/// read on from, so the file is the whole result and nothing was cut.
 ///
 /// note: every row is also held to the context window until somebody sets it: one tenth of the
 /// window's size, at about four bytes per token, and never more than the row. On a small window, a
@@ -316,16 +315,16 @@ impl Limits {
     /// bytes, or 8,000 where the answer is a report rather than a piece of the session.
     ///
     /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and it
-    /// is the cut-off for an answer made from what the session holds. There are two tiers rather
-    /// than a number per row: a number per row would be a set of opinions nobody asked for, and one
-    /// number for every row would treat a line confirming a write and a whole log as the same kind
-    /// of answer. The tier is decided by whether the answer grows with the session, not by
-    /// importance: seven subjects have answers that do not grow with the session, and every other
-    /// one does. The table exists so a person can change the row that matters to them.
+    /// is the cut-off for an answer made from what the session holds. Two tiers rather than a
+    /// number per row: a number per row would be a set of opinions nobody asked for, and one number
+    /// for every row would treat a line confirming a write and a whole log as the same kind of
+    /// answer. The tier is decided by whether the answer grows with the session, not by importance:
+    /// seven subjects have answers that do not, and every other one does. The table exists so a
+    /// person can change the row that matters to them.
     ///
     /// note: `fs:grep` and `fs:glob` are in the default table for `/limit` to list and raise.
     /// Neither row normally shapes its own answer: both cut at a number of matches or paths and say
-    /// so, which a byte limit cannot do. A byte limit takes the tail of the last file searched and
+    /// so, which a byte limit cannot do; a byte limit takes the tail of the last file searched and
     /// leaves nothing saying there was more. These rows are the fallback for the one line that is a
     /// megabyte wide.
     ///
@@ -426,14 +425,14 @@ impl Limits {
     }
 }
 
-/// Returns the two tools a terminal agent needs to be worth talking to, `fs` and `shell`, both
-/// held to `reach`.
+/// Returns the two tools a terminal agent needs to be worth talking to, `fs` and `shell`, both held
+/// to `reach`.
 ///
 /// note: the policy the two searching tools consult comes off the `shell` rather than being a
-/// parameter of its own, because a second handle passed in is a second chance for them to
-/// disagree - and two tools in one session honouring two different sets of path rules is the kind
-/// of wrong that nothing on the screen would show. There is one `Careful` in a session; this is
-/// the handle to it that is already here.
+/// parameter of its own, because a second handle passed in is a second chance for them to disagree,
+/// and two tools in one session honouring two different sets of path rules would be wrong with
+/// nothing on the screen showing it. There is one `Careful` in a session; this is the handle to it
+/// that is already here.
 ///
 /// note: `fs` takes its [`Layout`] off the `shell` for the same reason: two tools of one session
 /// offered in two layouts would have a model writing one of them wrong.

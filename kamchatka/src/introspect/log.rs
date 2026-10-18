@@ -1,23 +1,22 @@
 //! The tool that reads the session's own record: what happened, in the order it happened, in the
 //! kernel's words.
 //!
-//! note: the log is not the context and this is the difference the tool exists to make usable. A
-//! context is what the model is carrying and is sent with every request; the log sits beside it,
-//! costs nothing until something asks for it, and holds the things a context cannot - what an item
-//! *used* to say, which permissions were answered and how, which tools appeared and went away.
-//! `context` reads the first, this reads the second, and neither can answer the other's question.
+//! note: the log is not the context, and this tool makes the difference usable. A context is what
+//! the model is carrying and is sent with every request; the log sits beside it, costs nothing
+//! until something asks for it, and holds the things a context cannot - what an item *used* to say,
+//! which permissions were answered and how, which tools appeared and went away. `context` reads the
+//! first, this reads the second, and neither can answer the other's question.
 //!
-//! note: every answer opens with the true total, and that one rule is what makes the tool safe to
-//! give a model. It is [`budget`](super::context) applied to the log: price it before you carry
-//! it. A filtered answer states what exists as well as what matched, so a short reply is
-//! self-describing and truncation cannot read as absence - which matters here more than anywhere
-//! else, because the one wrong answer a log can give is *nothing happened*.
+//! note: every answer opens with the true total, which is what makes the tool safe to give a model.
+//! It is [`budget`](super::context) applied to the log: price it before you carry it. A filtered
+//! answer states what exists as well as what matched, so a short reply is self-describing and
+//! truncation cannot read as absence, which matters most here, because the one wrong answer a log
+//! can give is *nothing happened*.
 //!
-//! note: raw rather than digested, deliberately. The records come back in order, named the way
-//! the kernel names them and detailed the way the trace pane details them, with no sentence about
-//! what any of it *means*. The histogram counts every kind rather than flagging an interesting
-//! one: a count is not a flag, and a tool that hid a cheap honest fact to keep a reading
-//! interesting would be the wrong trade for something people use for real.
+//! note: raw rather than digested. The records come back in order, named the way the kernel names
+//! them and detailed the way the trace pane details them, with no sentence about what any of it
+//! *means*. The histogram counts every kind rather than flagging an interesting one: a count is not
+//! a flag, and hiding a cheap true fact to keep a reading interesting would be the wrong trade.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -286,8 +285,7 @@ impl Read {
 ///
 /// note: the filters are read and validated before the log is touched, so a malformed one comes
 /// back as something to correct rather than as an empty result. An empty result reads as *nothing
-/// happened*, and for a session log that is the one answer that can be wrong in a way nobody
-/// catches.
+/// happened*, and for a session log that is the one wrong answer nobody would catch.
 #[derive(Default)]
 struct Query {
     take: Option<usize>,
@@ -357,10 +355,9 @@ impl Query {
 
     /// Whether anything changes which records *count*, as against how many are shown.
     ///
-    /// note: the two are not the same question. Answered as one, a call carrying only `take` would
-    /// report a match count that is really the total, beside a filter description that is empty
-    /// because there is no filter. `take` shortens an answer; these three decide what the answer
-    /// is of.
+    /// note: two different questions. Answered as one, a call carrying only `take` would report a
+    /// match count that is really the total, beside a filter description that is empty because
+    /// there is no filter. `take` shortens an answer; these three decide what the answer is of.
     fn narrowed(&self) -> bool {
         !self.ids.is_empty() || self.since.is_some() || !self.kinds.is_empty()
     }
@@ -483,15 +480,15 @@ impl Query {
             }
         }
 
-        // `take` counts from the end, because a log is read from the end - but the records stay
-        // in the order they happened, which is the order everything else here reports them in
+        // `take` counts from the end, because a log is read from the end - but the records stay in
+        // the order they happened, which is the order everything else here reports them in
         //
         // note: clamped, and said where the figure is. A log is the one thing here that grows
-        // without a call asking it to - a session's own record is append-only and grows for as
-        // long as the run does - so `take: 999999` on a real log was the whole of it in one
-        // answer, which the compactor then elided on the way in: a session that read its own log
-        // in bulk could not read it again to find out why, because the record of the read was in
-        // what the read had replaced with a marker
+        // without a call asking it to - a session's own record is append-only and grows for as long
+        // as the run does - so `take: 999999` on a real log was once the whole of it in one answer,
+        // which the compactor then elided on the way in: a session that read its own log in bulk
+        // could not read it again to find out why, because the record of the read was in what the
+        // read had replaced with a marker
         let capped = self.take.map(|take| take.min(super::TAKE));
         let shown = match capped {
             Some(take) => take.min(read.matched.len()),

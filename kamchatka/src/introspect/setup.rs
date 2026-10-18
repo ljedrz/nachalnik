@@ -1,22 +1,22 @@
 //! The tool that reads what the session is running *with*: the model, the tools, the policy, and
 //! the rules that will rewrite a context whether anybody asks or not.
 //!
-//! note: state, not events, and the split is the reason there are two read tools rather than one.
-//! `log` says a tool was taken away at record 118; this says which tools there are now. `log` says
-//! a permission was answered; this says what the policy will say next time. Neither can be
-//! recovered from the other, and a tool trying to be both would answer "what am I running with?"
-//! with a list of things that have happened.
+//! note: state, not events, which is why there are two read tools rather than one. `log` says a
+//! tool was taken away at record 118; this says which tools there are now. `log` says a permission
+//! was answered; this says what the policy will say next time. Neither can be recovered from the
+//! other, and a tool trying to be both would answer "what am I running with?" with a list of things
+//! that have happened.
 //!
 //! note: and not *settings*, which is why the description opens with what you are running with
-//! rather than with a noun that invites a write. Nothing here changes anything. The word `config`
-//! was rejected for the same reason, on top of colliding with the file this program's own
+//! rather than with a noun that invites a write. Nothing here changes anything. `config` was
+//! rejected for the same reason, and because it collides with the file this program's own
 //! `--config-file` reads.
 //!
 //! note: each action answers something a model cannot otherwise find out: which model it is, at
-//! what temperature, and whether its context was resumed from a snapshot taken under somebody
-//! else; what its own tools are; what the permissions will say; and the rules behind whether an
-//! item goes into the next request. `look` says whether it does without exposing the rules that
-//! decided, so without this a model could read the verdict and never the law.
+//! what temperature, and whether its context was resumed from a snapshot taken under somebody else;
+//! what its own tools are; what the permissions will say; and the rules behind whether an item goes
+//! into the next request. `look` says whether it does without exposing the rules that decided, so
+//! without this a model could read the verdict and never the rule.
 
 use nachalnik::{
     BoxError, Capability, ContextId, Event, Kernel, OutputSink, Tool, ToolCall, ToolOutput,
@@ -141,11 +141,10 @@ impl Tool for Setup {
 
 /// Which model this is, what it is being sent, and whose conversation it inherited.
 ///
-/// note: the resume line is worth having and cannot be worked out from inside. A context restored
-/// from a snapshot carries first-person turns this model never produced, possibly a different
-/// model's. An assistant turn says nothing about which hand wrote it. A model asked about its
-/// earlier reasoning in a resumed session will own all of it, because it has no way not to. This
-/// line is the way not to.
+/// note: the resume line cannot be worked out from inside. A context restored from a snapshot
+/// carries first-person turns this model never produced, possibly a different model's, and an
+/// assistant turn says nothing about which hand wrote it. A model asked about its earlier reasoning
+/// in a resumed session will own all of it unless this line tells it otherwise.
 fn model(kernel: &Kernel) -> String {
     let mut out = match kernel.model_info() {
         Some(info) => {
@@ -403,16 +402,15 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
 /// What the policy will say, before anything is asked.
 ///
 /// note: asked of the policy's own table rather than by running a call through it. `evaluate`
-/// records the reason it refused something, so a read tool that asked it four questions would
-/// write four refusals into a bounded queue of sixty-four and quietly evict the explanations a
-/// real refusal is going to need. A tool that reports state must not change it, and the way it
-/// does not here is by reading the same two lists the permissions tab draws.
+/// records the reason it refused something, so a read tool that asked it four questions would write
+/// four refusals into a bounded queue of sixty-four and silently evict the explanations a real
+/// refusal is going to need. A tool that reports state must not change it, so this reads the same
+/// two lists the permissions tab draws.
 ///
-/// note: this is a `Careful`, the policy this program ships and installs, and the answer says so.
-/// A session whose policy was swapped for somebody else's would be reported on by this table and
-/// the report would be about the wrong one, so `kernel.policy().name()` names the one actually
-/// consulted and the two are printed together - a disagreement between them is then visible
-/// rather than implied.
+/// note: this is a `Careful`, the policy this program ships and installs, and the answer says so. A
+/// session whose policy was swapped for somebody else's would be reported on by this table and the
+/// report would be about the wrong one, so `kernel.policy().name()` names the one actually
+/// consulted and the two are printed together, making a disagreement between them visible.
 fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     let in_force = short(kernel.policy().name());
     let mut out = format!("the policy deciding your calls is `{in_force}`.\n");
@@ -625,11 +623,10 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 
 /// What will happen to this context without anybody asking for it.
 ///
-/// note: `look` says whether an item is going into the next request, but never what decided that. A
-/// model that can read the verdict but not the rule cannot argue with either. This names the two
-/// seams that rewrite a context on their own, the projector and the compactor, and the counter and
-/// the limit they are measured by, so they can be looked up, with the numbers that say when each
-/// acts.
+/// note: `look` says whether an item is going into the next request, but never what decided that,
+/// and a model that can read the verdict but not the rule cannot argue with either. This names the
+/// two seams that rewrite a context on their own, the projector and the compactor, and the counter
+/// and the limit they are measured by, with the numbers that say when each acts.
 fn rules(kernel: &Kernel, policy: &Careful) -> String {
     let config = kernel.config();
     let budget = kernel.budget();
@@ -712,14 +709,12 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
 /// The first sentence of a tool's description, which is the part that says what it is.
 ///
 /// note: the whole sentence, however long, rather than cut to fit a column: a column is a
-/// terminal's problem, not a reader's. A clipped description is a tool result that looks like the
-/// answer and is not one - a model has no way to tell a description that ends there from one that
-/// was clipped, and nothing on the line says which it is.
+/// terminal's problem, not a reader's. A model has no way to tell a description that ends there
+/// from one that was clipped, and nothing on the line would say which it is.
 ///
-/// note: it costs nothing that is not already being paid. Every one of these descriptions is in
-/// the request in full, in the tool definitions, so cutting one would save a few characters and
-/// spend the one thing this tool exists to give, which is an account of what is there that can be
-/// relied on.
+/// note: it costs nothing not already being paid. Every one of these descriptions is in the request
+/// in full, in the tool definitions, so cutting one would save a few characters and make this
+/// tool's account of what is there unreliable.
 fn first_clause(description: &str) -> String {
     description
         .split_once(". ")

@@ -25,14 +25,14 @@ impl App {
     ///
     /// note: `pub` because the prompt is not the only caller. Every verb - `/model`, `/exclude`,
     /// `/limit`, `/step`, `/save`, `/load`, `/tools toggle` - is reachable only through here;
-    /// without it, the only way in is to synthesize a key press. A non-terminal caller hands the
-    /// same line to the same function.
+    /// without it, the only way in would be to synthesize a key press. A non-terminal caller hands
+    /// the same line to the same function.
     ///
     /// note: output goes to [`App::say`] for a line and `App::preview` for a page, and comes back
-    /// in the [`Reply`]; those are two different questions. A screen re-reads [`App::loose`] and
-    /// [`App::overlay`] every frame and wants the whole of both; a caller answering one line wants
-    /// what that line produced and should not have to watch both change. The copy is cheap; the
-    /// alternative is a watermark kept by every caller.
+    /// in the [`Reply`], because those answer two different questions. A screen re-reads
+    /// [`App::loose`] and [`App::overlay`] every frame and wants the whole of both; a caller
+    /// answering one line wants what that line produced without watching both change. The copy is
+    /// cheap; the alternative is a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
         self.submitted(line, false).await
     }
@@ -101,9 +101,9 @@ impl App {
         // `requests ending with a model turn are not supported`, and other providers answer by
         // replying to themselves. Pushed mid-tool-loop, it lands between an assistant's call and
         // that call's result, a shape most of these APIs reject. The cost is that a message typed
-        // to steer a turn does not reach it: it is answered after, not during. The same holds while
-        // a question is open: the turn is paused rather than over, and the call it is waiting on
-        // still has a result to come.
+        // to steer a turn is answered after it, not during. The same holds while a question is
+        // open: the turn is paused rather than over, and the call it is waiting on still has a
+        // result to come.
         //
         // note: checked before the line is said rather than after, so the only path that says a
         // message without an item to tie it to is the only path with no item yet. Everywhere else
@@ -266,26 +266,26 @@ impl App {
             // note: not where there is nothing new for the model to answer; see
             // `App::nothing_to_answer`
             "continue" => self.carry_on(),
-            // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way
-            // to reach it from a browser: a page has no keys to send and `Command::Interrupt` is
-            // a button nothing was obliged to draw. Two loops here have a line and nothing else,
-            // and `/step` points at this name when it declines.
+            // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way to
+            // reach it from a browser: a page has no keys to send and `Command::Interrupt` is a
+            // button nothing was obliged to draw. Two loops here have a line and nothing else, and
+            // `/step` points at this name when it declines.
             //
             // note: four answers, because a session has four states here and two of them have
-            // something to stop. A turn resting in `Ready` has calls decided and nothing running
-            // to interrupt, and stopping it drops them; see `App::drop_decided`. A turn resting on
-            // a question is not `busy` - resting is what lets anybody answer it - and an interrupt
-            // does not reach it either: there is nothing running to notice one, so the question is
-            // still there afterwards. What ends that turn is answering, which is `n` at a terminal
-            // and the deny button on a page. Saying so is what this branch is for: `nothing is
-            // running` would be false in a state where somebody plainly has something.
+            // something to stop. A turn resting in `Ready` has calls decided and nothing running to
+            // interrupt, and stopping it drops them; see `App::drop_decided`. A turn resting on a
+            // question is not `busy` - resting is what lets anybody answer it - and an interrupt
+            // does not reach it either: nothing is running to notice one, so the question is still
+            // there afterwards. What ends that turn is answering, which is `n` at a terminal and
+            // the deny button on a page. This branch says so, because `nothing is running` would be
+            // false in a state where somebody plainly has something.
             //
-            // note: silent where it interrupted, which is what `esc` is. What says a turn stopped is
-            // the turn stopping - the records, the state, the spinner going out - and a line
-            // claiming it as well would be this program reporting its own keystroke. The other
-            // branch is not silent for the reason a typed command is not a key: a press that
-            // lands on nothing is a press somebody can see missing, and a line typed into a
-            // session that was not running looks exactly like one that was ignored
+            // note: silent where it interrupted, as `esc` is. What says a turn stopped is the turn
+            // stopping - the records, the state, the spinner going out - and a line claiming it as
+            // well would be this program reporting its own keystroke. The other branch is not
+            // silent, because a typed command is not a key: a press that lands on nothing is a
+            // press somebody can see missing, and a line typed into a session that was not running
+            // looks exactly like one that was ignored
             "stop" => match (self.busy, !self.kernel.pending_permissions().is_empty()) {
                 // a listing or a pass still out is stopped with the turn, or alone
                 (true, _) => self.interrupt(),
@@ -301,14 +301,14 @@ impl App {
             // note: a command as well as `ctrl+l`, because two of the three loops have no keys to
             // press and one of them is the browser, where a pile of notices is the whole screen
             // rather than a quarter of a tall one. It says nothing when it is done, which is
-            // `clear_notices`' own rule and the one place this program is deliberately silent: a
-            // line reporting that the lines are gone is the first line of the pile it just cleared
+            // `clear_notices`' own rule: a line reporting that the lines are gone would be the
+            // first line of the next pile
             //
             // note: **not** `/clear`. Everywhere else that word is typed at an agent it means the
-            // conversation, and this takes away the program's own lines and deliberately leaves
-            // the conversation alone - so the one thing somebody would be typing it for is the one
-            // thing it does not do. It is the same trap `/load` declines to set by not calling
-            // itself `/resume`, and `/clear` is answered by `no_such_command`
+            // conversation, and this takes away the program's own lines and leaves the conversation
+            // alone, so the one thing somebody would be typing it for is the one thing it does not
+            // do. It is the same trap `/load` avoids by not calling itself `/resume`, and `/clear`
+            // is answered by `no_such_command`
             "cleanup" => self.clear_notices(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one, which runs the whole turn and leaves nothing to step through
@@ -392,11 +392,10 @@ impl App {
             // refused as well, the ones nobody has decided about yet, and what each of them covers.
             // Every row can be changed where it is read.
             //
-            // note: the tab and the page give the same answer. A caller with no screen asks the
-            // same question as somebody at a desk. The rules are the whole of what this command is
-            // for, and they are printed from what the tab draws, so the two cannot drift apart. The
-            // tab is still switched because a person at one is asking to be there rather than to be
-            // told
+            // note: the tab and the page give the same answer, because a caller with no screen asks
+            // the same question as somebody at a desk. The rules are printed from what the tab
+            // draws, so the two cannot drift apart. The tab is still switched because a person at
+            // one is asking to be there rather than to be told
             "permissions" => self.permissions_page(),
             // note: the same function `-f` goes through. Putting a file in the context at startup
             // and at the prompt are the same act; a second implementation is a second place for the
@@ -512,14 +511,14 @@ pub(super) fn switches(line: &str) -> bool {
 /// refuses, and the refusal says where the thing went.
 ///
 /// note: `/clear` is what somebody arriving from any other agent types. There it means the
-/// conversation; here `/exclude all` has that shape and `/cleanup` had that name, so a refusal that
+/// conversation; here `/exclude all` has that shape and `/cleanup` has that name, so a refusal that
 /// said only "there is no `/clear`" would leave them looking for both. `/load` does not call itself
 /// `/resume`, so it does not set that trap.
 ///
 /// note: the name goes into the refusal through `one_line`, as every other line this program quotes
-/// back does. A name is one word, and a word with nothing else on the line is as long as somebody
-/// cares to make it, so a mistyped command of a hundred thousand characters was a hundred thousand
-/// characters of refusal, where every other notice is cut at 96.
+/// back does. A word with nothing else on the line is as long as somebody cares to make it, so a
+/// mistyped command of a hundred thousand characters was once a hundred thousand characters of
+/// refusal, where every other notice is cut at 96.
 fn no_such_command(name: &str) -> String {
     match name {
         "clear" => "there is no `/clear`; `/cleanup` takes this program's own lines off the \

@@ -1,11 +1,11 @@
-//! The chat as a person reads it: what is said, what is still arriving, and what the lines add
-//! up to once the kernel has recorded them.
+//! The chat as a person reads it: what is said, what is still arriving, and what the lines add up
+//! to once the kernel has recorded them.
 //!
-//! note: an `impl App` of its own, the way `keys.rs` is, because this is one concern with one
-//! rule at the bottom of it - everything on the chat tab either *is* a context item or is one of
-//! these, and the two have to keep their order among each other. [`Entry`] is what is not an
-//! item, [`App::conversation`] is what builds the drawn line out of both, and [`Said`] is what it
-//! builds. What the screen does with them is `ui/tabs.rs`, which decides nothing.
+//! note: an `impl App` of its own, as `keys.rs` is, because this is one concern with one rule under
+//! it: everything on the chat tab either *is* a context item or is one of these, and the two have
+//! to keep their order among each other. [`Entry`] is what is not an item, [`App::conversation`]
+//! builds the drawn line out of both, and [`Said`] is what it builds. What the screen does with
+//! them is `ui/tabs.rs`, which decides nothing.
 
 use std::{
     borrow::Cow,
@@ -85,7 +85,7 @@ pub struct Entry {
     /// note: the one case an identifier cannot answer on its own. "stopped" is said while a model
     /// is mid-sentence, so the newest item at the time is the question, and anchoring there puts
     /// the interruption above the half-answer it interrupted. The turn is recorded a moment later
-    /// with a higher identifier; this re-anchors to it. Without it the conversation reads in an
+    /// with a higher identifier, and this re-anchors to it; without it the conversation reads in an
     /// order the session never had.
     pub arriving: bool,
     /// The call whose output this is, where it is a tool's streamed output.
@@ -156,14 +156,13 @@ impl App {
     /// one thing neither can find out: whether the terminal took it.
     ///
     /// note: it says how many bytes, because that is the only receipt there is. A line reading
-    /// "copied" would claim a thing this program cannot see; the figure is what somebody compares
+    /// "copied" would claim something this program cannot see; the figure is what somebody compares
     /// against what turns up in their paste.
     ///
     /// note: it does not name the terminal, because the loop is what finds out whether there is
-    /// one. Said here, `handed to the terminal` would be followed by
-    /// `there is no terminal here for it to go to`: two lines about one act, the second
-    /// contradicting the first. A loop that finds none says so with [`App::not_copied`], which
-    /// rewrites this line.
+    /// one. Said here, `handed to the terminal` could be followed by
+    /// `there is no terminal here for it to go to`, two contradicting lines about one act. A loop
+    /// that finds none says so with [`App::not_copied`], which rewrites this line.
     pub fn copy(&mut self, id: ContextId) {
         let Some(item) = self.kernel.item(id) else {
             self.say(Speaker::Note, format!("there is no item {id}"));
@@ -181,8 +180,8 @@ impl App {
     /// went to the clipboard.
     ///
     /// note: in place rather than after it. The loop learns whether there is a terminal only once
-    /// it holds the text. Appending a correction after the receipt leaves two lines, and a reader
-    /// scrolling finds the receipt then the notice and has to work out which was true.
+    /// it holds the text, and a correction appended after the receipt would leave a reader
+    /// scrolling past two lines to work out which was true.
     ///
     /// note: without a receipt to rewrite it says `why` as it stands. The receipt is taken with it,
     /// so a loop that calls this twice says the second reason and stops.
@@ -230,8 +229,8 @@ impl App {
     /// Says a message of the person's own and puts it in the context.
     ///
     /// note: it does not say it on the chat. The item *is* the line: the conversation is read off
-    /// the context every frame, so pushing is saying. Saying it as well would take a third step
-    /// to tie the line to the item, and a caller that forgets it leaves a line that cannot be
+    /// the context every frame, so pushing is saying. Saying it as well would need a third step to
+    /// tie the line to the item, and a caller that forgot it would leave a line that cannot be
     /// hidden, updated or undone for the rest of the session.
     pub fn ask(&mut self, text: &str) -> ContextId {
         self.follow = true;
@@ -241,18 +240,17 @@ impl App {
 
     /// Says an error, unless this turn has already said the same one in a smaller envelope.
     ///
-    /// note: one provider failure is reported twice - once as the event the kernel emitted and
-    /// once as the outcome the turn came to, the second wrapping the first - and two red lines
-    /// saying the same thing is one more than the news warrants; the trace pane has both either
-    /// way.
+    /// note: one provider failure is reported twice - once as the event the kernel emitted and once
+    /// as the outcome the turn came to, the second wrapping the first - and two red lines saying
+    /// the same thing is one too many; the trace pane has both either way.
     ///
     /// note: within *this turn*, which is what [`App::failed`] is for. Asking whether the last
     /// loose line was this error answers a different question, because a loose line outlives the
     /// turn that said it: a message and an answer are both drawn from the context and neither
     /// leaves one, so the first red line of a session stays the last loose line until something
     /// else is said out loud. Against a model with one canned refusal, that test shows three
-    /// failures as one, and the person types into what looks like a working session. A failure
-    /// is news every time it happens.
+    /// failures as one, and the person types into what looks like a working session. A failure is
+    /// news every time it happens.
     pub(super) fn say_error(&mut self, error: String) {
         let said = unpadded(&error).to_owned();
         if self
@@ -275,11 +273,10 @@ impl App {
     /// estimate that just turned out wrong and that this event corrects.
     ///
     /// note: `counted` distinguishes a measurement from a guess. A refusal from the endpoint is the
-    /// model's own tokenizer reporting on the request it read, so there is nothing to argue with. A
-    /// refusal from here is this counter's estimate of a request nobody has read yet; it can be
-    /// wrong in either direction, and on anything that is not prose it is wrong by enough to
-    /// matter. Saying "the model read that request as" a figure the model never saw is a confident,
-    /// wrong sentence.
+    /// model's own tokenizer reporting on the request it read. A refusal from here is this
+    /// counter's estimate of a request nobody has read yet; it can be wrong in either direction,
+    /// and on anything that is not prose it is wrong by enough to matter. Saying "the model read
+    /// that request as" a figure the model never saw would be confidently wrong.
     pub(super) fn overran(&mut self, overrun: Option<Overrun>, counted: bool) {
         let Some(overrun) = overrun else {
             return;
@@ -572,8 +569,8 @@ impl App {
     /// `<name>.json` is what `-r` was handed, `<name>.jsonl` is what this reads, into
     /// [`App::earlier`], which this session's record and its `log` tool read. What it finds goes
     /// through the same `App::remember` the live path uses, in the order recorded, so a resumed
-    /// `v1` is the `v1` the session had - eight deep, and an undone rewrite deduped by the same
-    /// line that dedupes it live.
+    /// `v1` is the `v1` the session had - eight deep, and an undone rewrite deduplicated by the
+    /// same line as live.
     ///
     /// note: before the record of this session is started, which copies these into it.
     ///
@@ -663,17 +660,17 @@ impl App {
     /// said between them and whatever is arriving at the end.
     ///
     /// note: the one place a context item becomes a line of chat. Everything the screen shows of
-    /// the conversation is worked out here from the context, every frame - so an excluded item is
+    /// the conversation is worked out here from the context, every frame, so an excluded item is
     /// not in it, a rewritten item reads as it is now, an item an `undo` took away is gone and one
     /// a `redo` brought back is there, and none of those needs an event, a back-pointer or a second
     /// copy of the words.
     ///
     /// note: `is_projected` and not `sends_content`, so an elided item keeps its place. It is in
     /// the request as a marker, and the marker is what this shows: the projector's own words with
-    /// the brackets it put round them, exactly the text the model reads there. A turn whose call
-    /// has not come back yet also stays: the projector repairs one of those out of the request, a
-    /// momentary mechanical absence rather than anything anybody decided - hiding it would blank a
-    /// call out of the conversation at the moment a permission question asks about it.
+    /// the brackets it put round them, the text the model reads there. A turn whose call has not
+    /// come back yet also stays: the projector repairs one of those out of the request, a momentary
+    /// absence rather than anything anybody decided, and hiding it would blank a call out of the
+    /// conversation at the moment a permission question asks about it.
     ///
     /// note: the marker is substituted here rather than where the lines are drawn. There it would
     /// be a property of one screen, and every other client (see [`crate::remote`]) would be handed
@@ -764,26 +761,25 @@ impl App {
 
     /// The items in the order the conversation had them, each with the place it occupies.
     ///
-    /// note: not the order the context holds them in, and the difference is a *supersession*:
-    /// the new words are a new item, appended, so its identifier is the highest in the context
-    /// and reading the context in order puts a replacement for a turn from twenty exchanges ago
-    /// after everything that followed it. That is an order no request ever had - the request has
-    /// the new words where the old ones were - so an item that says which one it replaces takes
-    /// that one's place, and its identifier is only the tie-break between two that claim the
-    /// same one.
+    /// note: not the order the context holds them in, and the difference is a *supersession*: the
+    /// new words are a new item, appended, so its identifier is the highest in the context and
+    /// reading the context in order puts a replacement for a turn from twenty exchanges ago after
+    /// everything that followed it. No request ever had that order - the request has the new words
+    /// where the old ones were - so an item that says which one it replaces takes that one's place,
+    /// and its identifier is only the tie-break between two that claim the same one.
     ///
     /// note: `e` does not make one of those. A terminal edit replaces in place, keeps its
     /// identifier and is therefore already where it belongs; see [`App::commit_edit`]. This stays
     /// for a context that arrives with a supersession in it - a session saved by an older build, or
     /// one written by another client, since [`Kernel::supersede`](nachalnik::Kernel::supersede) is
     /// the runtime's and is the right shape for a caller whose next round replaces the last. The
-    /// hint it reads lives on `meta`, which is where this program wrote it and where such a client
-    /// would: the field exists for exactly this, and the runtime never reads it.
+    /// hint it reads lives on `meta`, where this program wrote it and where such a client would:
+    /// the field exists for this, and the runtime never reads it.
     ///
-    /// note: the chain is followed rather than the one hop, because an item can be superseded
-    /// twice and the second replaces the first. Bounded, because nothing here wrote the number
-    /// it is following: `meta` is a free-form value and a hand-written snapshot could point one
-    /// item at another in a circle.
+    /// note: the chain is followed rather than the one hop, because an item can be superseded twice
+    /// and the second replaces the first. Bounded, because nothing here wrote the number it is
+    /// following: `meta` is a free-form value and a hand-written snapshot could point one item at
+    /// another in a circle.
     pub(super) fn in_order(items: &[Arc<ContextItem>]) -> Vec<(ContextId, &Arc<ContextItem>)> {
         let replaces = |item: &ContextItem| {
             item.meta
@@ -910,14 +906,14 @@ impl App {
             }
             // note: this line is what `/attach` and `-f` say for themselves, and neither says
             // anything else. A command that pushed an item and then announced it would describe the
-            // context from beside the context: two accounts of one item, but only one read off the
-            // thing itself. What a person needs to see is here because it is read off the item -
-            // which file, what it is, what it costs.
+            // context from beside the context: two accounts of one item, only one read off the item
+            // itself. What a person needs to see is here because it is read off the item: which
+            // file, what it is, what it costs.
             //
-            // note: and what nothing can price, for the reason the context pane puts a `+` there:
-            // a file attached as bytes is counted at `0` by everything in this workspace, and a
-            // line saying `0 tokens` about the largest thing in the request is the one number on
-            // this screen that reads as good news when it is the opposite
+            // note: and what nothing can price, for the reason the context pane puts a `+` there: a
+            // file attached as bytes is counted at `0` by everything in this workspace, and a line
+            // saying `0 tokens` about the largest thing in the request would read as good news when
+            // it is the opposite
             _ => line(
                 Speaker::Note,
                 Cow::Owned(format!(

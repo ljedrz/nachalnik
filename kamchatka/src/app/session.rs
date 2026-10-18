@@ -15,15 +15,15 @@ impl App {
     ///
     /// note: this is the session's identity and the name of the two files it leaves behind. They go
     /// in a directory called `kamchatka`, so the filename does not repeat the program's name. A
-    /// bare count of seconds says nothing to a reader. `2026-09-08T06-45-17Z` names the session,
-    /// sorts the same way, and answers what someone scanning a list wants to know.
+    /// bare count of seconds says nothing to a reader; `2026-09-08T06-45-17Z` names the session,
+    /// sorts the same way, and says when it started.
     ///
     /// note: UTC, and it says so, because a local time means something different depending on where
     /// it was written.
     ///
     /// note: to the second, so two sessions started inside one second collide. The runtime's
     /// default identifier is a counter that restarts with the process, which is fine as an identity
-    /// and writes over the last session's record.
+    /// and would write over the last session's record.
     pub fn session_stamp(secs: u64) -> String {
         // note: the epoch where the seconds are past what the calendar holds, year 9999, which is
         // not a moment this program is started at
@@ -52,7 +52,7 @@ impl App {
     ///
     /// note: the snapshot first, and the log only up to the record it names. A snapshot reads the
     /// log's last number under the lock every change to the context is announced under, so those
-    /// records are exactly the ones whose changes it shows - and a pair written while a turn runs
+    /// records are exactly the ones whose changes it shows, and a pair written while a turn runs
     /// agrees rather than holding items whose `context.added` came after the log was read.
     ///
     /// note: each file is written beside itself, flushed to disk and renamed over, both before
@@ -111,16 +111,16 @@ impl App {
     /// Brings a saved session's context back, setting aside whatever is in this one.
     ///
     /// note: not a swap of the kernel. `Kernel::resume` is a constructor, and everything plugged
-    /// into a running one - the provider, the policy, the tools, the introspection tools'
-    /// handle, the subscription this screen is drawing from - is wired to *this* kernel; a second
-    /// one built here would arrive with none of it. `kamchatka -r` is the swap, and it is a
-    /// restart because that is what a swap is.
+    /// into a running one - the provider, the policy, the tools, the introspection tools' handle,
+    /// the subscription this screen is drawing from - is wired to *this* kernel; a second one built
+    /// here would arrive with none of it. `kamchatka -r` is the swap, and it is a restart because
+    /// that is what a swap is.
     ///
     /// note: so this is a context operation, and it follows the rule every other one here does:
     /// nothing is destroyed. What was in the context is excluded rather than dropped, keeps its
     /// numbers and its contents, and `/undo` twice puts the whole thing back - once for the items
-    /// that came in and once for the ones that were set aside. The loaded items are new items
-    /// and are numbered as such: they are what that session said, in this session.
+    /// that came in and once for the ones that were set aside. The loaded items are new items and
+    /// are numbered as such: they are what that session said, in this session.
     pub(super) fn load(&mut self, path: &str) {
         if self.ready() {
             self.say(
@@ -299,7 +299,7 @@ impl App {
     ///
     /// note: two files, because they answer different questions: the log says what happened, and
     /// the snapshot is what can be picked back up. An event names an item rather than carrying it,
-    /// so the log alone cannot rebuild a context; keeping only one loses either the story or the
+    /// so the log alone cannot rebuild a context; keeping only one loses either the history or the
     /// state.
     ///
     /// note: the snapshot is what `/load` reads back into a running session and what `kamchatka -r`

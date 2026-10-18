@@ -16,13 +16,13 @@ use crate::{
 /// into one body even on a model whose list has no word for it.
 const TRANSPORT: [&str; 2] = ["stream", "stream_options"];
 
-/// The fields of a request that any dialect builds from the session - the context, the tools
-/// and the model - which each leaves off the wire when a parameter names one.
+/// The fields of a request that any dialect builds from the session - the context, the tools and
+/// the model - which each leaves off the wire when a parameter names one.
 ///
 /// note: refused here as well, and in the union of them, because a dialect skipping one says
-/// nothing where a person can see it: set and then quietly not sent, it would read on the
+/// nothing where a person can see it: set and then silently not sent, it would read on the
 /// `/params` line as a parameter in force. `contents` means nothing to the other dialects, so
-/// refusing it there costs nobody anything.
+/// refusing it there costs nothing.
 const BUILT: [&str; 7] = [
     "model",
     "messages",
@@ -223,8 +223,8 @@ impl App {
             // everything the model takes, a missing parameter is sent and ignored, and the error
             // says so. Where it lists only sampling parameters, absence settles nothing:
             // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so calling it
-            // ignored would invent a restriction from an incomplete list. It says what it actually
-            // knows, so the error is downgraded to a note: not knowing is not a fault
+            // ignored would invent a restriction from an incomplete list. It says what it knows, so
+            // the error is downgraded to a note: not knowing is not a fault
             let (speaker, said) = match self.provider.lists_every_parameter() {
                 true => (
                     Speaker::Error,
@@ -325,10 +325,10 @@ impl App {
 
     /// Shows the output limits, or changes one.
     ///
-    /// note: a limit can be right for the other things a tool does and wrong for one call - a
-    /// copy of the session asked three questions answers at the end of its deliberation, which is
-    /// the part a limit cuts off. Without this, a person watching a result come back shortened
-    /// can live with it or lose the session.
+    /// note: a limit can be right for the other things a tool does and wrong for one call - a copy
+    /// of the session asked three questions answers at the end of its deliberation, which is the
+    /// part a limit cuts off. Without this, a person watching a result come back shortened could
+    /// only live with it or lose the session.
     ///
     /// note: it changes the next call, not the one already shortened, and the message says which.
     /// Nothing is lost either way: the whole of a shortened result is excluded beside the copy the
@@ -340,16 +340,14 @@ impl App {
     /// once one tool does five things of five different sizes.
     ///
     /// note: the table is the `Limits` map rather than the registry, and it holds a row for every
-    /// subject this program's tools declare, whether or not this session offers them. That is
-    /// right, because a limit set before a tool arrives is in force when it does. A row nobody has
-    /// is marked, for the reason
-    /// `introspect::if_offered` exists on the other side of the screen: a name in an answer reads
-    /// as a thing that is there.
+    /// subject this program's tools declare, whether or not this session offers them, because a
+    /// limit set before a tool arrives is in force when it does. A row nobody has is marked, for
+    /// the reason `introspect::if_offered` exists on the other side of the screen: a name in an
+    /// answer reads as a thing that is there.
     ///
-    /// note: what "offered" means is what the registered tools *declare*, rather than a tool id
-    /// read off the front of a row. Those are not the same question, and the difference shows:
-    /// `shell` declares `exec:run`, so splitting that row on its colon and looking for a tool
-    /// called `exec` would mark the one row that is certainly offered.
+    /// note: "offered" means what the registered tools *declare*, rather than a tool id read off
+    /// the front of a row. `shell` declares `exec:run`, so splitting that row on its colon and
+    /// looking for a tool called `exec` would mark the one row that is certainly offered.
     pub(super) fn limit(&mut self, rest: &str) {
         let offered: Vec<String> = self
             .kernel

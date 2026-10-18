@@ -3,26 +3,26 @@
 //! note: one place for the nine steps `main.rs` and `examples/recorded.rs` both take in the same
 //! order - a kernel, a subscription, a policy, the provider and the projector it implies, a
 //! compactor, the confinement, the tools, the introspection handle, and an `App` holding the first
-//! and the last of those - so that anyone embedding this crate does not write them a third time,
-//! out of reading `main.rs` and hoping.
+//! and the last of those - so that anyone embedding this crate does not write them a third time by
+//! copying `main.rs`.
 //!
 //! Two of the steps are not guessable. The subscription has to happen **before** anything is
-//! plugged in, or the trace is missing the wiring; and
-//! [`introspect::install`] hands back a handle that the caller has to keep, because the tools hold
-//! a weak reference to it and stop working the moment it is dropped.
+//! plugged in, or the trace is missing the wiring; and [`introspect::install`] hands back a handle
+//! that the caller has to keep, because the tools hold a weak reference to it and stop working the
+//! moment it is dropped.
 //!
-//! note: what it deliberately does not do is reach the network or read the environment.
-//! [`Setup::wire`] takes the provider already connected, because where the requests go, which key
-//! pays for them and what dialect they speak are the caller's to decide - `endpoint::connect` is
-//! one line and `tests` hand in a scripted one.
+//! note: it does not reach the network or read the environment. [`Setup::wire`] takes the provider
+//! already connected, because where the requests go, which key pays for them and what dialect they
+//! speak are the caller's to decide - `endpoint::connect` is one line and `tests` hand in a
+//! scripted one.
 //!
-//! note: and where a session goes when it is over, so that an embedder with a loop of its own has
-//! it too. [`Recorder`] writes a session down as it goes, [`record`] finishes that record - or
-//! writes the whole session out where nobody started one - and [`Setup::relaunch`] is `/restart`:
-//! the same settings wired a second time, with the first session written out on the way. Without
-//! them a custom loop, such as a session with a socket in front of it, ends the process
-//! on `/quit` or `/restart` with the session in memory and nothing on disk. A loop that ends a
-//! session owes it the same safety net the program's loops give one, and gets it from here.
+//! note: it also covers where a session goes when it is over, so that an embedder with a loop of
+//! its own has it too. [`Recorder`] writes a session down as it goes, [`record`] finishes that
+//! record - or writes the whole session out where nobody started one - and [`Setup::relaunch`] is
+//! `/restart`: the same settings wired a second time, with the first session written out on the
+//! way. Without them a custom loop, such as a session with a socket in front of it, ends the
+//! process on `/quit` or `/restart` with the session in memory and nothing on disk. A loop that
+//! ends a session owes it the same safety net the program's loops give one, and gets it from here.
 
 use std::sync::Arc;
 
@@ -46,14 +46,14 @@ pub const CALLS: usize = 64;
 
 /// Everything a session is set up with, and what each of them means.
 ///
-/// note: a settings struct with a `Default` rather than a builder, the way
-/// [`nachalnik::Config`] is. `Setup { confine: false, ..Default::default() }` is the shape, and
-/// the defaults below are the ones the program uses - so a caller who wants what `kamchatka` does
-/// writes almost nothing, and a caller who wants something else changes the field that says so.
+/// note: a settings struct with a `Default` rather than a builder, the way [`nachalnik::Config`]
+/// is. `Setup { confine: false, ..Default::default() }` is the shape, and the defaults below are
+/// the ones the program uses, so a caller who wants what `kamchatka` does writes almost nothing,
+/// and a caller who wants something else changes the field that says so.
 ///
 /// note: `Clone`, because [`Setup::wire`] consumes one and a session can be asked to start again.
-/// `/restart` is the same settings wired a second time - which is what makes the second session
-/// the one the flags describe rather than a copy of the first session's drift.
+/// `/restart` wires the same settings a second time, which makes the second session the one the
+/// flags describe rather than a copy of the first session's drift.
 #[derive(Clone)]
 pub struct Setup {
     /// A session to carry on from, read and parsed by whoever has the file.
@@ -69,13 +69,13 @@ pub struct Setup {
     /// snapshot, so this is left empty when resuming.
     pub session_name: Option<String>,
     /// Whether the session is written down: a log and a snapshot under the temporary directory,
-    /// kept as it goes by a [`Recorder`] and finished by [`record`], which [`Setup::relaunch`]
-    /// does for the session a restart replaces. `--no-record` is this, off.
+    /// kept as it goes by a [`Recorder`] and finished by [`record`], which [`Setup::relaunch`] does
+    /// for the session a restart replaces. `--no-record` is this, off.
     ///
-    /// note: [`Setup::wire`] does not read it. Starting a record and finishing one are the acts
-    /// of the loop driving the session, which is the caller's - so this is the setting and
-    /// [`Recorder::start`] and [`record`] are the acts, and a caller driving an [`App`] with a loop
-    /// of its own honours the one with the others, the way `main.rs` does at both ends of a run.
+    /// note: [`Setup::wire`] does not read it. Starting a record and finishing one are acts of the
+    /// loop driving the session, which is the caller's, so this is the setting and
+    /// [`Recorder::start`] and [`record`] are the acts; a caller driving an [`App`] with a loop of
+    /// its own honours the one with the others, as `main.rs` does at both ends of a run.
     pub record: bool,
     /// How many requests one turn may make before it stops; `None` is no limit.
     pub requests: Option<usize>,
@@ -110,17 +110,16 @@ pub struct Setup {
     /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
     /// note: a list rather than a flag per family, because "which tools" is one question and a flag
-    /// per family answers it in places that can disagree. What is offered is a property of the
-    /// session, so it is one field. The two answers people want - all of them, or these - are the
-    /// two shapes an `Option<Vec<_>>` has.
+    /// per family answers it in places that can disagree. The two answers people want - all of
+    /// them, or these - are the two shapes an `Option<Vec<_>>` has.
     ///
     /// note: naming a subset still builds the others and shelves them, so
     /// [`App::toggle`](crate::app::App::toggle) can offer one mid-session. A session that started
-    /// without `shell` can be given one, and it is confined exactly as it would have been.
+    /// without `shell` can be given one, and it is confined as it would have been.
     ///
-    /// note: an empty list builds none of them at all. A caller whose tools all come from MCP
-    /// servers, or who brings its own, is asking for this. There is nothing to offer later either.
-    /// It skips the question of what the sandbox will take, which costs a child process.
+    /// note: an empty list builds none of them, for a caller whose tools all come from MCP servers
+    /// or who brings its own. There is nothing to offer later either, and it skips the question of
+    /// what the sandbox will take, which costs a child process.
     ///
     /// note: this program's own tools, not MCP server tools. Those arrive after the wiring, under
     /// names nothing here can know in advance, and they are offered as they arrive; `/tools toggle`
@@ -220,16 +219,15 @@ pub struct Wired {
 ///
 /// note: `Shedder` never takes the turn in progress, what is pinned, or a note the model wrote for
 /// itself, so once the older exchanges are gone that is what is left, and only the model or the
-/// person can say what of it may go.
-/// The kernel places this once per fill, between a turn's results and its next request, so a
-/// tool loop that fills the context hears it inside the same turn - see
+/// person can say what of it may go. The kernel places this once per fill, between a turn's results
+/// and its next request, so a tool loop that fills the context hears it inside the same turn - see
 /// `nachalnik::Kernel::set_full_notice`.
 ///
 /// note: the `context` tool is named only where the model could use it to make room now - offered,
-/// and with `exclude` or `elide` not refused, by a rule or by a question nobody is there to answer -
-/// and `look` only where that is too. A notice sending the model to a tool it does not have was
-/// followed to one that does not exist; the other one asks it to tell the person, which is the one
-/// thing left that it can do. Worked out again whenever what the model could use changes - see
+/// and with `exclude` or `elide` not refused, by a rule or by a question nobody is there to
+/// answer - and `look` only where that is too. A notice sending the model to a tool it does not have was
+/// followed to one that does not exist; the other wording asks it to tell the person, the one thing
+/// left that it can do. Worked out again whenever what the model could use changes - see
 /// `App::refresh_full_notice`.
 pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
     let can = |op: &str| crate::introspect::reachable(kernel, policy, &format!("context:{op}"));
@@ -270,9 +268,9 @@ pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
 /// the rules checked against what the tools do.
 ///
 /// note: read off tools built and dropped, not from a list written here. A list is another thing to
-/// forget, and drifting from the tools is exactly what the refusal in `Setup::check` is about: a
-/// name that is not a tool. Building them costs six schemas at startup, once for `tools` and once
-/// for each rule checked.
+/// forget, and drifting from the tools is what the refusal in `Setup::check` is about: a name that
+/// is not a tool. Building them costs six schemas at startup, once for `tools` and once for each
+/// rule checked.
 fn offered() -> Vec<nachalnik::ToolSpec> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
@@ -469,11 +467,11 @@ impl Setup {
     ///
     /// note: separate from [`Setup::wire`], and called by it, so a program can find out its
     /// arguments are wrong before it builds a provider. `main` connects to an endpoint and asks it
-    /// what the model holds, which costs a round trip and an API key; neither is how anyone wants
-    /// to learn that a settings file names `contxt`.
+    /// what the model holds, which costs a round trip and an API key, a poor way to learn that a
+    /// settings file names `contxt`.
     ///
     /// note: a refusal names the setting that caused it, so a caller holding a settings file can
-    /// name the file where the file is what said it - and only there. See [`Refused`].
+    /// name the file where the file is what said it, and only there. See [`Refused`].
     pub fn check(&self) -> Result<(), Refused> {
         let refused = |setting: &'static str, said: String| Refused {
             setting: Some(setting),
@@ -609,11 +607,10 @@ impl Setup {
         // `--sandbox-write` is for anywhere else. Named here, it would be a writable path the
         // screens never mention - and `/dev/../home` is one, so the path is resolved first.
         //
-        // note: asked of the list whether or not a confinement is being built, since a path that
-        // is not a device is one whatever the sandbox is doing. Under `--no-sandbox` the list is
-        // not used, so the harm is nothing granted - but a value nobody ever checked is a value
-        // somebody finds out about at startup by being refused for it, after a run with
-        // `--no-sandbox` in front of it had the list work
+        // note: asked of the list whether or not a confinement is being built, since a path that is
+        // not a device is one whatever the sandbox is doing. Under `--no-sandbox` the list is not
+        // used, so nothing is granted, but a value nobody checked would be refused at a later
+        // startup without `--no-sandbox`, after runs with it had accepted the list
         if let Some(stray) = self
             .devices
             .iter()
@@ -901,8 +898,8 @@ impl Setup {
     /// note: this is what `/restart` does. The session handed in is ended here rather than left to
     /// whoever writes it, because a record whose last line is not `session.finished` reads as a run
     /// that was killed, and this one was asked to stop. Its record is the same one the end of a run
-    /// writes, deliberately: a restarted session is a session that ended, and a run abandoned
-    /// halfway is what that safety net is most for.
+    /// writes: a restarted session is a session that ended, and a run abandoned halfway is what
+    /// that safety net is most for.
     ///
     /// note: it ends the session only where the loop that handed it over has not ended it already.
     /// A served loop and a headless one each owe their clients the last record on the stream they
@@ -919,8 +916,8 @@ impl Setup {
     /// is where the *run* started and a restart is somebody leaving it. A name carried over would
     /// give two sessions of one run the same identity, while `None` would fall back to the
     /// runtime's counter, which is fine as an identity and useless as a filename. So a fresh
-    /// session is stamped fresh, the way the first one was, and [`record`] settles two of them
-    /// landing in the same second.
+    /// session is stamped fresh, as the first one was, and [`record`] settles two of them landing
+    /// in the same second.
     pub fn relaunch(
         &self,
         app: &App,

@@ -13,15 +13,15 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 /// limit is a protocol error that closes the connection, not a truncation that leaves the reader
 /// parsing the second half of somebody's JSON.
 ///
-/// note: enforced while the frame arrives, not after. That is what [`Frames`] is for, and why it is
-/// not `tokio::io::Lines`. Checking afterwards is no defence against a peer that never sends a
-/// newline, because the reading is what it was supposed to stop.
+/// note: enforced while the frame arrives, not after, which is what [`Frames`] is for and why it is
+/// not `tokio::io::Lines`: checking afterwards is no defence against a peer that never sends a
+/// newline.
 ///
 /// note: the reading side enforces this and the writing side names it. Nothing caps what the
 /// session writes into its log, and nothing could: a record is in the log, the log drops nothing,
 /// and a client resuming by sequence comes back to the same record every time. A `context.replaced`
-/// over this, sent as it is, makes a session unattachable for the rest of its life. What goes out
-/// instead is [`Message::Oversized`](super::Message::Oversized), which names the record and its
+/// over this, sent as it is, would make a session unattachable for the rest of its life. What goes
+/// out instead is [`Message::Oversized`](super::Message::Oversized), which names the record and its
 /// size and lets the client move past it. [`Command::Inspect`](super::Command::Inspect) fetches the
 /// content when somebody wants it. Raising the number is not the fix: it moves the size of the
 /// thing that breaks and changes nothing else.
@@ -139,11 +139,10 @@ impl<R: AsyncBufRead + Unpin> Frames<R> {
 
 /// Reads one message off a connection, or `None` where the peer has gone.
 ///
-/// note: newline-delimited JSON, and the argument for it over a length prefix is that
-/// `serde_json` escapes every control character it writes - a compact value never contains a
-/// literal newline, so there is nothing for a delimiter to be confused by. What a length prefix
-/// would buy is a payload that is not JSON, which this one is; what it costs is that the stream
-/// stops being readable with the tools everybody already has. `nc | jq` is worth more than a
+/// note: newline-delimited JSON rather than a length prefix, because `serde_json` escapes every
+/// control character it writes: a compact value never contains a literal newline, so nothing can be
+/// confused with the delimiter. A length prefix would allow a payload that is not JSON, which this
+/// one is, and would cost a stream readable with ordinary tools: `nc | jq` is worth more than a
 /// frame header here.
 pub async fn read<T: for<'a> Deserialize<'a>>(
     frames: &mut Frames<impl AsyncBufRead + Unpin>,

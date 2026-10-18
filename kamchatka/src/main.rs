@@ -89,29 +89,27 @@ fn main() -> Result<std::process::ExitCode> {
         sandbox::scope_signals();
     }
 
-    // note: two workers rather than one per core. What they run waits on the network, a child or
-    // a socket; the reading, writing and searching the file tools do go to the blocking pool,
-    // which this doesn't limit. Every worker is another glibc malloc arena holding memory freed
-    // into it. Measured 2026-10-15 on 32 cores, with a 300-turn headless session against a local
-    // endpoint that answers at once: the peak goes from about 55MB with the default to 40MB with
-    // two, and what stays resident afterwards from 26-50MB (42.5MB median) to 24-44MB (about
-    // 30MB), and the session runs a little faster. One worker does better still, around 21MB,
-    // but then a request being built holds up every stream and client until it is done
+    // note: two workers rather than one per core. What they run waits on the network, a child or a
+    // socket; the reading, writing and searching the file tools do go to the blocking pool, which
+    // this does not limit. Every worker is another glibc malloc arena holding memory freed into it:
+    // on a long headless session, two workers used clearly less memory at peak and afterwards than
+    // the default, and ran a little faster. One worker uses less still, but then a request being
+    // built holds up every stream and client until it is done
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()?;
     let outcome = runtime.block_on(session(given));
-    // note: the runtime is let go of rather than dropped, and without this the program *hangs*
-    // after every early stop there is. `tokio::io::stdin` reads on a blocking thread; a blocking
-    // read on a pipe nobody is writing to does not return; and dropping a runtime waits for its
-    // blocking threads. So a headless run that ends by `ctrl+c`, a deadline or `/quit` - anything
-    // but the input closing - would write its session out, print where it had gone, and then sit
-    // there until somebody killed it.
+    // note: the runtime is let go of rather than dropped, because otherwise the program *hangs*
+    // after every early stop. `tokio::io::stdin` reads on a blocking thread; a blocking read on a
+    // pipe nobody is writing to does not return; and dropping a runtime waits for its blocking
+    // threads. So a headless run that ends by `ctrl+c`, a deadline or `/quit` - anything but the
+    // input closing - would write its session out, print where it had gone, and then sit there
+    // until somebody killed it.
     //
-    // note: it is safe here precisely because it is the last statement. The session has been
-    // written, the MCP servers were dropped with the scope that held them - which is what kills
-    // their child processes - and what is being abandoned is a thread waiting on a pipe.
+    // note: it is safe here because it is the last statement. The session has been written, the MCP
+    // servers were dropped with the scope that held them - which is what kills their child
+    // processes - and what is being abandoned is a thread waiting on a pipe.
     runtime.shutdown_background();
 
     // note: a headless run cut short says so in its status as well as on standard error, because a
@@ -170,9 +168,9 @@ const UNWATCHED_TRIES: usize = 10;
 /// it, `--no-default-features` in a terminal with no flag would report a headless run and then hit
 /// the `unreachable!` below.
 ///
-/// note: a function rather than an expression so that it can be tested. Every test of this binary
-/// pipes its stdout, so `piped` is true in all of them and none can reach the case where it is
-/// false; the four cases are below.
+/// note: a function so that it can be tested. Every test of this binary pipes its stdout, so
+/// `piped` is true in all of them and none can reach the case where it is false; the four cases are
+/// below.
 fn headless(asked: bool, piped: bool) -> bool {
     asked || piped || cfg!(not(feature = "tui"))
 }
@@ -222,7 +220,7 @@ async fn starting<T>(
 /// natural thing to type, and would otherwise connect and say nothing about the message.
 ///
 /// note: read off the matches rather than declared as `conflicts_with_all`, because the list would
-/// be every argument this program has and two of them are behind features. `--serve` can say it the
+/// be every argument this program has and two of them are behind features. `--serve` can use the
 /// short way because it conflicts with two.
 fn also_typed(matches: &clap::ArgMatches, besides: &[&str]) -> Vec<String> {
     // the declared arguments rather than `ArgMatches::ids`, which also hands back the group clap's
@@ -390,8 +388,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // note: before any of the wiring below, so it is here rather than beside the three loops at the
     // bottom. A client assembles nothing: the model, the key that pays for it, the tools, the
     // sandbox and the context belong to whoever is serving. A client attached to somebody else's
-    // session that failed because it could not reach a provider would be failing about a job that
-    // was never its own
+    // session should not fail for not reaching a provider, which was never its job
     if let Some(address) = args.connect.clone() {
         let ignored = also_typed(matches, &["connect", "on_ask"]);
         if !ignored.is_empty() {
@@ -493,8 +490,8 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // what is on the other end of a pipe should say which it decided, and `--headless` is how
     // somebody says it themselves.
     //
-    // note: the notice is not said for a served session. The line driver is never one of its
-    // answers, so a notice about headless runs would be about a pipe nobody mentioned
+    // note: the notice is not said for a served session. The line driver is never its loop, so a
+    // notice about headless runs would be about a pipe nobody mentioned
     let piped = !std::io::stdout().is_terminal();
     // note: the question is asked of a served session too. A session with a socket in front of it
     // draws as well, where there is anything to draw on, so the person running it can drive it from
@@ -532,10 +529,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
 
     // note: the checks run before the provider, which is a round trip and an API key away.
     // Everything they answer is answerable from the arguments alone - a tool nobody offers, a path
-    // rule nothing can match - and hearing about one of those through an endpoint's refusal to
-    // talk is hearing about the wrong thing. They are asked here rather than by a separate `check`,
-    // because that is where a value from a settings file can still be named; `wire` asks again for
-    // whoever is not `main`
+    // rule nothing can match - and hearing about one of those through an endpoint's refusal to talk
+    // is hearing about the wrong thing. They are asked here rather than by a separate `check`,
+    // because here a value from a settings file can still be named; `wire` asks again for whoever
+    // is not `main`
     let setup = args.setup_from(filed.as_ref())?;
     // said the way the kernel's gaps are below: once on standard error, and into each session
     let unstarted = args.unstarted(filed.as_ref());
@@ -613,9 +610,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // has joined, and a restarted session owes a newcomer that as much as the first one did.
         // This line is for whoever typed the flag, and the address does not move
         //
-        // note: written rather than `println!`ed, because `println!` panics if nobody is reading
-        // and takes the run with it. A served run's stdout is often a supervisor's. If it has
-        // closed, the run should keep serving rather than panic on its first line
+        // note: written rather than `println!`ed, because `println!` panics if nobody is reading. A
+        // served run's stdout is often a supervisor's, and if it has closed, the run should keep
+        // serving rather than panic on its first line
         let _ = writeln!(stdout(), "· serving on {}", server.address());
     }
     // the page runs for the whole run, across `/restart`; browsers reconnect by themselves.
@@ -733,7 +730,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // note: first session of the run only. A snapshot is where somebody asked to start, and
         // `/restart` says they are done with where they started. A restart that read it back in
         // would leave no way to reach an empty session from a resumed one, which is most of what
-        // it is for
+        // `/restart` is for
         if first && let Some(path) = &args.resume {
             app.replay();
             // the `context` tool's undo history, carried from the snapshot so the model can still
@@ -764,7 +761,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // questions. The greeting tells the reader that `ctrl+p` shows the next request and `F1`
         // lists the keys. It goes into the conversation, which is in every projection, so in a
         // served session it would reach every client that ever attached, none of which has this
-        // program's keys to press
+        // program's keys
         #[cfg(feature = "tui")]
         if !headless && server.is_none() && !(first && args.resume.is_some()) {
             app.say(Speaker::Note, ui::GREETING);
@@ -794,11 +791,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         // note: first session only. Asking `--message` again on every restart would make `/restart`
         // a way of putting the same question to the model for ever, the opposite of what somebody
-        // types it to escape.
+        // types it for.
         //
-        // note: the text, not the arity, is how a line down a pipe is judged: an empty one is
-        // nothing, and a script that hands over a variable it never set would otherwise pay a round
-        // trip and a failed turn for a request the provider refuses
+        // note: the text, not the arity, decides: an empty line is nothing, and a script that hands
+        // over a variable it never set would otherwise pay a round trip and a failed turn for a
+        // request the provider refuses
         if first
             && let Some(message) = (!args.message.is_empty())
                 .then(|| args.message.join(" "))
@@ -919,9 +916,9 @@ fn start_recording(app: &mut App, record: bool) {
 
 /// Ends the session if nothing else has, says where it got to, and writes it down.
 ///
-/// note: there are three loops and one `finish`, because everything here concerns the run rather
-/// than how it was driven. The only thing it asks about the driving is `logged`: whether stdout
-/// carries the record stream. A headless run does; a served run does not, even with no screen.
+/// note: three loops and one `finish`, because everything here concerns the run rather than how it
+/// was driven. The only thing it asks about the driving is `logged`: whether stdout carries the
+/// record stream. A headless run does; a served run does not, even with no screen.
 fn finish(
     app: &App,
     record: bool,
@@ -1049,13 +1046,12 @@ async fn drawn(
 
 /// Draws, waits for whichever of the things that can happen happens first, and does it again.
 ///
-/// note: `server` is the half that makes this the same session from two places at once. The keys
-/// and the socket are two ways into one [`App`], and only one loop can own it - so this one does,
-/// and `remote::Serving` is how the connections reach it: `pump` says what the session has said,
-/// `arrived` and `attend` take on whoever connected, and `asked` and `answered` do what they ask.
-/// They are calls rather than a loop so that `remote::Server::run` can make the same ones, and
-/// what both loops do with an event, an outcome or an arrival is a function of `remote::server`'s
-/// that both call.
+/// note: `server` makes this the same session from two places at once. The keys and the socket are
+/// two ways into one [`App`], and only one loop can own it, so this one does, and `remote::Serving`
+/// is how the connections reach it: `pump` says what the session has said, `arrived` and `attend`
+/// take on whoever connected, and `asked` and `answered` do what they ask. They are calls rather
+/// than a loop so that `remote::Server::run` can make the same ones, and what both loops do with an
+/// event, an outcome or an arrival is a function of `remote::server`'s that both call.
 #[cfg(feature = "tui")]
 async fn run(
     terminal: &mut ratatui::DefaultTerminal,
@@ -1074,10 +1070,10 @@ async fn run(
     // raw mode makes `ctrl+c` a key, so these are the only signals this loop is sent
     let mut terminations =
         kamchatka::stopping::Terminated::new().context("could not listen for a request to end")?;
-    // note: a frame only when something changed. Drawing is the dearest thing this loop does,
-    // and drawn on every tick an idle session with a long chat kept a core busy; drawn once per
-    // event, a stream arriving faster than frames fell behind the broadcast and lost events.
-    // Every branch below but the tick can change something, so every branch but the tick says so
+    // note: a frame only when something changed. Drawing is the most expensive thing this loop
+    // does: drawn on every tick, an idle session with a long chat kept a core busy; drawn once per
+    // event, a stream arriving faster than frames fell behind the broadcast and lost events. Every
+    // branch below but the tick can change something, so every branch but the tick says so
     let mut stale = true;
     let mut quiet_ticks = 0;
 

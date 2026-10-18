@@ -2,14 +2,14 @@
 //!
 //! note: its own tool rather than two more actions on the context, because it is the one thing in
 //! here that neither reads nor changes a context - it makes a second session and pays a provider
-//! for an answer. Letting something read its own items should not be letting it buy another
-//! request, which is what allowing `context` would mean if these were actions of it. The subjects
-//! say so too: `fork:draft` and `fork:ask` are a domain of their own, and a tool that declares two
-//! domains is a tool that is two things.
+//! for an answer. Letting something read its own items should not let it buy another request, which
+//! allowing `context` would if these were actions of it. The subjects say so too: `fork:draft` and
+//! `fork:ask` are a domain of their own, and a tool that declares two domains is a tool that is two
+//! things.
 //!
 //! note: nothing in the runtime knows what a fork is. It is `snapshot` and `resume`, which the
 //! runtime documents as the way to carry a session on somewhere else, pointed at a copy that is
-//! thrown away - with the provider and the projector of the session it came from, no tools, no
+//! thrown away, with the provider and the projector of the session it came from, no tools, no
 //! compactor and one request.
 
 use nachalnik::{
@@ -229,20 +229,20 @@ struct Asked<'a> {
 /// Answers on a copy of the context, and hands back only what was said.
 ///
 /// note: the copy is a whole second [`Kernel`] resumed from a [`Snapshot`](nachalnik::Snapshot) of
-/// this one. Forking is what `snapshot` and `resume` already are, so nothing was added to the
+/// this one; forking is what `snapshot` and `resume` already are, so nothing was added to the
 /// runtime. It gets this session's provider and projector, answering the same model in the same
 /// dialect, and gets **no tools**, no compactor and a limit of one request. A fork can think; it
 /// cannot act, and it cannot go on thinking after it has answered once.
 ///
 /// note: nothing the fork does reaches this session's context or event log; it has a log of its own
-/// that goes when it does. What it is visible as is the text it streams, relayed into this tool's
-/// own [`OutputSink`], so a person watching the terminal sees a fork thinking rather than a tool
-/// that has gone quiet.
+/// that goes when it does. It is visible as the text it streams, relayed into this tool's own
+/// [`OutputSink`], so a person watching the terminal sees a fork thinking rather than a tool that
+/// has gone quiet.
 ///
 /// note: the copy is taken as the context stood when the turn asked for it, not as it stands when
 /// this call runs. A turn's calls run one after another, so two forks asked together would
 /// otherwise differ by the first one's answer: the second would be handed what the first said,
-/// spoiling the comparison. And `without` cannot keep out a result that does not exist yet. So the
+/// spoiling the comparison, and `without` cannot keep out a result that does not exist yet. So the
 /// results of the other calls in the same turn are left out - excluded rather than deleted like a
 /// `without` - and not counted among the items asked about.
 ///
@@ -251,11 +251,11 @@ struct Asked<'a> {
 /// the context stands and compared with the copy the fork beside it was given, so two forks of a
 /// turn are either alike or the reply says how they are not.
 ///
-/// note: `looked` is called once the copy is taken, and is nothing but a place for a test to stand
-/// between the copy and what is made of it.
+/// note: `looked` is called once the copy is taken, and is only a place for a test to stand between
+/// the copy and what is made of it.
 ///
-/// note: what it was charged is added to `forked` for the session's ceiling. Read off the fork's
-/// own log once its turn is over, rather than off the stream the relay reads: the relay is stopped
+/// note: what it was charged is added to `forked` for the session's ceiling, read off the fork's
+/// own log once its turn is over rather than off the stream the relay reads: the relay is stopped
 /// as soon as the turn ends, and a figure it had not reached yet would be spent and never counted.
 async fn branch(
     kernel: &Kernel,

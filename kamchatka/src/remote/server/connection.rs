@@ -281,7 +281,7 @@ where
                 // for them on.
                 //
                 // note: no test fails without this, because in practice the event branch is ready
-                // first. The race is real and rare, so the flush stays
+                // first, but the race is real, so the flush stays
                 Err(broadcast::error::RecvError::Closed) => {
                     flush(kernel, &mut last, write).await?;
 
@@ -368,20 +368,19 @@ async fn watermark<W: AsyncWrite + Unpin>(
                 .into());
         };
         let seq = attached.seq;
-        // note: the size check `flush` and `answer` both apply. It is here because a projection is
-        // a frame like any other, and this was the one write that did not ask. A message larger
+        // note: the size check `flush` and `answer` both apply, here because a projection is a
+        // frame like any other, and this was once the one write that did not ask. A message larger
         // than `MAX_LINE` in the context makes the projection that long. Unlike a record, which can
         // be named and moved past, a projection cannot be skipped, so a client that cannot read it
         // has no session. Sent unchecked, the other end refuses the frame, which closes the
         // connection and reads as a drop; the client spends a minute reattaching to a session that
         // answered every time.
         //
-        // note: it is now the rare case rather than the ordinary one. A conversation too long for a
-        // frame has been cut down to fit already - see `Attached::abridge` - so what reaches this
-        // is a projection too long for reasons that are not its lines: parts nothing cuts, or so
-        // many lines that even cut to nothing they do not fit. It is refused by name rather than
-        // written and hoped for, and the refusal says that the client can read the records without
-        // a projection.
+        // note: it is now the rare case. A conversation too long for a frame has been cut down to
+        // fit already - see `Attached::abridge` - so what reaches this is a projection too long for
+        // reasons that are not its lines: parts nothing cuts, or so many lines that even cut to
+        // nothing they do not fit. It is refused by name rather than written and hoped for, and the
+        // refusal says that the client can read the records without a projection.
         let projection = Message::Attached(attached);
         let line = protocol::framed(&projection)?;
         if let Some(bytes) = protocol::overlong(&line) {
@@ -514,8 +513,8 @@ async fn ask(
 /// exists but not what it said. What the model said reaches a client only as `Message::Progress`,
 /// and only if it is written first.
 ///
-/// note: neither end is wrong without this. The session records the answer and stops the turn, and
-/// the client leaves when told the session has nothing left to do; the fault is only in the order
+/// note: neither end is wrong without this: the session records the answer and stops the turn, and
+/// the client leaves when told the session has nothing left to do. The fault is only in the order
 /// they are written in.
 async fn caught_up<W: AsyncWrite + Unpin>(
     events: &mut broadcast::Receiver<Event>,
