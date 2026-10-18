@@ -1,15 +1,12 @@
-//! The environment `nachalnik`'s examples and its live suites read. Not published, not API.
+//! Environment variables read by `nachalnik`'s examples and live suites. Not published; not API.
 //!
-//! note: the provider itself is [`nachalnik_providers`], which is published and which `kamchatka`
-//! uses too. What is here is the part that was never a provider's to do: which endpoint to talk
-//! to, which key pays for it, and which models to ask. A provider does not come back here.
+//! note: the provider is [`nachalnik_providers`], which is published and used by `kamchatka`. This
+//! crate handles endpoint, API key, and models; a provider does not move back here.
 //!
-//! note: it stays a crate rather than a module because `nachalnik`'s examples and live suite,
-//! `nachalnik-eval`'s, and `nachalnik-mcp`'s live test all need it, and a copy in each is how the
-//! providers they used grew apart. It is a dev-dependency of those and of nothing else, which is
-//! what lets it stay at `0.0.0` and unpublished: cargo strips a versionless dev-dependency from a
-//! published manifest, so a crate that is only ever dev-depended on never has to exist on the
-//! registry.
+//! note: it is a crate rather than a module because `nachalnik`'s examples and live suite,
+//! `nachalnik-eval`'s, and `nachalnik-mcp`'s live test all need it. Separate copies made the
+//! providers diverge. It is a dev-dependency of those crates only, so it stays at `0.0.0` and
+//! unpublished: cargo omits versionless dev-dependencies from published manifests.
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
@@ -53,12 +50,12 @@ pub fn context_limit() -> Option<usize> {
 
 /// The app these requests are made on behalf of, if the environment names one.
 ///
-/// note: both halves or neither. A `NACHALNIK_APP_URL` with no title would be attributed to a
-/// bare address, which is a worse entry in somebody's rankings than no entry at all.
+/// note: both halves or neither. A `NACHALNIK_APP_URL` with no title attributes the app to a bare
+/// address, a worse entry in somebody's rankings than no entry at all.
 ///
-/// note: off unless asked for, like the header it feeds. Naming an app is a claim about which
-/// program is spending the tokens, and the honest default for a benchmark is to make no claim
-/// rather than to credit whichever program happens to share its repository.
+/// note: off unless asked for, like the header it feeds. Naming an app claims which program spends
+/// the tokens; the honest default for a benchmark is no claim, not crediting whatever program
+/// shares its repository.
 pub fn attribution() -> Option<(String, String)> {
     let url = env::var("NACHALNIK_APP_URL").ok()?;
     let title = env::var("NACHALNIK_APP_TITLE").ok()?;
@@ -66,17 +63,14 @@ pub fn attribution() -> Option<(String, String)> {
     Some((url, title))
 }
 
-/// The one model a live suite asks, named by `NACHALNIK_TEST_MODEL` or by whatever the caller
-/// falls back to.
+/// The one model a live suite asks, from `NACHALNIK_TEST_MODEL` or the caller's fallback.
 ///
-/// note: here rather than in each suite because the *name of the variable* is the shared fact, and
-/// spelling it by hand is a mistake that costs a run without failing one. `NACHALNIK_MODEL` is not
-/// it - nothing reads that. A suite reading a misspelt name quietly asks the default model
-/// instead, so its failures are about whatever the tests assert rather than about the variable.
+/// note: here rather than in each suite because the variable name is the shared fact; spelling it
+/// by hand costs a run without failing. `NACHALNIK_MODEL` is not read. A suite reading a misspelt
+/// name quietly uses the default model, so failures concern the test assertions, not the variable.
 ///
-/// note: the default stays the caller's. What each suite is known to pass against is a fact about
-/// that suite - a small free model with tool support here, a larger one where the questions are
-/// about introspection - and one shared default would be wrong for at least one of them.
+/// note: the default stays the caller's. Each suite's model is a fact about that suite; one shared
+/// default would be wrong for at least one of them.
 pub fn test_model(default: &str) -> String {
     env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| default.to_owned())
 }
@@ -114,10 +108,10 @@ pub fn provider(model: &str) -> Result<OpenAiCompatible, BoxError> {
     Ok(provider)
 }
 
-/// One provider per model, sharing a connection pool, each asked what its context limit is.
+/// One provider per model, sharing a connection pool; each is asked its context limit.
 ///
-/// note: one client between them rather than one each, so that a panel comparing models on the
-/// same host opens one set of connections rather than one per model.
+/// note: one client shared between them rather than one each, so a panel comparing models on one
+/// host opens one set of connections rather than one per model.
 pub async fn providers(models: &[String]) -> Result<Vec<Arc<OpenAiCompatible>>, BoxError> {
     let client = OpenAiCompatible::client();
 
