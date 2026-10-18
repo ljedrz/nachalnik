@@ -47,8 +47,8 @@
 //! note: applied by re-executing this program in a mode that confines itself and then runs the
 //! command. `CommandExt::pre_exec` is the alternative: it runs between `fork` and `exec` in a
 //! process with a `tokio` runtime's threads, where almost nothing is safe to call, including the
-//! ruleset's allocations. The child is deliberately not a `tokio` program: Landlock and the gate
-//! restrict the calling thread, and a single-threaded helper needs no thought.
+//! ruleset's allocations. The child is not a `tokio` program: Landlock and the gate restrict the
+//! calling thread, and a single-threaded helper makes that simple.
 
 use std::{
     collections::BTreeSet,
@@ -350,27 +350,27 @@ impl Sandbox {
     /// What to add to a confined command's output when a permission error in it was this
     /// confinement rather than the file's own permissions; `None` when nothing suggests it was.
     ///
-    /// note: Landlock refuses an `open` with `EACCES`, which is what a command reports when a
-    /// file is somebody else's - so a model is handed `Permission denied (os error 13)` and has
-    /// no way at all to tell a boundary from a protected file. It goes hunting for a `cargo` that
-    /// was never missing, when what is out of reach is `~/.rustup`. The tool's description says
-    /// a permission error out here is the confinement, and that is not enough on its own: this
-    /// puts the sentence at the point of failure, naming the path.
+    /// note: Landlock refuses an `open` with `EACCES`, which is what a command reports when a file
+    /// is somebody else's, so a model handed `Permission denied (os error 13)` cannot tell a
+    /// boundary from a protected file. It goes hunting for a `cargo` that was never missing, when
+    /// what is out of reach is `~/.rustup`. The tool's description says a permission error out here
+    /// is the confinement, but that is not enough on its own: this puts the sentence at the point
+    /// of failure, naming the path.
     ///
     /// note: three answers rather than two. A refusal that names a path *within* reach was the
     /// file's own permissions - `/etc/shadow` is refused under this and would be refused without
-    /// it - and saying "this may have been the sandbox" there would be a hedge that sends a model
-    /// looking for a boundary that had nothing to do with it. So a refusal whose paths are all
-    /// reachable gets nothing said about it at all.
+    /// it - and saying "this may have been the sandbox" there would send a model looking for a
+    /// boundary that had nothing to do with it. So a refusal whose paths are all reachable gets
+    /// nothing said about it.
     ///
     /// note: the general sentence is for the refusal that names no path this can find. Standard
     /// error is arbitrary text and picking paths out of it is a guess; what is *not* a guess is
     /// that this command ran confined and something was refused, which is worth one line.
     ///
     /// note: it says "below" because [`Shell`](crate::tools::Shell) puts it under the status line
-    /// and above the output. That is not where it reads best - beside the message would be - but
-    /// an output limit cuts from the end, and a note accounting for a permission error is worth
-    /// nothing if the truncation takes the note and leaves the error.
+    /// and above the output. Beside the message would read better, but an output limit cuts from
+    /// the end, and a note accounting for a permission error is worth nothing if the truncation
+    /// takes the note and leaves the error.
     pub fn note_for(&self, stderr: &str) -> Option<String> {
         self.note_for_in(stderr, None)
     }
@@ -583,18 +583,18 @@ impl Sandbox {
     ///
     /// note: git is the one program where being out of reach is fatal rather than inconvenient,
     /// because under Landlock `access(2)` still answers from the file's own permissions. So git
-    /// asks whether `~/.gitconfig` is readable, is told yes, opens it, gets `EACCES`, and takes
-    /// the *unreadable configuration* branch rather than the *no configuration* branch - `fatal:
-    /// unknown error occurred while reading the configuration files`, and every git command in the
-    /// session is dead. A missing file is fine; an unreadable one is not, and a confined command
-    /// cannot tell git which it has.
+    /// asks whether `~/.gitconfig` is readable, is told yes, opens it, gets `EACCES`, and takes the
+    /// *unreadable configuration* branch rather than the *no configuration* branch -
+    /// `fatal: unknown error occurred while reading the configuration files`, and every git command
+    /// in the session is dead. A missing file is fine; an unreadable one is not, and a confined
+    /// command cannot tell git which it has.
     ///
     /// note: only when a configuration a confined command could not read is what git would open
-    /// otherwise. Git reads a person's aliases and identity out of these, and quietly throwing
+    /// otherwise. Git reads a person's aliases and identity out of these, and silently throwing
     /// them away for a command that could have had them would be its own bug. A path set in
-    /// `GIT_CONFIG_GLOBAL` is a choice somebody made, and is left alone where it is readable - but
-    /// left alone out of reach is what kills git, the same as any other configuration, and the
-    /// *no configuration* case is the one it handles.
+    /// `GIT_CONFIG_GLOBAL` is a choice somebody made, and is left alone where it is readable; left
+    /// alone out of reach, it would kill git like any other configuration, and the *no
+    /// configuration* case is the one git handles.
     fn git_config_global(&self) -> Option<PathBuf> {
         let (mine, missed): (Vec<PathBuf>, Vec<PathBuf>) = std::env::var_os("GIT_CONFIG_GLOBAL")
             .map(PathBuf::from)

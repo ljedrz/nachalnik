@@ -1,11 +1,11 @@
 //! Tools an agent uses to inspect and manage its session: one for its context, one for the record
 //! beside it, one for what the session runs with, and one for asking a copy of itself.
 //!
-//! note: Everything here is ordinary user code, like the rest of `tools/`; none of it needed a line
+//! note: everything here is ordinary user code, like the rest of `tools/`; none of it needed a line
 //! added to the runtime. The runtime has a context that is a list of public values, a request that
-//! can be built without being sent, and a session that can be snapshotted and resumed. A tool may
-//! call all of it. Introspection is what a tool can already do with the kernel's ordinary surface,
-//! not a kernel feature. What these tools add is which of it a model may do.
+//! can be built without being sent, and a session that can be snapshotted and resumed, and a tool
+//! may call all of it. Introspection is what a tool can already do with the kernel's ordinary
+//! surface, not a kernel feature; these tools add which of it a model may do.
 //!
 //! note: one tool per noun, and the noun is what the tool is about rather than what it does to it.
 //! [`Context`] is the context: reading and changing it, twelve operations over one object. [`Log`]
@@ -17,9 +17,8 @@
 //! either way. [`Fork`] is its own tool: neither a reading nor a change, but a second session and a
 //! cost.
 //!
-//! note: each is also separately revocable, which is deliberate, not a side effect to design away.
-//! A session can take back the agent's ability to check the record halfway through, and that is
-//! worth watching a model in.
+//! note: each is also separately revocable, by design. A session can take back the agent's ability
+//! to check the record halfway through, and how a model behaves then is worth watching.
 //!
 //! note: [`Context`] will not undo a person's decisions. A pinned item, a system instruction, and
 //! the assistant turn carrying the call being executed are all refused, with the reason handed back
@@ -54,10 +53,10 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 ///
 /// note: the policy is handed in rather than read off the kernel, and is the concrete one this
 /// program ships rather than the trait. [`Setup`] reports what the policy will say before anything
-/// is asked; through [`nachalnik::PermissionPolicy`] that means running a call through `evaluate`,
-/// which [`Careful`] answers by recording a refusal. So it reads [`Careful`]'s own tables instead.
-/// Its `permissions` says what that costs against a real refusal, and how the answer names the
-/// policy the kernel is actually consulting.
+/// is asked; through [`nachalnik::PermissionPolicy`] that would mean running a call through
+/// `evaluate`, which [`Careful`] answers by recording a refusal, so it reads [`Careful`]'s own
+/// tables instead. Its `permissions` says what that costs against a real refusal, and how the
+/// answer names the policy the kernel is actually consulting.
 ///
 /// note: dropping the return value switches the tools off: they hold a [`Weak`] to the kernel, and
 /// a tool that cannot upgrade its weak handle refuses the call and says why. The indirection avoids
@@ -215,10 +214,10 @@ impl Reach {
 /// A sentence pointing at a sibling tool, or nothing if that tool is not on offer.
 ///
 /// note: everything named in an answer is read as something to try, so an answer names only what
-/// the session can reach; a refusal follows the same rule. Otherwise, a session that removed `log`
-/// with `/tools toggle log` would still have `setup tools` point at `log`, a tool the model has
-/// just been told it does not have. Tools are registered, not a fixed set, so the check reads the
-/// registry and the sentence disappears when its subject does.
+/// the session can reach, and a refusal follows the same rule. Otherwise a session that removed
+/// `log` with `/tools toggle log` would still have `setup tools` point at `log`, a tool the model
+/// has just been told it does not have. Tools are registered, not a fixed set, so the check reads
+/// the registry and the sentence disappears when its subject does.
 pub(crate) fn if_offered(kernel: &Kernel, tool: &str, said: impl FnOnce() -> String) -> String {
     match kernel.tool(tool).is_some() {
         true => said(),
@@ -285,14 +284,14 @@ fn unknown(action: &str, known: &[&str]) -> String {
 /// The context ids in a named array argument, or what is wrong with what is in it.
 ///
 /// note: a value it cannot read is refused rather than dropped. Dropped, `ids: [-1]` would come
-/// back as no items at all, which is also how a call that named none arrives - so `search` with
-/// one bad number would search the whole context, and a call giving `ids` *and* `select` would go
+/// back as no items at all, which is also how a call that named none arrives, so `search` with one
+/// bad number would search the whole context, and a call giving `ids` *and* `select` would go
 /// through as a `select`, the refusal below having found no numbers to object to. A number that is
-/// not an item number is a call nobody made, the same as an argument nobody reads.
+/// not an item number is a call nobody made, like an argument nobody reads.
 ///
-/// note: and the same number twice is one item. It is not a mistake worth refusing - a model
-/// gathering ids from two places writes it - but counted twice, a move naming one item would
-/// report that two had moved.
+/// note: the same number twice is one item. It is not a mistake worth refusing - a model gathering
+/// ids from two places writes it - but counted twice, a move naming one item would report that two
+/// had moved.
 fn ids(args: &Value, name: &str) -> Result<Vec<ContextId>, String> {
     if args[name].is_null() {
         return Ok(Vec::new());
@@ -371,8 +370,8 @@ pub(crate) struct Named<'a> {
 /// same failure one level out, where a call puts arguments inside the wrapper and beside it, for
 /// the same reason: whichever of the two is read, the answer comes back as an ordinary one, and
 /// nothing in it says the other half was never looked at. `elide` with `ids: [4]` and
-/// `select: "all:tool_results"` would move whatever the selector matched, report exactly that, and
-/// read as a call that did what it was told.
+/// `select: "all:tool_results"` would move whatever the selector matched, report that, and read as
+/// a call that did what it was told.
 ///
 /// note: refused here rather than said in the schema, because the schema cannot say it. Mutual
 /// exclusion is `oneOf` or `not`, and neither is a keyword both dialects take: Google's `Schema` is
@@ -475,23 +474,23 @@ pub(crate) fn unmatched(kernel: &Kernel, select: &str) -> String {
 
 /// How many lines one `search`, or records one `log` read, may hand back in a single call.
 ///
-/// note: a ceiling at all, because both tools' whole purpose is to price what they are about to
-/// hand over and then hand it over - and a `take` of "as many as there are" is the one way to ask
-/// for it not to be priced. `search` on a real context and `log` on a real log each returned tens
-/// of thousands of tokens in one result, which the compactor elided on the way in: the tool paid
-/// for the answer, the model was left holding a marker saying `compacted to make room`, and the
-/// result of the read was in the record the read was supposed to explain. So a number above this
-/// is taken as this and the answer says so.
+/// note: a ceiling at all, because both tools exist to price what they are about to hand over and
+/// then hand it over, and a `take` of "as many as there are" is the one way to ask for it not to be
+/// priced. `search` on a real context and `log` on a real log each once returned tens of thousands
+/// of tokens in one result, which the compactor elided on the way in: the tool paid for the answer,
+/// the model was left holding a marker saying `compacted to make room`, and the result of the read
+/// was in the record the read was supposed to explain. So a number above this is taken as this and
+/// the answer says so.
 ///
 /// note: clamped rather than refused, and said in the answer either way. A refusal would be the
 /// stricter shape, and `undo`/`redo` refuse a `steps` above their own bound because a walk of
-/// sixty-four where a hundred was asked for reads as though the hundred was undone. Here the
-/// answer opens with the true count and the true price of every match whatever the `take` was, so
-/// a clamped answer is still the true one, and the only thing lost is the number of lines in it.
+/// sixty-four where a hundred was asked for reads as though the hundred was undone. Here the answer
+/// opens with the true count and the true price of every match whatever the `take` was, so a
+/// clamped answer is still true, and only the number of lines in it is lost.
 ///
 /// note: one number for both, because it is one word. `search` and `log` are the two tools that
-/// hand over pieces of the session, and a model that has learned what 64 buys from one of them
-/// has learned it from the other.
+/// hand over pieces of the session, and a model that has learned what 64 buys from one of them has
+/// learned it for the other.
 pub(crate) const TAKE: usize = 64;
 
 /// The pins the model made itself, and the note each was made with.

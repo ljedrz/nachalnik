@@ -84,11 +84,11 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             (None, true) => format!("{subject}: {verdict}, for one command alone"),
             (None, false) => format!("{subject}: {verdict} from now on"),
         },
-        // note: the reason as well as the figures, because the report carries one. A pass
-        // announced as `1 out, 4 elided, 8863 → 725 tokens` says what moved and not what moved it;
-        // the compactor's own sentence - which threshold it crossed, and by how much - is the part
-        // that says whether the pass was the system working or the limit being wrong. It is a
-        // field of the event, not a gloss on one
+        // note: the reason as well as the figures, because the report carries one. A pass announced
+        // as `1 out, 4 elided, 8863 → 725 tokens` says what moved and not what moved it; the
+        // compactor's own sentence - which threshold it crossed, and by how much - says whether the
+        // pass was the system working or the limit being wrong. It is a field of the event, not a
+        // gloss on one
         Event::Compacted { report } => format!(
             "{}, {} → {} tokens{}{}",
             moved(report),
@@ -293,8 +293,8 @@ pub(super) fn request_preview(kernel: &Kernel, keys: bool) -> String {
 /// accurate: `step` refuses to send a request with no messages and says so in its own vocabulary.
 /// It is the wrong answer to "what would go next?" in a session nobody has typed into yet, because
 /// nothing has been said and the projector is working correctly. When the context is not empty, the
-/// list of what was left out matters most here, so `request_preview` builds that list before it
-/// asks for the request and prints it above this sentence.
+/// list of what was left out matters most, so `request_preview` builds that list before it asks for
+/// the request and prints it above this sentence.
 ///
 /// note: `keys` is [`super::App::keys`]. The way back is a context-tab key where one exists, and
 /// `/restore` where the caller has no keys to press.
@@ -319,8 +319,8 @@ pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String 
 ///
 /// note: removing and eliding are two mechanisms, and naming only the first misreports the
 /// compactor that ships here. It never removes anything; it elides, so the call each result answers
-/// keeps its answer. A count of removals would therefore report every pass as `0 items out` in the
-/// line and trace row, which are the only account a person gets of a context changing under them.
+/// keeps its answer. A count of removals would report every pass as `0 items out` in the line and
+/// trace row, which are the only account a person gets of a context changing under them.
 pub(super) fn moved(report: &nachalnik::CompactionReport) -> String {
     match (report.removed.len(), report.elided.len()) {
         (0, 0) => "nothing moved".to_owned(),
@@ -350,8 +350,8 @@ pub(super) fn unpriced(report: &nachalnik::CompactionReport) -> String {
 ///
 /// note: every path in the string rather than the last segment of the whole of it, because a seam
 /// can be generic and the counter this program ships is. `rsplit("::").next()` on
-/// `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` answers `BytesPerToken>` -
-/// the wrong type, the outer one dropped, and a stray bracket. Shortening every path answers
+/// `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` answers `BytesPerToken>`: the
+/// wrong type, the outer one dropped, and a stray bracket. Shortening every path answers
 /// `Calibrating<BytesPerToken>`.
 pub(crate) fn short(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
@@ -385,15 +385,15 @@ pub(super) fn pretty(value: &Value) -> String {
 ///
 /// note: `/request`, `/payload` and `/raw` all print JSON that can carry
 /// [`nachalnik::Content::Blob`]. A blob on this screen is several megabytes of `AAAAAAAA` where
-/// somebody was looking for the shape of a request. They need the same two things the context tab
-/// row says: that it is there, and how much of it there is. This says them and drops the rest. The
+/// somebody was looking for the shape of a request. What is needed is what the context tab row
+/// says: that it is there, and how much of it there is. This says them and drops the rest. The
 /// record keeps the whole of it; this is a view.
 ///
-/// note: by shape rather than by length, because a long tool result is something somebody
-/// opened this to read and must not be cut. The three shapes below are the three this workspace
-/// produces: the kernel's own `Content::Blob`, a `data:` URI in the conventional dialect, and
-/// Google's `inline_data`. A dialect this workspace does not produce goes through unelided; showing
-/// too much is better than hiding something.
+/// note: by shape rather than by length, because a long tool result is something somebody opened
+/// this to read and must not be cut. The three shapes below are the three this workspace produces:
+/// the kernel's own `Content::Blob`, a `data:` URI in the conventional dialect, and Google's
+/// `inline_data`. A dialect this workspace does not produce goes through unelided; showing too much
+/// is better than hiding something.
 fn without_blobs(value: &Value) -> Value {
     match value {
         // `data:image/png;base64,AAAA...`, wherever it sits
@@ -430,25 +430,25 @@ fn without_blobs(value: &Value) -> Value {
 
 /// What is shown where a payload was.
 ///
-/// note: an exact count, and deliberately not the `292.47kB` `Blob`'s own `Display` gives. This
-/// one stands inside `/payload`, which is the request byte for byte with the base64 taken out -
-/// so the number is the length of the exact string that was removed from the JSON being read,
-/// and rounding it would make the one view whose promise is exactness stop keeping it.
+/// note: an exact count, not the `292.47kB` `Blob`'s own `Display` gives. This one stands inside
+/// `/payload`, which is the request byte for byte with the base64 taken out, so the number is the
+/// length of the string that was removed from the JSON being read, and rounding it would break the
+/// one view that promises exactness.
 fn shown_instead(media_type: &str, bytes: usize) -> String {
     format!("[ base64 blob, {media_type}, {bytes} bytes ]")
 }
 
 /// Exactly what one item puts into the next request, in the projector's own words.
 ///
-/// note: the whole context is projected rather than the item on its own, because an item's
-/// message is not always a function of the item. A tool result whose call is missing is repaired
-/// away, and an item projected alone has no call anywhere - so a lone projection would report
-/// "the model gets nothing" about a result the model is about to read.
+/// note: the whole context is projected rather than the item on its own, because an item's message
+/// is not always a function of the item. A tool result whose call is missing is repaired away, and
+/// an item projected alone has no call anywhere, so a lone projection would report "the model gets
+/// nothing" about a result the model is about to read.
 ///
-/// note: `included` and `messages` line up one for one under a projector that makes one message
-/// per item, which is the dialect this program speaks. One that merges them - and the `Projector`
-/// documentation offers exactly that as an example - has no per-item answer to give, and saying
-/// so is better than pointing confidently at the wrong message.
+/// note: `included` and `messages` line up one for one under a projector that makes one message per
+/// item, which is the dialect this program speaks. One that merges them - and the `Projector`
+/// documentation offers that as an example - has no per-item answer to give, and saying so is
+/// better than pointing confidently at the wrong message.
 #[cfg(feature = "tui")]
 pub(super) fn projected(projection: &Projection, id: ContextId) -> String {
     if let Some(left_out) = projection.skipped.iter().find(|item| item.id == id) {
@@ -493,9 +493,9 @@ pub(super) fn projected(projection: &Projection, id: ContextId) -> String {
 /// A projected message, laid out for reading.
 ///
 /// note: not `to_string_pretty`. The JSON of a message writes every newline in its content out as
-/// `\n` on one enormous line, and the content is the whole of what this page is for - the same
-/// reason a permission question does not show somebody the JSON of what a tool is about to run.
-/// `ctrl+p` is still the byte-for-byte view, of this and of everything around it.
+/// `\n` on one enormous line, and the content is what this page is for, for the same reason a
+/// permission question does not show somebody the JSON of what a tool is about to run. `ctrl+p` is
+/// still the byte-for-byte view, of this and of everything around it.
 #[cfg(feature = "tui")]
 fn as_sent(message: &nachalnik::Message) -> String {
     let mut out = format!("role: {}", message.role);
@@ -521,14 +521,14 @@ fn as_sent(message: &nachalnik::Message) -> String {
 /// The whole of what an item holds, including what its kind carries beside its content.
 ///
 /// note: a turn recorded in the conventional three slots keeps its calls and its reasoning in the
-/// kind rather than in the content, so reading the content alone would show an empty box for a
-/// turn that is nothing but tool calls - which is most of them. One recorded as ordered blocks has
-/// all three in the content already, and `whole` lays those out in the order they were produced.
+/// kind rather than in the content, so reading the content alone would show an empty box for a turn
+/// that is nothing but tool calls, which is most of them. One recorded as ordered blocks has all
+/// three in the content already, and `whole` lays those out in the order they were produced.
 ///
-/// note: not behind `tui`, though the screen is the usual reader. The rule this crate follows is
-/// that anything a *command* can reach cannot live behind the feature that draws, and asking a
-/// session on the other end of a socket what an item says is the same act as pressing enter on
-/// the context tab - one mechanism, so one answer to it. See [`crate::remote`].
+/// note: not behind `tui`, though the screen is the usual reader. Anything a *command* can reach
+/// cannot live behind the feature that draws, and asking a session on the other end of a socket
+/// what an item says is the same act as pressing enter on the context tab, so it has one answer.
+/// See [`crate::remote`].
 pub(crate) fn stored(item: &ContextItem) -> String {
     let mut out = whole(&item.content);
     // note: why the item is here at all, which outlives every state it passes through and is
@@ -584,35 +584,33 @@ pub(crate) fn whole(content: &Content) -> String {
         .join("\n\n")
 }
 
-/// Why a prompt could not hold this item, if it could not, written for the person who pressed
-/// the key.
+/// Why a prompt could not hold this item, if it could not, written for the person who pressed the
+/// key.
 ///
-/// note: not gated on `tui`, because the terminal's `e` is not the only way in. A client
-/// editing an item over [`crate::remote`] reaches [`super::App::revise`], which asks this the same
-/// question before it writes, and so does the model's own `context revise` - so the three shapes
-/// that cannot be rewritten are refused wherever the edit came from, and are refused in one place
-/// rather than three that drift.
+/// note: not gated on `tui`, because the terminal's `e` is not the only way in. A client editing an
+/// item over [`crate::remote`] reaches [`super::App::revise`], which asks this the same question
+/// before it writes, and so does the model's own `context revise`, so the three shapes that cannot
+/// be rewritten are refused wherever the edit came from, in one place rather than three that drift.
 ///
 /// note: an editor shows `Content::to_text` and commits what comes back as `Content::text`, so it
-/// is faithful exactly where those two are the whole of the item. [`stored`] is the function that
-/// already knows where they are not - reading the content alone shows an empty box for a turn
-/// that is nothing but tool calls - and this is the same reading, answered as a
-/// reason rather than as a page.
+/// is faithful where those two are the whole of the item. [`stored`] already knows where they are
+/// not - reading the content alone shows an empty box for a turn that is nothing but tool calls -
+/// and this is the same reading, answered as a reason rather than as a page.
 ///
 /// note: what makes a turn's calls unreachable is that they are not its content. They are on the
 /// kind, beside it, and `Kernel::replace` writes content; so a person who edits one changes the
-/// sentence the turn opened with and not the call they were looking at, and a call-only turn
-/// offers them an empty box to do it in. Refusing is not a policy about rewriting history - `e`
-/// exists to rewrite it - it is that this key cannot reach the thing on the screen.
+/// sentence the turn opened with and not the call they were looking at, and a call-only turn offers
+/// them an empty box to do it in. Refusing is not a policy about rewriting history - `e` exists to
+/// rewrite it - it is that this key cannot reach the thing on the screen.
 ///
-/// note: `Content::Json` is not in here. It flattens to the string that would go on the wire
-/// either way, so the round trip changes the variant and not a byte the model reads; and a tool
-/// result full of JSON somebody wants to correct is the case `e` is most useful for.
+/// note: `Content::Json` is not in here. It flattens to the string that would go on the wire either
+/// way, so the round trip changes the variant and not a byte the model reads; and a tool result
+/// full of JSON somebody wants to correct is the case `e` is most useful for.
 ///
-/// note: the whole sentence rather than a noun for somebody else to build one out of, because
-/// the three shapes are refused for three different reasons and a shared sentence could only say
-/// the vague part of any of them. The keys that *do* work are appended where this is shown,
-/// since those are the same whichever shape it is.
+/// note: the whole sentence rather than a noun for somebody else to build one out of, because the
+/// three shapes are refused for three different reasons and a shared sentence could only say the
+/// vague part of any of them. The keys that *do* work are appended where this is shown, since those
+/// are the same whichever shape it is.
 pub(crate) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
     if item.content.as_blob().is_some() {
         return Some(
@@ -659,9 +657,9 @@ pub(crate) fn one_line(text: &str) -> String {
 /// The same text without leading blank lines.
 ///
 /// note: a presentation fix, not a correction to the record. The newlines are the provider's:
-/// `inception/mercury` opens every message with two. The item keeps exactly what arrived, because a
-/// runtime whose record is "what arrived, tidied up" cannot answer what arrived. They must not cost
-/// rows of a screen.
+/// `inception/mercury` opens every message with two. The item keeps what arrived, because a runtime
+/// whose record is "what arrived, tidied up" cannot answer what arrived, but the newlines must not
+/// cost rows of a screen.
 ///
 /// note: leading blank lines, not leading whitespace. Trimming whitespace takes the indentation off
 /// the first line of a message that opens with a code block.
@@ -700,13 +698,13 @@ pub(super) fn head(text: &str, lines: usize) -> String {
 ///
 /// note: one renderer for the trace, `/budget`, and the `context budget` a model reads about
 /// itself, so there is one sentence about the same two numbers to get right rather than three. It
-/// must never add the two: [`Usage::reasoning_tokens`] is part of [`Usage::output_tokens`], so
-/// they are shown as a whole and a share of it.
+/// must never add the two: [`Usage::reasoning_tokens`] is part of [`Usage::output_tokens`], so they
+/// are shown as a whole and a share of it.
 ///
 /// note: a reasoning model that returns none of its reasoning, such as `mercury-2.5`, can still
-/// spend most of a turn on it. Without this there is nowhere to find that out on tokens somebody
-/// paid for. `None` is silence, not zero: a provider that does not report reasoning is not one
-/// reporting none of it.
+/// spend most of a turn on it, and without this nothing shows it on tokens somebody paid for.
+/// `None` is silence, not zero: a provider that does not report reasoning is not one reporting none
+/// of it.
 ///
 /// note: a zero is said as `none of it reasoning` rather than left out like the silence. The
 /// endpoint is saying the model did not think - asked not to, or one that does not - which is worth
@@ -730,13 +728,12 @@ pub(crate) fn charged(usage: &Usage) -> String {
 /// that says so.
 ///
 /// note: the chat draws a line for every reference from the item itself, the only thing `/attach`
-/// and `/note` say for themselves, so with no chat they said nothing at all. A `--connect` client
-/// has only the event, and `--headless` says the same words so the two remain drop-ins for each
-/// other.
+/// and `/note` say for themselves, so with no chat they once said nothing. A `--connect` client has
+/// only the event, and `--headless` says the same words so the two remain drop-ins for each other.
 ///
-/// note: no count; that is where it differs from the chat's line. The event carries the counter's
-/// figure and not how much of the item it could not price. `0 tokens` for an attached picture reads
-/// as good news when it is the opposite.
+/// note: no count, unlike the chat's line. The event carries the counter's figure and not how much
+/// of the item it could not price, and `0 tokens` for an attached picture reads as good news when
+/// it is the opposite.
 pub(crate) fn went_in(event: &Event) -> Option<String> {
     match event {
         Event::ContextAdded {
@@ -810,11 +807,10 @@ pub(crate) const NOTHING_DECIDED: &str = "nothing has been decided yet, which is
 
 /// The word a verdict is read back in, for a line a person reads.
 ///
-/// note: one place, because it is one word per mechanism and there are two things to say it: the
+/// note: one place, because it is one word per mechanism and there are two places that say it: the
 /// permissions tab, which colours the answer, and `/permissions`, which prints the same rows for a
 /// caller with no tab. A second spelling of `allow` beside the first would be a rule and a
-/// paragraph disagreeing, and which of them a model reads is not something anybody would notice
-/// until the two were side by side.
+/// paragraph disagreeing, unnoticed until the two were side by side.
 pub(crate) fn verdict_word(verdict: Verdict) -> &'static str {
     match verdict {
         Verdict::Allow => "allow",
@@ -827,7 +823,7 @@ pub(crate) fn verdict_word(verdict: Verdict) -> &'static str {
 ///
 /// note: the `item(s)` spelling everywhere else in this program is for text a *model* reads, where
 /// the parenthesis costs a token and nothing else. This is for a line a person reads: `1 items` in
-/// the corner of a screen is a small wrongness that makes somebody wonder what else is approximate.
+/// the corner of a screen is a small error that makes somebody wonder what else is approximate.
 /// Only `s` plurals, because every noun on that line is one.
 pub(crate) fn plural(n: usize, thing: &str) -> String {
     match n {
@@ -860,8 +856,7 @@ pub(crate) fn thousands(n: usize) -> String {
 ///
 /// note: here rather than in `ui/tabs.rs` because a client can reach it, so it cannot live behind
 /// the feature that draws. The trace goes out on the wire and the figure beside a line must read
-/// the same in a browser as in a terminal, so there is one formatter rather than two that agree
-/// today.
+/// the same in a browser as in a terminal, so there is one formatter rather than two.
 pub fn waited_since(gap: std::time::Duration) -> Option<String> {
     let millis = gap.as_millis();
     match millis {

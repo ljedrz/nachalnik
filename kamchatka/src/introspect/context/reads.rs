@@ -40,12 +40,11 @@ pub(super) fn taken(args: &Value) -> Result<Option<usize>, String> {
 /// note: the table has two named columns instead of one headed `tokens`, matching the two figures
 /// in the person's own pane: what an item puts into the next request, and what it keeps out of the
 /// request. One column could show only one of those, so it would be wrong about the rows that
-/// matter: an elided item sends a marker and holds its content, and any turn whose thinking the
-/// endpoint will not take back, which is every turn under an OpenAI-compatible one. Read as a
+/// matter: an elided item sends a marker and holds its content, and so does any turn whose thinking
+/// the endpoint will not take back, which is every turn under an OpenAI-compatible one. Read as a
 /// budget, the held figure invites giving up what the request was not carrying; read as an
 /// inventory, the sending figure hides tens of thousands of tokens the agent is carrying. Both
-/// columns are what `held` in the next line and the expensive list under `budget` are counted
-/// from.
+/// columns are what `held` in the next line and the expensive list under `budget` are counted from.
 pub(super) fn look(
     kernel: &Kernel,
     ids: &[ContextId],
@@ -65,11 +64,11 @@ pub(super) fn look(
     }
 
     let budget = kernel.budget();
-    // note: the undo depth is reported and named as someone else's on purpose. It is the stack
-    // behind the terminal's `u` key, holds everybody's latest changes to this context, and keeps as
-    // many as `Config::context_undo_depth`. This tool's `undo` does not touch it. Left unlabelled
-    // beside an operation called `undo`, the figure would invite someone to try to walk back the
-    // person's work
+    // note: the undo depth is reported and named as someone else's. It is the stack behind the
+    // terminal's `u` key, holds everybody's latest changes to this context, and keeps as many as
+    // `Config::context_undo_depth`. This tool's `undo` does not touch it. Left unlabelled beside an
+    // operation called `undo`, the figure would invite someone to try to walk back the person's
+    // work
     let theirs = kernel.with_context(|context| context.undo_len());
     let withheld: usize = items.iter().map(|item| going.held_back(item)).sum();
 
@@ -111,7 +110,7 @@ pub(super) fn look(
     // it could free, a model names the turn holding the most of its own thinking and offers to
     // elide it. That frees what the turn is *sending* and none of what it holds, because the
     // endpoint is never sent those tokens. `budget` says this under its own table, and `look` is
-    // where an agent actually reads the figure
+    // where an agent reads the figure
     out.push_str(
         "\n`look` with `ids` reads any of these back, including the reasoning recorded on an \
          assistant turn; a long one arrives as its start and its end unless you ask for the \
@@ -193,22 +192,21 @@ fn floor(items: &[Arc<ContextItem>]) -> &'static str {
 /// taken *after* taking it. Undoing that is one call, and knowing first is none.
 ///
 /// note: the figures are the matched items' own rather than the session's, because that is the
-/// number the decision turns on - what giving this class up would free - and the context's total
-/// is on the line beside it to read them against. The rest of the accounting is `budget`'s.
+/// number the decision turns on - what giving this class up would free - and the context's total is
+/// on the line beside it to read them against. The rest of the accounting is `budget`'s.
 ///
-/// note: the context's total and not the request's, which is what this line used to say. The two
-/// figures are sums over the matched items and the request's total is a sum over every item plus
-/// the tool definitions, which have no row in the table under it - so a header that put one beside
-/// the other read as "this class is 1,531 of a 6,107 request, and 4,576 is somewhere else in it",
-/// and a model budgeting against it concluded that the tool definitions were a quarter of a
-/// context it cannot act on and that the four results it could give up were a quarter of what was
-/// costing it. Both are wrong, in the one direction that makes giving things up look futile. The
-/// definitions are named on the request's own line below, where they belong.
+/// note: the context's total and not the request's, which this line once gave. The two figures are
+/// sums over the matched items, and the request's total is a sum over every item plus the tool
+/// definitions, which have no row in the table under it, so a header that put one beside the other
+/// read as "this class is 1,531 of a 6,107 request, and 4,576 is somewhere else in it". A model
+/// budgeting against it concluded that the tool definitions were a quarter of a context it cannot
+/// act on and that the four results it could give up were a quarter of what was costing it, both
+/// wrong in the direction that makes giving things up look futile. The definitions are named on the
+/// request's own line below.
 ///
 /// note: the items a change would refuse are marked here rather than left to be discovered by the
-/// change. A preview that named four items where a move takes three is exactly the confident wrong
-/// answer the rest of this tool is written to avoid, and [`protected`] is the same function the
-/// move itself consults, so the two cannot come apart.
+/// change. A preview that named four items where a move takes three would be confidently wrong, and
+/// [`protected`] is the same function the move itself consults, so the two cannot come apart.
 pub(super) fn matched(
     kernel: &Kernel,
     select: &str,
@@ -290,14 +288,14 @@ pub(super) fn matched(
 /// model's sentence.
 ///
 /// note: `setup` with `model` reports this too, but a model asking the question does not call
-/// `setup`. A fact reachable only through a tool nobody calls is not really available, so it
-/// belongs where the question is asked. It is a count in a listing that already counts items, not a
+/// `setup`, and a fact reachable only through a tool nobody calls is not available, so it belongs
+/// where the question is asked. It is a count in a listing that already counts items, not a
 /// warning, and says nothing about the turns' worth.
 ///
 /// note: this depends on `session.resumed` appearing in the log, not on the absence of
 /// `context.added` alone, because `Kernel::drain_history` also removes those records. Without that
-/// record, an item with no beginning here means the log was shortened; reporting that as this would
-/// be false.
+/// record, an item with no beginning here means the log was shortened, and reporting it as
+/// inherited would be false.
 fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>], policy: &Careful) -> String {
     // the common case, a session never resumed, answered without gathering anything
     if !resumed(kernel) {
@@ -467,15 +465,15 @@ fn full(
     // records what was written when it was written - a pin this tool made, still reading
     // `by: context` on an item the person has since pinned again. A model reading it that way keeps
     // believing the pin is its own and keeps being refused. The refusal says whose it is, and this
-    // is the same [`protected`] the move consults, so the two cannot come apart. Leaving the
-    // metadata out would hide a record somebody may be asking for
+    // is the same [`protected`] the move consults, so the two cannot come apart. The metadata
+    // stays, because somebody may be asking for that record
     if let Some(why) = protected(item, mine, own) {
         out.push_str(&format!("  not yours to move: {why}\n"));
     }
-    // a turn that was recorded as an order is read back as one, block by block. This is the
-    // thing `context` exists for and the one view of it that is not available anywhere else: the
-    // request the model will be sent has the same parts in the same order, but by then the
-    // thinking looks like a field rather than something that happened between two calls
+    // a turn that was recorded as an order is read back as one, block by block. This is what
+    // `context` exists for and the one view of it that is not available anywhere else: the request
+    // the model will be sent has the same parts in the same order, but by then the thinking looks
+    // like a field rather than something that happened between two calls
     if let Some(blocks) = item.content.as_blocks() {
         out.push_str(&format!("  --- {} block(s), in order ---\n", blocks.len()));
         for (at, block) in blocks.iter().enumerate() {
@@ -532,8 +530,8 @@ fn told_by_the_world(item: &ContextItem) -> bool {
 /// without meaning to, which this action exists to undo.
 ///
 /// note: case is ignored. Searching for `landlock` in a context full of `Landlock` would silently
-/// report no matches, which is false. Silent failure is the one wrong answer a search must not
-/// have.
+/// report no matches, which is false, and a silent false "nothing" is the one wrong answer a search
+/// must not give.
 pub(super) fn search(
     kernel: &Kernel,
     text: &str,
@@ -683,10 +681,10 @@ pub(super) fn search(
     };
 
     // note: the number is clamped, and the sentence says so. A model that writes a "big enough"
-    // number gets the entire match set in one result, which the compactor elided on the way in, so
-    // the tool paid for the answer and the model was left holding a marker. There is no way to page
-    // further, so the sentence says what to narrow instead of inviting a second call that returns
-    // the same first page
+    // number would get the entire match set in one result, which the compactor elided on the way
+    // in, so the tool paid for the answer and the model was left holding a marker. There is no way
+    // to page further, so the sentence says what to narrow instead of inviting a second call that
+    // returns the same first page
     let capped = take.min(TAKE);
     let shown = capped.min(rendered.len());
     match rendered.len() - shown {
@@ -749,22 +747,20 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
 
 /// What the next request costs, what there is, and what giving something up would buy.
 ///
-/// note: the action a compaction decision is actually made from, which `look` was being asked to
-/// be and is not: a table of every item in insertion order answers "what am I carrying?" and not
-/// "what is it costing me and what should go?". The expensive items are the ones that decide that,
-/// so they are sorted and totalled here rather than left to be found by reading.
+/// note: the action a compaction decision is made from, which `look` was being asked to be and is
+/// not: a table of every item in insertion order answers "what am I carrying?" and not "what is it
+/// costing me and what should go?". The expensive items decide that, so they are sorted and
+/// totalled here rather than left to be found by reading.
 ///
 /// note: it reports the estimate beside what the provider charged for the last request, and the
 /// correction the counter has worked out from the difference, because the estimate is made without
-/// the model's tokenizer and is usually low. An agent budgeting against a number nobody has
-/// checked is the thing this crate exists not to do quietly.
+/// the model's tokenizer and is usually low. An agent should not be budgeting silently against a
+/// number nobody has checked.
 ///
 /// note: the four ways of being held back are named and then divided in place, rather than counted
 /// off by an ordinal. Every other number on this screen is an item id and the table under it opens
-/// with a column of them, so "the first three" of four causes reads as *items 1, 2 and 3* - and a
-/// model hunting for what those items are hiding spends calls, and carries what they fetch. An
-/// ordinal in a tool whose output is a numbered table has two readings and costs whatever the
-/// wrong one costs.
+/// with a column of them, so "the first three" of four causes reads as *items 1, 2 and 3*, and a
+/// model hunting for what those items are hiding spends calls, and carries what they fetch.
 pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> String {
     let budget = kernel.budget();
     let going = Going::of(kernel);
@@ -828,17 +824,16 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
 
     // the expensive ones, biggest first: what a decision about compaction is made from.
     //
-    // note: what the *projection* included, not what the states say. They are not the same list -
-    // a tool result whose call is not in the request is repaired out of it by the projector, and
-    // is costing nothing however active it looks. Offering it as something to save tokens by
-    // eliding would be advice that buys nothing
+    // note: what the *projection* included, not what the states say. They are not the same list: a
+    // tool result whose call is not in the request is repaired out of it by the projector, and is
+    // costing nothing however active it looks. Offering it as something to save tokens by eliding
+    // would be advice that buys nothing
     //
     // note: and sorted by what each one *costs the request*, not by what it holds. Those are the
     // same figure for most rows and not for a turn that thought at length, which can hold tens of
-    // thousands of tokens and put a thousand into the request. Ranked by what it held, it would
-    // top a list headed "the most expensive items actually going into it", offering the agent
-    // tens of thousands of tokens for an elision that frees a thousand. The column that decides is
-    // the column to rank on.
+    // thousands of tokens and put a thousand into the request. Ranked by what it held, it would top
+    // a list headed "the most expensive items actually going into it", offering the agent tens of
+    // thousands of tokens for an elision that frees a thousand.
     let mut costly: Vec<_> = kernel
         .items()
         .into_iter()
@@ -898,10 +893,10 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
 
 /// The request that would go next, as a shape rather than as its bytes.
 ///
-/// note: a summary and not the request itself, which is the one thing this could print and must
-/// not: the request *is* the context, so answering with it would double every token the agent was
-/// asking about. Roles, sizes and first lines are what the question "what am I about to send?"
-/// actually wants, and `/request` in the terminal has the verbatim JSON for whoever wants that.
+/// note: a summary and not the request itself, which must not be printed: the request *is* the
+/// context, so answering with it would double every token the agent was asking about. Roles, sizes
+/// and first lines are what "what am I about to send?" wants, and `/request` in the terminal has
+/// the verbatim JSON for whoever wants that.
 pub(super) fn request(kernel: &Kernel) -> String {
     let request = match kernel.preview_request() {
         Ok(request) => request,
@@ -989,8 +984,8 @@ pub(super) fn request(kernel: &Kernel) -> String {
     }
     // note: under a heading of its own, and one that says nothing was lost. This tool is read by a
     // model deciding what to do next, and "rewrote, to keep the request valid" over a line about a
-    // tool result changing places is an invitation to go and fix something that is not broken -
-    // which is what a `note` produces, every single time it is written
+    // tool result changing places invites it to fix something that is not broken, and a `note`
+    // produces that line every time it is written
     if !projection.reordered.is_empty() {
         out.push_str(
             "\nand what it put in a different order than your context holds it, which costs \

@@ -33,22 +33,22 @@ impl App {
     /// note: here rather than in `keys.rs`, because three loops answer questions - the keys,
     /// `headless.rs` and [`crate::remote`] - and each doing it in its own words would leave each
     /// missing a different part. An answer is four things: telling the sandbox about a granted
-    /// command that reaches the network, which is [`App::answer`]; honouring `always` over what
-    /// the policy consulted; sweeping the questions queued behind this one; and driving the turn
-    /// on, because a decision leaves the kernel resting with nobody driving it. Without the last,
-    /// a headless run answers and then sits there.
+    /// command that reaches the network, which is [`App::answer`]; honouring `always` over what the
+    /// policy consulted; sweeping the questions queued behind this one; and driving the turn on,
+    /// because a decision leaves the kernel resting with nobody driving it. Without the last, a
+    /// headless run answers and then sits there.
     ///
     /// note: `remember` is what the `a` key means - *always* - and what it remembers is everything
     /// the policy actually consulted rather than what the tool declared, so a `yes, always` to a
     /// `curl` that left `network` on `ask` does not ask again on the next call. It then sweeps what
     /// is already in the queue, because a model asking for three things at once produces three
-    /// questions before the first is shown, and a promise about what happens next has to cover
-    /// what is already waiting.
+    /// questions before the first is shown, and a promise about what happens next has to cover what
+    /// is already waiting.
     ///
     /// note: what it returns is about the question the caller asked about, and nothing else. The
-    /// sweep's own failures go to [`App::say`], because they are the program reporting something
-    /// nobody asked it to do - which is what that list is - and a caller handed them as *its*
-    /// error would be told its own answer failed when it did not.
+    /// sweep's own failures go to [`App::say`], because they are the program reporting on something
+    /// nobody asked it to do, and a caller handed them as *its* error would be told its own answer
+    /// failed when it did not.
     pub fn decide(&mut self, id: PermissionId, grant: Grant, remember: bool) -> Result<(), String> {
         let Some(request) = self
             .kernel

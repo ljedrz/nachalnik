@@ -9,13 +9,13 @@
 //! than the broadcast, so they are the same bytes `/save` writes, in the same order, and they
 //! include `session.started`, which is emitted while the kernel is still being constructed and
 //! which no subscriber can catch. The prose is what the model said and what the program said about
-//! the run. One goes to a pipe and the other to a terminal, which is why they are two writers
-//! rather than a verbosity flag.
+//! the run. One goes to a pipe and the other to a terminal, so they are two writers rather than a
+//! verbosity flag.
 //!
 //! note: this does not answer a question by asking somebody; there is nobody to ask. The answer
 //! handed to [`Headless::new`] is the one every question gets, decided in advance on the command
-//! line and recorded as the decision it is. `Grant::Deny` is the program's default because a run
-//! nobody is watching should not be able to do a thing nobody has allowed.
+//! line and recorded as a decision. `Grant::Deny` is the program's default because a run nobody is
+//! watching should not be able to do a thing nobody has allowed.
 
 use std::{io::Write, time::Duration};
 
@@ -30,12 +30,12 @@ use crate::app::{App, NOTICES, Outcome, Overlay, Speaker, text::plural};
 
 /// Why a headless run stopped before it had worked through its input, for its exit status.
 ///
-/// note: a run cut short used to leave with the status of one that finished, so a script could
-/// not tell a session that did its work from one a deadline, a ceiling or a signal ended - the
-/// line saying which was on standard error and nowhere a script looks. A failed turn is not one of
+/// note: a run cut short used to leave with the status of one that finished, so a script could not
+/// tell a session that did its work from one a deadline, a ceiling or a signal ended; the line
+/// saying which was on standard error, where a script does not look. A failed turn is not one of
 /// these: it is the error [`Headless::run`] returns, and the program's `1`.
 ///
-/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+/// note: `#[non_exhaustive]`, as every public enum in this workspace is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Stop {
@@ -61,11 +61,10 @@ pub enum Stop {
 impl Stop {
     /// The exit status a run that stopped this way leaves with.
     ///
-    /// note: the conventions a script already knows where there is one - `timeout(1)`'s `124`
-    /// for a deadline, and `128` plus the signal for the three a signal ends - `130` for `ctrl+c`,
-    /// `143` for `SIGTERM` and `129` for `SIGHUP` -
-    /// and small numbers that nothing else here uses for the three that are this program's own.
-    /// `1` is a failed turn and `2` is an argument clap refused.
+    /// note: the conventions a script already knows where there is one - `timeout(1)`'s `124` for a
+    /// deadline, and `128` plus the signal for the three a signal ends: `130` for `ctrl+c`, `143`
+    /// for `SIGTERM` and `129` for `SIGHUP` - and small numbers that nothing else here uses for the
+    /// three that are this program's own. `1` is a failed turn and `2` is an argument clap refused.
     pub fn code(self) -> u8 {
         match self {
             Self::Spent => 3,
@@ -108,10 +107,10 @@ pub struct Headless<'a> {
     /// Whether a model is answering, which is the only thing this loop prints fragments of.
     ///
     /// note: a `Lagged` carries a count and no events, so what went past cannot be sorted into
-    /// kinds afterwards, and this is what a count is believed against. `Requesting` and
-    /// `Executing` are different states, so while a model is being answered no tool is running,
-    /// and a count arriving in that window is fragments of words. A count arriving under a tool is
-    /// that tool's output, which this loop does not print and the log does not hold.
+    /// kinds afterwards, and this decides whether a count is believed. `Requesting` and `Executing`
+    /// are different states, so while a model is being answered no tool is running, and a count
+    /// arriving in that window is fragments of words. A count arriving under a tool is that tool's
+    /// output, which this loop does not print and the log does not hold.
     answering: bool,
 }
 
@@ -141,8 +140,8 @@ impl<'a> Headless<'a> {
     /// note: a command waiting on an endpoint - `/models`, or a compaction pass - is stopped the
     /// same way, because it is sent out rather than awaited where its line was read; see
     /// `App::in_flight`. A `/model` or `/endpoint` switch finishes instead, under the bound the
-    /// turn is waited for with. A half-applied `/endpoint` is worse to leave behind than a late
-    /// deadline.
+    /// turn is waited for with, because a half-applied `/endpoint` is worse to leave behind than a
+    /// late deadline.
     pub fn deadline(mut self, after: Duration) -> Self {
         self.deadline = Some(after);
         self
@@ -151,10 +150,10 @@ impl<'a> Headless<'a> {
     /// Takes `ctrl+c` as "stop" rather than letting it kill the process.
     ///
     /// note: off by default. This is a library loop, so taking a process-wide signal is the
-    /// caller's decision. A host with its own shutdown would find this competing with it.
+    /// caller's decision, and a host with its own shutdown would find this competing with it.
     /// `kamchatka --headless` turns it on, because there it is the program.
     ///
-    /// note: one stop rather than a kill, for the same reason `esc` is: an interrupted run has a
+    /// note: one stop rather than a kill, for the same reason as `esc`: an interrupted run has a
     /// half-answer, a tool result and a record worth keeping, and cooperative stopping lets them
     /// survive. A second `ctrl+c` leaves at once.
     pub fn stops_on_ctrl_c(mut self) -> Self {
@@ -180,8 +179,8 @@ impl<'a> Headless<'a> {
     /// Reads lines, drives the kernel, and returns when there is nothing left of either.
     ///
     /// note: it ends when the input is closed and nothing is in flight, rather than at the end of
-    /// the first turn. A piped question and a session held open by a script use the same code path;
-    /// the difference is only where the input came from.
+    /// the first turn. A piped question and a session held open by a script use the same code path,
+    /// differing only in where the input came from.
     ///
     /// note: returns `Ok` for a run cut short and for one that finished, since neither is an error.
     /// [`Headless::stopped`] says which once this has returned.
@@ -262,16 +261,16 @@ impl<'a> Headless<'a> {
         let driven: Result<(), String> = async {
             loop {
                 // before anything else, and wherever the question came from: a turn that stopped to
-                // ask, or a `/step` that reached one. Answered in the branch that handles the outcome,
-                // a question from `/step` would go unanswered, and a session whose input had closed
-                // would sit in `select!` with nothing left that could ever wake it
+                // ask, or a `/step` that reached one. Answered in the branch that handles the
+                // outcome, a question from `/step` would go unanswered, and a session whose input
+                // had closed would sit in `select!` with nothing left that could ever wake it
                 //
-                // note: `!busy` is not optional. The question is broadcast as `permission.requested`
-                // while the turn that raised it is still in flight, so a loop that answered on sight
-                // would answer one the kernel had not finished asking - the decision recorded, the
-                // outcome then arriving with nothing left waiting, and the turn never carried on with.
-                // Answering only while the kernel rests is the same rule the keys follow, for the same
-                // reason
+                // note: `!busy` is required. The question is broadcast as `permission.requested`
+                // while the turn that raised it is still in flight, so a loop that answered on
+                // sight would answer one the kernel had not finished asking - the decision
+                // recorded, the outcome then arriving with nothing left waiting, and the turn never
+                // carried on with. Answering only while the kernel rests is the rule the keys
+                // follow, for the same reason
                 if !app.busy && app.asked().is_some() {
                     self.answer(app)?;
                 }
@@ -385,9 +384,9 @@ impl<'a> Headless<'a> {
                                 // others.
                                 //
                                 // note: the page name is printed only when there is more than one
-                                // page. A page opened by `App::preview` is deliberately nameless
-                                // because there is one of it, and a rule saying nothing over
-                                // `/budget` would be chrome for its own sake
+                                // page. A page opened by `App::preview` is nameless because there
+                                // is one of it, and a rule saying nothing over `/budget` would be
+                                // clutter
                                 for page in &pages {
                                     if pages.len() > 1 {
                                         writeln!(self.prose, "-- {} --", page.name)
@@ -424,11 +423,10 @@ impl<'a> Headless<'a> {
                         // note: records are read out of the log rather than from here, so a
                         // subscriber that fell behind has missed nothing that is written out. What
                         // it missed is the prose, the half nothing else keeps
-                            //
                             // note: a tool's output arrives as fragments too, and none of them are
                             // ever on the prose. A headless run says what a tool was asked to do
                             // and what its result cost; the output between is the model's to read.
-                            // Counting fragments reported a loss of something nobody was going to
+                            // Counting them once reported a loss of something nobody was going to
                             // be shown and pointed at a log without them, because a fragment is not
                             // an event anybody records. A count is only believed while a model is
                             // answering, the one thing this loop prints fragments of
@@ -602,22 +600,21 @@ impl<'a> Headless<'a> {
 
     /// Says what the program has said since the last look, and prints whatever a command opened.
     ///
-    /// note: this is what stops `/budget` from being silent. A command answers through [`App::say`]
-    /// for a line and an overlay for a page of text, because the screen reads both. A caller with
-    /// no screen must read them too, or every verb typed at it does nothing visible.
+    /// note: this stops `/budget` from being silent. A command answers through [`App::say`] for a
+    /// line and an overlay for a page of text, because the screen reads both. A caller with no
+    /// screen must read them too, or every verb typed at it does nothing visible.
     ///
     /// note: only [`Speaker::Note`] and [`Speaker::Error`] - what the program said. The model's own
     /// words are printed from the fragments as they arrive and land in the same list, so echoing
     /// them as well would print every answer twice.
     ///
     /// note: pages are not read from here. A command's page comes back from `submit` itself, and
-    /// the overlay it sets is left where it is. Nothing in a headless run draws one; taking it
+    /// the overlay it sets is left where it is: nothing in a headless run draws one, and taking it
     /// would be this loop keeping a screen's state tidy on a screen's behalf.
     ///
     /// note: which lines those are, and why `said` counts the filtered sequence rather than the
     /// list, are both [`App::notes`], because the other loop with no screen - the one in
-    /// [`crate::remote`] - needs the same answer. A watermark rule stated twice will eventually be
-    /// two.
+    /// [`crate::remote`] - needs the same answer, and a rule stated twice tends to diverge.
     fn echo(&mut self, app: &App, said: &mut usize, cleared: &mut u64) -> Result<(), String> {
         // `/cleanup` empties the sequence this watermark indexes rather than shortening it, so the
         // mark goes back to zero. Nothing is printed: a pipe cannot take back output it has already
@@ -653,8 +650,8 @@ impl<'a> Headless<'a> {
     /// network; otherwise `--on-ask allow` would allow a `curl` and then run it with the network
     /// cut and no record of why. The turn must also be driven on afterwards: a decision leaves the
     /// kernel resting with nothing to drive it. If somebody asked to drive it one transition at a
-    /// time with `/step`, answering must not quietly run the rest of the turn. [`App::decide`] does
-    /// all of this once for every caller.
+    /// time with `/step`, answering must not silently run the rest of the turn. [`App::decide`]
+    /// does all of this once for every caller.
     fn answer(&mut self, app: &mut App) -> Result<(), String> {
         for pending in app.kernel.pending_permissions() {
             let tool = pending.tool.clone();
@@ -741,21 +738,21 @@ impl<'a> Headless<'a> {
     /// The part of an event a person watching wants to see go by.
     ///
     /// note: four, rather than `text::trace_line` over everything. The whole trace is in the
-    /// records, and a session that printed all of it would bury the answer somebody is waiting
-    /// for under the forty lines it took to get there.
+    /// records, and a session that printed all of it would bury the answer somebody is waiting for
+    /// under the forty lines it took to get there.
     ///
     /// note: and no more than four. `App::on_event` already says something about a stop, a
-    /// compaction and a failure, and those go out through `echo` - so an arm here for any of them
+    /// compaction and a failure, and those go out through `echo`, so an arm here for any of them
     /// would print the same news twice in two wordings. What is left is what nothing else says: the
-    /// model's words, which `App` files under a speaker `echo` skips precisely so that this one can
-    /// stream them, and the two tool lines and a reference going in, which the terminal draws from
-    /// the context and a headless run has no other sight of. A request prints nothing and ends the
-    /// line the last answer left open, so that one answer does not run into the next.
+    /// model's words, which `App` files under a speaker `echo` skips so that this one can stream
+    /// them, and the two tool lines and a reference going in, which the terminal draws from the
+    /// context and a headless run has no other sight of. A request prints nothing and ends the line
+    /// the last answer left open, so that one answer does not run into the next.
     ///
     /// note: the model's words are the fragments, and the recorded turn where there were none. A
     /// provider that does not stream, or an endpoint that ignores being asked to, answers in one
-    /// piece with no fragment ahead of it - and the screen, which draws the item either way, never
-    /// notices, while a run printing only fragments printed nothing of the answer at all.
+    /// piece with no fragment ahead of it; the screen draws the item either way, but a run printing
+    /// only fragments would print nothing of the answer.
     fn say(&mut self, kernel: &Kernel, event: &Event) -> Result<(), String> {
         // note: before anything else, because a `Lagged` arriving after this event has to be read
         // against it. A tool and a model are never both running, so what is in flight is the whole
@@ -841,8 +838,8 @@ impl<'a> Headless<'a> {
 /// note: the model's answer arrives in fragments and is printed as it does, so the last thing
 /// written is nearly always half a sentence with no newline after it. Everything else that writes
 /// here is a whole line, and without this the two run together: an answer of `4` would have the
-/// closing line stuck to the end of it. The headless loop and a `--connect` client are the same
-/// reader of it, so they share this rather than each keeping a copy.
+/// closing line stuck to the end of it. The headless loop and a `--connect` client both read it, so
+/// they share this.
 pub(crate) struct Prose<W> {
     out: Printable<W>,
     mid_line: bool,
@@ -897,8 +894,8 @@ impl<W: Write> Write for Prose<W> {
 /// note: the prose is somebody's terminal, and most of what goes into it is not this program's to
 /// vouch for - the model's words, a provider's error, an item's content read back. An escape
 /// sequence among them is the terminal's to act on: clear the screen, retitle the window, set the
-/// clipboard, draw a line that looks like one of this program's. The screen never had the problem,
-/// because the drawing library drops them, and this drops the same ones, the same way.
+/// clipboard, draw a line that looks like one of this program's. The screen does not have the
+/// problem, because the drawing library drops them, and this drops the same ones, the same way.
 ///
 /// note: over the bytes as they come, which is safe because a C0 byte never occurs inside a
 /// multi-byte character. The C1 set is two bytes in UTF-8 and is taken out where the bytes are
@@ -985,8 +982,8 @@ pub(crate) fn not_text(line: &str) -> String {
 ///
 /// note: on the prose rather than in the context. It is the counterpart of the greeting a terminal
 /// session opens with, and like that one it is addressed to whoever is reading rather than to the
-/// model - so it is said through [`App::say`], which puts it where a `/save` will not confuse it
-/// for something the model was told.
+/// model, so it is said through [`App::say`], which puts it where a `/save` will not mistake it for
+/// something the model was told.
 pub fn opening(app: &mut App, on_ask: Grant) {
     app.say(
         Speaker::Note,

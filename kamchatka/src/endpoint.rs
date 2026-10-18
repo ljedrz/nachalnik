@@ -1,10 +1,10 @@
 //! Where this program's requests go, which key pays for them, and what it says about itself.
 //!
 //! note: the providers are [`nachalnik_providers`], a crate of their own, and they read no
-//! environment at all: where to send a request and what to measure it against are the caller's to
-//! decide. This module is that caller. It reads four variables, documented in `--help` and in the
-//! README, and turns them into a provider. A dialect each, because the address they default to is
-//! the one thing the two do not share.
+//! environment: where to send a request and what to measure it against are the caller's to decide.
+//! This module is that caller. It reads four variables, documented in `--help` and in the README,
+//! and turns them into a provider. A dialect each, because the address they default to is the one
+//! thing the two do not share.
 //!
 //! note: named for what it settles rather than what it hands back. A module called `provider` next
 //! to [`nachalnik_providers`] would read as the place one is implemented rather than the place one
@@ -28,8 +28,8 @@ use nachalnik_providers::{
 ///
 /// note: `HEAD` rather than a branch name. This is a primary key: OpenRouter builds the app's page
 /// against it, so changing it later does not rename the app, it starts a new one and orphans what
-/// the old one had. `tree/master/...` would be that change, waiting for the day the default branch
-/// is renamed.
+/// the old one had. `tree/master/...` would force that change the day the default branch is
+/// renamed.
 ///
 /// note: what goes out is the name of the program and what kind of program it is, not the key, not
 /// the model, and not a word of what was asked. It goes only to OpenRouter.
@@ -41,10 +41,10 @@ const APP_TITLE: &str = "kamchatka";
 /// Which of OpenRouter's categories the app page is filed under; this puts it in the marketplace
 /// rather than only in the rankings.
 ///
-/// note: two, because two per request is the documented limit, and these are the two that are
-/// simply true: `cli-agent` is "terminal-based coding assistants" in their own words, and
-/// `programming-app` is the wider one it also is. The rest of the coding group is somebody else:
-/// this is not an editor plugin, it does not run in anybody's cloud, and it builds no apps.
+/// note: two, because two per request is the documented limit, and these are the two that are true:
+/// `cli-agent` is "terminal-based coding assistants" in their own words, and `programming-app` is
+/// the wider one it also is. The rest of the coding group does not apply: this is not an editor
+/// plugin, it does not run in anybody's cloud, and it builds no apps.
 ///
 /// note: nothing checks the spelling, here or in the provider, because OpenRouter drops a category
 /// it does not recognise without an error. A typo is caught by opening the page the attribution
@@ -84,13 +84,13 @@ pub fn configured_limit() -> Option<usize> {
 /// no limit at all, so a mistyped figure, or one written where a shell variable's name was wanted,
 /// left a session measuring against whatever the endpoint advertises, with nothing on the screen
 /// saying the setting was not in force. A `0` was worse: it is a limit, and a request is refused
-/// against it on the first turn, with the budget reading `the limit: 0, which the next request
-/// would fill 0.0% of`.
+/// against it on the first turn, with the budget reading
+/// `the limit: 0, which the next request would fill 0.0% of`.
 ///
 /// note: the sentence names the variable and shows what it held, because the environment is the one
 /// place a figure can be wrong with no file to open and nothing on the screen to point at. `0` is
-/// refused rather than read as "no limit", which is what the other `0`s in this program mean - a
-/// setting that says `0` here and "no limit" everywhere else is a trap, and this one is the only
+/// refused rather than read as "no limit", which is what the other `0`s in this program mean: a
+/// setting that says `0` here and "no limit" everywhere else would be a trap, and this is the only
 /// place the value is spent rather than merely held.
 pub(crate) fn checked_limit() -> Result<Option<usize>, BoxError> {
     // note: the two errors are told apart. A non-text value is a value somebody set; read as none,
@@ -160,12 +160,12 @@ fn key_for(url: &str) -> Result<String, BoxError> {
 }
 
 /// [`key_for`], with the variables read through `read`: the rule, apart from the environment, so
-/// that it can be checked with no key in it - it is the one thing here that decides whether a
-/// credential leaves for somebody who did not issue it.
+/// that it can be checked with no key in it, since it decides whether a credential leaves for
+/// somebody who did not issue it.
 ///
 /// note: a variable set to nothing is read as not set, since no key is empty: `KAMCHATKA_API_KEY=`
-/// in a `.env` file came before an `OPENROUTER_API_KEY` that was there, sent no key, and was told
-/// so as a 401 rather than as the line saying which variable to set.
+/// in a `.env` file once came before an `OPENROUTER_API_KEY` that was there, sent no key, and was
+/// told so as a 401 rather than as the line saying which variable to set.
 fn keyed(url: &str, read: impl Fn(&str) -> Option<String>) -> Result<String, BoxError> {
     let read = |name: &str| read(name).filter(|key| !key.is_empty());
     let named = match () {
@@ -270,8 +270,8 @@ pub fn has_credentials(url: &str) -> bool {
 /// next request as a transport error, after the switch has already been announced. Anything subtler
 /// still reaches the provider, and its error says why.
 ///
-/// note: and a query string or a fragment, which no request can be built on. Every path is appended
-/// to the base as it stands, so a base of `…/v1?token=…` produced a request for
+/// note: also a query string or a fragment, which no request can be built on. Every path is
+/// appended to the base as it stands, so a base of `…/v1?token=…` once produced a request for
 /// `…/v1?token=…/chat/completions`, which never worked, and whose failure wrote the token into the
 /// record, because the transport's error names the URL it could not reach.
 pub fn is_an_address(url: &str) -> bool {
@@ -444,17 +444,17 @@ async fn connected(
 ///
 /// note: its own key under its own name first, and otherwise an OpenRouter key this session already
 /// has - its own where the session talks to OpenRouter, or `OPENROUTER_API_KEY` - and only where
-/// the advice goes to OpenRouter. That condition is the whole of what makes the fallback safe,
-/// because a key is an OpenRouter key by virtue of being sent to OpenRouter and not by virtue of
-/// the variable it was read from. A session pointed at ollama, at Google with `--api gemini`, or at
-/// any gateway of somebody's own holds a key that service issued, and borrowing it here would hand
-/// a third party a credential that has no business with them.
+/// the advice goes to OpenRouter. That condition is what makes the fallback safe, because a key is
+/// an OpenRouter key by virtue of being sent to OpenRouter, not by virtue of the variable it was
+/// read from. A session pointed at ollama, at Google with `--api gemini`, or at any gateway of
+/// somebody's own holds a key that service issued, and borrowing it here would hand a third party a
+/// credential that has no business with them.
 ///
 /// note: what the fallback widens is who is told, which is the question `tools::advice` is about.
 /// `--rate-shell-commands` sends a command's arguments off the machine, to OpenRouter as well as to
 /// the model behind it, unless `KAMCHATKA_SYSTEM1_BASE_URL` points at an engine of one's own.
-/// Nothing in here is read unless `--rate-shell-commands` was asked for - the flag is what decides
-/// whether they leave at all, and a key sitting in the environment is not a decision to send them.
+/// Nothing in here is read unless `--rate-shell-commands` was asked for: the flag decides whether
+/// they leave at all, and a key sitting in the environment is not a decision to send them.
 #[cfg(feature = "advise")]
 pub mod advise {
     use std::fmt;
@@ -476,7 +476,7 @@ pub mod advise {
     /// person who set both decided that. A borrowed key is an OpenRouter key and goes to OpenRouter
     /// and nowhere else.
     ///
-    /// note: `#[non_exhaustive]`, which every public enum in this workspace carries.
+    /// note: `#[non_exhaustive]`, as every public enum in this workspace is.
     #[non_exhaustive]
     pub enum Account {
         /// `KAMCHATKA_SYSTEM1_API_KEY`, held for the advisor itself.
@@ -495,8 +495,8 @@ pub mod advise {
     ///
     /// note: written out rather than derived, because the field is a credential. A derived `Debug`
     /// prints every field, so the first panic message, `assert_eq!` or log line that formatted one
-    /// would put somebody's key where they did not put it. This type decides where a key may go, so
-    /// it must not be the thing that spills it.
+    /// would put somebody's key where they did not put it, from the type that decides where a key
+    /// may go.
     impl fmt::Debug for Account {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let held = match self {

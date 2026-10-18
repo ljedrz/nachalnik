@@ -80,13 +80,13 @@ impl Section {
     /// note: two questions about different things. `asked` is about the session: only `question`
     /// turns on it, because its keys do not exist until a tool asks for something. `keys` is about
     /// the reader: a session driven by a pipe or browser has no keys of this program to press, and
-    /// six pages of them would reference a program it is not using. What is left for such a reader
+    /// six pages of them would describe a program it is not using. What is left for such a reader
     /// is the commands, which everybody can type.
     ///
-    /// note: everything else is offered from everywhere, deliberately. A page somebody has to go to
-    /// is not the same as a page that is missing, and a reference that rearranged itself under them
-    /// would be one nobody could learn the shape of. The rule above is not an exception to that: a
-    /// caller with no keys is not elsewhere in the program; it is somewhere the keys are not.
+    /// note: everything else is offered from everywhere. A page somebody has to go to is not the
+    /// same as a page that is missing, and a reference that rearranged itself under them would be
+    /// one nobody could learn the shape of. The rule above is not an exception: a caller with no
+    /// keys is not elsewhere in the program, it is somewhere the keys are not.
     pub fn applies(&self, asked: bool, keys: bool) -> bool {
         if self.keys && !keys {
             return false;

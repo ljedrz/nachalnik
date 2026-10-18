@@ -120,8 +120,8 @@ impl App {
     /// in rather than as something said. And `context`'s `note` already writes the same kind of
     /// item from the model's hand.
     ///
-    /// note: not pinned, exactly as `/attach` is not. Whether to keep a note from compaction is a
-    /// judgement about the note; `p` pins one.
+    /// note: not pinned, as `/attach` is not. Whether to keep a note from compaction is a judgement
+    /// about the note; `p` pins one.
     pub(super) fn note(&mut self, rest: &str) {
         if rest.is_empty() {
             self.say(
@@ -209,9 +209,9 @@ impl App {
     /// Shows what is plugged into each of the runtime's six seams.
     ///
     /// note: the crate's headline claim is six replaceable parts. `Kernel::policy`, `projector`,
-    /// `counter` and `compactor` hand back trait objects, so each of those traits names itself; an
-    /// unnamed trait object is not worth asking for. This checks the claim against the kernel
-    /// rather than restating what this program set up at startup.
+    /// `counter` and `compactor` hand back trait objects, so each of those traits names itself.
+    /// This checks the claim against the kernel rather than restating what this program set up at
+    /// startup.
     pub(super) fn seams(&mut self) {
         let kernel = &self.kernel;
         let tools = kernel.tool_specs();
@@ -261,12 +261,12 @@ impl App {
     ///
     /// note: the compactor the kernel runs before a request is the same object, asked by hand. This
     /// adds what an automatic pass cannot have: the list, before anything happens, with the
-    /// identifiers to pin from. A pass that tells somebody afterwards what they have lost is too
-    /// late; the information must come while it is still a decision.
+    /// identifiers to pin from, while it is still a decision rather than a loss reported
+    /// afterwards.
     ///
     /// note: it exists for the session that cannot ask the model to tidy up, which is the one most
     /// likely to need tidying. `context` is the model's tool for this, and reaching it costs a
-    /// request - the request that is failing. Without this, a context too big to send has only one
+    /// request, the request that is failing. Without this, a context too big to send has only one
     /// way out: through the thing that no longer works.
     ///
     /// note: the question stands in the prompt's place like a tool's, and for the same reason it is
@@ -431,8 +431,8 @@ impl App {
     ///
     /// note: the last answer with nothing after it, because that is what somebody reaches for after
     /// reading one and wanting it elsewhere. Anything else on this screen is a row on the context
-    /// tab with `y` on it, and the tab shows what each item is before you copy it. A command that
-    /// took a selector would be a second way to say what the tab already says better.
+    /// tab with `y` on it, and the tab shows what each item is before you copy it, so a command
+    /// that took a selector would only duplicate the tab.
     pub(super) fn copy_command(&mut self, rest: &str) {
         let named = rest.trim().trim_start_matches('[').trim_end_matches(']');
         let id = match named {
@@ -471,10 +471,10 @@ impl App {
 
     /// What the next request is estimated to cost, beside what the last one actually did.
     ///
-    /// note: the status line can only afford one number, and it shows the estimate. The estimate is
-    /// produced by a counter without the model's tokenizer, so it is wrong. This is where the two
-    /// numbers sit side by side, with the correction the counter worked out from the difference. A
-    /// budget nobody can check is decoration.
+    /// note: the status line can only afford one number, and it shows the estimate, which comes
+    /// from a counter without the model's tokenizer and so is wrong. This is where the two numbers
+    /// sit side by side, with the correction the counter worked out from the difference, so the
+    /// budget can be checked.
     pub(super) fn budget(&mut self) {
         let budget = self.kernel.budget();
         // note: both figures come from `Going`, and from the same one, because they are the two
@@ -494,7 +494,7 @@ impl App {
         // somebody is reading matters more than either. The line above estimates the whole request
         // from scratch; this one starts from what the provider charged for the last one and
         // estimates only what has changed since, so its error is a few percent of the change rather
-        // than of the context. This is what the status line shows, and this is the only place the
+        // than of the context. The status line shows this one, and this is the only place the
         // difference is explained
         match anchored {
             Some(anchored) => lines.push(format!(
@@ -548,8 +548,8 @@ impl App {
             );
         }
         // note: printed after the two figures it qualifies because it decides how to read them.
-        // Every number above is a floor when this is not zero, and a genuinely small context looks
-        // like a low percentage too, so the person cannot tell from the context alone.
+        // Every number above is a floor when this is not zero, and a small context also looks like
+        // a low percentage, so the person cannot tell from the context alone.
         //
         // note: it says which figure is a floor because the answer changes once a request has gone
         // out. The estimate is the counter guessing at the whole request from text, and it has no
@@ -560,9 +560,9 @@ impl App {
         // being called whole.
         //
         // note: the counter is not named either. `TokenCounter::name` defaults to the type path,
-        // which would put `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` in
-        // the middle of a line. `/seams` answers which counter, in a table where a full path is
-        // the useful form
+        // which would put `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` in the
+        // middle of a line. `/seams` answers which counter, in a table where a full path is the
+        // useful form
         if !budget.fully_counted() {
             lines.push(match anchored {
                 Some(_) => format!(
@@ -649,14 +649,14 @@ impl App {
             }
             // note: the line shows the two figures and the scale, and no percentage. `scale - 1` is
             // the error as a fraction of the estimate; "reading N% low" is read as a fraction of
-            // the truth. The two are far apart for the same pair of numbers. Both are true, and a
-            // sentence could only assert one, so it asserts neither. The guess and the charge are
-            // what somebody wants, and the scale between them is already on the line.
+            // the truth, and the two are far apart for the same pair of numbers. A sentence could
+            // assert only one, so it asserts neither. The guess and the charge are what somebody
+            // wants, and the scale between them is already on the line.
             //
-            // note: the count is the counter's, not this run's, and this is the one place here the
-            // two could be taken for each other. A snapshot carries what the counter learned, so
-            // the count is every request the session has sent. `/spend` counts the other thing: its
-            // total is the program's and starts again in every process
+            // note: the count is the counter's, not this run's, the one place here the two could be
+            // taken for each other. A snapshot carries what the counter learned, so the count is
+            // every request the session has sent. `/spend` counts the other thing: its total is the
+            // program's and starts again in every process
             Some(learned) => format!(
                 "the counter has learned from {} request(s) and scaled itself by {:.3}: its own \
                  guesses came to {} tokens where the provider counted {}",

@@ -3,9 +3,9 @@
 //!
 //! note: an `impl App` of its own, like `keys.rs` and `transcript.rs`. These are the answers a view
 //! reads and nothing else does: `ui/` decides nothing, so every question it asks is one of these,
-//! and holding them together is what makes that claim checkable. They read the kernel afresh rather
-//! than a copy kept here; a remembered figure would be a second account of the request and would
-//! disagree the moment anything moved.
+//! and holding them together makes that claim checkable. They read the kernel afresh rather than a
+//! copy kept here; a remembered figure would be a second account of the request and would disagree
+//! the moment anything moved.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -56,7 +56,7 @@ impl Stance {
     /// note: one sentence rather than two, because the tab and the page a caller with no screen is
     /// given show the same answer to the same question. A capability a tool declares and a shell
     /// judged against `net:reach` only sometimes are both here, because which set a rule covers is
-    /// the first thing somebody writing `--auto-allow log` would want to check.
+    /// the first thing somebody writing `--auto-allow log` would check.
     pub fn covers(&self) -> String {
         match (self.tools.is_empty(), self.sometimes.is_empty()) {
             (true, true) => "nothing registered needs it".to_owned(),
@@ -85,32 +85,30 @@ impl App {
 
     /// What the next request is expected to cost, taken from what the last one really cost.
     ///
-    /// note: **the anchored figure**, and the arithmetic is one line of intent: the provider's
-    /// number, plus what the context estimates now, minus what the estimator says the items
-    /// that number covered would cost now. An item that has not moved appears in both estimates
-    /// and cancels, so it contributes its *measured* cost and no error at all; only what
-    /// changed since the last request is estimated. Add a message to a hundred-thousand-token
-    /// context and the error is a few tokens rather than a few hundred.
+    /// note: **the anchored figure**: the provider's number, plus what the context estimates now,
+    /// minus what the estimator says the items that number covered would cost now. An item that has
+    /// not moved appears in both estimates and cancels, so it contributes its *measured* cost and
+    /// no error; only what changed since the last request is estimated. Add a message to a
+    /// hundred-thousand-token context and the error is a few tokens rather than a few hundred.
     ///
-    /// note: both estimates are taken *now*, with the counter as it currently stands, which is
-    /// what makes the cancellation exact. Storing what each item was estimated at when the
-    /// request went out would not: `Calibrating` revises its scale on the way past, when the
-    /// very response this figure comes from is observed, so every stored figure would be in
-    /// older money than the ones it is subtracted from and a context that had not changed at
-    /// all would drift.
+    /// note: both estimates are taken *now*, with the counter as it currently stands, which makes
+    /// the cancellation exact. Storing what each item was estimated at when the request went out
+    /// would not: `Calibrating` revises its scale on the way past, when the response this figure
+    /// comes from is observed, so every stored figure would be in older units than the ones it is
+    /// subtracted from, and a context that had not changed at all would drift.
     ///
-    /// note: `None` before any response, on an endpoint that reports no usage, and after a
-    /// change of model until the next response - all three being cases where there is nothing
-    /// exact to build on, and the caller falls back to [`Budget::used`].
+    /// note: `None` before any response, on an endpoint that reports no usage, and after a change
+    /// of model until the next response - all cases with nothing exact to build on - and the caller
+    /// falls back to [`Budget::used`].
     ///
-    /// note: what it does not catch, until the next request re-anchors it: a tool added or
-    /// dropped, since the schemas are inside the provider's figure and are not itemised in it.
-    /// The context is the part that moves.
+    /// note: what it does not catch, until the next request re-anchors it: a tool added or dropped,
+    /// since the schemas are inside the provider's figure and are not itemised in it. The context
+    /// is the part that moves.
     ///
     /// note: saturating throughout rather than arithmetic in `i64`. The provider's figure is
-    /// whatever it reported and can be wider than half an `i64` holds - a `prompt_tokens` of
-    /// `u64::MAX` put the whole sum through the `as i64` negative, and the answer came back as a
-    /// number that had wrapped rather than as the one that was reported.
+    /// whatever it reported and can be wider than half an `i64` holds: a `prompt_tokens` of
+    /// `u64::MAX` once put the whole sum through the `as i64` negative, and the answer came back as
+    /// a number that had wrapped rather than as the one that was reported.
     pub fn anchored(&self, going: &Going, budget: &Budget) -> Option<usize> {
         let anchor = self.anchor.as_ref()?;
         // the markers are unchanged - see `Anchor::markers` - and everything whose content was
@@ -135,10 +133,10 @@ impl App {
     /// the counter's own estimate where there is not.
     ///
     /// note: the one figure every view of the session shows - the status line, a served session's
-    /// projection, and so the web page and `--connect` - so that they agree. The page added up
-    /// the raw estimate for itself while the terminal showed this, and the two drifted apart by
-    /// the counter's error over the whole context, which grows with the session. `/budget` is the
-    /// one place both are shown, side by side and named.
+    /// projection, and so the web page and `--connect` - so that they agree. The page once added up
+    /// the raw estimate for itself while the terminal showed this, and the two drifted apart by the
+    /// counter's error over the whole context, which grows with the session. `/budget` is the one
+    /// place both are shown, side by side and named.
     pub fn expected(&self, going: &Going, budget: &Budget) -> usize {
         self.anchored(going, budget)
             .unwrap_or_else(|| budget.used())
@@ -171,7 +169,7 @@ impl App {
     /// note: uses the counter rather than a rule of thumb, so a draft is measured the same way as
     /// everything already in the context, including what `Calibrating` has learnt about this model.
     /// It is shown only because the figure it is added to is anchored: a draft moving a number that
-    /// is itself a thousand tokens uncertain would be precision theatre.
+    /// is itself a thousand tokens uncertain would be false precision.
     pub fn drafted(&self) -> usize {
         let draft = self.draft();
         match draft.trim().is_empty() || draft.starts_with('/') {
@@ -203,9 +201,9 @@ impl App {
     /// Answers one waiting question, and does the rest of what answering it entails.
     ///
     /// note: here rather than beside the keys, because there are two drivers and only one of them
-    /// has any. With everything answering means beyond `Kernel::decide` in the key handler, a
+    /// has keys. With everything answering means beyond `Kernel::decide` in the key handler, a
     /// headless run answering `allow` to a `curl` would decide it and grant nothing, and the
-    /// command would run with the network cut - the failure the grant below exists to prevent. A
+    /// command would run with the network cut, the failure the grant below exists to prevent. A
     /// driver should not be able to answer a question halfway by forgetting a step it never knew
     /// about.
     ///
@@ -284,10 +282,10 @@ impl App {
     /// item 22 may be elided must already know what item 22 is. Naming them makes the question
     /// answerable from what is on the screen.
     ///
-    /// note: only for the tools this program installs itself, and only because it knows what their
-    /// arguments mean. `ids` on somebody else's tool is somebody else's vocabulary, and guessing
-    /// would put a confident description of the wrong thing in front of a decision. Nothing here
-    /// reaches the policy: it is the same arguments, read out.
+    /// note: only for the tools this program installs itself, because it knows what their arguments
+    /// mean. `ids` on somebody else's tool is somebody else's vocabulary, and guessing would put a
+    /// confident description of the wrong thing in front of a decision. Nothing here reaches the
+    /// policy: it is the same arguments, read out.
     pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
         if !matches!(request.tool.as_str(), "context" | "log") {
             return Vec::new();
@@ -336,15 +334,15 @@ impl App {
     /// The context items the tab is showing: all of them, or only the ones carrying content into
     /// the next request.
     ///
-    /// note: the predicate is [`Going::sends_content`], exactly the set with a figure in the `held`
-    /// column, so the toggle has one rule: it hides every row holding something back. That leaves
-    /// out elided items, which go into the request as a marker and cost the marker's few tokens;
+    /// note: the predicate is [`Going::sends_content`], the set with a figure in the `held` column,
+    /// so the toggle has one rule: it hides every row holding something back. That leaves out
+    /// elided items, which go into the request as a marker and cost the marker's few tokens;
     /// showing them would be defensible on "what am I sending", but the reason for the toggle is
     /// that half the list is wreckage after a compaction, and an elided row is wreckage.
     ///
     /// note: `Going`'s rather than the state's own, because a row the projector repaired away is
-    /// holding everything it holds and would survive this filter as though it were going - which is
-    /// the one row somebody with the toggle on would most want to see the truth about.
+    /// holding everything it holds and would survive this filter as though it were going, and that
+    /// is the row somebody with the toggle on would most want to see the truth about.
     pub fn listed(&self) -> Vec<Arc<ContextItem>> {
         match self.sending_only {
             false => self.searched(self.kernel.items()),
@@ -391,17 +389,17 @@ impl App {
 
     /// What a search over the context matches an item on.
     ///
-    /// note: the whole of what the item holds, not just the preview line. A search of the preview
-    /// would miss a word rarely on the first line. The row still shows its preview; the match may
-    /// be about more than the row can show.
+    /// note: the whole of what the item holds, not just the preview line, which would miss a word
+    /// rarely on the first line. The row still shows its preview; the match may be about more than
+    /// the row can show.
     ///
     /// note: the kind column, too. Without it, `/tool_result` would match only words in somebody's
     /// *content*. `ContextKind::name` is used, so what is typed is what the column shows, and it is
     /// matched whether or not the column is drawn: it is dropped below 84 columns, and a filter
-    /// that found less on a narrow terminal would be the worse surprise.
+    /// that found less on a narrow terminal would be a worse surprise.
     ///
-    /// note: the state is deliberately not in here. It is a mark on the row, not a word, so nothing
-    /// would be typed to match it; `/exclude state:excluded` is the language for that question.
+    /// note: the state is not in here. It is a mark on the row, not a word, so nothing would be
+    /// typed to match it; `/exclude state:excluded` is the language for that question.
     #[cfg(feature = "tui")]
     fn item_text(item: &ContextItem) -> String {
         format!(
@@ -463,8 +461,8 @@ impl App {
     /// note: the union of two lists, because either alone is misleading. Policy stances are not the
     /// whole story: a tool can need something nobody mentioned, and that row is worth seeing
     /// because it is the one that stops and asks. Tool declarations are not the whole story either:
-    /// `network` is refused here and no built-in tool wants it, but an unseen refusal is not a
-    /// trustworthy policy.
+    /// `network` is refused here and no built-in tool wants it, but a refusal nobody can see does
+    /// not make a policy trustworthy.
     pub fn permissions(&self) -> Vec<Stance> {
         self.all_stances()
             .into_iter()
@@ -505,9 +503,9 @@ impl App {
         // note: an operation whose answer comes from the domain above it is the same decision a
         // second time. `--auto-allow log` is one rule, and a row each for `log` and `log:read`,
         // each naming the other in the column beside it, would say it twice. The domain row says it
-        // and names every operation it answers for, which is what a rule is read for. One somebody
-        // has answered about separately keeps its row, since that is a decision of its own, and so
-        // does one nobody has decided: that is what the count of the rest is made of
+        // and names every operation it answers for. One somebody has answered about separately
+        // keeps its row, since that is a decision of its own, and so does one nobody has decided:
+        // that is what the count of the rest is made of
         let answered_above = |capability: &Capability| {
             !ruled.contains_key(&Subject::Capability(capability.clone()))
                 && ruled
@@ -541,8 +539,8 @@ impl App {
 
         // note: a path rule binds every tool handed a path - the three that open one and the two
         // that walk a directory of them - and no others. A `shell` command names its files inside a
-        // string this program does not parse, and pretending otherwise would be a check that
-        // implies more than it delivers. `grep` and `glob` do not open what a rule names; see
+        // string this program does not parse, and claiming otherwise would be a check that implies
+        // more than it delivers. `grep` and `glob` do not open what a rule names; see
         // `tools::search`
         let covers = |subject: &Subject| -> Vec<String> {
             // note: a domain rule answers for a set of capabilities, and those are what to name.
@@ -640,8 +638,8 @@ impl App {
 
         // note: the gate is shown beside the confinement because a confined shell without one
         // differs from one with it in two ways: a UDP datagram goes out, and a command is asked
-        // about by its name rather than when it tries. Neither is shown anywhere else. A gate that
-        // could not be installed is degradation a person would otherwise never see.
+        // about by its name rather than when it tries. Neither is shown anywhere else, so a gate
+        // that could not be installed would otherwise be degradation nobody sees.
         //
         // note: a sandbox that was asked for and could not be applied is not `--no-sandbox`, which
         // a person chose. Not in `Confinement`'s own words, which blame the kernel: a binary
@@ -668,12 +666,12 @@ impl App {
     ///
     /// note: this asks the kernel rather than [`App::policy`], because the permissions tab reports
     /// the policy the runtime will consult. It gives the same answer as `/seams`, and would reveal
-    /// if [`App::policy`] and the kernel ever disagreed.
+    /// it if [`App::policy`] and the kernel ever disagreed.
     ///
     /// note: it returns the last segment of the path. `PermissionPolicy::name` defaults to the
     /// implementing type's own path, which is right for `/seams`, a panel about which types are
-    /// plugged in, but makes a list show `kamchatka::tools::Careful` when `Careful` is the part
-    /// anybody reads.
+    /// plugged in, but would make a list show `kamchatka::tools::Careful` when `Careful` is the
+    /// part anybody reads.
     pub fn policy_name(&self) -> String {
         let name = self.kernel.policy().name();
 

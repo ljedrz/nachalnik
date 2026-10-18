@@ -1,20 +1,20 @@
 //! Settings read from a file, for the ones somebody would otherwise type every time.
 //!
-//! note: JSON, and it is the whole format. A project's settings are a handful of strings, a
-//! handful of numbers and a few lists; there is a parser for that in the dependency tree already,
-//! every editor knows it, and the alternative is a second grammar for this program to have opinions
-//! about. What it buys over a shell alias is that the file can live next to the thing it describes
-//! and be read by somebody who is not running it.
+//! note: JSON, and it is the whole format. A project's settings are a handful of strings, a handful
+//! of numbers and a few lists; there is a parser for that in the dependency tree already, every
+//! editor knows it, and the alternative is a second grammar to maintain. What it buys over a shell
+//! alias is that the file can live next to the thing it describes and be read by somebody who is
+//! not running it.
 //!
 //! note: every field is optional and every one of them is a *default*. The command line is the
 //! thing in front of somebody's hands, so it wins, and it wins for a list by replacing it rather
-//! than adding to it - one rule for every key, which is the only kind anybody can predict. See
-//! `Args::under` in `args.rs`, which is where the two meet, because the merge has to know which
-//! arguments were actually typed and only clap can say.
+//! than adding to it: one rule for every key, which is the only kind anybody can predict. See
+//! `Args::under` in `args.rs`, where the two meet, because the merge has to know which arguments
+//! were typed and only clap can say.
 //!
 //! note: unknown keys are refused rather than skipped. A settings file whose `modle` key does
 //! nothing is the failure this format is most likely to have, and serde names the offending field
-//! and lists the ones it knows - which is a better error than anything worth writing by hand.
+//! and lists the ones it knows, which is a better error than anything worth writing by hand.
 
 use std::path::{Path, PathBuf};
 
@@ -25,15 +25,14 @@ use serde::{Deserialize, Serialize};
 /// note: the names are the arguments' own, with `-` where the argument has one, so that reading a
 /// file is reading `--help`. The ones left out are the ones that are not settings: a message, a
 /// session to resume and a file to attach belong to an invocation rather than to a project, and
-/// `--headless` decides itself from whether stdout is a terminal. `border-color` and `tools` go
-/// the other way - settings with no argument - and the notes on them say why.
+/// `--headless` decides itself from whether stdout is a terminal. `border-color` and `tools` go the
+/// other way - settings with no argument - and the notes on them say why.
 ///
-/// note: it serializes as well as deserializes, and every field is written even when it is
-/// `null` - which is what makes a settings file something a program can produce rather than only
-/// consume. `kamchatka.json` beside this crate is the shipped one, and the suite holds it to
-/// having a key for every field here by writing this struct out and comparing the two sets: a
-/// starting point missing the setting somebody is looking for is worth less than no starting
-/// point, because they stop looking.
+/// note: it serializes as well as deserializes, and every field is written even when it is `null`,
+/// so a settings file is something a program can produce rather than only consume. `kamchatka.json`
+/// beside this crate is the shipped one, and the suite holds it to having a key for every field
+/// here by writing this struct out and comparing the two sets: a starting point missing the setting
+/// somebody is looking for is worth less than none, because they stop looking.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Settings {
@@ -75,11 +74,11 @@ pub struct Settings {
     ///
     /// note: an empty list offers none of them, leaving only whatever an MCP server brought. A name
     /// that is not a tool is refused at startup, like an unknown key: a settings file asking for
-    /// `contxt` and quietly getting a session with no context tool is the failure worth naming.
+    /// `contxt` and silently getting a session with no context tool is the failure worth naming.
     ///
     /// note: `null` is refused rather than read as "all of them". `[]` means none, and `null` could
-    /// be read as none too, but a key that can be read both ways is read the wrong way by somebody.
-    /// The shipped file lists every tool instead; all of them is leaving the key out.
+    /// be read as none too, and a key that can be read both ways will be misread by somebody. The
+    /// shipped file lists every tool instead; all of them is leaving the key out.
     #[serde(default, deserialize_with = "not_null")]
     pub tools: Option<Vec<String>>,
     /// Whether to run with no confinement at all, as `--no-sandbox` does: the shell unconfined,
@@ -118,10 +117,10 @@ pub struct Settings {
     /// The colour the window's frame is drawn in, as `#rrggbb`. Left out, it is [`BORDER_COLOR`];
     /// `null`, the terminal's own foreground colour.
     ///
-    /// note: a key with no argument behind it, which is a decision rather than an oversight. A
-    /// colour is picked once to sit beside a terminal theme and never typed again, so it belongs in
-    /// a file, not on the command line. A `--border-color` would also have to be `tui`-gated, and
-    /// would put a colour in the `--help` of a program half of whose runs have no screen.
+    /// note: a key with no argument behind it, by decision. A colour is picked once to sit beside a
+    /// terminal theme and never typed again, so it belongs in a file, not on the command line. A
+    /// `--border-color` would also have to be `tui`-gated, and would put a colour in the `--help`
+    /// of a program half of whose runs have no screen.
     ///
     /// note: not gated here, for the reason `mcp` is not: one file works for every build. A
     /// headless build reads this and has nothing to draw with it, which costs nothing and grants
@@ -160,7 +159,7 @@ pub const BORDER_COLOR: &str = "#1A936F";
 /// `[0.8, 0.6]` in a file.
 ///
 /// note: one setting and not two, because the second number is about the first. As two keys, a
-/// settings file that named both - the shipped one does, to say what the target is - held a
+/// settings file that named both - the shipped one does, to say what the target is - once held a
 /// `--compact-context-at` typed beside it to a target written for another threshold:
 /// `--compact-context-at 0.5` was refused for a target above it, and `--compact-context-at 0.9`
 /// aimed at the file's `0.6` rather than the `0.7` it derives on its own. One value is replaced
@@ -350,8 +349,7 @@ pub const FILE: &str = "kamchatka.json";
 ///
 /// note: the same bytes as the file, not a copy generated from [`Settings::default`], which would
 /// write `null` over every default the file states on purpose. The test suite holds the file to
-/// naming every field of the struct, so this is exactly what the repository ships, and it stays
-/// that way.
+/// naming every field of the struct, so this is what the repository ships.
 pub const SHIPPED: &str = include_str!("../kamchatka.json");
 
 /// The settings file read when the command line names none: the working directory's, then the one
@@ -479,8 +477,8 @@ pub fn trusted(
 /// Where the home directory is, according to the environment and nothing else.
 ///
 /// note: the environment and nothing else, for the same reason `~user` is left alone below: the
-/// password database's answer and the one the person running this program is working from are
-/// allowed to differ, and a path that quietly goes somewhere else is worse than one that fails.
+/// password database's answer and the one the person running this program is working from may
+/// differ, and a path that silently goes somewhere else is worse than one that fails.
 fn home() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
@@ -495,7 +493,7 @@ fn home() -> Option<PathBuf> {
 /// a real path on a string it made up. This path is written by the person whose home it is.
 ///
 /// note: `~user` is left alone. Resolving another user's home means asking the password database,
-/// and a path that is quietly wrong is worse than one that is obviously wrong.
+/// and a path that is silently wrong is worse than one that is obviously wrong.
 ///
 /// note: the home is an argument so the test can say what it is instead of depending on the machine
 /// running it.

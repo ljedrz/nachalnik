@@ -39,19 +39,19 @@ impl std::fmt::Display for Recorded {
 /// Writes the session where nobody has to have asked for it, and says where that was.
 ///
 /// note: a temporary directory, because this is a safety net rather than an archive - `/save`
-/// remains the way to put a session somewhere it will still be next week. [`Setup::record`](super::Setup::record) is
-/// the setting that turns it off, and the caller is what reads it: this writes.
+/// remains the way to put a session somewhere it will still be next week.
+/// [`Setup::record`](super::Setup::record) is the setting that turns it off, and the caller reads
+/// it: this only writes.
 ///
-/// note: and the directory is the user's own, `0700`. What goes in it is a whole conversation and
-/// every byte of output every tool produced, written without anybody asking for it; under the
-/// default umask that is a world-readable file in a directory everyone on the machine can list.
-/// Nobody would type `/save /tmp/everyone/notes.jsonl`, and this should not do it for them.
+/// note: the directory is the user's own, `0700`. What goes in it is a whole conversation and every
+/// byte of output every tool produced, written without anybody asking for it; under the default
+/// umask that would be a world-readable file in a directory everyone on the machine can list.
 ///
 /// note: a session with a [`Recorder`] on it has been writing itself down since it started, and
-/// this finishes that record rather than claiming a second pair of files beside it. Without one
-/// the whole session is written here, at the end, which is what a loop that never started a
-/// recorder gets - and what the recorder itself falls back to, so a session whose record could
-/// not be claimed at the start still gets one chance at the end.
+/// this finishes that record rather than claiming a second pair of files beside it. Without one the
+/// whole session is written here, at the end, which is what a loop that never started a recorder
+/// gets, and what the recorder itself falls back to, so a session whose record could not be claimed
+/// at the start still gets one chance at the end.
 pub fn record(app: &App) -> Result<Recorded, String> {
     if let Some(recorder) = &app.recorder {
         return recorder.finish(&app.kernel);
@@ -70,25 +70,24 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 
 /// A session's record, written as the session goes rather than when it is over.
 ///
-/// note: the record a process leaves behind was written once, at the end, from the log the
-/// kernel keeps in memory - so a `kill -9`, an out-of-memory kill or a pulled plug left nothing
-/// at all, of a session whose whole point is that everything that happened is written down.
+/// note: the record a process leaves behind was once written at the end, from the log the kernel
+/// keeps in memory, so a `kill -9`, an out-of-memory kill or a pulled plug left nothing at all.
 /// This claims the pair of files when the session starts, appends every record the moment
-/// [`App::on_event`] hears of it, and rewrites the snapshot whenever the session comes to rest:
-/// the log is then complete to the last event however the process ends, and the snapshot is
-/// where things stood at the end of the last turn that finished.
+/// [`App::on_event`] hears of it, and rewrites the snapshot whenever the session comes to rest: the
+/// log is then complete to the last event however the process ends, and the snapshot is where
+/// things stood at the end of the last turn that finished.
 ///
-/// note: the records are read out of the kernel's log by sequence number rather than taken off
-/// the broadcast, so a subscription that fell behind loses the screen a frame and the record
-/// nothing. And the log runs ahead of the snapshot on purpose, never behind it: a snapshot names
-/// the last record it reflects, so a log holding more than that is a session that went on after
-/// the snapshot and a log holding less is one that was tampered with - the runtime's own
-/// `tests/crash.rs` is where that ordering is argued.
+/// note: the records are read out of the kernel's log by sequence number rather than taken off the
+/// broadcast, so a subscription that fell behind loses the screen a frame and the record nothing.
+/// The log runs ahead of the snapshot, never behind it: a snapshot names the last record it
+/// reflects, so a log holding more than that is a session that went on after the snapshot and a log
+/// holding less is one that was tampered with - the runtime's own `tests/crash.rs` is where that
+/// ordering is argued.
 ///
-/// note: `flush` after every append and `sync_all` only at the end. What this is for is the
-/// process dying, and a write the kernel has taken survives that; what `sync_all` adds is the
-/// machine dying, and a `sync_all` per event would cost a disk round trip for every fragment a
-/// tool streams. The snapshot is synced every time, since it is a whole file replaced by rename.
+/// note: `flush` after every append and `sync_all` only at the end. What this is for is the process
+/// dying, and a write the kernel has taken survives that; `sync_all` adds the machine dying, and a
+/// `sync_all` per event would cost a disk round trip for every fragment a tool streams. The
+/// snapshot is synced every time, since it is a whole file replaced by rename.
 #[derive(Debug)]
 pub struct Recorder {
     log: PathBuf,
@@ -261,11 +260,11 @@ impl Earlier {
     /// Reads the log beside the snapshot at `state`, up to the record the snapshot reflects, and
     /// returns how many records it held past that; once, and a second read changes nothing.
     ///
-    /// note: best effort, deliberately not an error. The session has resumed by the time this runs,
-    /// and a log that is absent, unreadable or half-written costs the history before the resume
-    /// rather than the session. A line that will not parse is skipped rather than ending the walk:
-    /// the last line of a log from a killed run is the one most likely to be half a record, and the
-    /// ones before it are fine.
+    /// note: best effort, not an error. The session has resumed by the time this runs, and a log
+    /// that is absent, unreadable or half-written costs the history before the resume rather than
+    /// the session. A line that will not parse is skipped rather than ending the walk: the last
+    /// line of a log from a killed run is the one most likely to be half a record, and the ones
+    /// before it are fine.
     ///
     /// note: only up to the record the snapshot was taken at. A run killed in the middle of a turn
     /// leaves a log that runs past its snapshot, and those records are not this session's: what
@@ -371,10 +370,10 @@ fn private(dir: &Path) -> Result<(), String> {
 ///
 /// note: a session name is not unique enough for a filename. Two runs started within one second
 /// share a stamp, so the second to finish overwrites the first. A resumed session keeps the name of
-/// the session it resumed, so `-r` would write over the log it just read, replacing the log of
-/// what happened with that of a sitting that did nothing. The snapshot would come through nearly
-/// intact, because a resumed context renders to nearly the same bytes; the log would not, and the
-/// log is the half that says what happened rather than where things ended up.
+/// the session it resumed, so `-r` would write over the log it just read, replacing the log of what
+/// happened with that of a sitting that did nothing. The snapshot would come through nearly intact,
+/// because a resumed context renders to nearly the same bytes; the log would not, and the log is
+/// the half that says what happened rather than where things ended up.
 ///
 /// note: the name stays and the file moves: `…Z-2.jsonl` beside `…Z.jsonl`, which sorts next to its
 /// sibling and reads as the second sitting of one session. Renaming the session would add a process
@@ -386,7 +385,8 @@ fn private(dir: &Path) -> Result<(), String> {
 /// passed-over suffix leaves nothing behind.
 ///
 /// note: a taken name is passed over and nothing else is. An unwritable directory or a full disk is
-/// why the record is not there; saying "no unused name" after many tries would be the wrong one.
+/// why the record is not there, and saying "no unused name" after many tries would be the wrong
+/// reason.
 ///
 /// note: suffixes are added to the stem's bytes, not to how it displays. A non-UTF-8 directory name
 /// displays with a replacement character; a name built from that is a directory that is not there.

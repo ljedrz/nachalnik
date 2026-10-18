@@ -74,22 +74,22 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // anyone made and has no marker, so it keeps the rule down its left and the line saying
         // why.
         //
-        // note: the projector leaves out a turn while its call has no result: it has to, because a
-        // call with no answer is a request most providers reject. So `sends_content` says no for
-        // the whole time the permission prompt is open. The line saying why would sit above the
-        // call the person is asked to authorise and call it a fault. It is mid-flight, not left
-        // out; answering the question already on screen puts it in
+        // note: the projector leaves out a turn while its call has no result, because a call with
+        // no answer is a request most providers reject. So `sends_content` says no for the whole
+        // time the permission prompt is open, and the line saying why would sit above the call the
+        // person is asked to authorise and call it a fault. It is mid-flight, not left out;
+        // answering the question already on screen puts it in
         let held = item.filter(|item| {
             !going.sends_content(item) && !item.state.is_elided() && !deciding.contains(&item.id)
         });
 
         let speaker = said.speaker;
         // note: an elided item already reads as its marker here: the projector's words in brackets,
-        // exactly the text the model reads. The substitution is `App::conversation`'s: what an
-        // elision means is not a rendering decision, and a second client must not receive the
-        // content of an item whose point is that the model no longer has it. All that is left is to
-        // draw it with the speaker's prefix and dimmed: `> ` still says whose turn it was, and the
-        // dimming says nothing is left to read
+        // the text the model reads. The substitution is `App::conversation`'s: what an elision
+        // means is not a rendering decision, and a second client must not receive the content of an
+        // item whose point is that the model no longer has it. What is left is to draw it with the
+        // speaker's prefix and dimmed: `> ` still says whose turn it was, and the dimming says
+        // nothing is left to read
         let said = said.text;
 
         if let Some(item) = held {
@@ -104,7 +104,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
 
             // flattened rather than dimmed on top of itself, and markdown is not rendered here at
             // all: a highlighted block that kept its colours and lost only its brightness still
-            // reads as live text at a glance, which is the one thing the mark exists to prevent
+            // reads as live text at a glance, which the mark exists to prevent
             //
             // note: the rule is applied afterwards, not passed to `wrapped` as a prefix. A prefix
             // marks the first row and hangs the rest under it, which is right for `> ` but wrong
@@ -324,9 +324,8 @@ fn exit_style(exit: Exit) -> Style {
 /// The context as a table: every item, what kind of thing it is, what it costs, and either the
 /// first line of what it says or, if it is not going into the next request, why not.
 ///
-/// note: the whole window leaves room for the last column, and it is the one that matters: a list
-/// of labels and numbers tells you an item exists, and this tells you what the model is actually
-/// being told.
+/// note: the whole window leaves room for the last column, the one that matters: a list of labels
+/// and numbers tells you an item exists, and this tells you what the model is being told.
 pub(super) fn draw_context(
     frame: &mut Frame,
     app: &mut App,
@@ -366,9 +365,9 @@ pub(super) fn draw_context(
 
     // the columns give way from the right as the window narrows, so this works in eighty
     //
-    // note: as wide as the widest label there is, rather than always the most it may be. Labels
-    // are `user`, `shell`, `summary` - a session whose longest is `read` would spend twenty columns
-    // on nothing, and the column those twenty belong to is the one saying what an item holds
+    // note: as wide as the widest label there is, rather than always the most it may be. Labels are
+    // `user`, `shell`, `summary`, so a session whose longest is `read` would spend twenty columns
+    // on nothing, taken from the column saying what an item holds
     let widest = items
         .iter()
         .map(|item| columns(&item.label))
@@ -474,11 +473,10 @@ pub(super) fn draw_context(
                 ),
                 // what it costs in the next request, and what it is keeping out of it. For most
                 // items the first is everything and the second is blank; the two that differ are
-                // exactly the ones somebody opens this pane to find
-                // note: a `+` where the counter would not price part of what this item holds,
-                // because otherwise the two things `0` can mean are the same cell. A picture
-                // reads as the cheapest row in the pane and is the most expensive thing in the
-                // request, which is the wrong conclusion to invite from a column of numbers
+                // the ones somebody opens this pane to find note: a `+` where the counter would not
+                // price part of what this item holds, because otherwise the two things `0` can mean
+                // are the same cell. A picture would read as the cheapest row in the pane while
+                // being the most expensive thing in the request
                 Span::styled(
                     match item.uncounted {
                         0 => format!("{:>8}", fitted(cost, 8)),
@@ -529,7 +527,7 @@ pub(super) fn draw_context(
 /// One verdict, as the word for it and the colour that word is always in.
 ///
 /// note: shared by the rows and by the line above them saying what the policy answers about
-/// everything it has not been told about. Two of them is two places for `ask` to stop being
+/// everything it has not been told about. Two copies would be two places for `ask` to stop being
 /// yellow, on the one screen where the colour is the answer. The word itself is the shared one,
 /// because `/permissions` prints these same rows for a caller with no tab and two spellings of
 /// `allow` would be the tab and the page disagreeing.
@@ -548,8 +546,8 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
 ///
 /// note: the feature puts the advisor in the binary and `--rate-shell-commands` starts one, so a
 /// build with the feature but not the flag draws a question with no rating. Without this nothing
-/// anywhere would account for the absence. That is the failure this program is least for, and the
-/// tab that answers "what is deciding" is where somebody wondering will already be.
+/// would account for the absence, and the tab that answers "what is deciding" is where somebody
+/// wondering will already be.
 #[cfg(feature = "shell-advisor")]
 fn unrated(app: &App) -> Vec<Line<'static>> {
     match app.advisor.is_none() {
@@ -584,10 +582,9 @@ fn highlight(app: &App) -> Style {
 /// What the policy will answer about each capability, and which tools that covers.
 ///
 /// note: the permission prompt is the policy's only other appearance, and it shows up one call at a
-/// time, at the worst possible moment to think about it. This is the same decisions, all of them,
-/// in advance and changeable - the plainest thing to point at when somebody asks what a replaceable
-/// `PermissionPolicy` buys you: a policy is an object with state, not a callback you can only learn
-/// about by triggering it.
+/// time, at the worst moment to think about it. This is the same decisions, all of them, in advance
+/// and changeable, which is what a replaceable `PermissionPolicy` buys: a policy is an object with
+/// state, not a callback you can only learn about by triggering it.
 pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
 
@@ -595,17 +592,15 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     // the list, always
     //
     // note: without it the tab is every answer somebody has given and no account of what is
-    // deciding in between - and "which policy is this, and what is it doing?" is the one question a
-    // screen of permissions raises. Reading `/seams` for the name and the source for the behaviour
-    // is not a screen. Both halves come from the policy itself: `Careful::untold` is the value
-    // `stance` falls back to, so this cannot come to describe a policy that has since changed its
-    // mind
-    // note: at the margin rather than indented under it like a row. It is a statement about the
-    // whole tab, and the two columns of indent the rows share put it in the `capability` column -
-    // reading as the first and oddest entry in the table rather than as the sentence the table is
-    // underneath. It also lines up with the empty-state prose, which starts at the margin
-    // note: and, in a build that has the ratings in it, whether one is actually running; see
-    // `unrated`
+    // deciding in between, and "which policy is this, and what is it doing?" is the first question
+    // a screen of permissions raises. Both halves come from the policy itself: `Careful::untold` is
+    // the value `stance` falls back to, so this cannot come to describe a policy that has since
+    // changed its mind note: at the margin rather than indented under it like a row. It is a
+    // statement about the whole tab, and the two columns of indent the rows share put it in the
+    // `capability` column, reading as the first and oddest entry in the table rather than as the
+    // sentence the table is underneath. It also lines up with the empty-state prose, which starts
+    // at the margin note: and, in a build that has the ratings in it, whether one is actually
+    // running; see `unrated`
     let (untold, untold_style) = verdict_word(Careful::untold());
     let mut said = vec![Line::from(vec![
         Span::styled(format!("{} ", app.policy_name()), Style::default().bold()),
@@ -701,18 +696,17 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
 
 /// Every event, newest at the bottom, in aligned columns.
 ///
-/// note: The names are a column of their own rather than run together with what they say, which
-/// is what a whole window buys: `permission.requested` is the longest of them, so twenty-two
-/// columns line every event up under the last. Anything that still does not fit wraps under the
-/// column rather than being cut off - a log whose lines end in an ellipsis in the middle of the
-/// interesting part is not a log.
+/// note: the names are a column of their own rather than run together with what they say:
+/// `permission.requested` is the longest of them, so twenty-two columns line every event up under
+/// the last. Anything that still does not fit wraps under the column rather than being cut off,
+/// because a log whose lines end in an ellipsis in the middle of the interesting part is useless.
 ///
 /// note: the time of day *and* the gap to the line above. The gap is the one painted yellow,
 /// because the question somebody usually brings to a log is which step was slow, and a column of
-/// timestamps makes them do the subtraction. But a gap answers no question that starts "when":
-/// matching the pane against a server log, a provider's dashboard, a ticket, or a memory of what
-/// happened just before lunch all need an absolute time, and none of them can be reached by adding
-/// up a column of deltas. Both drop out on a narrow window, the time first.
+/// timestamps makes them do the subtraction. But matching the pane against a server log, a
+/// provider's dashboard, a ticket, or a memory of what happened just before lunch needs an absolute
+/// time, and none of them can be reached by adding up a column of deltas. Both drop out on a narrow
+/// window, the time first.
 pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     const NAMES: usize = 22;
     /// How wide the gap column is, including the space after it.
@@ -746,9 +740,8 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         let gap = match (clock, before.replace(event.at)) {
             // note: and not where the gap is somebody's. `after_a_person` marks the line that ends
             // a wait for a person - an answered question, a message finally typed. However long
-            // that took, it is not a step this program spent time on. It is usually the biggest
-            // number in the column, so the one figure nobody should act on would be the one the eye
-            // goes to first
+            // that took, it is not a step this program spent time on, and it is usually the biggest
+            // number in the column, so it would draw the eye to the one figure nobody should act on
             (true, Some(previous)) if !event.after_a_person => {
                 waited_since(event.at.saturating_duration_since(previous))
             }
@@ -771,9 +764,9 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         let read = when.then(|| read_off(event.wall));
         // note: the date is a rule across the pane, not a column, and is drawn only where it
         // changes. A session can outlast a day, so `00:15` against two different Tuesdays says
-        // nothing. Repeating the date on every line to disambiguate two of them would spend eleven
-        // columns on the same answer almost every time. The row also carries the zone, which is
-        // stated rather than implied by a colour.
+        // nothing, and repeating the date on every line would spend eleven columns on the same
+        // answer almost every time. The row also carries the zone, which is stated rather than
+        // implied by a colour.
         if let Some(read) = &read
             && day.replace(read.date.clone()).as_ref() != Some(&read.date)
         {
@@ -796,9 +789,9 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         };
         let stamp = [when_span, gap_span].concat();
         // note: these are the two colours the chat tab reads by: a tool call is cyan there, and a
-        // permission is the colour of the question. A trace row and the line it accounts for then
-        // agree without a second scheme to learn. `.failed` is matched first on purpose: a call
-        // that went wrong is a failure before it is a call.
+        // permission is the colour of the question, so a trace row and the line it accounts for
+        // agree without a second scheme to learn. `.failed` is matched first: a call that went
+        // wrong is a failure before it is a call.
         //
         // note: named colours are used rather than the logo's own `#59b8b2`, which cyan stands in
         // for. Every colour in this program is named, so the terminal's palette and background
@@ -854,10 +847,10 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     }
 
     if found == 0 {
-        // the two empties are not the same, and only one of them has a way out. A session that
-        // has not done anything yet opens on an empty trace, and telling whoever is looking at it
-        // to press `esc` to clear a search they never started is an instruction to undo something
-        // that is not there - which is how somebody comes to believe the key is broken
+        // the two empties are not the same, and only one of them has a way out. A session that has
+        // not done anything yet opens on an empty trace, and telling whoever is looking at it to
+        // press `esc` to clear a search they never started would make them believe the key is
+        // broken
         let empty = match app.search.is_some() {
             true => "nothing here matches; esc clears the search",
             false => "nothing here yet",
@@ -903,7 +896,7 @@ fn state_mark(state: ContextState) -> (&'static str, Style) {
 ///
 /// note: the context tab's tail and the chat's mark use this same answer from one place, for the
 /// reason [`Going`] keeps its two halves together: an item is either in the request or out of it
-/// for a reason, and two screens working that out separately is how they come to disagree.
+/// for a reason, and two screens working that out separately would come to disagree.
 fn withheld_why(item: &ContextItem, going: &Going) -> String {
     match going.left_out.get(&item.id) {
         // the projector's own words about an item it did not carry

@@ -4,7 +4,7 @@
 //! note: one table instead of three declarations held together by a test: the `action` enum a model
 //! chooses from, what each reads, and a flat schema of every argument any of them takes. A test
 //! cannot stop the model seeing only the flat one: `{"action": "read", "old": "x"}` is valid
-//! against it, reaches `invoke`, and is refused there - a round trip the schema could have avoided.
+//! against it, reaches `invoke`, and is refused there, a round trip the schema could have avoided.
 //!
 //! note: so the table is the declaration and the schema is made from it. An operation is a branch
 //! of an `anyOf` with its own arguments and `required`, which makes the call above unrepresentable
@@ -19,14 +19,14 @@ use serde_json::{Map, Value, json};
 
 /// Every one of these tools takes one property, `call`, with the operation inside it.
 ///
-/// note: a wrapper because the root of a schema may not itself be an `anyOf`. OpenAI says so
-/// outright ("the root level object of a schema must be an object, and not use `anyOf`"), and it is
-/// the one rule that decides the shape here. A union must live under a property, so there is a
-/// property. `action` names the operation inside.
+/// note: a wrapper because the root of a schema may not itself be an `anyOf`. OpenAI says so ("the
+/// root level object of a schema must be an object, and not use `anyOf`"), and it is the one rule
+/// that decides the shape here: a union must live under a property, so there is a property.
+/// `action` names the operation inside.
 ///
-/// note: a model that passes the arguments flat is understood rather than refused - the call is
-/// unambiguous and refusing it costs a turn. Arguments in both places at once are refused; that is
-/// the only reading that could silently do something nobody asked for. See [`inner`].
+/// note: a model that passes the arguments flat is understood rather than refused: the call is
+/// unambiguous and refusing it costs a turn. Arguments in both places at once are refused, since
+/// any reading of them could silently do something nobody asked for. See [`inner`].
 ///
 /// note: a session can be offered no wrapper at all, with [`Layout::Flat`]. A model whose call
 /// format is a flat list of keys and values can start `call` as a JSON object and finish it in its
@@ -208,7 +208,7 @@ pub(crate) fn schema(ops: &[Op], layout: Layout) -> Value {
 
     // note: no `anyOf` where there is nothing to choose between. A tool whose operations all read
     // the same arguments - `setup`, `log`, `shell` - has nothing for a union to gate, and wrapping
-    // one branch in a one-element `anyOf` is scaffolding charged for on every request. The wrapper
+    // one branch in a one-element `anyOf` is clutter charged for on every request. The wrapper
     // stays either way because a model should not have to remember which tool is the exception:
     // `call` is where the arguments go, for all of them
     let inside = match ops {
@@ -394,19 +394,19 @@ fn sentences(parts: &[String]) -> String {
 
 /// Providers once put a call's arguments under this key when they would not parse as JSON.
 ///
-/// note: they keep that text on [`nachalnik::ToolCall::unparsed`] now, and the kernel answers the
-/// call, and a call recorded the old way is read back that way - so this key reaches a tool only
-/// where a model wrote it. A session whose history shows calls in that shape copies the shape, and
-/// goes on copying its own calls once one was read. If unread, the tool looks for `action`, does
-/// not find one, and answers `the \`action\` argument is required` - about a call whose text holds
-/// an `action`.
+/// note: they keep that text on [`nachalnik::ToolCall::unparsed`] now, the kernel answers the call,
+/// and a call recorded the old way is read back that way, so this key reaches a tool only where a
+/// model wrote it. A session whose history shows calls in that shape copies the shape, and goes on
+/// copying its own calls once one was read. If unread, the tool looks for `action`, does not find
+/// one, and answers `the \`action\` argument is required` about a call whose text holds an
+/// `action`.
 const UNPARSED: &str = "_unparsed";
 
 /// The text of arguments that never parsed, where that is what is under [`UNPARSED`].
 ///
 /// note: only where the text does not read as an object on its own. A model copying the shape
 /// writes the call it meant, whole and valid, inside the wrapper. Answered as not JSON, it is
-/// copied again on every call after, and a session makes no call that works - so text there that
+/// copied again on every call after, and the session makes no call that works, so text there that
 /// parses is the model's wrapper round a call, and the call inside it is read.
 fn unparsed(args: &Value) -> Option<&str> {
     let written = args.get(UNPARSED)?.as_str()?;
@@ -427,15 +427,14 @@ const SHOWN: usize = 200;
 /// answered by the kernel, with [`advice`] added. The parse is done again here because nothing
 /// handed over the error, and it costs a parse of a string already known not to parse.
 ///
-/// note: and the window is around the fault rather than the first [`SHOWN`] characters. A fault
-/// past the cut is common, and a message quoting the start of the payload then quotes the part
-/// that is fine and leaves out the part that is not - the failure `_unparsed` exists to end, one
-/// level further out.
+/// note: the window is around the fault rather than the first [`SHOWN`] characters. A fault past
+/// the cut is common, and a message quoting the start of the payload would quote the part that is
+/// fine and leave out the part that is not.
 ///
-/// note: what it does not do is repair. `inclusionai/ling-3.0-flash-vl` ends every call but the
-/// last of a multi-call turn one `}` short - reproducibly, streamed and whole alike, so it is the
-/// model rather than anything in the way - and closing it here would be this program deciding what
-/// a half-written call meant. Saying where it stops is the part that is known.
+/// note: it does not repair. `inclusionai/ling-3.0-flash-vl` ends every call but the last of a
+/// multi-call turn one `}` short - reproducibly, streamed and whole alike, so it is the model
+/// rather than anything in the way - and closing it here would be this program deciding what a
+/// half-written call meant. Saying where it stops is the part that is known.
 fn unreadable(written: &str, layout: Layout) -> String {
     let Err(why) = serde_json::from_str::<Value>(written) else {
         return format!(
@@ -497,16 +496,15 @@ fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
 /// write it, where the fault is one a model makes without seeing it; see
 /// [`nachalnik::Tool::unparsed`].
 ///
-/// note: the kernel says what the parser said, where, and what arrived there. What it cannot know
-/// is that a word right after `{"call":` is the action written bare where the object goes, or that
-/// a line break typed into a string is written `\n` - which a model told only that the JSON was
-/// invalid can send again unchanged.
+/// note: the kernel says what the parser said, where, and what arrived there. It cannot know that a
+/// word right after `{"call":` is the action written bare where the object goes, or that a line
+/// break typed into a string is written `\n`, which a model told only that the JSON was invalid can
+/// send again unchanged.
 ///
-/// note: and nothing for an `invalid escape`, which is a regex's `\(` put into a string as it
-/// stands. Measured on three models given the kernel's answer with each of two sentences about
-/// writing the backslash twice, and with neither, the sentences made it worse: 4 and 6 retries of
-/// 15 sent the pattern meant, against 12 of 15 without, because a model told to double a backslash
-/// doubled it in the value as well as in the JSON.
+/// note: nothing for an `invalid escape`, which is a regex's `\(` put into a string as it stands.
+/// Measured on three models, a sentence about writing the backslash twice made retries worse than
+/// the kernel's answer alone, because a model told to double a backslash doubled it in the value as
+/// well as in the JSON.
 pub(crate) fn advice(written: &str, layout: Layout) -> Option<String> {
     let why = serde_json::from_str::<Value>(written).err()?;
     if why.to_string().starts_with("invalid escape") {
@@ -565,8 +563,8 @@ fn around(written: &str, at: usize, width: usize) -> String {
 /// note: arguments under [`WRAPPER`] are what the schema asks for. Flat arguments are unambiguous,
 /// so they are taken; a model that has learnt a flat shape loses nothing. Arguments in both places
 /// cannot be read charitably: picking either drops the other half, and a call that ignored an
-/// argument answers as though it had never been given one. That is the failure [`unread`] exists
-/// for, one step further in. Arguments that never parsed are not arguments; see [`UNPARSED`].
+/// argument answers as though it had never been given one, the failure [`unread`] exists for, one
+/// step further in. Arguments that never parsed are not arguments; see [`UNPARSED`].
 ///
 /// note: a [`WRAPPER`] holding a string of JSON rather than an object is what some models produce
 /// for every call. It is invited by a property that says `anyOf` and not what type it is, which
@@ -686,13 +684,12 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
 
 /// Why a question is about everything a tool does: the call did not say which operation it wanted.
 ///
-/// note: [`action_of`] answering `None` is not a quiet fallback. It widens what the call declares
+/// note: [`action_of`] answering `None` is not a silent fallback. It widens what the call declares
 /// to every capability the tool has, which is the strictest reading of a call nobody can place and
-/// the right one. What this adds is somebody saying so. A session started with
-/// `--auto-allow fs:read` is then asked about `fs:write` as well, the rule it was given matches
-/// nothing, and with nobody at the prompt the refusal reads
-/// `this call was refused when it was asked about`. That sends a model looking for a different
-/// *approach* when what is wrong is the shape of the call it just made.
+/// the right one. This adds somebody saying so. A session started with `--auto-allow fs:read` is
+/// then asked about `fs:write` as well, the rule it was given matches nothing, and with nobody at
+/// the prompt the refusal reads `this call was refused when it was asked about`. That sends a model
+/// looking for a different *approach* when what is wrong is the shape of the call it just made.
 ///
 /// note: only for a tool whose schema is laid out the way this module lays one out - arguments
 /// under [`WRAPPER`], or an `action` with an `enum` of the operations at the top level - because
@@ -856,13 +853,13 @@ fn held(given: &Value, args: Option<&Value>) -> String {
 /// What is wrong with the arguments a call gave, if anything: an argument the operation it named
 /// does not read.
 ///
-/// note: the same failure [`super::whole`] is about, one step earlier. An argument that is
-/// silently ignored comes back as a *real answer* - the answer to the call without it - so nothing
-/// in the reply says that what was asked for did not happen, and a read that was meant to be
-/// narrowed arrives as the whole file looking like the thing that was asked for.
+/// note: the same failure [`super::whole`] is about, one step earlier. An argument that is silently
+/// ignored comes back as a *real answer* - the answer to the call without it - so nothing in the
+/// reply says that what was asked for did not happen, and a read that was meant to be narrowed
+/// arrives as the whole file.
 ///
-/// note: kept, though the schema now says the same thing. The schema is not sent `strict`, so it
-/// is advice; this is the part that holds. The two cannot disagree, because they are one table.
+/// note: kept, though the schema now says the same thing. The schema is not sent `strict`, so it is
+/// advice; this is the part that holds. The two cannot disagree, because they are one table.
 pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
     let mine = ops.iter().find(|it| it.actions.contains(&op))?;
     let given = args.as_object()?;
@@ -873,9 +870,9 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 
     // note: named only when one operation has it, because the sentence is a *pointer* and there is
     // nowhere to point otherwise. `old` is `edit`'s and saying so is the whole answer; `ids` is
-    // several of `context`'s, and "that one is `look`'s" - the first row that has it - is
-    // a fact about this table's order being read as a fact about the argument. A model that has
-    // just been told its call was wrong is in no position to discount what it is told next
+    // several of `context`'s, and "that one is `look`'s" - the first row that has it - would
+    // present this table's order as a fact about the argument. A model that has just been told its
+    // call was wrong is in no position to discount what it is told next
     let others: Vec<&str> = ops
         .iter()
         .filter(|it| !it.actions.contains(&op) && it.takes.iter().any(|arg| arg.name == stray))
@@ -896,10 +893,10 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
     Some(format!(
         "`{op}` does not take `{stray}`{whose}. It takes {}, and nothing was done: a call that \
          ignored an argument would have answered as if you had never given it.",
-        // note: what it *offers*, so a tolerated argument is not named here. `label` is read by
-        // the four that move an item only so that a call giving one can be told what it meant,
-        // and listing it as one of the arguments they take is the advertisement `Arg::tolerated`
-        // exists to withhold - printed, of all places, in the refusal correcting that mistake
+        // note: what it *offers*, so a tolerated argument is not named here. `label` is read by the
+        // four that move an item only so that a call giving one can be told what it meant, and
+        // listing it among the arguments they take would be the advertisement `Arg::tolerated`
+        // exists to withhold, printed in the refusal correcting that mistake
         match &offers[..] {
             [] => "no arguments beside `action`".to_owned(),
             offers => offers.join(", "),
@@ -1273,10 +1270,10 @@ mod tests {
     /// A call nobody can place is one the question says so about, and a call that names its
     /// operation is left alone.
     ///
-    /// note: the cases it stays silent about are the ones worth keeping. A sentence on every
-    /// question is a sentence nobody reads, and this one is only true of a call that did not say
-    /// which operation it wanted - which a wrapper written as text has, since [`inner`] reads
-    /// through one. What is left is arguments that name nothing and arguments that never parsed.
+    /// note: the cases it stays silent about matter as much. A sentence on every question is a
+    /// sentence nobody reads, and this one is only true of a call that did not say which operation
+    /// it wanted - which a wrapper written as text has, since [`inner`] reads through one. What is
+    /// left is arguments that name nothing and arguments that never parsed.
     #[test]
     fn a_call_that_names_no_operation_says_so() {
         let ops = ops();

@@ -26,12 +26,12 @@ const MOST: u64 = 16 * 1024 * 1024;
 
 /// What this program is prepared to call a file, by extension.
 ///
-/// note: short on purpose. Every entry is a claim that this media type is what an endpoint should
-/// be told, and the ones here are the ones the dialects next door actually carry: pictures and
-/// documents everywhere, recordings and films where Google's own API or chat completions is being
-/// spoken (chat completions takes a recording only as mp3 or wav). Anything not named here is
-/// read as text and refused if it is not, which is the right answer for the overwhelming majority
-/// of what a person points this at - source, markdown, logs, CSV, JSON.
+/// note: short, because every entry is a claim that this media type is what an endpoint should be
+/// told, and the ones here are the ones the dialects next door carry: pictures and documents
+/// everywhere, recordings and films where Google's own API or chat completions is being spoken
+/// (chat completions takes a recording only as mp3 or wav). Anything not named here is read as text
+/// and refused if it is not, which is right for nearly everything a person points this at: source,
+/// markdown, logs, CSV, JSON.
 const TYPES: &[(&str, &str)] = &[
     ("pdf", "application/pdf"),
     ("png", "image/png"),
@@ -64,16 +64,15 @@ fn media_type(path: &str) -> Option<&'static str> {
 /// because [`LinearProjector`](nachalnik::LinearProjector) labels a reference by prepending its
 /// label to the *text*, so a reference that is not text loses its label on the way out: the model
 /// would be handed a document with nothing saying which file it was, in a conversation where the
-/// person had just typed the name. Both dialects already carry a sentence beside a payload - it is
-/// the shape a turn takes when it is a question about a screenshot - so the name travels as one.
+/// person had just typed the name. Both dialects already carry a sentence beside a payload - the
+/// shape of a turn that asks about a screenshot - so the name travels as one.
 ///
-/// note: the payload first and the name after it, which is the opposite of the way a person would
-/// caption something and is decided by a different reader. The context pane shows the **first
-/// line** of `to_text()`, so with the path first every attachment's most useful column reads back
-/// the label from two columns over, clipped, and what the payload actually is - the one thing that
-/// column could have said - is on a second line nothing displays. Payload first makes that cell
-/// `[application/pdf, 292.47kB]` at any terminal width, and costs the model nothing: a
-/// document followed by the path it came from reads as a caption, which is what it is.
+/// note: the payload first and the name after it, the opposite of how a person would caption
+/// something, because of a different reader. The context pane shows the **first line** of
+/// `to_text()`, so with the path first every attachment's most useful column would repeat the label
+/// from two columns over, clipped, and what the payload is would be on a second line nothing
+/// displays. Payload first makes that cell `[application/pdf, 292.47kB]` at any terminal width, and
+/// costs the model nothing: a document followed by the path it came from reads as a caption.
 pub fn attached(path: &str) -> Result<ContextItem> {
     let bytes = contents(path)?;
 

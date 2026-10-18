@@ -1,12 +1,11 @@
-//! What the next request does with each context item, read off the projection rather than off
-//! the states.
+//! What the next request does with each context item, read off the projection rather than off the
+//! states.
 //!
 //! note: its own file because four modules read it and only one of them is the screen -
-//! `introspect::context` answers the model's `look` and `budget` out of it, `remote::protocol`
-//! puts the same figures on a wire, and `app::views` and `app::transcript` draw them. It is not
-//! in `app/mod.rs`, which is this terminal's own state, because it is a reading of the kernel,
-//! and the model's account of its own budget and the person's are one piece of arithmetic on
-//! purpose.
+//! `introspect::context` answers the model's `look` and `budget` out of it, `remote::protocol` puts
+//! the same figures on a wire, and `app::views` and `app::transcript` draw them. It is not in
+//! `app/mod.rs`, which is this terminal's own state, because it is a reading of the kernel, and the
+//! model's account of its own budget and the person's are meant to be one piece of arithmetic.
 
 use std::collections::BTreeMap;
 
@@ -19,9 +18,9 @@ use nachalnik::{ContextId, ContextItem, Kernel};
 /// screen that worked the two out separately would have rows that are neither.
 ///
 /// note: `#[non_exhaustive]`, because a struct of public fields that anybody may build with a
-/// literal cannot gain one without breaking them. Nothing should build one - it is an answer
-/// rather than a request, and [`Going::of`] is where it comes from - so saying so costs the
-/// caller nothing and makes the next field a patch instead of a major.
+/// literal cannot gain one without breaking them. Nothing should build one - it is an answer rather
+/// than a request, and [`Going::of`] is where it comes from - so it costs the caller nothing and
+/// makes the next field a patch instead of a major.
 #[non_exhaustive]
 pub struct Going {
     /// What each item in the request costs it.
@@ -33,8 +32,8 @@ pub struct Going {
     /// context keep their figure until `App` recounts them at the end of a *turn*. A reading inside
     /// a turn would set a stored figure on one scale against a freshly projected message on
     /// another, and the few percent between them would appear in the `held` column as tokens held
-    /// back that nothing is holding - even under a projector that holds nothing back. The `context`
-    /// tool is worse off because it is only ever called from inside a turn.
+    /// back that nothing is holding, even under a projector that holds nothing back. The `context`
+    /// tool is only ever called from inside a turn, so it would always see this.
     pub holds: BTreeMap<ContextId, usize>,
     /// Why each item that is not in the request was left out, in the projector's own words.
     pub left_out: BTreeMap<ContextId, String>,
@@ -53,21 +52,21 @@ impl Going {
     ///
     /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
     /// thousand tokens and costs the dozen its marker takes; an excluded one holds whatever it
-    /// holds and costs nothing. A pane showing the held figure under a column headed `tokens`
-    /// would be answering a question nobody asked, and would disagree with the status line
-    /// beside it by exactly the elided items.
+    /// holds and costs nothing. A pane showing the held figure under a column headed `tokens` would
+    /// answer the wrong question, and would disagree with the status line beside it by exactly the
+    /// elided items.
     ///
     /// note: read out of the projection rather than worked out here, because what an elided item
-    /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
-    /// client that computed it would be keeping a second copy of a decision that is not its own.
+    /// costs is the marker the *projector* writes, in the brackets the projector chooses. A client
+    /// that computed it would be keeping a second copy of a decision that is not its own.
     ///
-    /// note: and `left_out` comes from the projection because whether an item is going cannot be
-    /// read off its *state*. A projector repairs a request to keep it valid, and an item it
-    /// repairs away is `Active`, holding everything it holds, and not in the request. Restoring
-    /// the whole of a truncated output beside the copy the model was shown makes one - the pair
-    /// answer one call, so the whole takes the call and the short copy is dropped. A pane keyed
-    /// on the state would have that row claiming to send its content, showing `0` for it, and
-    /// accounting for none of what it holds.
+    /// note: `left_out` comes from the projection because whether an item is going cannot be read
+    /// off its *state*. A projector repairs a request to keep it valid, and an item it repairs away
+    /// is `Active`, holding everything it holds, and not in the request. Restoring the whole of a
+    /// truncated output beside the copy the model was shown makes one - the pair answer one call,
+    /// so the whole takes the call and the short copy is dropped. A pane keyed on the state would
+    /// have that row claiming to send its content, showing `0` for it, and accounting for none of
+    /// what it holds.
     pub fn of(kernel: &Kernel) -> Going {
         let projection = kernel.project();
         let counter = kernel.counter();

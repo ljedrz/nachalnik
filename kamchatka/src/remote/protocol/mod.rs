@@ -46,11 +46,10 @@ pub const VERSION: u32 = 1;
 /// note: ten, and the set is meant to stay about this size. Eight of them are things a person at
 /// the terminal does with a *key* rather than with a line - hand in a line, stop the turn, answer
 /// either kind of question, move an item, read one, rewrite one, change a rule - and the other two
-/// are the connection itself.
-/// Anything a person types is a slash command, which is [`Command::Submit`]: every verb this
-/// program has goes through [`App::submit`], so a protocol with a message per verb would be a
-/// second vocabulary to keep in step with the first. The test for anything new is whether a person
-/// could type it.
+/// are the connection itself. Anything a person types is a slash command, sent as a
+/// [`Command::Submit`], because every verb this program has goes through [`App::submit`], and a
+/// message per verb would be a second vocabulary to keep in step with the first. The test for
+/// anything new is whether a person could type it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum Command {
@@ -66,16 +65,15 @@ pub enum Command {
         since: Option<u64>,
         /// The session those records came from, as [`Attached::session`] named it.
         ///
-        /// note: what keeps a watermark from landing in the wrong session, and the case it is for
-        /// is the quiet one. A session restarted at the same address has a log of its own, and a
-        /// number from the one before it is either too large - refused, loudly - or perfectly
-        /// plausible, at which point a client draws one session's records under another session's
-        /// conversation and nothing anywhere says so. A name costs one field and makes that a
-        /// sentence.
+        /// note: keeps a watermark from landing in the wrong session, the quiet case. A session
+        /// restarted at the same address has a log of its own, and a number from the one before it
+        /// is either too large - refused, loudly - or plausible, and then a client draws one
+        /// session's records under another session's conversation with no sign of it anywhere. A
+        /// name costs one field and turns that into a refusal.
         ///
-        /// note: `None` is a client not saying, which is what a resume typed by hand into `nc` is,
-        /// and it is served on the old terms. Anything that keeps a conversation across a
-        /// reconnection should send it.
+        /// note: `None` is a client not saying, as a resume typed by hand into `nc` is, and it is
+        /// served on the old terms. Anything that keeps a conversation across a reconnection should
+        /// send it.
         session: Option<String>,
         /// Which version of this wire the client speaks; see [`VERSION`].
         ///
@@ -122,9 +120,9 @@ pub enum Command {
     },
     /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.
     ///
-    /// note: this is its own command rather than a [`Command::Submit`] line, because there is no
-    /// line to submit. `space` on the context tab does this at a terminal. The three moves are one
-    /// ring rather than three commands because the middle move is used most often and has no name a
+    /// note: its own command rather than a [`Command::Submit`] line, because there is no line to
+    /// submit; `space` on the context tab does this at a terminal. The three moves are one ring
+    /// rather than three commands because the middle move is used most often and has no name a
     /// person types.
     ///
     /// note: the session decides the next state and the note written beside it, not the client. The
@@ -137,11 +135,11 @@ pub enum Command {
     },
     /// Put an edited item into the context in place of the one it came from.
     ///
-    /// note: this is its own command rather than a [`Command::Submit`] line, for the same reason as
-    /// [`Command::Cycle`]: there is no line. `e` on the context tab does this at a terminal and
+    /// note: its own command rather than a [`Command::Submit`] line, because, as with
+    /// [`Command::Cycle`], there is no line. `e` on the context tab does this at a terminal and
     /// opens an editor holding the item. The command hands over a body of text somebody has been
-    /// editing, not a line typed at a prompt in one go and not something a slash command could
-    /// carry without quoting rules.
+    /// editing, not a line typed at a prompt and not something a slash command could carry without
+    /// quoting rules.
     ///
     /// note: the session decides whether an item can be rewritten at all, not the client. Three
     /// shapes cannot be rewritten: a picture, a turn recorded in blocks, and a turn that is nothing
@@ -170,36 +168,36 @@ pub enum Command {
     },
     /// Ask for the projection again, as it stands now.
     ///
-    /// note: [`Command::Attach`] already answers with one and is deliberately not the way to do
-    /// this. A client takes an `attached` as *start again* (see [`Message::Projected`]), so a
-    /// client that only wants today's figures would throw away the conversation it already had to
-    /// refresh a token count.
+    /// note: [`Command::Attach`] already answers with one and is not the way to do this. A client
+    /// takes an `attached` as *start again* (see [`Message::Projected`]), so a client that only
+    /// wants today's figures would throw away the conversation it already had to refresh a token
+    /// count.
     ///
     /// note: this is for the half of a session that is not the conversation: the items, the budget,
-    /// and what the policy will answer. A client renders this as a second view; the records
-    /// deliberately cannot supply it. `context.added` names an item and says nothing about what the
-    /// *next request* will do with it. `going`, `left_out` and `marker` answer that question, not
-    /// what happened. They are worked out by projecting, so they are only true as of a moment; this
-    /// is how a client asks for that moment to be now.
+    /// and what the policy will answer. A client renders this as a second view, which the records
+    /// cannot supply: `context.added` names an item and says nothing about what the *next request*
+    /// will do with it. `going`, `left_out` and `marker` answer that question, not what happened.
+    /// They are worked out by projecting, so they are only true as of a moment; this is how a
+    /// client asks for that moment to be now.
     Project,
     /// Ask what one context item actually says.
     ///
     /// note: this is why the protocol is not "events, and render them however you like". The
-    /// session log deliberately names things rather than copying them: `context.added` carries an
-    /// identifier, a kind, a label and a token count, and no content. That keeps a log affordable
-    /// enough to keep for ever. A client fed nothing but events can render a turn as it streams,
-    /// but cannot render one word of anything that happened before it connected. It gets the
-    /// conversation from [`Attached`] and the *whole* of any one item from here, on demand, rather
-    /// than from a stream fattened until it carried both.
+    /// session log names things rather than copying them: `context.added` carries an identifier, a
+    /// kind, a label and a token count, and no content, which keeps a log affordable enough to keep
+    /// for ever. A client fed only events can render a turn as it streams, but not one word of
+    /// anything that happened before it connected. It gets the conversation from [`Attached`] and
+    /// the *whole* of any one item from here, on demand, rather than from a stream fattened until
+    /// it carried both.
     Inspect {
         /// Which item.
         id: ContextId,
         /// Ask for the item's own text rather than the reading of it.
         ///
-        /// note: two questions about one item, and they are not the same answer. The reading is
-        /// what the context tab shows: the content, and above it why the item is here, what the
-        /// turn was thinking, and the calls it carries. That is what somebody wants in front of
-        /// them. [`Command::Revise`] takes the content and nothing else, because that is what
+        /// note: two questions about one item, with different answers. The reading is what the
+        /// context tab shows: the content, and above it why the item is here, what the turn was
+        /// thinking, and the calls it carries, which is what somebody wants in front of them.
+        /// [`Command::Revise`] takes the content and nothing else, because that is what
         /// `Kernel::replace` writes. A client that committed the reading back would put
         /// `it is here because: …` inside the item it was describing.
         ///
@@ -248,7 +246,7 @@ pub enum Message {
     /// note: the same payload as [`Message::Attached`] under a different name, and the name is what
     /// matters. A client takes an `attached` as *start again*: it has just been handed the
     /// conversation and every record after it, so whatever it had drawn belongs to a stream it is
-    /// no longer on. This one changes nothing. The stream is where it was, the records already sent
+    /// no longer on. This one changes nothing: the stream is where it was, the records already sent
     /// are still the records, and only the figures are newer. A client that could not tell the two
     /// apart would wipe its own screen to refresh a token count.
     ///
@@ -262,15 +260,14 @@ pub enum Message {
     /// sent.
     ///
     /// note: the record still exists and is still in the log - this is a gap in what was *sent*,
-    /// not in what happened, and `context.replaced` is the only event that can grow one. Without
-    /// it a session that wrote such a record would be unattachable for the rest of its life: a
-    /// client resumes by sequence, so it would come back to the same record on every attempt.
+    /// not in what happened, and `context.replaced` is the only event that can grow one. Without it
+    /// a session that wrote such a record would be unattachable for the rest of its life: a client
+    /// resumes by sequence, so it would come back to the same record on every attempt.
     ///
-    /// note: numbered, and the number is what makes this a message rather than an apology. A
-    /// client takes the `seq` as seen and resumes after it, which is how it gets past. What it has
-    /// is a hole it knows the size and position of, and [`Command::Inspect`] is where the content
-    /// is when somebody wants it - which is already how content is fetched on demand rather than
-    /// streamed.
+    /// note: numbered, which is what lets a client get past it: it takes the `seq` as seen and
+    /// resumes after it. What it has is a hole it knows the size and position of, and
+    /// [`Command::Inspect`] is where the content is when somebody wants it, as for any content
+    /// fetched on demand.
     Oversized {
         /// Which record.
         seq: u64,
@@ -298,8 +295,8 @@ pub enum Message {
     /// note: unnumbered and best-effort, like the lines it is about. They were never in the log, so
     /// there is nothing to recover them from. A client that missed this is carrying lines the
     /// session no longer has, and the next [`Message::Attached`] takes them away, because its
-    /// conversation does not have them either. That is the same recovery a missed `Said` has, which
-    /// is the argument for giving the two the same standing.
+    /// conversation does not have them either. A missed `Said` recovers the same way, which is why
+    /// the two have the same standing.
     Cleared,
     /// Something the program said for itself: a command's answer, a notice, an error.
     Said {
@@ -314,7 +311,7 @@ pub enum Message {
     /// [`Message::Attached`], [`Message::Projected`], [`Message::Replied`] or [`Message::Item`]
     /// that carries one, or a [`Message::Failed`] - and that is a property of the protocol rather
     /// than a convenience. A client that cannot tell when the session has caught up with what it
-    /// asked for is guessing, and the guess it gets wrong is always the same one: whether its own
+    /// asked for is guessing, and it always guesses wrong about the same thing: whether its own
     /// last line has happened yet. See [`Message::Busy`] for the other half.
     Done {
         /// Which command it was about.
@@ -328,9 +325,8 @@ pub enum Message {
     /// transitions, so `state.changed` reaches `Idle` between two requests of one turn and `Ready`
     /// between a decision and the calls it decided running: every state a turn rests in is also a
     /// state it passes through. Only the loop driving the kernel knows where a turn begins and
-    /// ends. A client that reads this as the session doing something on its behalf
-    /// is reading it correctly; [`Attached::busy`] is the same fact for a client that has just
-    /// arrived.
+    /// ends. A client may read this as the session doing something on its behalf;
+    /// [`Attached::busy`] is the same fact for a client that has just arrived.
     Busy {
         /// Whether a turn is running, or a command is still out at the endpoint; see
         /// [`App::working`](crate::app::App::working).
@@ -361,8 +357,8 @@ pub enum Message {
     /// the switch is done. A client that follows the model on screen is told the moment the
     /// session's answer changes, as [`Message::Busy`] tells it the other thing a screen shows.
     ///
-    /// note: broadcast rather than answered to whoever typed it, like every other notice. A session
-    /// two people are watching is one session, and the model is not one of them's.
+    /// note: broadcast rather than answered to whoever typed it, like every other notice: a session
+    /// two people are watching is one session, with one model.
     Model {
         /// The model the requests are going to, or nothing where there is no provider.
         model: Option<ModelInfo>,
@@ -394,10 +390,10 @@ pub enum Message {
         /// Which of the two this is.
         ///
         /// note: carried back rather than remembered by the client, because both answers are found
-        /// by the same identifier and a client holding two places to put one - a line on the chat
-        /// and a box on the context tab - would otherwise fill the wrong one with the wrong
-        /// reading. Echoing the question is the cheapest way to tell them apart and the only way
-        /// that survives two inspects crossing.
+        /// by the same identifier, and a client with two places to put one - a line on the chat and
+        /// a box on the context tab - would otherwise fill the wrong one with the wrong reading.
+        /// Echoing the question is the cheapest way to tell them apart and the only way that
+        /// survives two inspects crossing.
         #[serde(default)]
         raw: bool,
         /// Which version this is, echoed from [`Command::Inspect`]; `None` is what it says now.
@@ -407,12 +403,12 @@ pub enum Message {
     /// How many fragments the client was not sent: while it was not keeping up, or because one was
     /// too long for a frame.
     ///
-    /// note: reported rather than swallowed, and reported with a number. The records are
-    /// unaffected: they are read from the log, which drops nothing, so no record is ever lost this
-    /// way. It counts what is in no record: a model's fragments and the session's own lines. The
-    /// log names these lines but does not copy them, so a client told that the records hold what it
-    /// missed is being sent after something that was never in them. The number means "you missed
-    /// some of what was being said", never "you missed something that happened".
+    /// note: reported, with a number. The records are unaffected: they are read from the log, which
+    /// drops nothing, so no record is ever lost this way. It counts what is in no record: a model's
+    /// fragments and the session's own lines. The log names these lines but does not copy them, so
+    /// a client told that the records hold what it missed would be sent after something that was
+    /// never in them. The number means "you missed some of what was being said", never "you missed
+    /// something that happened".
     Missed {
         /// How many.
         frames: u64,
@@ -432,11 +428,11 @@ pub enum Message {
     },
     /// Something this build has no name for.
     ///
-    /// note: the rule is **ignore what you do not know**. That makes a new variant something other
-    /// than a break. A client written against version 1, attached to a session that has grown a
-    /// message since, reads this, prints nothing, and carries on with the records. Without it, the
-    /// new message is a parse error and a closed connection, and a minute of trying to get back to
-    /// a session that was working.
+    /// note: the rule is **ignore what you do not know**, so a new variant is not a break. A client
+    /// written against version 1, attached to a session that has grown a message since, reads this,
+    /// prints nothing, and carries on with the records. Without it, the new message is a parse
+    /// error and a closed connection, and a minute of trying to get back to a session that was
+    /// working.
     ///
     /// note: it cannot carry the payload, so a relay - the page in `web` - reads the wire as JSON
     /// and passes it on rather than parsing each message and writing it out again. Turning an
@@ -458,11 +454,11 @@ pub enum Message {
 pub struct Attached {
     /// The version of this wire the session speaks. See [`VERSION`].
     ///
-    /// note: the other half of [`Command::Attach`]'s `version`. It is here now because it cannot be
-    /// added later on the same terms. A client learns what the session speaks from the first thing
-    /// it is sent, which tells it whether a command this build knows is worth sending. A field
-    /// added after both ends are deployed is one a client can only read as `Option`, which means
-    /// "and it might be anything".
+    /// note: the other half of [`Command::Attach`]'s `version`, here now because it cannot be added
+    /// later on the same terms. A client learns what the session speaks from the first thing it is
+    /// sent, which tells it whether a command this build knows is worth sending. A field added
+    /// after both ends are deployed is one a client can only read as `Option`, which means "and it
+    /// might be anything".
     pub version: u32,
     /// The session's name, which is also what its record is filed under.
     pub session: String,
@@ -518,8 +514,8 @@ pub struct Attached {
     ///
     /// note: a list beside the questions rather than a field on them, and empty in every session
     /// that did not start with an advisor. Without it the rating exists only inside the terminal's
-    /// drawing code: the advisor runs and rates the question, but nothing a person was supposed to
-    /// see leaves the process.
+    /// drawing code: the advisor rates the question, but nothing a person was supposed to see
+    /// leaves the process.
     pub rated: Vec<Judged>,
     /// Why the advisor has no rating for the questions it was asked about and could not answer.
     ///
@@ -538,8 +534,8 @@ pub struct Attached {
     ///
     /// note: the line the permissions tab puts above the rules, and it goes with them for the
     /// reason it is above them there: a list of decisions is not a policy, and a client that drew
-    /// the rows alone would answer "what will this session allow" using only the part of the
-    /// answer somebody already gave.
+    /// the rows alone would answer "what will this session allow" from only the part of the answer
+    /// somebody already gave.
     pub untold: nachalnik::Verdict,
     /// What the policy will answer about each capability and path rule somebody has decided.
     pub permissions: Vec<Stanced>,
@@ -550,11 +546,10 @@ pub struct Attached {
     pub trace: Vec<Tracing>,
     /// How many more it will ask about.
     ///
-    /// note: a count rather than rows, the same answer the permissions tab gives: a row for a
-    /// `.aws` rule nobody has thought about is not information. The count is for the other half: a
-    /// client listing two decisions while standing for eighteen answers is dishonest too, and a
-    /// client cannot work the count out from the list above, because the list is exactly what it
-    /// leaves out.
+    /// note: a count rather than rows, as the permissions tab gives: a row for a `.aws` rule nobody
+    /// has thought about is not information. The count is for the other half: a client listing two
+    /// decisions while standing for eighteen answers misleads too, and a client cannot work the
+    /// count out from the list above, because the list is what it leaves out.
     pub undecided: usize,
     /// The next message somebody typed into the running turn, waiting for it to end.
     ///
@@ -599,25 +594,25 @@ pub struct Judged {
     pub said: String,
     /// How sure the advisor was, from 0 to 1.
     ///
-    /// note: sent beside the band and not folded into it, for the reason the terminal prints it:
-    /// a band that went yellow because nothing could be told apart is not the same warning as one
+    /// note: sent beside the band and not folded into it, for the reason the terminal prints it: a
+    /// band that went yellow because nothing could be told apart is not the same warning as one
     /// that went yellow because the command changes something, and a client that could not tell
-    /// them apart has been told the advisor was sure when it was not.
+    /// them apart would be told the advisor was sure when it was not.
     pub confidence: f64,
     /// Which stage of the command earned the band, as a byte range into the `cmd` argument.
     ///
     /// note: on the wire because it cannot be worked out at the other end. A client would need two
     /// things to point at this itself: where the command comes apart, which is
     /// [`joints`](crate::tools::joints) and is Rust in this crate, and which stage the advisor
-    /// liked least, which only the advisor knows. Left off, the fact of where in a long chain is
-    /// unreachable from anywhere but the process that produced it.
+    /// liked least, which only the advisor knows. Left off, where in a long chain the trouble is
+    /// would be unreachable from anywhere but the process that produced it.
     ///
     /// note: a range, not the text, so a client points at the stage in the command it is already
     /// drawing instead of printing a copy underneath. A second copy of a long stage takes a row at
     /// a terminal and most of a phone screen.
     ///
     /// note: absent for a command rated in one piece, and for a session that predates the field. To
-    /// a client that is one case: nothing to point at, and a band to draw exactly as before.
+    /// a client that is one case: nothing to point at, and a band to draw as before.
     #[serde(default)]
     pub worst: Option<(usize, usize)>,
 }
@@ -709,7 +704,7 @@ pub struct Line {
     ///
     /// note: a field rather than a sentence at the end of the text, because the text is somebody's
     /// message and a note in this program's voice would read as part of what they said. Drawing it
-    /// is the client's.
+    /// is the client's job.
     #[serde(default)]
     pub clipped: Option<usize>,
 }
@@ -731,8 +726,7 @@ impl Line {
 /// note: the trace rather than the records. A record says `context.compacted` and carries a
 /// `CompactionReport`; the trace line says what that pass took and what it left, in this program's
 /// words, because a reader wants the sentence and not the structure. A client that rendered the
-/// records itself would write a second vocabulary for the same events, one nobody at the other end
-/// can see.
+/// records itself would write a second vocabulary for the same events.
 ///
 /// note: the gap rather than two timestamps. It is `app::text::waited_since`, the formatter the
 /// pane uses, so the column reads the same in a browser as in a terminal. It is `None` under a
@@ -785,18 +779,17 @@ pub struct Listed {
     pub marker: Option<String>,
     /// How many earlier versions of it are still there to read.
     ///
-    /// note: `0` for everything nobody has rewritten, which is nearly every row - so a client
-    /// draws the way back through an item's history only where there is one. What it says now is
-    /// not counted, because it has no fixed number: it is one past the last, and editing moves
-    /// it. The cap is the viewer's, and the oldest goes first when it is reached.
+    /// note: `0` for everything nobody has rewritten, which is nearly every row, so a client draws
+    /// the way back through an item's history only where there is one. What it says now is not
+    /// counted, because it has no fixed number: it is one past the last, and editing moves it. The
+    /// cap is the viewer's, and the oldest goes first when it is reached.
     pub versions: usize,
     /// Why this one cannot be rewritten, where it cannot be.
     ///
     /// note: on the row rather than found out by trying, so that a client can say so before
     /// somebody has typed rather than after. [`Command::Revise`] asks the same question again and
-    /// is the one that decides - a row is a moment old by the time anybody acts on it - but a
-    /// client that only learns from the refusal is one that takes an edit it was never going to
-    /// keep, which is the worse half of the same answer.
+    /// decides - a row is a moment old by the time anybody acts on it - but a client that only
+    /// learns from the refusal takes an edit it was never going to keep.
     pub beyond: Option<String>,
 }
 
@@ -827,8 +820,8 @@ impl Listed {
 
 /// One row of the permissions tab.
 ///
-/// note: the subject is deliberately its own spelling, not a structure. For the three subjects a
-/// `Subject` can be read back from, it reads back from the same string it prints as, so
+/// note: the subject is its own spelling, not a structure. For the three subjects a `Subject` can
+/// be read back from, it reads back from the same string it prints as, so
 /// `--auto-deny "$(a row off this list)"` means what it says. A second wire shape for it would be a
 /// second thing to keep in step with `Subject::parse`. A server's row is the exception, and it is
 /// `Subject`'s rather than this type's: it prints as `server files` and is given back with
@@ -884,10 +877,10 @@ pub fn is_progress(event: &Event) -> bool {
 
 /// Reads a `scheme:rest` address, the one spelling both ends of this take.
 ///
-/// note: a scheme rather than a guess. `/run/kamchatka.sock` and `localhost:7878` are both
-/// perfectly good strings and nothing in either says which kind of thing it is, so working it out
-/// from a `/` or a `:` is the same mistake as deciding a file's media type by looking at its
-/// bytes - it is right until it is quietly wrong, and this crate does not do it anywhere else.
+/// note: a scheme rather than a guess. `/run/kamchatka.sock` and `localhost:7878` are both valid
+/// strings and nothing in either says which kind of thing it is, so working it out from a `/` or a
+/// `:` is the same mistake as deciding a file's media type by looking at its bytes: right until it
+/// is silently wrong, and this crate does not do it anywhere else.
 pub fn address(text: &str) -> Result<Address<'_>, String> {
     match text.split_once(':') {
         Some(("unix", path)) if !path.is_empty() => Ok(Address::Unix(path)),
@@ -923,7 +916,7 @@ mod tests {
     /// all, which stops a browser drawing green where a terminal drew yellow.
     ///
     /// note: the words travel with the band for the same reason. A client that worded the band
-    /// itself would be a second account of a rubric it cannot see; the first rewording of the
+    /// itself would be a second account of a rubric it cannot see, and the first rewording of the
     /// rubric would make them differ.
     #[cfg(feature = "shell-advisor")]
     #[test]

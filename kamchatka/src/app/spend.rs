@@ -13,18 +13,18 @@ impl App {
     /// `input + output`, which [`Usage`] defines as the whole of a request's bill whichever dialect
     /// answered it - so this is a measurement rather than a conversion. Tokens rather than money
     /// because nothing here carries a price list; a money figure would need a table per model per
-    /// endpoint, kept up to date by somebody, wrong quietly.
+    /// endpoint, kept up to date by somebody, and silently wrong.
     ///
     /// note: a response the provider reported no figures for adds nothing, and the first time that
-    /// happens it is said out loud. An endpoint that reports no usage is one this cannot see over,
-    /// and a limit quietly never reached is worse than no limit at all: whoever set it reads the
-    /// session as bounded when nothing is bounding it.
+    /// happens it is said out loud. This cannot see over an endpoint that reports no usage, and a
+    /// limit silently never reached is worse than no limit: whoever set it reads the session as
+    /// bounded when nothing is bounding it.
     ///
     /// note: except for a response whose stream never finished. It never reaches the chunk the
-    /// figures ride on, so its silence is about the stream rather than the endpoint - saying
-    /// otherwise after a ctrl+c, a `--max-run-seconds` or a dropped connection tells whoever set
-    /// the ceiling it has stopped meaning anything when it has not. `interrupted` and `cut off` are
-    /// the stop reasons both of `nachalnik-providers`' dialects give a stream they were told to
+    /// figures ride on, so its silence is about the stream rather than the endpoint, and saying
+    /// otherwise after a ctrl+c, a `--max-run-seconds` or a dropped connection would tell whoever
+    /// set the ceiling it has stopped meaning anything when it has not. `interrupted` and `cut off`
+    /// are the stop reasons both of `nachalnik-providers`' dialects give a stream they were told to
     /// stop and one that ended mid-answer.
     ///
     /// note: a usage with neither figure in it is no usage, and one with only one of them is said

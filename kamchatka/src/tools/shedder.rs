@@ -80,9 +80,9 @@ impl Shedder {
 
 #[async_trait]
 impl Compactor for Shedder {
-    /// note: always. The first rule is not about the budget. A result is done with once its turn is
-    /// over, however empty the context is. Only `plan` can tell that; it has the items. It costs
-    /// one walk of the items per request. The projection already does two. `plan` returns `None`
+    /// note: always. The first rule is not about the budget: a result is done with once its turn is
+    /// over, however empty the context is. Only `plan` can tell that, because it has the items. It
+    /// costs one walk of the items per request, beside the projection's two. `plan` returns `None`
     /// when there is nothing to do, which is most requests in a turn.
     fn should_compact(&self, _: &Budget) -> bool {
         true
@@ -105,11 +105,11 @@ impl Compactor for Shedder {
 
         // written before anything is chosen, because what one elision recovers depends on them. The
         // kernel makes the pass's reason the note on every item it elides, and the note is the
-        // marker. The model reads it too, in the brackets the projector puts round it. Each is
-        // written to be read by both: what happened, why, and what to do about it.
+        // marker. The model reads it too, in the brackets the projector puts round it, so each is
+        // written for both: what happened, why, and what to do about it.
         //
         // note: one reason for every item in a pass, so it has to be true of all of them. Both say
-        // the model read what they stand in for. No pass takes anything but that. A model reading a
+        // the model read what they stand in for, and no pass takes anything else. A model reading a
         // marker that said only "compacted" decided it had never seen the files it had just
         // summarised, and withdrew its summaries.
         //
@@ -147,12 +147,12 @@ impl Compactor for Shedder {
             .unwrap_or_default();
 
         // note: `sends_content` rather than `is_projected`. An elided item is projected as a
-        // marker. With `is_projected`, every item a pass already elided would come back as a
+        // marker, so with `is_projected` every item a pass already elided would come back as a
         // candidate on the next pass, and the plan would never be `None`.
         //
-        // note: and not a pinned one, which `sends_content` says yes to. The kernel refuses those:
-        // a pin is a promise. Proposing one produces a plan that moves nothing and still costs a
-        // turn of the screen saying it refused.
+        // note: and not a pinned one, which `sends_content` says yes to. The kernel refuses those,
+        // because a pin is a promise, so proposing one produces a plan that moves nothing and still
+        // costs a turn of the screen saying it refused.
         //
         // note: and not one whose call is no longer sent, which the projector leaves out and the
         // kernel will not elide
@@ -276,9 +276,9 @@ impl Compactor for Shedder {
             // the second rule: the oldest exchanges, whole, and never the one in progress
             //
             // note: whole, because half of one is a conversation nobody had - a question with no
-            // answer, or a result whose call has gone - and removed rather than elided, because
-            // a marker for every message of a forgotten exchange is the exchange's length in
-            // lines saying there was something there. The summary says it once
+            // answer, or a result whose call has gone - and removed rather than elided, because a
+            // marker for every message of a forgotten exchange would be the exchange's length in
+            // lines saying something was there. The summary says it once
             for exchange in &exchanges[..exchanges.len().saturating_sub(1)] {
                 if used <= target {
                     break;
@@ -330,9 +330,9 @@ impl Compactor for Shedder {
         let summary = (dropped != 0).then(|| summary(items, dropped));
 
         // note: what the room half is worth is what it freed less what its summary costs, and one
-        // that comes out under is not run. The margin is the summary again, so it has to free
-        // twice what its own bookkeeping costs before it spends a turn of the model's attention on
-        // it - otherwise an exchange of two short lines goes for a paragraph saying it went
+        // that comes out under is not run. The margin is the summary again, so it has to free twice
+        // what its own bookkeeping costs before it spends a turn of the model's attention on it;
+        // otherwise an exchange of two short lines goes for a paragraph saying it went
         let (summary, elide, remove): (_, Vec<ContextId>, Vec<ContextId>) = match summary {
             Some(said) if recovered >= summary_tokens(&said, scale).saturating_mul(2) => (
                 Some(said),
@@ -391,9 +391,8 @@ impl Compactor for Shedder {
 /// else's.
 ///
 /// note: one string rather than a comparison against the sentence it begins, so that rewording the
-/// marker and telling a marker from a model's own note cannot come apart - the two answers this
-/// gives are the same sentence, read two ways. The kernel puts it at the start of the note on an
-/// elided item and after `compaction: ` on a removed one.
+/// marker and telling a marker from a model's own note cannot come apart. The kernel puts it at the
+/// start of the note on an elided item and after `compaction: ` on a removed one.
 const MARK: &str = "compacted";
 
 /// One exchange with the person: a message from them, everything answering it, and the files they
@@ -490,9 +489,9 @@ fn summary(items: &[Arc<ContextItem>], dropped: usize) -> String {
 
 /// How many tokens the counter active here gives four bytes, taken from the items in hand.
 ///
-/// note: a [`Calibrating`](nachalnik::Calibrating) counter learns from what providers charge and
-/// is routinely above `1.0`, so a marker priced at a plain four bytes a token comes out under what
-/// it really costs. A result smaller than its own replacement then reads as worth eliding, and the
+/// note: a [`Calibrating`](nachalnik::Calibrating) counter learns from what providers charge and is
+/// routinely above `1.0`, so a marker priced at a plain four bytes a token comes out under what it
+/// really costs. A result smaller than its own replacement then reads as worth eliding, and the
 /// pass reports tokens recovered while the request grows.
 ///
 /// note: every kind but the assistant's turns, because those are the one kind whose figure is more
@@ -500,10 +499,10 @@ fn summary(items: &[Arc<ContextItem>], dropped: usize) -> String {
 /// that overhead as a bigger ratio. Anything carrying a picture is left out for the reason it is
 /// everywhere else in this file: the counter prices a blob at nothing.
 ///
-/// note: not the tool results alone, which is what this read once. A conversation that has
-/// mostly talked has none, so the scale fell back to `1.0` under a counter reading forty percent
-/// high, and the summary a drop leaves was priced at the plain estimate - an exchange worth twice
-/// that went for a sentence that cost more than half of it.
+/// note: not the tool results alone, which this once read. A conversation that has mostly talked
+/// has none, so the scale fell back to `1.0` under a counter reading forty percent high, and the
+/// summary a drop leaves was priced at the plain estimate: an exchange worth twice that went for a
+/// sentence that cost more than half of it.
 ///
 /// note: not the budget. Its `context_tokens` is what the *projection* costs, which carries every
 /// label and bracket the projector adds and cannot be divided by a byte count this does not have.
@@ -564,9 +563,9 @@ fn summary_tokens(text: &str, scale: f64) -> usize {
 /// note: [`Content::blobs`] does the walking rather than this. The nesting is the hard part - a
 /// sentence-and-a-screenshot turn is a blob one level down inside `Content::Blocks` - and `Content`
 /// and `Block` are both `#[non_exhaustive]`, so a walk written out here would answer `false` for a
-/// variant added later and a picture would quietly stop going first, with no arm this file could
+/// variant added later and a picture would silently stop going first, with no arm this file could
 /// have written to catch it. The runtime's own counter needs the same walk, and a second copy here
-/// would go stale without anybody noticing.
+/// would go stale unnoticed.
 fn carries_blob(content: &Content) -> bool {
     !content.blobs().is_empty()
 }
