@@ -194,16 +194,15 @@ impl Ablation {
 
     /// The same, once per intervention, all at the same time.
     ///
-    /// note: what an experiment with a sweep to run should reach for. Every ablation of a frozen
-    /// [`Origin`] is independent of every other - each is its own copy of the same snapshot, and
-    /// none can see what another was shown - so a battery of them is the one part of an
-    /// experiment that is safely concurrent, and writing it here means an experiment does not
-    /// have to know how. The results come back in the order the interventions were given, so the
-    /// caller records them exactly as it would have in a loop.
+    /// note: an experiment with a sweep to run should use this. Every ablation of a frozen
+    /// [`Origin`] is independent: each is its own copy of the same snapshot, and none can see what
+    /// another was shown. A battery of them is safely concurrent, and having it here means an
+    /// experiment does not have to know how. The results come back in the order the interventions
+    /// were given, so the caller records them exactly as it would have in a loop.
     ///
-    /// note: a `Vec` of results rather than a result of a `Vec`, because an experiment records
-    /// what it got before it stops on what it did not - and one copy going silent should not
-    /// discard the ones beside it that answered.
+    /// note: a `Vec` of results rather than a result of a `Vec`, because an experiment records what
+    /// it got before it stops on what it did not, and one copy going silent should not discard the
+    /// ones beside it that answered.
     pub async fn observe_each(
         &self,
         origin: &Origin,
@@ -285,9 +284,9 @@ pub struct Observation {
     pub applied: Applied,
     /// What the projector had to repair to keep the request valid.
     ///
-    /// note: On the record because it is a confound, and the only one the harness can see.
+    /// note: on the record because it is a confound, and the only one the harness can see.
     /// Excluding a tool result takes its call with it, so an ablation of one item can remove two
-    /// messages; an experiment whose answer moved and whose repairs list is not empty has not
+    /// messages. An experiment whose answer moved and whose repairs list is not empty has not
     /// measured what it thinks it measured.
     pub repairs: Vec<String>,
     /// How many items each copy actually read, which is the same number for every copy.
@@ -444,9 +443,9 @@ pub struct Change {
     /// The share of treated copies that gave an answer other than the control's; a copy that gave
     /// none is not one of them.
     ///
-    /// note: the continuous version of [`Change::moved`], and the one worth ranking items by:
-    /// with three replicates an item that moved two copies out of three is doing more work than
-    /// one that moved one, and a binary verdict cannot tell them apart.
+    /// note: the continuous version of [`Change::moved`], and the one to rank items by: with three
+    /// replicates, an item that moved two copies out of three is doing more work than one that
+    /// moved one, and a binary verdict cannot tell them apart.
     pub divergence: f64,
     /// The share of control copies that differed from their own commonest answer: the noise this
     /// change was measured against.
@@ -484,8 +483,8 @@ impl Change {
 
     /// Whether the change is larger than the disagreement the control showed with itself.
     ///
-    /// note: a weak guard by construction: with a single replicate the instability is zero and
-    /// every move clears it. It is worth something from two replicates up.
+    /// note: a weak guard by construction: with one replicate the instability is zero, so every
+    /// move clears it. It is worth something from two replicates up.
     pub fn clears_the_noise(&self) -> bool {
         self.divergence > self.instability
     }
@@ -601,11 +600,10 @@ mod tests {
         assert_eq!(model.requests().len(), 1, "the model was asked once");
     }
 
-    /// A condition that ran no copies is not measured as having moved, however clear the control
-    /// was.
+    /// A condition with no copies is not measured as moved, however clear the control was.
     ///
-    /// note: with no copies there is no fraction to take, and a `NaN` in its place would clear
-    /// the noise against every control, since every comparison with one is false.
+    /// note: with no copies there is no fraction to take; a `NaN` would clear the noise against
+    /// every control because every comparison with one is false.
     #[test]
     fn a_condition_that_ran_no_copies_measured_nothing() {
         let control = saying(vec![Answer::Choice("kirov".to_owned()); 2]);
@@ -623,9 +621,8 @@ mod tests {
 
     /// Copies split evenly agree as often as each answer was given, rather than not at all.
     ///
-    /// note: `agreement` went through `majority`, which gives a tie to nobody, and answered `0.0`
-    /// for it - so a control whose two copies said one thing each was reported as disagreeing with
-    /// itself completely, the same as one whose copies said nothing.
+    /// note: `agreement` used `majority`, which gives a tie to nobody and answered `0.0`, so a tied
+    /// control was reported as disagreeing completely - the same as one whose copies said nothing.
     #[test]
     fn a_tied_control_agrees_as_much_as_its_commonest_answers() {
         let said = |word: &str| Answer::Choice(word.to_owned());
@@ -650,9 +647,9 @@ mod tests {
     /// cut off only when all of them were.
     ///
     /// note: `provenance` and `conflict` built the claim from `majority`, a bare key, so no figure
-    /// that needs a confidence was ever computed over it - the doc on `Provenance` calls
-    /// overconfidence the figure that separates its two kinds of wrong - and copies that all ran out
-    /// of room were scored as copies that would not answer.
+    /// that needs a confidence was ever computed over it. The doc on `Provenance` calls
+    /// overconfidence the figure that separates its two kinds of wrong. Copies that all ran out of
+    /// room were scored as copies that would not answer.
     #[test]
     fn the_copies_consensus_is_the_forecast_they_make_together() {
         let claim = |yes: bool, confidence: Option<f64>| Answer::Claim { yes, confidence };

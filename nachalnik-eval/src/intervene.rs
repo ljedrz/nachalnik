@@ -16,8 +16,8 @@ pub enum Intervention {
     /// Nothing at all: the control condition.
     ///
     /// note: A copy with nothing moved is what every other variant is measured against - see
-    /// [`Change`](crate::Change) - and running several of them is the only way to find out how
-    /// much the answer differs when the same context is given twice.
+    /// [`Change`](crate::Change). Running several copies is the only way to find out how much the
+    /// answer differs when the same context is given twice.
     Nothing,
     /// The named items are excluded from the copy's projection.
     Without(Vec<ContextId>),

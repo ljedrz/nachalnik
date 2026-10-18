@@ -220,9 +220,8 @@ async fn main() -> Result<(), nachalnik::BoxError> {
             .expect("nothing here panics while holding this");
         landed.push(outcome.clone());
 
-        // written as each experiment finishes rather than once at the end. A suite is hours long
-        // and any of it can hang, and a run killed then keeps every experiment that had already
-        // finished.
+        // written after each experiment finishes, not once at the end. A suite runs for hours and
+        // any part can hang. If a run is killed, it keeps every experiment that already finished.
         if let Some(path) = &json {
             let so_far = Report {
                 at,
@@ -270,12 +269,12 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     Ok(())
 }
 
-/// Where a run writes itself when nobody said.
+/// Where a run writes itself when none was given.
 ///
-/// note: the model in the name, because a directory of `report.json` tells nobody which model any
-/// of them measured; the time, because the same model is measured more than once and a second run
-/// silently overwriting the first is how a day's work disappears. Seconds since the epoch rather
-/// than anything friendlier, to keep this free of a date-formatting dependency.
+/// note: the model is in the name because `report.json` does not say which model was measured. The
+/// time is in the name because the same model is measured more than once, and a second run silently
+/// overwriting the first loses a day's work. Seconds since the epoch are used to avoid a
+/// date-formatting dependency.
 fn default_path(model: &str, started: &SystemTime) -> String {
     let model = model
         .chars()

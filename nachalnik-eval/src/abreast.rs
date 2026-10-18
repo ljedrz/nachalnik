@@ -44,10 +44,10 @@ use tokio::time::Instant;
 
 /// How many things may be in flight at once.
 ///
-/// note: a counting semaphore, and nothing more. It is not `Clone` and is meant to be held by
-/// reference from one place per run, because two of these are two ceilings and the whole reason
-/// to have one is that it is collective: nine experiments sharing one endpoint have to share one
-/// budget, or each of them politely limits itself to eight and the endpoint sees seventy-two.
+/// note: a counting semaphore, and nothing more. It is not `Clone` and is held by reference from
+/// one place per run, because two of these are two ceilings. The reason to have one is that it is
+/// collective: nine experiments sharing one endpoint must share one budget, or each limits itself
+/// to eight and the endpoint sees seventy-two.
 #[derive(Debug)]
 pub struct Permits {
     inner: Mutex<Inner>,
@@ -131,9 +131,8 @@ impl<'a> Future for Acquiring<'a> {
             });
         }
 
-        // note: replaced rather than pushed when this future has already registered, or a future
-        // polled repeatedly while it waits leaves a queue entry behind on every poll and the
-        // queue grows without bound
+        // note: replaced rather than pushed when this future has already registered. A future
+        // polled repeatedly while waiting adds one entry per poll, so the queue grows without bound
         if !inner.waiting.iter().any(|seen| seen.will_wake(cx.waker())) {
             inner.waiting.push_back(cx.waker().clone());
         }
@@ -296,7 +295,7 @@ impl Rate {
             };
 
             // note: re-checked after sleeping rather than admitted on waking, because every waiter
-            // wakes on the same departure and only one of them may have the place it left
+            // wakes on the same departure and only one may have the place it left
             tokio::time::sleep(wait).await;
         }
     }
@@ -342,8 +341,8 @@ impl Paced {
 /// The shared state one run's ceiling and rate are enforced through.
 ///
 /// note: built once by [`evaluate_with`](crate::evaluate_with) and cloned onto every subject, so
-/// that nine experiments share one window and one count rather than nine of each. That is why it
-/// is a type rather than parts each caller assembles.
+/// nine experiments share one window and one count rather than nine of each. It is a type rather
+/// than parts each caller assembles.
 #[derive(Debug, Clone)]
 pub struct Governor {
     permits: Arc<Permits>,
@@ -400,13 +399,13 @@ impl Provider for Paced {
 
 /// Runs every future at once and hands back what they produced, in the order they were given.
 ///
-/// note: the order is the input's, not the order they finished in. A report whose rows move
-/// depending on which request happened to come back first is a report nobody can diff against
-/// last week's, and the whole crate is built so that two runs are comparable.
+/// note: the order is the input's, not the order they finished in. A report whose rows move with
+/// finish order cannot be diffed against last week's; the crate is built so two runs are
+/// comparable.
 ///
-/// note: no permit handling in here. A caller that wants a ceiling wraps each future in one -
-/// `async { let _permit = permits.acquire().await; work().await }` - which keeps this combinator
-/// about polling and keeps the ceiling somewhere a caller can see it.
+/// note: no permit handling in here. A caller that wants a ceiling wraps each future in one:
+/// `async { let _permit = permits.acquire().await; work().await }`. That keeps this combinator
+/// about polling and the ceiling somewhere a caller can see it.
 pub async fn together<F>(futures: impl IntoIterator<Item = F>) -> Vec<F::Output>
 where
     F: Future,
@@ -427,12 +426,11 @@ struct All<F: Future> {
     done: Vec<Option<F::Output>>,
 }
 
-// note: sound because nothing here projects a pin into a field. Each child future is already
-// pinned in its own box and stays there for its whole life; moving an `All` moves two `Vec`
-// headers. It is also what lets `poll` use `get_mut` rather than `get_unchecked_mut`, which the
-// crate's `deny(unsafe_code)` would refuse. Stated rather than derived because `F::Output` is not
-// known to be `Unpin`, and an output this combinator only ever stores and hands back does not
-// need to be.
+// note: sound because nothing projects a pin into a field. Each child future is already pinned in
+// its own box for its whole life; moving an `All` moves two `Vec` headers. It also lets `poll` use
+// `get_mut` rather than `get_unchecked_mut`, which `deny(unsafe_code)` would refuse. Stated rather
+// than derived because `F::Output` is not known to be `Unpin`, and this output is only ever stored
+// and handed back, so it does not need to be `Unpin`.
 impl<F: Future> Unpin for All<F> {}
 
 impl<F: Future> Future for All<F> {

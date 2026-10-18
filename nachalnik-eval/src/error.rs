@@ -67,11 +67,10 @@ impl Error {
     }
 }
 
-/// Which [`Error`] it was, as a record keeps it.
+/// The [`Error`] that a record keeps.
 ///
-/// note: the variant without what it carries, so that a sweep deciding whether a cell is worth
-/// running again - a provider that fell over, against a subject that ran out of requests - can
-/// match on it rather than on the words of a message.
+/// note: the variant without what it carries, so a sweep deciding whether a cell is worth running
+/// again can match on it rather than on the words of a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
