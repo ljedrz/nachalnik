@@ -16,21 +16,21 @@ use crate::{
 
 /// What every copy is told before its question.
 ///
-/// note: Said out loud, because the copy cannot work it out. It inherits a conversation full of
-/// tool calls and their results and no tool definitions at all, and a model reading that asks for
-/// a tool - which nothing here can run, so the answer comes back as a call and no words. With a
-/// real model that is not a corner case; it is what happens every time.
+/// note: said out loud, because the copy cannot work it out. It inherits a conversation full of
+/// tool calls and their results and no tool definitions, and a model reading that asks for a tool,
+/// which nothing here can run, so the answer comes back as a call and no words. With a real model
+/// that happens every time.
 pub const PREAMBLE: &str = "You are a copy of this session, made to think and not to act. You \
                             have no tools here, and nothing you ask for can be run: answer in \
                             words, from what is already in front of you.";
 
 /// The point every copy is made from.
 ///
-/// note: A frozen context, and it is frozen on purpose rather than read from the live session
-/// each time. The claims an experiment elicits go into the subject's context as it makes them, so
-/// a copy taken afterwards would be a copy that has read the subject's own answer and can agree
-/// with it - which is a measurement of nothing. One origin, taken before anything is asked, is
-/// what makes the copies comparable with each other and independent of the claims being scored.
+/// note: a frozen context, rather than one read from the live session each time. The claims an
+/// experiment elicits go into the subject's context as it makes them, so a copy taken afterwards
+/// could read the subject's own answer and agree with it, which measures nothing. One origin, taken
+/// before anything is asked, makes the copies comparable with each other and independent of the
+/// claims being scored.
 pub struct Origin {
     snapshot: Snapshot,
     provider: Arc<dyn Provider>,
@@ -65,9 +65,8 @@ impl Origin {
 
 /// One question, put to copies of a context with one thing moved at a time.
 ///
-/// note: The question is fixed and the intervention varies, which is the only arrangement in
-/// which the answers mean anything: two copies asked two different questions differ for two
-/// reasons, and nothing in the result says which.
+/// note: the question is fixed and the intervention varies, because two copies asked two different
+/// questions differ for two reasons, and nothing in the result says which.
 #[derive(Debug, Clone)]
 pub struct Ablation {
     probe: Probe,
@@ -89,12 +88,11 @@ impl Ablation {
 
     /// How many copies each condition gets; one by default.
     ///
-    /// note: One is enough to say what a copy answered and not enough to say what a copy
-    /// answers. Two or three make [`Change::instability`] a real figure - the share of control
-    /// copies that disagreed with their own majority - and that figure is the noise floor a
-    /// single flipped answer has to clear before it means anything. It is also what multiplies
-    /// the cost of a run, which is why the default is the honest small number rather than a
-    /// respectable-looking large one.
+    /// note: one is enough to say what a copy answered and not enough to say what a copy answers.
+    /// Two or three make [`Change::instability`] a real figure - the share of control copies that
+    /// disagreed with their own majority - and that figure is the noise floor a single flipped
+    /// answer has to clear before it means anything. Replicates also multiply the cost of a run,
+    /// which is why the default is one.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
         self.replicates = replicates.max(1);
@@ -110,17 +108,16 @@ impl Ablation {
 
     /// Items every copy is made without - the treated ones and the control alike.
     ///
-    /// note: For holding a nuisance constant rather than for testing one, and the nuisance it
-    /// exists for is sharp. A copy taken after the session answered can *read that answer* a few
-    /// items above the question it is being asked again, so "the answer did not change" may be a
-    /// copy agreeing with itself rather than a context determining an answer. Leaving the whole
-    /// exchange out of every copy makes each of them answer the question once, from the material,
-    /// which is what an ablation is supposed to compare.
+    /// note: for holding a nuisance constant rather than for testing one. A copy taken after the
+    /// session answered can *read that answer* a few items above the question it is being asked
+    /// again, so "the answer did not change" may be a copy agreeing with itself rather than a
+    /// context determining an answer. Leaving the whole exchange out of every copy makes each of
+    /// them answer the question once, from the material, which is what an ablation compares.
     ///
     /// note: it belongs here rather than in the [`Intervention`] because it is *not* the
-    /// intervention: it applies identically to both arms and so cannot be what moved the answer.
-    /// A caller who wants to know what the exchange itself is worth should ablate it as a
-    /// treatment instead, against a control that keeps it.
+    /// intervention: it applies identically to both arms and so cannot be what moved the answer. A
+    /// caller who wants to know what the exchange itself is worth should ablate it as a treatment
+    /// instead, against a control that keeps it.
     #[must_use]
     pub fn blind_to(mut self, ids: impl IntoIterator<Item = ContextId>) -> Self {
         self.blind = ids.into_iter().collect();
@@ -139,17 +136,16 @@ impl Ablation {
 
     /// Runs the copies under one condition and reads what they said.
     ///
-    /// note: The copies run at the same time, and the record does not show it. Each is its own
+    /// note: the copies run at the same time, and the record does not show it. Each is its own
     /// kernel resumed from its own clone of the snapshot, so they cannot interfere; what they say
     /// is collected in the order the replicates were asked for rather than the order they came
     /// back, so two runs of this produce the same [`Observation`] either way.
     ///
-    /// note: nothing here paces them. A fan-out of identical requests is what a rate limiter is
-    /// for, and that is somebody else's job: [`evaluate`](crate::evaluate) and
+    /// note: nothing here paces them. [`evaluate`](crate::evaluate) and
     /// [`evaluate_with`](crate::evaluate_with) put the subject's provider under a shared ceiling
-    /// and a shared rate, so nothing here can exceed what the caller allowed however wide it
-    /// fans. That is what lets this be the one place the fanning is written - an experiment gets
-    /// it by calling `observe`, including an experiment this crate has never seen.
+    /// and a shared rate, so nothing here can exceed what the caller allowed however wide it fans.
+    /// That lets this be the one place the fanning is written: an experiment gets it by calling
+    /// `observe`, including an experiment this crate has never seen.
     pub async fn observe(
         &self,
         origin: &Origin,
@@ -196,9 +192,8 @@ impl Ablation {
     ///
     /// note: an experiment with a sweep to run should use this. Every ablation of a frozen
     /// [`Origin`] is independent: each is its own copy of the same snapshot, and none can see what
-    /// another was shown. A battery of them is safely concurrent, and having it here means an
-    /// experiment does not have to know how. The results come back in the order the interventions
-    /// were given, so the caller records them exactly as it would have in a loop.
+    /// another was shown, so a battery of them is safely concurrent. The results come back in the
+    /// order the interventions were given, so the caller records them as it would have in a loop.
     ///
     /// note: a `Vec` of results rather than a result of a `Vec`, because an experiment records what
     /// it got before it stops on what it did not, and one copy going silent should not discard the
@@ -302,7 +297,7 @@ pub struct Observation {
 impl Observation {
     /// The answer more of the copies gave than any other, among those that could be read.
     ///
-    /// note: A plurality rather than a majority, and ties go to nobody: two copies that disagreed
+    /// note: a plurality rather than a majority, and ties go to nobody: two copies that disagreed
     /// have no answer between them, and inventing one would turn a coin toss into a finding.
     /// [`Observation::agreement`] is how much of a plurality it was.
     pub fn majority(&self) -> Option<String> {
@@ -377,9 +372,8 @@ impl Observation {
 
     /// The share of copies that gave the commonest answer; `1.0` when they all agreed.
     ///
-    /// note: Unreadable answers count in the denominator. A condition under which a third of the
-    /// copies could not be read is one this crate should report as unreliable rather than as
-    /// unanimous.
+    /// note: unreadable answers count in the denominator, so a condition under which a third of the
+    /// copies could not be read is reported as unreliable rather than as unanimous.
     ///
     /// note: a tie has several commonest answers and they share one count, which is what this is.
     pub fn agreement(&self) -> f64 {
@@ -450,8 +444,8 @@ pub struct Change {
     /// The share of control copies that differed from their own commonest answer: the noise this
     /// change was measured against.
     ///
-    /// note: `0.0` with one replicate, not a claim that the answer is stable but the honest figure
-    /// for "nothing was measured". See [`Ablation::replicates`].
+    /// note: `0.0` with one replicate, which means nothing was measured, not that the answer is
+    /// stable. See [`Ablation::replicates`].
     pub instability: f64,
 }
 
@@ -513,8 +507,7 @@ mod tests {
     /// What an ablation was blinded to is kept for the caller to read back.
     ///
     /// note: that list is the only part of a built ablation a caller can see, and the part a caller
-    /// needs in order to say what was held constant. A report that quotes an arm without saying the
-    /// exchange the copies could not read quotes half the design.
+    /// needs in order to say what was held constant.
     #[test]
     fn an_ablation_says_what_every_copy_is_made_without() {
         let probe = Probe::choice("which depot runs out first?", ["kirov", "omsk"]);

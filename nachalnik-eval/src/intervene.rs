@@ -5,17 +5,17 @@ use serde::{Deserialize, Serialize};
 
 /// One controlled change, applied to a copy of a context and never to the session under test.
 ///
-/// note: Every variant is a state change on a [`Snapshot`]: something the runtime already does and
+/// note: every variant is a state change on a [`Snapshot`]: something the runtime already does and
 /// a person could already do by hand. Nothing here destroys anything: an item removed from a copy
-/// keeps its identifier and contents and is still listed, so the copy can name it by the number
-/// the session under test knows.
+/// keeps its identifier and contents and is still listed, so the copy can name it by the number the
+/// session under test knows.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Intervention {
     /// Nothing at all: the control condition.
     ///
-    /// note: A copy with nothing moved is what every other variant is measured against - see
+    /// note: a copy with nothing moved is what every other variant is measured against - see
     /// [`Change`](crate::Change). Running several copies is the only way to find out how much the
     /// answer differs when the same context is given twice.
     Nothing,
@@ -25,9 +25,9 @@ pub enum Intervention {
     Only(Vec<ContextId>),
     /// The named items keep their place in the conversation and lose their content.
     ///
-    /// note: The other way to remove something. An excluded tool result also removes the call that
-    /// asked for it; the projector has no choice, so the copy reads as if the call was never made.
-    /// An elided item still answers its call, so only its content is gone and the test changes
+    /// note: the other way to remove something. An excluded tool result also removes the call that
+    /// asked for it, as the projector must, so the copy reads as if the call was never made. An
+    /// elided item still answers its call, so only its content is gone and the test changes
     /// content, not turn shape.
     ///
     /// note: this one is visible to the copy. An elided item is projected as a marker whose note is
@@ -82,12 +82,12 @@ impl Intervention {
 
     /// Applies this to a copy of a context, and says what it actually did.
     ///
-    /// note: A [`ContextState::Pinned`] item is moved like any other and recorded in
+    /// note: a [`ContextState::Pinned`] item is moved like any other and recorded in
     /// [`Applied::unpinned`]. The runtime refuses a `Compactor` that tries this: a pin is a promise
     /// the kernel makes on the user's behalf against its own automatic machinery, and this is not
-    /// that machinery. An experimenter ablating an item they pinned is the user, and the answer to
-    /// "is that system instruction load-bearing?" cannot be reached any other way. It must not
-    /// happen quietly, so it is on the record.
+    /// that machinery. An experimenter ablating an item they pinned is the user, and "is that
+    /// system instruction load-bearing?" cannot be answered any other way. It must not happen
+    /// silently, so it is on the record.
     pub fn apply(&self, snapshot: &mut Snapshot) -> Applied {
         let mut applied = Applied::default();
         self.apply_to(snapshot, &mut applied);
@@ -223,8 +223,8 @@ impl Intervention {
 
 /// What an [`Intervention`] actually did to a copy.
 ///
-/// note: Three lists rather than a count, as the runtime's own `StateChange` does: "there is no
-/// item 12" and "item 12 was pinned and moved anyway" are different things to record. A measurement
+/// note: three lists rather than a count, as the runtime's own `StateChange` has: "there is no item
+/// 12" and "item 12 was pinned and moved anyway" are different things to record. A measurement
 /// whose intervention silently did nothing is worse than one that failed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]

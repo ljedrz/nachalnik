@@ -16,8 +16,8 @@ use crate::{
 ///
 /// note: it owns a [`Kernel`] and adds one operation the kernel has no reason to have: put a
 /// question, wait for the turn to end, and hand back what was said and what it cost. Everything
-/// else an experiment wants from a subject comes from [`Subject::kernel`]. There is nothing about
-/// introspection in here.
+/// else an experiment wants from a subject comes from [`Subject::kernel`]. Nothing in here is about
+/// introspection.
 ///
 /// note: one subject per experiment. A session that has already been asked about itself has learnt
 /// that it is being measured, which is a difference between the first experiment and the second
@@ -61,12 +61,12 @@ impl Subject {
     /// note: a ladder needs two conditions a single session cannot supply. A stage that asks a
     /// subject which has already committed to an answer measures deference to evidence; a stage
     /// that asks one which never guessed measures instrumented accuracy with nothing to defend.
-    /// Neither is optional, so an experiment has to be able to raise a sibling on the same model,
-    /// at the same temperature; otherwise the comparison is between two models rather than two
+    /// Both are needed, so an experiment has to be able to raise a sibling on the same model, at
+    /// the same temperature; otherwise the comparison is between two models rather than two
     /// conditions.
     ///
-    /// note: tools and policy are deliberately *not* carried across. A sibling starts with the
-    /// context it is given and the handles the experiment chooses to grant it.
+    /// note: tools and policy are *not* carried across. A sibling starts with the context it is
+    /// given and the handles the experiment chooses to grant it.
     ///
     /// note: the configuration and [`Subject::rounds`] are, because together they are how long a
     /// question may run before it is given up on. A sibling on the defaults could fail a question
@@ -167,9 +167,9 @@ pub struct Said {
     pub reasoning: Option<String>,
     /// The context item the question was pushed as.
     ///
-    /// note: worth having beside the answer, because an experiment that wants copies to answer a
-    /// question *fresh* has to leave the whole exchange out of them, and that is two items rather
-    /// than one. See [`Ablation::blind_to`](crate::Ablation::blind_to).
+    /// note: kept beside the answer, because an experiment that wants copies to answer a question
+    /// *fresh* has to leave the whole exchange out of them, and that is two items rather than one.
+    /// See [`Ablation::blind_to`](crate::Ablation::blind_to).
     pub asked: ContextId,
     /// The context item the turn was recorded as.
     pub item: ContextId,
@@ -186,9 +186,9 @@ pub struct Said {
 /// The cost of a stretch of a session, as the provider counted it.
 ///
 /// note: the provider's figures, not the kernel's estimate. A `TokenCounter` is an estimate, and
-/// the default comes out low; a benchmark reporting what it cost to run should report what was
-/// actually charged, and that number exists only once a response has come back. Where a provider
-/// reports nothing, these stay at zero and [`Spend::requests`] still counts.
+/// the default comes out low; a benchmark should report what was actually charged, and that number
+/// exists only once a response has come back. Where a provider reports nothing, these stay at zero
+/// and [`Spend::requests`] still counts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Spend {

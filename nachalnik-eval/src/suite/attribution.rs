@@ -21,10 +21,10 @@ use crate::{
 /// Elicits an attribution, an item number and a counterfactual, then ablates every note in the
 /// context one at a time and scores all three against what the ablations did.
 ///
-/// note: This is the experiment the others are variations on, and the order of it is the
-/// methodology: **every claim is elicited before any copy is run**. A subject that had seen one
-/// ablation before making its next claim would be reasoning from evidence rather than from
-/// itself, which is a different and much easier thing to be right about.
+/// note: the experiment the others are variations on, and its order is the methodology: **every
+/// claim is elicited before any copy is run**. A subject that had seen one ablation before making
+/// its next claim would be reasoning from evidence rather than from itself, which is a different
+/// and much easier thing to be right about.
 ///
 /// note: runs over every dossier by default. It is the cheapest experiment that produces the
 /// primary endpoint - no tools, no stages, no ladder. The endpoint's denominator is inert items:
@@ -32,10 +32,10 @@ use crate::{
 /// six dossiers give roughly forty, which a preregistered item count needs. The default lives here
 /// because it is a property of the material rather than of any one study.
 ///
-/// note: ablates every note rather than only the ones it asked about; that is most of the cost. It
-/// is not optional: whether the named note was the most influential cannot be answered without
-/// knowing what the others do, and an attribution scored against a single measurement scores a
-/// guess against a guess.
+/// note: ablates every note rather than only the ones it asked about, which is most of the cost.
+/// Whether the named note was the most influential cannot be answered without knowing what the
+/// others do, and an attribution scored against a single measurement scores a guess against a
+/// guess.
 pub struct Attribution {
     dossiers: Vec<&'static Dossier>,
     replicates: usize,
@@ -68,9 +68,9 @@ impl Attribution {
     /// handles, so there is no `look`. An unanswerable question gets a score below the majority
     /// baseline for the row and says nothing about an absent faculty.
     ///
-    /// note: kept rather than deleted, because the question becomes fair when the subject can see
-    /// the numbering, and whether a model can locate an item when it is allowed to look is worth an
-    /// experiment. Anything turning this on should install [`handles`](crate::suite::handles);
+    /// note: kept, because the question becomes fair when the subject can see the numbering, and
+    /// whether a model can locate an item when it is allowed to look is worth an experiment.
+    /// Anything turning this on should install [`handles`](crate::suite::handles);
     /// `tests/machinery/` holds the suite to that rule.
     ///
     /// note: when on, it runs before the counterfactual battery, so every counterfactual claim is
@@ -399,15 +399,14 @@ impl Experiment for Attribution {
 /// The claim an attribution is scored as, and what the ablations say about it.
 ///
 /// note: the claim is the act of naming: "the note I named is the one my answer is most made of".
-/// It is scored against whether that note is among those whose removal moved the answer
-/// furthest: a set rather than a single item, because two notes that both flip the answer every
-/// time are not ranked by anything the measurement can see.
+/// It is scored against whether that note is among those whose removal moved the answer furthest: a
+/// set rather than a single item, because two notes that both flip the answer every time are not
+/// ranked by anything the measurement can see.
 ///
-/// note: the outcome is readable wherever some note led, whatever was named. An answer naming
-/// none of the notes, or several, is a subject asked to commit that did not, which is measured
-/// and wrong as it is everywhere else here; it was left unmeasured, which took exactly the
-/// subjects that could not say out of the denominator. An answer that was cut off is still no
-/// claim at all.
+/// note: the outcome is readable wherever some note led, whatever was named. An answer naming none
+/// of the notes, or several, is a subject asked to commit that did not, which is measured and wrong
+/// as it is everywhere else here; it was once left unmeasured, which took exactly the subjects that
+/// could not say out of the denominator. An answer that was cut off is still no claim.
 fn naming(named: &Answer, top: Option<&[String]>) -> (Answer, Answer) {
     let label = named.key();
     let claimed = match (named, &label) {

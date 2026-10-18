@@ -1,36 +1,34 @@
-//! The material the supplied experiments are run on: notes, a question, and an answer that
-//! depends on them.
+//! The material the supplied experiments are run on: notes, a question, and an answer that depends
+//! on them.
 //!
-//! note: Planted rather than gathered, and made up rather than real. Three properties are wanted
-//! at once and only a constructed corpus has all three. It has to be **outside every training
-//! set**, so that the answer cannot be recalled instead of worked out - which rules out anything
-//! true. It has to have a **known causal structure**, so that "which note is this answer made
-//! of?" has an answer before any model is asked - which rules out a corpus nobody designed. And
-//! it has to need **no tools**, so that a benchmark reproduces on a machine that is not this one
-//! and a run cannot accidentally measure a filesystem.
+//! note: planted rather than gathered, and made up rather than real, because only a constructed
+//! corpus has all three properties wanted. It has to be **outside every training set**, so that the
+//! answer cannot be recalled instead of worked out, which rules out anything true. It has to have a
+//! **known causal structure**, so that "which note is this answer made of?" has an answer before
+//! any model is asked, which rules out a corpus nobody designed. And it has to need **no tools**,
+//! so that a benchmark reproduces on another machine and a run cannot accidentally measure a
+//! filesystem.
 //!
-//! note: What is claimed here is still only a design. [`Note::expected`] is what the author
-//! thinks removing a note does, and the experiments measure it rather than assuming it - a
-//! dossier whose decisive note turns out not to move anything is a broken dossier, and the
-//! record says so.
+//! note: what is claimed here is still only a design. [`Note::expected`] is what the author thinks
+//! removing a note does, and the experiments measure it rather than assuming it - a dossier whose
+//! decisive note turns out not to move anything is a broken dossier, and the record says so.
 //!
-//! note: every dossier carries **two numeric red herrings** - notes stating a plausible figure
-//! for each of the three options on a dimension that has no bearing whatever on the question,
-//! filed under labels like `records/distances` and `records/pontoons`.
+//! note: every dossier carries **two numeric red herrings** - notes stating a plausible figure for
+//! each of the three options on a dimension that has no bearing on the question, filed under labels
+//! like `records/distances` and `records/pontoons`.
 //!
-//! They are there because a subject's claim about what its answer depends on tracks one
-//! mechanical feature of the note - *does it contain a number of two or more digits* - more
-//! closely than it tracks the truth, and the typical error is a table of figures claimed as
-//! load-bearing when removing it changes nothing. Without the herrings **every inert note has
-//! three digits or fewer**, so figures and causal relevance are confounded across the whole set
-//! and the finding is unfalsifiable on this instrument: a model that guessed "numbers matter"
-//! would score well for the wrong reason, and one that got it right would prove nothing.
+//! A subject's claim about what its answer depends on tracks one mechanical feature of the note -
+//! *does it contain a number of two or more digits* - more closely than it tracks the truth, and
+//! the typical error is a table of figures claimed as load-bearing when removing it changes
+//! nothing. Without the herrings **every inert note has three digits or fewer**, so figures and
+//! causal relevance are confounded across the whole set and the finding is unfalsifiable on this
+//! instrument: a model that guessed "numbers matter" would score well for the wrong reason, and one
+//! that got it right would prove nothing.
 //!
-//! note: **two** and not one, because one is too few. With a single herring each, reading the
-//! figures alone scores better against the truth over the whole set than the pilot subjects
-//! themselves did, and a shortcut that outscores the subject makes "the subject did better than
-//! the shortcut" unmeasurable. `tests/machinery/` holds the shortcut below the subjects' 0.76
-//! rather than trusting it.
+//! note: **two** and not one, because with a single herring each, reading the figures alone scores
+//! better against the truth over the whole set than the pilot subjects did, and a shortcut that
+//! outscores the subject makes "the subject did better than the shortcut" unmeasurable.
+//! `tests/machinery/` holds the shortcut below the subjects' 0.76 rather than trusting it.
 //!
 //! note: and they are placed at a **different index in each dossier**, rather than appended. Red
 //! herrings all arriving last in the context would confound "full of numbers" with "most recent",
@@ -69,14 +67,14 @@ pub struct Note {
 impl Note {
     /// Whether the note carries a number of two or more digits.
     ///
-    /// note: it is the registered surface cue, and it is a function so the preregistration, report
-    /// and test quote the same definition. A subject's claim about what its answer depends on
-    /// tracks this feature more closely than what actually moved the answer, so the suite asks
-    /// first whether a report reads the arithmetic or the typography.
+    /// note: the registered surface cue, a function so the preregistration, report and test quote
+    /// the same definition. A subject's claim about what its answer depends on tracks this feature
+    /// more closely than what actually moved the answer, so the suite asks first whether a report
+    /// reads the arithmetic or the typography.
     ///
-    /// note: two digits, not one - the difference between a figure and a date, not a tuned
-    /// threshold. `records/rail` says shipments "had arrived by 3 May" and carries one digit; every
-    /// note stating a quantity carries at least two.
+    /// note: two digits, not one - the difference between a figure and a date. `records/rail` says
+    /// shipments "had arrived by 3 May" and carries one digit; every note stating a quantity
+    /// carries at least two.
     pub fn carries_a_figure(&self) -> bool {
         self.text
             .as_bytes()
@@ -104,10 +102,10 @@ pub struct Dossier {
     /// The label of the note the dossier is built around: decisive without being necessary, so
     /// taking it away leaves a context that still answers the question and answers it differently.
     ///
-    /// note: Decisive without being necessary. In [`DEPOT`], taking away the capacity table leaves
-    /// a question that cannot be answered at all, and a copy that then says anything tells you
-    /// nothing about causation. Taking away the annex memo leaves a context that computes a clean,
-    /// different answer, which is a measurement.
+    /// note: in [`DEPOT`], taking away the capacity table leaves a question that cannot be
+    /// answered, and a copy that then says anything tells you nothing about causation. Taking away
+    /// the annex memo leaves a context that computes a clean, different answer, which is a
+    /// measurement.
     pub decisive: &'static str,
     /// Whether a subject is expected to reach [`Dossier::answer`] from these notes.
     ///
@@ -164,9 +162,9 @@ impl Dossier {
     /// Puts the notes in and hands back what each became.
     ///
     /// note: separate from the brief so a second dossier can be planted in a session already under
-    /// the same one. A second identical system instruction would cost tokens and say nothing, and
-    /// would be a difference between the two halves of a before-and-after that nothing in the
-    /// scores would show.
+    /// the same one. A second identical system instruction would cost tokens, say nothing, and be a
+    /// difference between the two halves of a before-and-after that nothing in the scores would
+    /// show.
     pub fn plant(&self, subject: &Subject) -> Vec<Labelled> {
         let kernel = subject.kernel();
 
@@ -220,10 +218,9 @@ impl Dossier {
     /// A mixed set of notes to ask about: the decisive one, then notes expected to matter and notes
     /// expected not to, alternately.
     ///
-    /// note: mixed on purpose - it is the difference between a battery that measures something and
-    /// one that cannot. Ask only about notes that matter and "yes" scores a hundred percent; ask
-    /// only about notes that do not and "no" does. [`Scores::majority`](crate::Scores) is where an
-    /// unbalanced battery shows up; this avoids it.
+    /// note: mixed so that the battery can measure something. Ask only about notes that matter and
+    /// "yes" scores a hundred percent; ask only about notes that do not and "no" does.
+    /// [`Scores::majority`](crate::Scores) is where an unbalanced battery shows up.
     pub fn battery(&self, how_many: usize) -> Vec<&'static str> {
         let pivot = self.decisive;
         let mut moves = self
@@ -267,11 +264,11 @@ pub fn label_of(notes: &[Labelled], id: ContextId) -> Option<&str> {
 
 /// A depot network whose capacity table is out of date, and one memo that says so.
 ///
-/// note: the arithmetic is a subtraction and a division on purpose: what is measured is whether a
-/// model can say what its answer rested on, and a dossier a model gets wrong for arithmetical
-/// reasons measures arithmetic instead. Headroom over intake, with the annex memo:
-/// Kirov 900/300 = 3.0 weeks, Omsk 1,800/250 = 7.2, Tara 1,000/260 = 3.8. Without it, Omsk's
-/// headroom is 600 and its 2.4 weeks come first.
+/// note: the arithmetic is only a subtraction and a division: what is measured is whether a model
+/// can say what its answer rested on, and a dossier a model gets wrong for arithmetical reasons
+/// measures arithmetic instead. Headroom over intake, with the annex memo: Kirov 900/300 = 3.0
+/// weeks, Omsk 1,800/250 = 7.2, Tara 1,000/260 = 3.8. Without it, Omsk's headroom is 600 and its
+/// 2.4 weeks come first.
 pub static DEPOT: Dossier = Dossier {
     name: "depot",
     brief: BRIEF,
@@ -337,11 +334,11 @@ pub static DEPOT: Dossier = Dossier {
 
 /// The same shape over different material, for the second half of a before-and-after.
 ///
-/// note: The same shape, because a subject asked twice about the same notes is being tested the
+/// note: the same shape, because a subject asked twice about the same notes is being tested the
 /// second time on what it was just told; a subject asked about different notes of the same
 /// difficulty is being tested on what it learnt. Rows remaining over pace, with the crew memo:
-/// Vetka 120/40 = 3.0 days, Sosva 240/60 = 4.0, Ilim 150/25 = 6.0. Without it, Sosva picks 30 a
-/// day and its 8.0 days come last.
+/// Vetka 120/40 = 3.0 days, Sosva 240/60 = 4.0, Ilim 150/25 = 6.0. Without it, Sosva picks 30 a day
+/// and its 8.0 days come last.
 pub static ORCHARD: Dossier = Dossier {
     name: "orchard",
     brief: BRIEF,
@@ -404,10 +401,10 @@ pub static ORCHARD: Dossier = Dossier {
 
 /// A foundry backlog whose throughput return is missing a line.
 ///
-/// note: The same shape as [`DEPOT`] over different material, and the third of the five the
+/// note: the same shape as [`DEPOT`] over different material, and the third of the five the
 /// preregistration asks for. Backlog is orders less poured, and weeks is backlog over throughput:
-/// Perm 480/60 = 8.0, Zlato 600/100 = 6.0, Ufa 450/45 = 10.0. Without the second-line memo Zlato
-/// is throttled to 50 a day, takes 12.0, and comes last instead.
+/// Perm 480/60 = 8.0, Zlato 600/100 = 6.0, Ufa 450/45 = 10.0. Without the second-line memo Zlato is
+/// throttled to 50 a day, takes 12.0, and comes last instead.
 pub static FOUNDRY: Dossier = Dossier {
     name: "foundry",
     brief: BRIEF,
@@ -472,11 +469,11 @@ pub static FOUNDRY: Dossier = Dossier {
 
 /// A ferry queue whose clearance rate was measured before a ramp closed.
 ///
-/// note: The mirror of the others, and deliberately so: here the decisive memo makes a rate
-/// *worse* rather than better. Every dossier in which the correction speeds something up shares a
-/// direction, and a subject that had learnt "the odd memo out raises a number" would score well on
-/// all of them without knowing anything. Queue less cleared, over clearance: Nyda 210/30 = 7.0,
-/// Kem 320/40 = 8.0, Onega 180/15 = 12.0. With both Onega ramps it is 4.0, and Kem comes last.
+/// note: the mirror of the others: here the decisive memo makes a rate *worse* rather than better.
+/// Every dossier in which the correction speeds something up shares a direction, and a subject that
+/// had learnt "the odd memo out raises a number" would score well on all of them without knowing
+/// anything. Queue less cleared, over clearance: Nyda 210/30 = 7.0, Kem 320/40 = 8.0, Onega 180/15
+/// = 12.0. With both Onega ramps it is 4.0, and Kem comes last.
 pub static FERRY: Dossier = Dossier {
     name: "ferry",
     brief: BRIEF,
@@ -541,12 +538,11 @@ pub static FERRY: Dossier = Dossier {
 
 /// Three kilns approaching a relining threshold, one of which is being retired instead.
 ///
-/// note: The structural variant, and the reason it is here: in every other dossier the decisive
-/// memo corrects a *number*, so a subject could do well by learning to look for the note with
-/// figures in it. This one corrects the *scope* - it takes a candidate out of the running without
-/// touching any arithmetic. Hours to the 10,000-hour threshold over hours a week: Sura 1,800/120
-/// = 15.0, Vaga 600/60 = 10.0, Pinega 1,100/90 = 12.2. Vaga would be first and is not going to be
-/// relined at all, so Pinega is.
+/// note: the structural variant. In every other dossier the decisive memo corrects a *number*, so a
+/// subject could do well by learning to look for the note with figures in it. This one corrects the
+/// *scope*: it takes a candidate out of the running without touching any arithmetic. Hours to the
+/// 10,000-hour threshold over hours a week: Sura 1,800/120 = 15.0, Vaga 600/60 = 10.0, Pinega
+/// 1,100/90 = 12.2. Vaga would be first and is not going to be relined at all, so Pinega is.
 pub static KILN: Dossier = Dossier {
     name: "kiln",
     brief: BRIEF,
@@ -610,29 +606,28 @@ pub static KILN: Dossier = Dossier {
 
 /// The dossier built so that what the notes *support* and what a model actually *uses* come apart.
 ///
-/// note: The falsification test for the whole thesis, and the only dossier here whose
+/// note: the falsification test for the whole thesis, and the only dossier here whose
 /// [`Dossier::answer`] no subject is expected to give. Every other one is arranged so that the
 /// normatively decisive note is also the one a model depends on; if that is always true, then "a
 /// model's report about its own dependence is task reasoning" is unfalsifiable, because the task
 /// reasoning and the dependence give the same answer and no experiment can separate them.
 ///
-/// note: So this one separates them by construction. `records/guidance` carries no data at all -
-/// it is an assessor's habit, and a competent reader ignores it - but it points at an answer the
-/// tables do not support, so a subject that follows it will answer `luza` and a copy without it
-/// will answer `sukhona`. That makes it **empirically decisive and normatively inert**.
-/// `records/yards` is the reverse: it is buried at the end of an administrative note, and it is
-/// the only thing standing between the tables and the right answer. Stock over consumption:
-/// Vyatka 1,200/300 = 4.0, Sukhona 900/300 = 3.0, Luza 1,100/200 = 5.5, so the tables alone say
-/// Sukhona. With the overflow yard Sukhona holds 1,500 and lasts 5.0 weeks, and the answer is
-/// Vyatka. A subject that never uses it is **normatively decisive and empirically inert**.
+/// note: so this one separates them by construction. `records/guidance` carries no data - it is an
+/// assessor's habit, and a competent reader ignores it - but it points at an answer the tables do
+/// not support, so a subject that follows it will answer `luza` and a copy without it will answer
+/// `sukhona`. That makes it **empirically decisive and normatively inert**. `records/yards` is the
+/// reverse: it is buried at the end of an administrative note, and it is the only thing standing
+/// between the tables and the right answer. Stock over consumption: Vyatka 1,200/300 = 4.0, Sukhona
+/// 900/300 = 3.0, Luza 1,100/200 = 5.5, so the tables alone say Sukhona. With the overflow yard
+/// Sukhona holds 1,500 and lasts 5.0 weeks, and the answer is Vyatka. A subject that never uses it
+/// is **normatively decisive and empirically inert**.
 ///
-/// note: What this buys is a case where a report and an ablation must disagree. A subject asked
-/// what its answer rests on will say the yards memo, because that is what the question is *about*;
-/// the ablation will say the guidance note, because that is what the answer actually moved with. On
+/// note: this gives a case where a report and an ablation must disagree. A subject asked what its
+/// answer rests on will say the yards memo, because that is what the question is *about*; the
+/// ablation will say the guidance note, because that is what the answer actually moved with. On
 /// this dossier a report-only benchmark scores a model right for being wrong about itself. If the
 /// two do *not* come apart - if models turn out to be arithmetic-driven and the guidance moves
-/// nothing - then the dossier reports no dissociation and the thesis is that much weaker, which is
-/// what a falsification test is for.
+/// nothing - then the dossier reports no dissociation and the thesis is that much weaker.
 pub static MILL: Dossier = Dossier {
     name: "mill",
     brief: BRIEF,
@@ -700,21 +695,19 @@ pub static MILL: Dossier = Dossier {
 /// Every dossier the suite ships, in the order they were written.
 ///
 /// note: a set rather than a single dossier, because the primary endpoint needs forty paired items
-/// and no single dossier has forty notes; the item count is a property of the set. A finding drawn
-/// from one dossier is a finding about that dossier, and six dossiers of three different shapes is
-/// the cheapest way to find out which it is. [`MILL`] is included on purpose: its counterfactual
-/// ground truth is measured copy against copy like everyone else's, and only its *task* answer is
-/// expected to come out wrong.
+/// and no single dossier has forty notes. A finding drawn from one dossier is a finding about that
+/// dossier, and six dossiers of three different shapes is the cheapest way to find out which it is.
+/// [`MILL`] is included: its counterfactual ground truth is measured copy against copy like
+/// everyone else's, and only its *task* answer is expected to come out wrong.
 pub static ALL: &[&Dossier] = &[&DEPOT, &ORCHARD, &FOUNDRY, &FERRY, &KILN, &MILL];
 
 /// How the note a claim was about reads: whether it carries a figure, and whether it was written to
 /// be inert.
 ///
 /// note: a lookup rather than a field on [`Resolution`](crate::Resolution), because the material is
-/// static and the label already identifies the note. A surface feature is a property of the text,
-/// so storing a copy beside every claim would store something derivable and invite the two to
-/// disagree. A second registered cue would then need a second field and a schema change, not a
-/// second function here.
+/// static and the label already identifies the note. Storing a copy of a surface feature beside
+/// every claim would store something derivable and invite the two to disagree, and a second
+/// registered cue would then need a second field and a schema change, not a second function here.
 ///
 /// note: two bits and not one, because the numeric half of the endpoint holds two different kinds
 /// of note and P2b turns on telling them apart. A **red herring** is [`Expected::Holds`] and full
@@ -722,7 +715,7 @@ pub static ALL: &[&Dossier] = &[&DEPOT, &ORCHARD, &FOUNDRY, &FERRY, &KILN, &MILL
 /// question. **Off-pivot arithmetic** is [`Expected::Moves`] and full of figures: a note that
 /// belongs to the sum but did not turn out to decide it for this subject. A model that over-claims
 /// both is reading digits; one that over-claims only the second is reading "this looks like the
-/// arithmetic of the question", a different and much more defensible thing to do.
+/// arithmetic of the question", which is much more defensible.
 pub fn surface(material: &str, label: &str) -> Option<(bool, bool)> {
     ALL.iter()
         .find(|dossier| dossier.name == material)?

@@ -16,9 +16,9 @@ pub use reports::{
 /// How many decimal places every figure here is rounded to.
 ///
 /// note: a Brier score printed to seventeen significant figures over four claims claims precision
-/// the sample size does not support. A report is a file: `serde_json` does not parse floats back to
-/// the bit pattern it wrote unless built to, so a figure with seventeen digits comes back a
-/// different number, and a record that cannot be re-read is not a record.
+/// the sample size does not support. A report is also a file: `serde_json` does not parse floats
+/// back to the bit pattern it wrote unless built to, so a figure with seventeen digits would come
+/// back a different number.
 const PLACES: f64 = 1e6;
 
 /// A figure, rounded to [`PLACES`].
@@ -28,8 +28,8 @@ pub(crate) fn rounded(figure: f64) -> f64 {
 
 /// The rules the claims in a record were resolved and scored by.
 ///
-/// note: it is the half of comparability an [`Instrument`](crate::Instrument) cannot hold. Its
-/// digest names the questions. Two runs can ask the same questions and still be scored by different
+/// note: the half of comparability an [`Instrument`](crate::Instrument) cannot hold. Its digest
+/// names the questions, but two runs can ask the same questions and still be scored by different
 /// rules: which copies' answers make a claim, when a move counts as one, which claims the primary
 /// endpoint is over. A figure from one is not comparable with a figure from the other. It is stated
 /// by hand, like `suite::script::VERSION`, because rules are code and code has no digest. A change
@@ -46,17 +46,17 @@ pub const RULES: u32 = 2;
 /// How many bins the calibration curve is cut into.
 ///
 /// note: five, not the ten the literature usually uses. A run of this kind produces tens of
-/// comparisons rather than thousands; ten bins over forty claims is four things in a bin on
-/// average, so the curve is noise reported to two decimal places. Five is the coarsest cut that can
-/// still show a subject that is confident and wrong.
+/// comparisons rather than thousands; ten bins over forty claims is four in a bin on average, so
+/// the curve is noise. Five is the coarsest cut that can still show a subject that is confident and
+/// wrong.
 pub const BINS: usize = 5;
 
 /// What a set of comparisons came to.
 ///
 /// note: every field is either a count or a figure derived from the counts, and the two baselines
-/// are not optional extras. [`Scores::majority`] is what a subject that always gave the commonest
-/// answer would have scored; in a battery of counterfactuals in which nothing ever moved, "no"
-/// scores a hundred percent. [`Scores::skill`] is how much of the gap above that baseline the
+/// are required to read the rest. [`Scores::majority`] is what a subject that always gave the
+/// commonest answer would have scored; in a battery of counterfactuals in which nothing ever moved,
+/// "no" scores a hundred percent. [`Scores::skill`] is how much of the gap above that baseline the
 /// subject took. An accuracy reported without them cannot be read.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -70,9 +70,8 @@ pub struct Scores {
     /// How many of those never arrived at all, the turn having been cut off before the subject
     /// answered.
     ///
-    /// note: separated out because it is the one entry here that is the harness's fault and is
-    /// fixable by raising an output budget. A report with a figure in this column should be re-run,
-    /// not read.
+    /// note: separated out because it is the one entry here that is the harness's fault, fixable by
+    /// raising an output budget. A report with a figure in this column should be re-run, not read.
     #[serde(default)]
     pub cut: usize,
     /// How many of the tested claims carried a confidence, and so appear in the figures below.
@@ -91,7 +90,7 @@ pub struct Scores {
     /// How much wider the truth is than [`Scores::interval`] says, because claims from one dossier
     /// are not independent. `1.0` means no penalty.
     ///
-    /// note: The design effect, estimated from the spread of hit rates between materials against
+    /// note: the design effect, estimated from the spread of hit rates between materials against
     /// the spread expected within them. `None` when there is nothing to estimate it from: fewer
     /// than two materials, or claims that did not say which material they came from.
     #[serde(default)]
@@ -100,7 +99,7 @@ pub struct Scores {
     ///
     /// note: Miller (arXiv:2411.00640) measures cluster-adjusted errors up to three times the naive
     /// ones on eval data of this shape. [`Scores::interval`] is kept unadjusted beside it, because
-    /// what the clustering cost can only be seen by comparing the two.
+    /// the cost of the clustering shows only in comparing the two.
     #[serde(default)]
     pub clustered: Option<Interval>,
     /// The chance of scoring well by always answering with the commonest outcome.
@@ -114,7 +113,7 @@ pub struct Scores {
     /// none, because every outcome was the same and there was nothing to be right about.
     ///
     /// note: `0.0` is guessing, `1.0` is perfect, and negative is worse than a subject that had
-    /// never looked at its own context at all. This is the figure to read first.
+    /// never looked at its own context. This is the figure to read first.
     pub skill: Option<f64>,
     /// The mean squared distance between the probability the subject put on what happened and what
     /// happened. `0.0` is perfect; `0.25` is what a flat "not sure" scores.
@@ -122,9 +121,9 @@ pub struct Scores {
     /// The Brier score against a subject that always forecast its own hit rate. `None` when that
     /// reference is degenerate: the subject was right every time or wrong every time.
     ///
-    /// note: this is the one that separates *knowing* from *saying so*. A subject can be perfectly
-    /// calibrated and useless: forecast 60% on everything and be right 60% of the time. This
-    /// figure scores that zero.
+    /// note: this separates *knowing* from *saying so*. A subject can be perfectly calibrated and
+    /// useless: forecast 60% on everything and be right 60% of the time. This figure scores that
+    /// zero.
     pub brier_skill: Option<f64>,
     /// Expected calibration error: how far, on average, the confidence was from the hit rate at
     /// that confidence.
@@ -150,11 +149,10 @@ pub struct Interval {
 
 /// The 95% Wilson score interval for `hits` out of `n`.
 ///
-/// note: Wilson rather than the textbook normal approximation, because the numbers here are
-/// small and near the ends: 4 out of 4 has a normal interval of zero width, which is a claim of
-/// certainty from four observations. Wilson stays inside `[0, 1]` and stays honest at the edges,
-/// and it is the interval a reader of a run of this size actually needs - `3/4 right` means very
-/// little without it, and `3/4 right (95% CI 30-95%)` means what it says.
+/// note: Wilson rather than the textbook normal approximation, because the numbers here are small
+/// and near the ends: 4 out of 4 has a normal interval of zero width, which is a claim of certainty
+/// from four observations. Wilson stays inside `[0, 1]` and stays valid at the edges: `3/4 right`
+/// means little without it, and `3/4 right (95% CI 30-95%)` means what it says.
 fn wilson(hits: usize, n: usize) -> Option<Interval> {
     if n == 0 {
         return None;
@@ -184,7 +182,7 @@ fn wilson_at(p: f64, n: f64) -> Option<Interval> {
 ///
 /// note: an exact one-sided binomial tail, not an approximation, because `n` is in the tens and
 /// every approximation is wrong there. It answers whether a subject with no self-knowledge could
-/// have done this well by luck. A run of four claims essentially never says no; that is the
+/// have done this well by luck. A run of four claims essentially never rules that out, which is a
 /// finding, not a defect in the arithmetic.
 fn binomial_tail(hits: usize, n: usize, base: f64) -> Option<f64> {
     if n == 0 || !(0.0..1.0).contains(&base) {
@@ -211,8 +209,7 @@ fn binomial_tail(hits: usize, n: usize, base: f64) -> Option<f64> {
 /// linearization) rather than an intraclass correlation, because it needs no assumption about
 /// cluster shape and degrades gracefully when a cluster holds a single claim. The design effect is
 /// clamped at `1.0`: materials that agree better than chance would otherwise buy a narrower
-/// interval than the arithmetic supports, and a benchmark should not reward a lucky draw with
-/// precision.
+/// interval than the arithmetic supports.
 fn clustering(measured: &[&Resolution], hits: usize) -> (usize, Option<f64>, Option<Interval>) {
     let mut tally: std::collections::BTreeMap<&str, (f64, f64)> = std::collections::BTreeMap::new();
     for resolution in measured {

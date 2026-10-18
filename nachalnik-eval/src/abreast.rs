@@ -1,11 +1,11 @@
 //! Running independent work at the same time, and capping how much of it is in flight.
 //!
-//! note: written here rather than taken from `futures-util`, which is where a combinator like
-//! [`together`] normally comes from. Every crate this one depends on is one `nachalnik` already
-//! pulled in, and a suite that measures models has no business breaking that to poll two futures
-//! at once. What `futures-util` would add is an intrusive linked list, so that waking one future
-//! costs O(1) instead of re-polling all of them. At a few dozen requests in flight, each a round
-//! trip over a network, that optimises the cheapest thing in the run.
+//! note: written here rather than taken from `futures-util`, where a combinator like [`together`]
+//! normally comes from. Every crate this one depends on is one `nachalnik` already pulled in, and
+//! polling two futures at once is not a reason to break that. What `futures-util` would add is an
+//! intrusive linked list, so that waking one future costs O(1) instead of re-polling all of them.
+//! At a few dozen requests in flight, each a round trip over a network, that optimises the cheapest
+//! thing in the run.
 //!
 //! note: nothing in here spawns. [`together`] is a future like any other: it makes progress when
 //! the caller polls it, and the concurrency comes from the child futures having their I/O
@@ -14,13 +14,12 @@
 //!
 //! note: two limits, [`Permits`] on what is *in flight* and [`Rate`] on what is *started*, for the
 //! reason [`Pace`] gives. A rate needs a clock, so this module uses `tokio::time`; that picks an
-//! executor for the caller, and it is only defensible because [`nachalnik`] already picked the
-//! same one for its `JoinSet` and its `broadcast`.
+//! executor for the caller, which is acceptable only because [`nachalnik`] already picked the same
+//! one for its `JoinSet` and its `broadcast`.
 //!
-//! note: what is still not here is what to do when a limit is exceeded anyway. A `429` and its
-//! `Retry-After` are answered in whichever [`Provider`](nachalnik::Provider) the caller supplied,
-//! because that is the layer that knows the wire format they arrived in. These two are about not
-//! provoking one in the first place.
+//! note: a limit exceeded anyway is not handled here. A `429` and its `Retry-After` are answered in
+//! whichever [`Provider`](nachalnik::Provider) the caller supplied, because that is the layer that
+//! knows the wire format they arrived in. These two are about not provoking one.
 
 use std::{
     collections::VecDeque,
@@ -38,16 +37,15 @@ use parking_lot::Mutex;
 // note: tokio's clock rather than `std::time::Instant`, and it must be the same clock the sleep
 // below is measured on. With `std`'s, a test on a paused clock ages nothing out of the window:
 // sleeps return instantly on virtual time while timestamps advance on real time, so `admit` waits
-// for room that never appears. Outside a test the two are the same clock, so this costs nothing and
-// buys a rate limiter that can be tested.
+// for room that never appears. Outside a test the two are the same clock
 use tokio::time::Instant;
 
 /// How many things may be in flight at once.
 ///
 /// note: a counting semaphore, and nothing more. It is not `Clone` and is held by reference from
-/// one place per run, because two of these are two ceilings. The reason to have one is that it is
-/// collective: nine experiments sharing one endpoint must share one budget, or each limits itself
-/// to eight and the endpoint sees seventy-two.
+/// one place per run, because two of these are two ceilings. It must be shared: nine experiments
+/// using one endpoint must share one budget, or each limits itself to eight and the endpoint sees
+/// seventy-two.
 #[derive(Debug)]
 pub struct Permits {
     inner: Mutex<Inner>,
@@ -112,8 +110,8 @@ impl Permits {
 ///
 /// note: re-exported with everything else here, so a caller can hold one, put it in a struct, or
 /// select over it rather than only await it where it was called. Keep it that way when adding to
-/// this module: an unnameable return type is legal, so the compiler says nothing, and it only shows
-/// up as a missing documentation page.
+/// this module: the compiler accepts an unnameable return type, and it only shows up as a missing
+/// documentation page.
 #[derive(Debug)]
 pub struct Acquiring<'a> {
     permits: &'a Permits,
@@ -156,11 +154,11 @@ impl Drop for Permit<'_> {
 /// How fast a run is allowed to go: how many requests at once, and how many per interval.
 ///
 /// note: two knobs because endpoints publish two different kinds of limit and neither implies the
-/// other. A concurrency limit is answered by [`Pace::at_once`]; a published rate - "20 requests
-/// per minute", which is what a free tier usually says - is answered by [`Pace::per_minute`], and
-/// a count of requests in flight cannot substitute for it. The two only coincide through latency:
-/// eight in flight against a one-second endpoint happens to be about eight a second, and against
-/// a fast one it is eighty.
+/// other. A concurrency limit is answered by [`Pace::at_once`]; a published rate - "20 requests per
+/// minute", as a free tier usually says - is answered by [`Pace::per_minute`], and a count of
+/// requests in flight cannot substitute for it. The two only coincide through latency: eight in
+/// flight against a one-second endpoint is about eight a second, and against a fast one it is
+/// eighty.
 #[derive(Debug, Clone, Copy)]
 pub struct Pace {
     at_once: usize,
@@ -215,16 +213,16 @@ impl Pace {
 
 /// A sliding window over when requests were admitted.
 ///
-/// note: a sliding window rather than a token bucket, because the limit is worded as a sliding
-/// window: "20 per minute" refuses the twenty-first request that arrives within sixty seconds of
-/// the first, whatever the shape of the traffic. A token bucket refilled at a steady rate permits a
-/// burst of its whole capacity after any quiet spell, which an endpoint counting requests in a
-/// window rejects.
+/// note: a sliding window rather than a token bucket, because the limit is worded as one: "20 per
+/// minute" refuses the twenty-first request that arrives within sixty seconds of the first,
+/// whatever the shape of the traffic. A token bucket refilled at a steady rate permits a burst of
+/// its whole capacity after any quiet spell, which an endpoint counting requests in a window
+/// rejects.
 ///
 /// note: a minimum gap between admissions as well, because the window alone permits the whole
-/// allowance at once - see [`Rate::spacing`]. Both are enforced and neither subsumes the other: the
-/// window is the limit as the endpoint words it, the spacing stops a run spending the whole
-/// allowance in a second and then idling.
+/// allowance at once - see [`Rate::spacing`]. Both are enforced: the window is the limit as the
+/// endpoint words it, the spacing stops a run spending the whole allowance in a second and then
+/// idling.
 ///
 /// note: what is recorded is when a request was *admitted*, not when it finished. A limit on how
 /// many may be started in a minute is not a limit on how many may be outstanding, and the two come
@@ -249,8 +247,8 @@ impl Rate {
     ///
     /// note: this makes the limit a pace rather than a quota. A window alone is obeyed by firing
     /// every request it allows in the window's first instant and then sitting out the rest, which
-    /// is the burst an endpoint's own limiter rejects. Spacing admissions means not exceeding the
-    /// limit at any moment, not only on average.
+    /// is the burst an endpoint's own limiter rejects. Spacing keeps under the limit at every
+    /// moment, not only on average.
     fn spacing(&self) -> Duration {
         self.window / self.allowed as u32
     }
@@ -303,11 +301,11 @@ impl Rate {
 
 /// Any [`Provider`], with a ceiling on how many requests it may have in flight.
 ///
-/// note: the ceiling goes here rather than around the loops that fan out, because this is the one
-/// place every request in a run passes through. A ceiling on a loop governs only that loop: one
-/// around the ablation sweep still lets every experiment put its live probes on the wire beside it.
-/// Wrapping the provider means an experiment cannot exceed the ceiling by making a request some
-/// other way, including one this crate has never seen;
+/// note: the ceiling goes here rather than around the loops that fan out, because every request in
+/// a run passes through here. A ceiling on a loop governs only that loop: one around the ablation
+/// sweep still lets every experiment put its live probes on the wire beside it. Wrapping the
+/// provider means an experiment cannot exceed the ceiling by making a request some other way,
+/// including one this crate has never seen;
 /// `a_paced_run_goes_abreast_but_no_wider_than_it_was_told` holds it to that.
 ///
 /// note: it wraps rather than replaces, and forwards [`Provider::info`] untouched, so a subject
@@ -341,8 +339,7 @@ impl Paced {
 /// The shared state one run's ceiling and rate are enforced through.
 ///
 /// note: built once by [`evaluate_with`](crate::evaluate_with) and cloned onto every subject, so
-/// nine experiments share one window and one count rather than nine of each. It is a type rather
-/// than parts each caller assembles.
+/// nine experiments share one window and one count rather than nine of each.
 #[derive(Debug, Clone)]
 pub struct Governor {
     permits: Arc<Permits>,
@@ -387,7 +384,7 @@ impl Provider for Paced {
     ) -> Result<ModelResponse, BoxError> {
         // note: the permit first and the rate second, so that whoever is waiting out a window is
         // one of the few holding a permit rather than all of them holding none. The other order
-        // admits the whole run to the rate queue at once and makes the ceiling decorative.
+        // admits the whole run to the rate queue at once and makes the ceiling useless
         let _permit = self.permits.acquire().await;
         if let Some(rate) = &self.rate {
             rate.admit().await;
@@ -399,9 +396,8 @@ impl Provider for Paced {
 
 /// Runs every future at once and hands back what they produced, in the order they were given.
 ///
-/// note: the order is the input's, not the order they finished in. A report whose rows move with
-/// finish order cannot be diffed against last week's; the crate is built so two runs are
-/// comparable.
+/// note: the order is the input's, not the order they finished in, so a report can be diffed
+/// against last week's.
 ///
 /// note: no permit handling in here. A caller that wants a ceiling wraps each future in one:
 /// `async { let _permit = permits.acquire().await; work().await }`. That keeps this combinator

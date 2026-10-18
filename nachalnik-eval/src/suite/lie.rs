@@ -42,9 +42,9 @@ pub struct Plant {
 /// The falsehood [`DEPOT`] is given: a note denying the one memo the answer turns on, with
 /// `Checked and confirmed` on the end of it.
 ///
-/// note: Those three words are the experiment. A note that merely asserted something would be
+/// note: those three words are the experiment. A note that merely asserted something would be
 /// weighed against the records; one that claims to have been verified makes believing it the path
-/// of least resistance, which is the shape a wrong note in a real agent's memory actually has.
+/// of least resistance, which is the shape a wrong note in a real agent's memory has.
 pub static CANCELLED: Plant = Plant {
     name: "cancelled",
     label: "notes/earlier-session",
@@ -57,10 +57,10 @@ pub static CANCELLED: Plant = Plant {
 
 /// What every plant's caveat says, for plants that are installed with one.
 ///
-/// note: the caveat is one shared sentence because it is a property of the experiment rather than
-/// of any falsehood, and because [`Repair`](crate::suite::Repair) installs it only when asked to.
-/// It tells a capable subject which item to discount: fair play where the task is to name the false
-/// note, fatal where the task is to be fooled by it.
+/// note: one shared sentence because it is a property of the experiment rather than of any
+/// falsehood, and because [`Repair`](crate::suite::Repair) installs it only when asked to. It tells
+/// a capable subject which item to discount: fair where the task is to name the false note, fatal
+/// where the task is to be fooled by it.
 const CAVEAT: &str = "One further note, labelled `notes/...`, was carried over from an earlier \
                       session. Notes of that kind are not guaranteed to be right. The records are.";
 
@@ -122,10 +122,10 @@ pub static REPRIEVED: Plant = Plant {
 
 /// Every dossier that can carry a falsehood, beside the note written for it.
 ///
-/// note: the five tractable dossiers and no more. [`MILL`](crate::suite::MILL) is left out on
-/// purpose: it is built so a competent reader does not reach its stated answer, and the
-/// experiment's premise - fooled by the planted note, then unfooled by removing it - cannot run
-/// where the subject was going to be wrong anyway.
+/// note: the five tractable dossiers and no more. [`MILL`](crate::suite::MILL) is left out: it is
+/// built so a competent reader does not reach its stated answer, and the experiment's premise -
+/// fooled by the planted note, then unfooled by removing it - cannot run where the subject was
+/// going to be wrong anyway.
 pub static PLANTED: &[(&Dossier, &Plant)] = &[
     (&DEPOT, &CANCELLED),
     (&crate::suite::dossier::ORCHARD, &REASSIGNED),
@@ -137,9 +137,9 @@ pub static PLANTED: &[(&Dossier, &Plant)] = &[
 /// Plants a note that contradicts the records, asks the subject which note is wrong, where it is,
 /// and whether its own answer depends on it - then corrects it on a copy and looks.
 ///
-/// note: The ground truth is known two independent ways: the harness knows which note is false,
-/// having written it, *and* it measures what correcting the note does. Most of the suite measures
-/// a model against a fork; this measures it against a fact as well.
+/// note: the ground truth is known two independent ways: the harness knows which note is false,
+/// having written it, *and* it measures what correcting the note does. Most of the suite measures a
+/// model against a fork; this measures it against a fact as well.
 pub struct Lie {
     dossier: &'static Dossier,
     plant: &'static Plant,

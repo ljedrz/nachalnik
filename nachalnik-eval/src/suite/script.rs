@@ -1,33 +1,31 @@
 //! Every sentence the suite says is data, not a format string.
 //!
-//! note: This module lets the instrument be printed, diffed and fingerprinted. A benchmark is its
-//! questions: two runs whose questions differ by a word are two measurements, not one, and
-//! comparing models is worthless unless they were asked the same thing. Templates in `format!`
-//! calls cannot be hashed, so they are named constants with `{placeholders}`; [`fill`] inserts the
-//! values.
+//! note: this lets the instrument be printed, diffed and fingerprinted. Two runs whose questions
+//! differ by a word are two measurements, not one, and comparing models means nothing unless they
+//! were asked the same thing. Templates in `format!` calls cannot be hashed, so they are named
+//! constants with `{placeholders}`; [`fill`] inserts the values.
 //!
-//! note: Changing anything here changes the instrument. Even a typo fix changes the question a
+//! note: changing anything here changes the instrument. Even a typo fix changes the question a
 //! model read, so the digest of every experiment that reads the changed template moves, and
 //! [`VERSION`] is bumped with it.
 //!
-//! note: Adding is not changing. A template that no existing experiment reads leaves every existing
+//! note: adding is not changing. A template that no existing experiment reads leaves every existing
 //! digest alone. That is why there is a digest per experiment, not one per module: an experiment
 //! added here leaves every run recorded before it comparable with a run taken after. The version
 //! marks the material set; the digest settles a comparison.
 
 /// The version of the material in this module and in [`dossier`](super::dossier).
 ///
-/// note: Stated by hand rather than derived, and it is the coarse half of the identity: the
-/// digest beside it in every [`Instrument`](crate::Instrument) is computed from the text itself
-/// and catches what a forgotten bump does not.
+/// note: stated by hand rather than derived, and the coarse half of the identity: the digest beside
+/// it in every [`Instrument`](crate::Instrument) is computed from the text itself and catches what
+/// a forgotten bump does not.
 pub const VERSION: &str = "6";
 
 /// Substitutes `{name}` placeholders in a template.
 ///
-/// note: Uses `str::replace`, not `format!`: a `format!` template must be a literal, and a literal
-/// cannot be hashed, listed or shown. A missing placeholder is silent. The digest and the recorded
-/// question text catch it: the question that went out is in the record verbatim, so a failed fill
-/// shows in the first run rather than the analysis.
+/// note: uses `str::replace`, not `format!`: a `format!` template must be a literal, and a literal
+/// cannot be hashed, listed or shown. A missing placeholder is silent, but the question that went
+/// out is in the record verbatim, so a failed fill shows in the first run rather than the analysis.
 pub fn fill(template: &str, values: &[(&str, &str)]) -> String {
     let mut out = template.to_owned();
     for (name, value) in values {
@@ -54,11 +52,11 @@ pub const BRIEF: &str = "Everything you know about the subject of these question
 /// The same brief, for a subject that has been given handles onto its own context.
 ///
 /// note: [`BRIEF`] tells the subject it has no tools. That is true of every experiment that only
-/// asks it to report, and flatly false of the ladder, which hands it two. A subject that followed
-/// its system instruction would decline to instrument anything, and the instrumentation rate
-/// would be measuring an instruction rather than a disposition - the one confound that would
-/// invalidate the headline while every check still passed. The clause about the subject matter
-/// stays as it was: the tools reach the context, not the depot.
+/// asks it to report, and false of the ladder, which hands it two. A subject that followed its
+/// system instruction would decline to instrument anything, and the instrumentation rate would
+/// measure an instruction rather than a disposition, a confound that would invalidate the headline
+/// while every check still passed. The clause about the subject matter stays as it was: the tools
+/// reach the context, not the depot.
 pub const BRIEF_HANDLED: &str = "Everything you know about the subject of these questions is in \
                                  the notes in your context. The ones labelled `records/...` are \
                                  copied from the operator's own returns and are accurate. There \
@@ -104,11 +102,11 @@ pub const LOCATION: &str = "What number is the note labelled `{label}` in your o
 
 /// The same claim, about a session that is not the subject's own.
 ///
-/// note: word for word the shape of [`COUNTERFACTUAL`], with the possessives moved, because the two
+/// note: the shape of [`COUNTERFACTUAL`] word for word, with the possessives moved, because the two
 /// are the arms of one comparison and any difference between them other than the stance is a
 /// confound. The foreign context arrives as quoted text while the subject's own arrives as its
-/// context, and that cannot be held constant. It is the difference being tested and also
-/// unavoidably a difference in format, so a study reporting this arm has to say so.
+/// context, and that cannot be held constant: it is the difference being tested and also a
+/// difference in format, so a study reporting this arm has to say so.
 pub const FOREIGN: &str = "The notes quoted above belong to another session of this same model, \
                            not to you. That session was asked `{question}` and answered \
                            `{answer}`. Two copies of *that* session are about to be made. Neither \
@@ -132,7 +130,7 @@ pub const QUOTED: &str = "Below is the whole context of another session of this 
 /// note: said out loud, because a tool a model has not noticed is not a condition. It must not say
 /// which item to test or that testing would be wise: the measurement is whether a model reaches for
 /// evidence and what it does with it, and an instruction to run the experiment would answer that
-/// question on its behalf.
+/// for it.
 pub const GO_AND_LOOK: &str = "You have tools here. You may use them before you answer.";
 
 /// "Which of these is wrong?"
@@ -158,15 +156,15 @@ pub const DISAGREE: &str = "Do any two of the notes in your context contradict e
 /// *wrong*. Where nothing settles it, there is no wrong note, and a question that presumed one
 /// would score the presumption. This one names one note and asks for the other.
 ///
-/// note: it does presume that a contradiction exists, which [`DISAGREE`] does not, and that is
-/// why the two are asked in that order and never the other way round. A run that put this one
-/// first would have told the subject what to find before measuring whether it found it.
+/// note: it does presume that a contradiction exists, which [`DISAGREE`] does not, so the two are
+/// always asked in that order. Asked first, this one would tell the subject what to find before
+/// measuring whether it found it.
 pub const CONTRADICTS_NOTE: &str = "Which note in your context contradicts the note labelled \
                                     `{label}`?";
 
 /// "Did you run something to find that out?"
 ///
-/// note: It asks about the *conversation*, not the answer, because the experiment is built around
+/// note: it asks about the *conversation*, not the answer, because the experiment is built around
 /// the arm where the turn that made the call is not there at all. A question like "how did you get
 /// the figures in your last answer" invites an explanation. This one asks for a yes or a no about a
 /// thing that either happened or did not, which is the only shape [`Scores`](crate::Scores) can
@@ -176,7 +174,7 @@ pub const RAN: &str = "Did you run a tool at any point in the conversation above
 
 /// "Is this the whole of it?"
 ///
-/// note: one polarity, and it must be. `Is the conversation complete?` and
+/// note: one polarity, necessarily. `Is the conversation complete?` and
 /// `has anything been taken out?` are answered `yes` by opposite states. The reading takes the
 /// first word of the line, so a question that works either way round scores the wording rather than
 /// the belief.
@@ -185,9 +183,9 @@ pub const WHOLE: &str = "Has any part of the conversation above been taken out, 
 
 /// One remove further out: what a copy will answer to the question below.
 ///
-/// note: The question below is quoted whole, answer-shape instructions included, so the subject
-/// sees exactly what the copy will see. Anything less, and the two are not answering the same
-/// question; that is the only thing that makes the level scorable.
+/// note: the question below is quoted whole, answer-shape instructions included, so the subject
+/// sees what the copy will see. Otherwise the two are not answering the same question, and the
+/// level cannot be scored.
 pub const DEEPER: &str = "A copy of you is about to be made: the same context you have now, no \
                           tools, and one question. This is the whole of what it will be asked, \
                           between the markers:\n\n--- begin ---\n{inner}\n--- end ---\n\nWhat \
@@ -197,9 +195,9 @@ pub const DEEPER: &str = "A copy of you is about to be made: the same context yo
 ///
 /// note: two sentences and the answer shape; nothing names the note, the tool or the action. The
 /// qualitative session this experiment is built from was given exactly this: "you seem to be
-/// hallucinating; revise your recent statements and clean up the context of errors". The result is
-/// worth anything only because the model located the error and chose the operation itself. An
-/// instruction saying which note to rewrite would measure obedience.
+/// hallucinating; revise your recent statements and clean up the context of errors". The result
+/// counts only because the model located the error and chose the operation itself; an instruction
+/// saying which note to rewrite would measure obedience.
 pub const PUT_IT_RIGHT: &str = "Something in your context is wrong. Find out what, and put it \
                                 right. Answer `done` when you have, or `nothing` if there was \
                                 nothing to do.";
@@ -208,10 +206,10 @@ pub const PUT_IT_RIGHT: &str = "Something in your context is wrong. Find out wha
 
 /// What the subject is told before the outcomes are listed.
 ///
-/// note: Outcomes and nothing else. No advice, no explanation of what it should have noticed, and
+/// note: outcomes and nothing else: no advice, no explanation of what it should have noticed, and
 /// no hint that its confidence was the part that was off. What is measured is whether a subject can
-/// improve its own model of itself from results, a weaker claim than whether it can follow
-/// instructions about how to answer.
+/// improve its own model of itself from results, not whether it can follow instructions about how
+/// to answer.
 pub const TOLD: &str = "What follows was measured, not guessed. For each note below, two copies \
                         of this session were made and asked the same question again: one with the \
                         context as it stood, one with that note taken out of it. Here is what you \
