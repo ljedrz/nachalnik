@@ -16,6 +16,8 @@ minor bump may break you.
   `app::Search`, `App::search` and `app::when`, the local clock the trace pane is drawn and
   searched by. Without a screen there is no box to type into, so a headless or served build no
   longer compiles `nucleo-matcher` or reads the local time zone at startup.
+- **`Args` and `Settings` have a `send_reasoning` field**, for `--send-reasoning` below, so a
+  struct literal of either needs it.
 
 ### added
 
@@ -23,7 +25,8 @@ minor bump may break you.
   back with the thinking that produced it, as `reasoning`, with `--api chat-completions`. Some
   models refuse every request after their first tool call without it, so a session with one of
   them failed at its second request. Off by default, since most endpoints refuse a field they do
-  not know and the thinking costs its tokens on every request. Requires `nachalnik-providers`
+  not know and the thinking costs its tokens on every request. In the library,
+  `endpoint::connect_with` is `endpoint::connect` with the switch. Requires `nachalnik-providers`
   0.10.1.
 
 ### changed
