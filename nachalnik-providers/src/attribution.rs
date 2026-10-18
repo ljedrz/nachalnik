@@ -9,23 +9,23 @@
 
 /// The app a request is being made on behalf of, for an endpoint that keeps a ranking of them.
 ///
-/// note: the URL is an identifier rather than a link anybody follows - OpenRouter keeps the app's
-/// page against it - so it wants to be the project's own address and to stay the same.
+/// note: the URL is an identifier, not a link anyone follows (OpenRouter keeps the app's page
+/// against it), so it should be the project's own address and stay the same.
 ///
-/// note: built once and handed to every client that should send it -
+/// note: built once and handed to every client that sends it -
 /// [`OpenAiCompatible::attributed_to`](crate::OpenAiCompatible::attributed_to),
 /// [`Anthropic::attributed_to`](crate::Anthropic::attributed_to) and
-/// [`system1::Client::attributed_to`](crate::system1::Client::attributed_to) - so that one switch
-/// turning attribution off turns it off for all of them. Somebody who turned it off for their
-/// conversation has not agreed to be named by a second client on the same account.
+/// [`system1::Client::attributed_to`](crate::system1::Client::attributed_to) - so one switch turns
+/// attribution off for all of them: somebody who turned it off for their conversation has not
+/// agreed to be named by a second client on the same account.
 ///
-/// note: the [`Default`] names no app, and sends nothing at all. A category or a visibility with
-/// no URL beside it describes nothing, because the page is built against the URL - which is the
-/// API's own rule - so they are kept, and sent only once there is a URL to send them with.
+/// note: the [`Default`] names no app and sends nothing. A category or a visibility without a URL
+/// describes nothing, since the page is built against the URL (the API's own rule), so they are
+/// kept and sent once there is a URL to send them with.
 ///
-/// note: `#[non_exhaustive]` because nothing outside this crate builds one field by field.
-/// [`Attribution::new`] and the builders are the way one is made, and a header the ranking wants
-/// next should not be a break.
+/// note: `#[non_exhaustive]` because nothing outside this crate builds one field by field;
+/// [`Attribution::new`] and the builders make one, and a header the ranking wants next should not
+/// be a break.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Attribution {
@@ -58,15 +58,14 @@ impl Attribution {
 
     /// Says what kind of program it is, in the categories the endpoint files apps under.
     ///
-    /// note: what it is given, verbatim. OpenRouter documents two per request, ten in total, and
-    /// its own list of names - and an unrecognised one is *dropped*, not refused: no error, no
-    /// notice, a 200 like any other, so `cli_agent` for `cli-agent` is a typo that fails nothing
-    /// and shows up only as an app filed under nothing. Neither the count nor the spelling is
-    /// checked here, because a crate that guessed at somebody else's list would go stale the day
-    /// it grew: [the attribution page](https://openrouter.ai/docs/app-attribution) has the names.
+    /// note: sent verbatim. OpenRouter documents two per request, ten in total, and its own list of
+    /// names, and drops an unknown one silently with a 200, so `cli_agent` for `cli-agent` fails
+    /// nothing and only files the app under nothing. Neither the count nor the spelling is checked
+    /// here, since a copy of somebody else's list would go stale; [the attribution
+    /// page](https://openrouter.ai/docs/app-attribution) has the names.
     ///
-    /// note: they accumulate on the app rather than replace what it has, so this is not a way to
-    /// correct one. Changing what an app is already filed under is a conversation with OpenRouter.
+    /// note: they accumulate on the app rather than replace what it has, so this cannot correct
+    /// one; changing an app's categories is a conversation with OpenRouter.
     #[must_use]
     pub fn filed_under<C: Into<String>>(mut self, categories: impl IntoIterator<Item = C>) -> Self {
         self.categories = categories.into_iter().map(Into::into).collect();
@@ -76,11 +75,10 @@ impl Attribution {
     /// Keeps the app page off the public rankings and out of the marketplace, for attribution kept
     /// as somebody's own telemetry rather than as a listing.
     ///
-    /// note: this only ever reaches the request that *creates* the page. A URL that already has
-    /// one keeps whatever visibility it has, in either direction - so a program with one fixed URL
-    /// has a single request, once, in which this means anything, and nobody running it later can
-    /// change that with a header. Which is also what makes it safe: a caller of somebody else's
-    /// app cannot hide it.
+    /// note: this only reaches the request that creates the page; a URL that already has one keeps
+    /// its visibility either way. So a program with one fixed URL has a single request, once, in
+    /// which this means anything, and nobody running it later can change that, which is also why a
+    /// caller of somebody else's app cannot hide it.
     #[must_use]
     pub fn unlisted(mut self, unlisted: bool) -> Self {
         self.unlisted = unlisted;

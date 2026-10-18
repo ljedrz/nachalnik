@@ -1,23 +1,18 @@
 //! A suite any provider can be held to, whichever of the dialects it speaks.
 //!
-//! note: a suite rather than a test per provider, because a bug in how one provider reads a
-//! stream is usually in every provider that reads the same stream, and fixed in one copy it stays
-//! in the others.
+//! note: one suite rather than a test per provider, because a bug in reading a stream is usually in
+//! every provider that reads it, and fixed in one copy stays in the others.
 //!
-//! note: what it holds is not agreement between copies but a list of shapes some server really
-//! sent. Every case below is a bug that actually happened, asked through a real socket rather than
-//! of a parser, because what is under test lives inside `respond` - between reading bytes off a
-//! response and handing back a [`ModelResponse`] - and a test that reached in beside it would be
-//! testing a copy of the code under test.
+//! note: each case is a shape some server really sent, asked through a real socket, because what is
+//! under test lives inside `respond`, between reading bytes and returning a [`ModelResponse`], and
+//! a test reaching in beside it would test a copy of the code.
 //!
-//! note: this is where a live run's finding about a stream is kept. Several of these cases came
-//! out of hours against OpenRouter through a proxy that broke the stream on purpose; that harness
-//! is not in the repository and is not meant to be, because what it found is here, asked without
-//! a key in a second. The live runs that go on finding things are `.claude/skills/live-runs/`, and
-//! a shape one of them turns up becomes a case below rather than a reason to run it again.
+//! note: a live run's finding about a stream is kept here as a case, asked without a key in a
+//! second, rather than being a reason to run the harness again. The live runs that keep finding
+//! things are `.claude/skills/live-runs/`.
 //!
-//! note: behind the `conformance` feature, and off by default. It is a dev tool, it stands up
-//! `TcpListener`s, and a caller writing a provider of its own is who it is for.
+//! note: behind the `conformance` feature, off by default: a dev tool that stands up
+//! `TcpListener`s, for a caller writing a provider of its own.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
@@ -283,16 +278,15 @@ impl Conformance {
 
     /// A turn that thought reports the thinking inside what it generated.
     ///
-    /// note: `Usage::output_tokens` is everything the model generated and is charged for, reasoning
-    /// included, so `input + output` is the whole bill whichever endpoint answered. Dialects do not
-    /// hand it over that way: OpenAI's `completion_tokens` already contains the reasoning; Google
-    /// reports thoughts and candidates side by side; a Google endpoint speaking the OpenAI dialect
-    /// omits the details object, so the thinking is the difference between the total and its parts.
-    /// Every provider must arrive at one `output_tokens` figure from these three shapes.
+    /// note: `Usage::output_tokens` is everything generated and charged for, reasoning included, so
+    /// `input + output` is the whole bill. Dialects deliver it three ways (OpenAI's
+    /// `completion_tokens` already contains the reasoning; Google reports thoughts and candidates
+    /// side by side; a Google endpoint speaking the OpenAI dialect omits the details object, so the
+    /// thinking is the total minus its parts), and every provider must arrive at one
+    /// `output_tokens` from them.
     ///
-    /// note: the assertion is the relationship, not a fixture number. The answer's cost comes back
-    /// by subtracting reasoning from output. A provider that reports the two side by side passes
-    /// the sum and fails this.
+    /// note: the assertion is the relationship, not a fixture number: subtracting reasoning from
+    /// output gives the answer's cost, which a provider reporting the two side by side fails.
     async fn reasoning_is_inside_what_was_generated(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -457,21 +451,17 @@ impl Conformance {
     /// A body that stops arriving in the middle of an answer keeps what arrived.
     ///
     /// note: reqwest reports a body that ended early as `error decoding response body`, and a
-    /// provider that passes that on throws away every token the model had produced and fails the
-    /// turn - on a reasoning model, minutes of work.
+    /// provider that passes that on throws away every token the model produced, on a reasoning
+    /// model minutes of work.
     ///
-    /// note: the answer is the one the interrupt path already gives: keep whatever was parsed,
-    /// abandon the socket, and mark the turn. A dropped connection is that case without the
-    /// consent, so it gets the same handling under a name of its own. Failing instead throws away
-    /// work the provider has *already billed*; retrying bills it again, up to the retry budget, so
-    /// an answer that reliably outruns an upstream's patience is paid for four times and fails
-    /// anyway - and the loop that retries a busy server is careful to do it only where nothing was
-    /// generated.
+    /// note: the interrupt path's answer applies: keep what was parsed, abandon the socket, mark
+    /// the turn. Failing instead discards work already billed, and retrying bills it again, so an
+    /// answer that outruns an upstream's patience is paid for four times and fails anyway; the loop
+    /// that retries a busy server does so only where nothing was generated.
     ///
-    /// note: what a *complete* call caught by the cut does is nothing special on purpose. It is a
-    /// call the model really made, it is recorded, and the permission policy is still the thing
-    /// that decides whether it runs. A provider dropping it would be deciding that on the
-    /// caller's behalf, which is the one thing none of this is allowed to do.
+    /// note: a complete call caught by the cut is recorded like any other: the model made it, and
+    /// the permission policy still decides whether it runs. A provider dropping it would be
+    /// deciding that on the caller's behalf.
     async fn cut_off_midstream(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -1045,14 +1035,12 @@ impl Conformance {
 
     /// These APIs report an upstream failure as an object inside an otherwise fine 200.
     ///
-    /// note: a provider that only reads the status code records the model as having said nothing,
-    /// and the kernel faithfully writes that down. The runtime's own documentation of
-    /// `Provider::respond` warns about it.
+    /// note: a provider that reads only the status code records the model as having said nothing,
+    /// as the runtime's documentation of `Provider::respond` warns.
     ///
-    /// note: a code that does not go away by itself. A `502` is what these usually carry, and a
-    /// provider that waits one out and asks again - as this crate's do, and should - spent
-    /// fourteen seconds of doublings on this case before it could fail, every run, for a question
-    /// about reading the error rather than about waiting. Waiting is held to in `whole_answers.rs`.
+    /// note: with a code that does not go away by itself: these usually carry `502`, and a provider
+    /// that rightly waits one out would spend its backoff here before it could fail, on a question
+    /// about reading the error. Waiting is tested in `whole_answers.rs`.
     async fn error_in_a_200(&self) -> Outcome {
         let body =
             "data: {\"error\":{\"message\":\"the upstream refused the request\",\"code\":400}}\n\n";

@@ -5,18 +5,16 @@ use serde_json::{Number, Value};
 
 /// The half of a model's service its user drives, not the kernel's.
 ///
-/// note: [`Provider`] is the kernel's half: one method, and the kernel has no opinion where the
-/// answer comes from. Where requests go, what the endpoint serves, which model is asked, and what
-/// the last retry was about belong to whoever built the client - a `/model` command, a status line,
-/// a run comparing two endpoints - and are the same whichever model is behind them. They are this
-/// crate's trait, not the runtime's: the runtime has no network and no business knowing one exists.
+/// note: [`Provider`] is the kernel's half: one method, with no opinion on where the answer comes
+/// from. Where requests go, what the endpoint serves, which model is asked and what the last retry
+/// was about belong to whoever built the client (a `/model` command, a status line, a run comparing
+/// endpoints), whatever model is behind them. This is this crate's trait, not the runtime's, which
+/// has no network.
 ///
-/// note: [`Provider`] is deliberately not a supertrait. A model can answer every question here and
-/// none of a turn's questions. A System One [`Client`](crate::system1::Client) has an address, a
-/// key, a model identifier, a listing and a usage report, generates no text and calls no tools, so
-/// it has no turn to drive. Requiring all of this would shut it out of the crate or hand the kernel
-/// an assistant turn manufactured out of probabilities. The turn-driving half is [`Dialect`], which
-/// carries the `Provider` bound.
+/// note: not a supertrait of [`Provider`]: a System One [`Client`](crate::system1::Client) has an
+/// address, a key, a model, a listing and a usage report but no turn to drive, and requiring one
+/// would shut it out or hand the kernel a turn made out of probabilities. The turn-driving half is
+/// [`Dialect`], which carries the `Provider` bound.
 #[async_trait]
 pub trait Endpoint: Send + Sync {
     /// Where the requests are going.
@@ -80,16 +78,14 @@ pub trait Dialect: Endpoint + Provider {
     /// Whether [`nachalnik::ModelInfo::parameters`] lists everything the model takes, or only the
     /// part this endpoint publishes.
     ///
-    /// note: it decides what may be said about a parameter that is *not* on the list, and the two
-    /// answers are different claims. An exhaustive list settles it: the parameter is sent, the
-    /// model does not take it, and it is ignored - that is what `/params` exists to say. A partial
-    /// list settles nothing: `reasoning_effort` is absent from `mercury-2.5` yet is still read, and
-    /// a bad value returns a 400. Calling it ignored would invent a restriction from a list that
-    /// never claimed to be complete, the failure this crate takes seriously when reading anyone's
-    /// metadata.
+    /// note: it decides what may be said about a parameter not on the list. An exhaustive list
+    /// settles it: the parameter is sent and ignored, which is what `/params` exists to say. A
+    /// partial list settles nothing: `reasoning_effort` is absent from `mercury-2.5`'s list yet is
+    /// read, and a bad value is a 400, so calling it ignored would invent a restriction from a list
+    /// that never claimed to be complete.
     ///
-    /// note: defaulted to `true` because a dialect that publishes one list of everything is the
-    /// ordinary case. An endpoint that knows better says so.
+    /// note: `true` by default, since one list of everything is the ordinary case; an endpoint that
+    /// knows better says so.
     fn lists_every_parameter(&self) -> bool {
         true
     }
@@ -112,13 +108,13 @@ pub trait Dialect: Endpoint + Provider {
     /// or a timed-out connection), including the first attempt. Four unless set, and never fewer
     /// than one.
     ///
-    /// note: four is for someone watching, who would rather be told than kept waiting. A run nobody
-    /// watches can ask for more. A limit shared by several sessions can outlast four: the waits
-    /// double from two seconds and stop growing at a minute, so ten tries are about five minutes. A
-    /// server that asks to be left longer than a minute is not waited for, however many tries are
-    /// left, since that is a quota spent rather than a server busy.
+    /// note: four suits someone watching, who would rather be told than kept waiting; a run nobody
+    /// watches can ask for more, as can a limit shared by several sessions. The waits double from
+    /// two seconds and stop growing at a minute, so ten tries take about five minutes. A server
+    /// asking to be left longer than a minute is not waited for, however many tries remain, since
+    /// that is a quota spent rather than a server busy.
     ///
-    /// note: defaults to doing nothing, for a dialect that does not send a request again.
+    /// note: does nothing by default, for a dialect that never sends a request again.
     fn set_tries(&self, tries: usize) {
         let _ = tries;
     }
@@ -142,12 +138,10 @@ pub trait Dialect: Endpoint + Provider {
 
     /// The projection this dialect can carry.
     ///
-    /// note: it is here beside `to_wire`, which must honour it, because the two drift apart when
-    /// decided in different places. The budget is counted over the messages the projector produced,
-    /// so it is the size of the request rather than the context. A projector that hands over
-    /// something the wire format then drops does not merely waste effort. It charges the person for
-    /// bytes that never leave the process, and keeps doing so while those messages are in the
-    /// context.
+    /// note: here beside `to_wire`, which must honour it, because decided in two places they drift.
+    /// The budget is counted over the projector's messages, so a projector handing over something
+    /// the wire format then drops charges the person for bytes that never leave the process, for as
+    /// long as those messages are in the context.
     fn projection(&self) -> LinearProjector {
         LinearProjector {
             // note: `to_wire` does not put an assistant turn's thinking on the wire, and cannot:

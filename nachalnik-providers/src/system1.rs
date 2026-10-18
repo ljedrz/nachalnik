@@ -1,34 +1,33 @@
 //! System One models: typed questions put to a state, answered with numbers. [`Client`] speaks to
 //! any of them.
 //!
-//! note: the one thing in this crate that is not a [`Dialect`](crate::Dialect). It generates no
-//! text, calls no tools and streams nothing, so there is no turn for it to drive and no
-//! [`nachalnik::Provider`] for it to implement - a kernel never sees any of this. What it answers
-//! is the question a program asks *around* a conversation: whether to run that command, which of
-//! four branches this is, how bad the thing it just read is.
+//! note: the one thing in this crate that is not a [`Dialect`](crate::Dialect): it generates no
+//! text, calls no tools and streams nothing, so there is no turn to drive and no
+//! [`nachalnik::Provider`] to implement, and a kernel never sees any of this. It answers the
+//! questions a program asks around a conversation: whether to run that command, which of four
+//! branches this is, how bad the thing it just read is.
 //!
-//! note: named for the kind of model rather than for any company selling one, and favouring none
-//! of them. OpenRouter serves a family of these under one API - TypeSafe's, Liquid's, Inception's,
-//! Upstage's and more, listed at `/models?output_modalities=decisions` - so a client takes a model
-//! identifier from that listing and has no default of its own. A provider that sells one and is not
-//! on OpenRouter's list is reached through OpenRouter's bring-your-own-key, rather than by a path
-//! of its own in here.
+//! note: named for the kind of model, not for any company selling one. OpenRouter serves a family
+//! of them under one API (TypeSafe's, Liquid's, Inception's, Upstage's and more, listed at
+//! `/models?output_modalities=decisions`), so a client takes a model identifier from that listing
+//! and has no default. A provider not on that list is reached through OpenRouter's
+//! bring-your-own-key, not by a path of its own here.
 //!
-//! note: one route, `/systemone` under the base URL, and the request body is the same wherever it
-//! goes. That is OpenRouter's path under its ordinary `/api/v1`, so a session and its advisor can
-//! share an address and a key; it is also the path a self-hosted engine keeps - `laya-serve`
-//! answers there - which is what [`crate::Endpoint::set_endpoint`] is for. [`SystemOne`] is the
-//! seam a caller holds as `dyn`, so that what it asks with is decided in one place and a test can
-//! answer in its place.
+//! note: one route, `/systemone` under the base URL, with the same request body wherever it goes.
+//! That is OpenRouter's path under its ordinary `/api/v1`, so a session and its advisor can share
+//! an address and a key, and it is also the path a self-hosted engine keeps (`laya-serve` answers
+//! there), which is what [`crate::Endpoint::set_endpoint`] is for. [`SystemOne`] is the seam a
+//! caller holds as `dyn`, so what it asks with is decided in one place and a test can answer in its
+//! place.
 //!
-//! note: one exception to the one route, Cloudflare's Workers AI, which this client knows by its
-//! address - see [Engines](#engines). And one request shape and one answer shape is all the engines
-//! agree on: what is in an answer is each engine's own, passed through rather than reconciled -
+//! note: the one exception to the route is Cloudflare's Workers AI, which this client knows by its
+//! address; see [Engines](#engines). Beyond one request shape and one answer shape the engines do
+//! not agree, and what is in an answer is each engine's own, passed through rather than reconciled;
 //! see [Where engines differ](#where-engines-differ).
 //!
-//! note: three question types and they are asked together in one request. Each is evaluated on
-//! its own against the same state, which is the reason to ask them that way rather than in one
-//! bundled sentence: the answers do not interfere, and the round trip is paid for once.
+//! note: three question types, asked together in one request. Each is evaluated on its own against
+//! the same state, so the answers do not interfere and the round trip is paid once, which is why
+//! they are not bundled into one sentence.
 //!
 //! ```no_run
 //! # use nachalnik_providers::system1::{Client, DEFAULT_BASE_URL, Question};
@@ -54,14 +53,14 @@
 //!
 //! # Engines
 //!
-//! Every engine below takes the same body and answers in the same shape. Where they part company
-//! is the address, the key and how they are run; what they answer is the next section's business.
+//! Every engine below takes the same body and answers in the same shape; they differ in address,
+//! key and how they are run. What they answer is the next section's business.
 //!
 //! **OpenRouter**, [`DEFAULT_BASE_URL`], with an OpenRouter key. The models are those its listing
 //! names for `output_modalities=decisions`, which is what [`Client::probe`] asks for.
 //!
-//! **laya**, on the machine. [`laya`](https://github.com/NandhaKishorM/laya)'s `laya-serve`
-//! answers `/v1/systemone`, with no key:
+//! **laya**, on the machine. [`laya`](https://github.com/NandhaKishorM/laya)'s `laya-serve` answers
+//! `/v1/systemone`, with no key:
 //!
 //! ```text
 //! pip install "laya[serve]" && laya-serve      # base URL http://127.0.0.1:8000/v1
@@ -70,8 +69,8 @@
 //! What it answers has not been checked against a running server from here.
 //!
 //! **Clef-Flash on llama.cpp**, on the machine. `llama-server` serving
-//! [Clef-Flash](https://huggingface.co/Cloudflare/clef-flash)'s GGUF answers `/v1/systemone`, with no
-//! key, and lists the model under the name to ask for at `/v1/models`:
+//! [Clef-Flash](https://huggingface.co/Cloudflare/clef-flash)'s GGUF answers `/v1/systemone`, with
+//! no key, and lists the model under the name to ask for at `/v1/models`:
 //!
 //! ```text
 //! llama-server -hf ggml-org/Clef-Flash-GGUF -b 4096 -ub 4096   # base URL http://127.0.0.1:8080/v1
@@ -91,20 +90,20 @@
 //! model     @cf/cloudflare/clef        (or @cf/cloudflare/clef-flash)
 //! ```
 //!
-//! The model's whole URL off its page works as the base URL too, with the model named `clef`. An
-//! address on [`is_workers_ai`] is posted to under the model's name rather than at `/systemone`, the
-//! body carries the short name the schema there takes (`clef`, not `@cf/cloudflare/clef`), and the
-//! answer and the refusals are read out of the `result` and `errors` its REST API wraps everything
-//! in. No listing is asked for, since there is none at that address. Three things it offers are not
-//! used: an address through Cloudflare's AI Gateway is not recognised, and is asked at `/systemone`
-//! and refused; Clef's `images`, which this client has no way to send; and the listing elsewhere on
-//! the account. None of this has met a live account: the shapes are the ones Cloudflare's schema
-//! and Clef's reference implementation publish, pinned by tests that answer in them over a socket.
+//! The model's whole URL from its page also works as the base URL, with the model named `clef`. An
+//! address on [`is_workers_ai`] is posted to under the model's name rather than at `/systemone`,
+//! the body carries the short name its schema takes (`clef`, not `@cf/cloudflare/clef`), and
+//! answers and refusals are read out of the `result` and `errors` its REST API wraps everything in.
+//! No listing is asked for, since there is none at that address. Not used: an address through
+//! Cloudflare's AI Gateway, which is not recognised and so is asked at `/systemone` and refused;
+//! Clef's `images`, which this client cannot send; and the listing elsewhere on the account. None
+//! of this has met a live account: the shapes are those Cloudflare's schema and Clef's reference
+//! implementation publish, pinned by tests that answer in them over a socket.
 //!
 //! # Where engines differ
 //!
-//! What has been seen to differ, so that an answer that surprises a caller can be put down to the
-//! engine before it is put down to the state. None of it is corrected here.
+//! What has been seen to differ, so that a surprising answer can be put down to the engine before
+//! the state. None of it is corrected here.
 //!
 //! **Whether it answers at all.** Some take only part of the API - one on OpenRouter's list answers
 //! plain `noul` questions about a conversation and refuses a `score` - and a refusal comes back as
@@ -112,13 +111,13 @@
 //!
 //! **What `confidence` means.** Each engine reports its own figure, and three have been seen: the
 //! likeliest option's or level's probability (Clef's reference implementation); how near a `score`
-//! is to a whole level, `1 - |score - round(score)|` (llama.cpp, and a recorded Jev answer); and, for
-//! a `choice`, the top probability rescaled so that an even split is `0` (llama.cpp). They give
+//! is to a whole level, `1 - |score - round(score)|` (llama.cpp, and a recorded Jev answer); and,
+//! for a `choice`, the top probability rescaled so that an even split is `0` (llama.cpp). They give
 //! different figures for one distribution, and the second calls a split even between the bottom and
 //! top levels a certain middle. What they share is a bound: for a `score` below the middle, each is
 //! at most the bottom level's probability, so a caller that requires confidence before reading a
-//! score as the bottom level gets no more of them under one than another. An engine whose figure ran
-//! above that bound would break it, and none has been checked for that except those named here.
+//! score as the bottom level gets no more of them under one than another. An engine whose figure
+//! ran above that bound would break it, and none has been checked for that except those named here.
 //!
 //! **Where a state lands.** The same state and question can come back a level apart from two
 //! engines, and one engine has read every part of a question carrying a fragment of a state as the
@@ -126,13 +125,13 @@
 //!
 //! **What it will take.** A rubric of one level is refused by some (Clef's schema asks for two to
 //! ten) and answered by others with `score: 0.0, confidence: 1.0`. A request larger than an engine
-//! reads at once is refused by some - llama.cpp at its batch size - and cut short by others: Workers
-//! AI truncates a long state, and Clef's reference implementation does it by keeping the beginning.
-//! An engine serving one model answers whatever model is named, and [`Answers::model`] says which
-//! answered; OpenRouter refuses a name it does not serve.
+//! reads at once is refused by some - llama.cpp at its batch size - and cut short by others:
+//! Workers AI truncates a long state, and Clef's reference implementation does it by keeping the
+//! beginning. An engine serving one model answers whatever model is named, and [`Answers::model`]
+//! says which answered; OpenRouter refuses a name it does not serve.
 //!
-//! **How to see what one does.** The crate's live `tests/system1.rs` checks an engine answers in the
-//! shapes this client reads: `NACHALNIK_SYSTEM1_MODEL` names the model, and
+//! **How to see what one does.** The crate's live `tests/system1.rs` checks an engine answers in
+//! the shapes this client reads: `NACHALNIK_SYSTEM1_MODEL` names the model, and
 //! `NACHALNIK_SYSTEM1_BASE_URL` an engine of one's own, which needs no `OPENROUTER_API_KEY`.
 
 use std::{
@@ -157,9 +156,9 @@ const ROUTE: &str = "systemone";
 /// Whether an address is Cloudflare's Workers AI REST API, which serves System One models under
 /// their own names rather than at `/systemone`. Takes a whole URL.
 ///
-/// note: on the authority and the start of the path, for the reason [`crate::is_openrouter`] is on
-/// the authority: `api.cloudflare.com` serves a great deal that is not Workers AI, and only an
-/// address under an account's `/ai/run` is one a question can be posted to.
+/// note: by the authority and the start of the path, as [`crate::is_openrouter`] is by the
+/// authority: `api.cloudflare.com` serves much that is not Workers AI, and only an address under an
+/// account's `/ai/run` takes a question.
 pub fn is_workers_ai(address: &str) -> bool {
     let rest = address.split_once("://").map_or(address, |(_, rest)| rest);
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
@@ -210,16 +209,15 @@ const PATIENCE: Duration = Duration::from_secs(30);
 
 /// One typed question to put to a state.
 ///
-/// note: the model answers three, and they are not interchangeable. [`Question::Noul`] is a claim
-/// more or less true; [`Question::Choice`] is one of a closed set; [`Question::Score`] is a
-/// position on an ordered rubric. Choose by the shape of the answer a program needs. The
-/// documentation advises several small questions rather than one that needs reasoning to unpack.
+/// note: the three are not interchangeable: [`Question::Noul`] is a claim more or less true,
+/// [`Question::Choice`] one of a closed set, [`Question::Score`] a position on an ordered rubric.
+/// Choose by the shape of answer the program needs; the documentation advises several small
+/// questions over one that needs reasoning to unpack.
 ///
-/// note: `#[non_exhaustive]`, with [`Answer`] beside it. Three is what the engines answer today,
-/// not a limit; a fourth primitive is upstream's to add. The attribute costs an exhaustive match,
-/// and nothing outside this crate needs one. Callers build through [`Question::noul`],
-/// [`Question::choice`] and [`Question::score`], and read answers through the accessors on
-/// [`Answers`], which return `None` for a variant not asked about.
+/// note: `#[non_exhaustive]`, like [`Answer`]: three is what the engines answer today, and a fourth
+/// is upstream's to add. It costs only an exhaustive match, which nothing outside this crate needs.
+/// Callers build with [`Question::noul`], [`Question::choice`] and [`Question::score`], and read
+/// through the accessors on [`Answers`], which return `None` for a variant not asked about.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Question {
@@ -238,10 +236,9 @@ pub enum Question {
         instructions: Value,
         /// The options, each optionally described.
         ///
-        /// note: a list of pairs rather than a map, so that the question keeps the options in the
-        /// order they were written. The payload is a JSON object either way, whose keys go out
-        /// sorted unless something in the build turns on `serde_json`'s `preserve_order`, and the
-        /// model is not promised an order.
+        /// note: pairs rather than a map, so the question keeps the options in the order written.
+        /// The payload is a JSON object either way, with keys sorted unless something in the build
+        /// turns on `serde_json`'s `preserve_order`, so the model is not promised an order.
         options: Vec<(String, Option<String>)>,
     },
     /// An ordered rubric, answered with a position on it that may fall between two levels.
@@ -403,12 +400,13 @@ impl Question {
 
 /// What came back for one question.
 ///
-/// note: the variant is read from the answer's own `type`, not assumed from what was asked, and
-/// [`Answers`] accessors return `None` for a mismatch instead of a default. A `choice` answered as
-/// a `noul` is a change at the other end; reading `0.0` from it would act on a number nobody sent.
+/// note: the variant is read from the answer's own `type`, not assumed from the question, and
+/// [`Answers`]' accessors return `None` for a mismatch rather than a default: a `choice` answered
+/// as a `noul` is a change at the other end, and reading `0.0` from it would act on a number nobody
+/// sent.
 ///
-/// note: `#[non_exhaustive]` for the same reason as [`Question`]: an answer shape arrives because a
-/// question shape did.
+/// note: `#[non_exhaustive]` for the same reason as [`Question`]: a new answer shape arrives with a
+/// new question shape.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Answer {
@@ -498,11 +496,11 @@ impl Answer {
 
     /// How sure the model is, where the question was one that reports it.
     ///
-    /// note: a [`Answer::Noul`] has none, and does not need one: the number *is* the confidence.
+    /// note: a [`Answer::Noul`] has none and needs none: the number is the confidence.
     ///
-    /// note: `None` for an answer that did not say, too. It is held as `NaN`, and handed out as
-    /// one it was a figure between 0 and 1 by type and none by value: a caller reading "no
-    /// confidence" as `None` got a rating it would print as "NaN% sure".
+    /// note: also `None` for an answer that did not say. It is held as `NaN`, and handed out as
+    /// `NaN` it was a figure between 0 and 1 by type but none by value, which a caller would print
+    /// as "NaN% sure".
     pub fn confidence(&self) -> Option<f64> {
         match self {
             Self::Noul { .. } => None,
@@ -515,9 +513,9 @@ impl Answer {
 
 /// Everything one request came back with.
 ///
-/// note: `#[non_exhaustive]` because nothing outside this crate builds one. [`Answers::read`] is
-/// where they come from, so the attribute costs callers nothing and lets a later field be added
-/// without a breaking change; what a response carries is the other end's to widen.
+/// note: `#[non_exhaustive]` because only [`Answers::read`] builds one, so the attribute costs
+/// callers nothing and a later field is not a break; what a response carries is the other end's to
+/// widen.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Answers {
@@ -538,17 +536,16 @@ pub struct Answers {
 impl Answers {
     /// Reads a whole response back in the shape the documented API answers in.
     ///
-    /// note: answers are read by the name they were asked under; a name that did not come back is
-    /// absent, not an error. One missing question does not discard the others; accessors answer
-    /// `None` for a question nobody answered.
+    /// note: answers are read by the name they were asked under, and a name that did not come back
+    /// is absent, not an error, so one missing answer discards no others.
     ///
-    /// note: public, and the one reader. A caller standing in for an engine answers through it; a
-    /// second reader would be a second opinion about what `confidence` means.
+    /// note: public, and the only reader: a caller standing in for an engine answers through it,
+    /// and a second reader would be a second opinion about what `confidence` means.
     ///
-    /// note: an answer inside `result` is read out of it, the envelope Workers AI's REST API wraps
-    /// every response in. Only where the top level carries no `answers` of its own, so an engine
-    /// answering plainly is read as before; [`Answers::raw`] keeps the wrapper, since it is the
-    /// response as it arrived.
+    /// note: an answer inside `result`, the envelope Workers AI's REST API wraps every response in,
+    /// is read out of it, but only where the top level has no `answers` of its own, so a plain
+    /// answer reads as before. [`Answers::raw`] keeps the wrapper, being the response as it
+    /// arrived.
     pub fn read(raw: Value) -> Self {
         let body = match raw.get("answers").is_none() && raw["result"].is_object() {
             true => &raw["result"],
@@ -607,20 +604,17 @@ impl Answers {
 
 /// Anything that answers typed questions put to a state.
 ///
-/// note: [`SystemOne::ask`] is all a caller of this module does. [`Client`] is the implementation,
-/// and every engine is reached through it; the trait is what a caller holds, so code downstream of
-/// where an advisor is built finds out nothing about it, and a test can stand in for the engine
-/// without a socket.
+/// note: [`SystemOne::ask`] is all a caller does. [`Client`] implements it for every engine; the
+/// trait is what a caller holds, so code downstream of where an advisor is built knows nothing
+/// about it, and a test can stand in for the engine without a socket.
 ///
 /// note: concrete argument types where [`Client::ask`] takes `impl Into<Value>` and an iterator,
-/// because a trait with generic methods cannot be held as `dyn`, and a caller must hold one: what
-/// decides which engine answers is an environment variable read at startup, and every caller
-/// downstream is written against this and finds out nothing.
+/// because a trait with generic methods cannot be held as `dyn`, and a caller must hold one: the
+/// engine is chosen by an environment variable at startup.
 ///
-/// note: it does not extend [`Endpoint`]. Most of that trait is about an address and a listing, and
-/// a stand-in has neither; implementing it would mean answering those with nothing in order to be
-/// asked one question. [`SystemOne::notice`] is the one thing from `Endpoint` worth having here,
-/// because a caller that has quietly stopped getting answers should be able to see why.
+/// note: it does not extend [`Endpoint`], which is mostly about an address and a listing that a
+/// stand-in does not have. [`SystemOne::notice`] is the one part worth having, so a caller that has
+/// stopped getting answers can see why.
 #[async_trait]
 pub trait SystemOne: Send + Sync {
     /// Puts the questions to the state, and answers all of them in one request.
@@ -703,10 +697,10 @@ impl Client {
 
     /// Says which app these questions are asked on behalf of.
     ///
-    /// note: the same [`Attribution`] a program hands its conversation's provider, so a session
-    /// asking OpenRouter for advice is one app to it rather than an attributed conversation beside
-    /// anonymous advice on the same account. Sent only where the address is OpenRouter's, which is
-    /// the test the provider uses; an engine of one's own keeps no ranking of the apps calling it.
+    /// note: the same [`Attribution`] a program gives its conversation's provider, so a session
+    /// asking OpenRouter for advice is one app to it, not an attributed conversation beside
+    /// anonymous advice on the same account. Sent only where the address is OpenRouter's, the same
+    /// test the provider uses; an engine of one's own keeps no ranking of apps.
     #[must_use]
     pub fn attributed_to(mut self, app: Attribution) -> Self {
         self.app = app;
@@ -720,15 +714,14 @@ impl Client {
 
     /// The address one question is posted to.
     ///
-    /// note: separate from [`Client::send`] so the path can be checked without a socket. When it is
-    /// wrong the failure is a 404 from a service that does serve the model, which reads as an
-    /// outage.
+    /// note: separate from [`Client::send`] so the path can be checked without a socket; a wrong
+    /// path fails as a 404 from a service that does serve the model, which reads as an outage.
     ///
-    /// note: on [`is_workers_ai`], the model is the route. Two ways of giving the address are
-    /// taken, because both are what somebody copies: the account's `.../ai/run` with the model
-    /// named `@cf/cloudflare/clef`, and the model's whole URL off its page, which already ends in
-    /// the name. A base that stops short of both - `.../ai/run` with the model named `clef` - is
-    /// not guessed at, because it would need this to know which vendor's `@cf/` prefix to add.
+    /// note: on [`is_workers_ai`], the model is the route. Two forms are taken, because both are
+    /// what somebody copies: the account's `.../ai/run` with the model named `@cf/cloudflare/clef`,
+    /// and the model's whole URL from its page, which already ends in the name. A base short of
+    /// both (`.../ai/run` with the model named `clef`) is not guessed at, since that would need to
+    /// know which vendor's `@cf/` prefix to add.
     fn url(&self) -> String {
         let base = self.endpoint();
         if !is_workers_ai(&base) {
@@ -762,9 +755,9 @@ impl Client {
 
     /// The payload [`Client::ask`] would send for these questions.
     ///
-    /// note: `ask` renders through this rather than building a second one, for the reason
-    /// [`nachalnik::Provider::render`] gives. Two code paths that are supposed to agree eventually
-    /// do not, and a preview that has quietly stopped matching is worse than none.
+    /// note: `ask` renders through this rather than building its own payload, for the reason
+    /// [`nachalnik::Provider::render`] gives: two paths meant to agree drift apart, and a preview
+    /// that has stopped matching is worse than none.
     pub fn render(&self, state: &Value, questions: &[(String, Question)]) -> Value {
         let model = self.model();
         let named = match is_workers_ai(&self.endpoint()) {
@@ -893,13 +886,13 @@ impl Client {
 
     /// Asks the endpoint what it serves, and says so on the notice if the model is not on the list.
     ///
-    /// note: the same courtesy as the Gemini dialect, for the same reason: a missing name returns
-    /// 400 on the next request, a worse place to find out. An endpoint with no listing says nothing
-    /// rather than claiming every model is missing.
+    /// note: the same courtesy as the Gemini dialect, for the same reason: a missing name otherwise
+    /// surfaces as a 400 on the next request. An endpoint with no listing says nothing rather than
+    /// claiming every model is missing.
     ///
-    /// note: there is nothing else for a probe to ask. Sibling dialects use a probe for the context
-    /// limit. This model has no window to measure a conversation against: a request is one state
-    /// and a handful of questions, and the endpoint prices it afterwards.
+    /// note: a probe has nothing else to ask. Sibling dialects probe for the context limit, but
+    /// this model has no window to measure: a request is one state and a few questions, priced
+    /// afterwards.
     pub async fn probe(&self) {
         self.say_if_the_model_is_not_there().await;
     }
@@ -926,16 +919,15 @@ impl Client {
 
 /// What a refused request said about itself, in whichever envelope it arrived in.
 ///
-/// note: three, because the engines do not agree on one. OpenRouter's is `error`, carrying a
-/// `code`. The TypeSafe SDKs' is `detail`, carrying `error_type` beside the sentence:
-/// `authentication_error` for a key, `api_usage_error` for a missing model. Cloudflare's is a list,
-/// `errors`, each with a numeric `code`, beside `success` set to `false`; the first is read, and an
-/// empty list, which every successful response there carries, is no refusal. All three are read
-/// here because the call site does not know which one answered.
+/// note: three envelopes, because the engines do not agree. OpenRouter's is `error`, carrying a
+/// `code`; the TypeSafe SDKs' is `detail`, with `error_type` beside the sentence
+/// (`authentication_error` for a key, `api_usage_error` for a missing model); Cloudflare's is a
+/// list, `errors`, each with a numeric `code`, beside `success: false`. The first entry is read,
+/// and an empty list, which every success there carries, is no refusal. All three are read because
+/// the call site does not know which engine answered.
 ///
-/// note: the label is kept wherever there is one and is not reworded. A `code` is a number at one
-/// service and a string at the other, so both are read. A label is never invented where the
-/// envelope carried none.
+/// note: a label is kept where there is one and not reworded; a `code` is a number at one service
+/// and a string at another, so both are read. No label is invented where the envelope had none.
 fn complaint(parsed: &Value) -> Option<String> {
     let envelope = match (parsed.get("detail"), parsed["errors"].get(0)) {
         (Some(detail), _) => detail,
@@ -1001,16 +993,14 @@ impl Endpoint for Client {
     /// What the endpoint serves: the System One models on OpenRouter's list, or whatever a
     /// self-hosted engine lists.
     ///
-    /// note: two shapes, because the two kinds of address publish different ones. OpenRouter's is
-    /// its usual `data[].id`, asked for the decision models alone; one written against the
-    /// TypeSafe SDKs answers `models[].name`. An address that answers neither says nothing, which
-    /// `say_if_the_model_is_not_there` reads as nothing having been said rather than as every
-    /// model missing.
+    /// note: two shapes, because the two kinds of address publish different ones: OpenRouter's
+    /// usual `data[].id`, asked for the decision models alone, and `models[].name` from one written
+    /// against the TypeSafe SDKs. An address answering neither says nothing, which
+    /// `say_if_the_model_is_not_there` reads as nothing said rather than every model missing.
     ///
-    /// note: nothing is asked of Workers AI, which has no listing under the address a question
-    /// goes to - its search is elsewhere on the account, paged, and lists every task's models -
-    /// so the answer there is the same nothing an address with no listing gives, without the
-    /// request that would have found that out.
+    /// note: nothing is asked of Workers AI, which has no listing under the address a question goes
+    /// to (its search is elsewhere on the account, paged, across every task's models), so the
+    /// answer is the same nothing as an address with no listing, without the request.
     async fn models(&self) -> Vec<String> {
         let base = self.endpoint();
         if is_workers_ai(&base) {
@@ -1479,12 +1469,11 @@ mod tests {
     /// A busy server is asked as often as a dialect would ask it, and no more; the wait doubles
     /// between attempts, and the caller is told about the last wait once.
     ///
-    /// note: `RETRIES` counts the first send. The test waits out the real backoff, so it takes a
+    /// note: `RETRIES` counts the first send; the test waits out the real backoff, so it takes a
     /// few seconds.
     ///
-    /// note: The notice is read through `SystemOne`, which is where a caller holding the engine
-    /// reads it, and read twice, because a notice that is not taken is a status line that never
-    /// clears.
+    /// note: the notice is read through `SystemOne`, where a caller holding the engine reads it,
+    /// and read twice, because a notice that is never taken is a status line that never clears.
     #[tokio::test]
     async fn a_busy_server_is_asked_as_often_as_a_dialect_would_ask_it() {
         let at = answering(

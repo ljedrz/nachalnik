@@ -1,11 +1,10 @@
 //! What comes back from a request: a stream read an event at a time, and the server's own account
 //! of why it would not answer.
 //!
-//! note: shared by both dialects, like [`waiting`](crate::waiting). What an event says differs
-//! between them, and each dialect answers that through [`Events`]. Reading events off a socket is
-//! the same problem in both: a chunk can split a character, a last line can have no newline, a body
-//! may never have been a stream, and a stream can stop or go quiet. Solving it twice would fix one
-//! copy at a time.
+//! note: shared by both dialects, like [`waiting`](crate::waiting). What an event says differs, and
+//! each dialect answers that through [`Events`]; reading events off a socket is the same problem in
+//! both (a chunk can split a character, a last line can lack a newline, a body may never have been
+//! a stream, a stream can stop or go quiet), and solved twice it would be fixed one copy at a time.
 
 use nachalnik::{BoxError, DeltaSink};
 use serde_json::Value;
@@ -124,10 +123,9 @@ impl std::error::Error for BrokeOff {}
 
 /// Reads a stream to its end, handing each event to `events` as it arrives.
 ///
-/// note: the server, an interrupt, or the stall watch stops the read. Once anything has arrived,
-/// all three are answers rather than failures, so the result is what had arrived, not an error. A
-/// turn cut off mid-answer has been generated and billed for; throwing it away is worse than
-/// reporting it short.
+/// note: the server, an interrupt or the stall watch stops the read, and once anything has arrived
+/// all three are answers, not failures: the result is what arrived. A turn cut off mid-answer was
+/// generated and billed for, and reporting it short beats throwing it away.
 pub(crate) async fn read(
     response: &mut reqwest::Response,
     asking: &Asking<'_>,
@@ -317,16 +315,16 @@ pub(crate) async fn read(
                 // comments are not JSON, and are skipped with everything else that is not
                 None => continue,
             };
-            // an upstream failure - a rate limit, a dead provider - reported as an event rather
-            // than as a status, sometimes after the answer has started
+            // an upstream failure, such as a rate limit or a dead provider, reported as an event
+            // rather than a status, sometimes after the answer has started
             //
-            // note: only the first event is a refusal to wait out. After one, something has been
-            // handed on, and a second attempt would say it again - so what arrived is kept, as
-            // for a stream broken off, and the failure is said rather than made the turn's end
+            // note: only the first event is a refusal to wait out. After that something has been
+            // handed on and a second attempt would repeat it, so what arrived is kept, as for a
+            // stream broken off, and the failure is reported rather than ending the turn
             //
-            // note: and "first" is first to carry anything. The Responses API opens every stream
-            // with two events that only say a response exists, and a rate limit it meets after
-            // them has still handed nothing on
+            // note: and "first" means first to carry anything: the Responses API opens every stream
+            // with two events that only say a response exists, and a rate limit met after them has
+            // still handed nothing on
             if let Some(error) = error_in(&event) {
                 if seen.is_empty() || !events.started() {
                     return Ok(Read::Refused {
@@ -409,11 +407,10 @@ pub(crate) async fn read(
 
 /// Whether a `data:` event payload is the dialect's end-of-stream marker.
 ///
-/// note: strip the newline the format joins `data:` lines with, so a joined event and a single line
-/// both match. The marker is an event by every account the format gives. Matched on a line of its
-/// own, it went unrecognised when a proxy re-wrapped it over two: the answer had already arrived,
-/// and not recognising the end of the stream spends the stall bound and then throws the answer
-/// away.
+/// note: the newline the format joins `data:` lines with is stripped, so a joined event and a
+/// single line both match, the marker being an event by every account of the format. Matched on a
+/// line of its own, it went unrecognised when a proxy re-wrapped it over two, and the answer that
+/// had already arrived waited out the stall bound and was thrown away.
 fn done(payload: Option<&str>) -> bool {
     payload.is_some_and(|payload| payload.trim().replace('\n', "") == DONE)
 }
@@ -423,14 +420,13 @@ const DONE: &str = "[DONE]";
 
 /// The error for a body the endpoint sent compressed and this client cannot read.
 ///
-/// note: the bytes of one are not the words of it, and quoted as prose they are a third of a
-/// header, with a replacement character wherever a byte was not UTF-8. The encoding is named
-/// because it is the diagnosis a reader needs: "the endpoint sent an answer this client cannot
-/// read" and "the endpoint sent nonsense" are different faults, and only one of them is this.
+/// note: the bytes of one are not words: quoted as prose they are a third of a header with a
+/// replacement character wherever a byte was not UTF-8. Naming the encoding is the diagnosis a
+/// reader needs, since "an answer this client cannot read" and "nonsense" are different faults.
 ///
-/// note: rather than the other half of the fix, which is a client that decodes. That is a
-/// dependency the manifest rations on purpose, and this client asks for nothing it has not been
-/// given - so what arrives against that ask is refused rather than quoted.
+/// note: rather than a client that decodes, which needs a dependency the manifest rations on
+/// purpose. This client asks for no encoding, so what arrives against that is refused rather than
+/// quoted.
 pub(crate) fn compressed(model: &str, headers: &reqwest::header::HeaderMap) -> Option<BoxError> {
     let encoding = headers
         .get(reqwest::header::CONTENT_ENCODING)?
@@ -476,10 +472,10 @@ pub(crate) fn failure(error: &Value) -> String {
 
 /// What to say about a request the server refused: its own sentence, not its envelope.
 ///
-/// note: a spent quota comes back as a JSON envelope - the message, the remedy, the rate-limit
-/// headers, and the account's `user_id` - and all of it would go into the transcript and the
-/// session log, a file people send each other. A reader needs the sentence; nobody needs their
-/// account identifier written into it.
+/// note: a spent quota comes back as a JSON envelope (the message, the remedy, the rate-limit
+/// headers and the account's `user_id`), all of which would go into the transcript and the session
+/// log, a file people send each other. A reader needs the sentence, and nobody needs their account
+/// identifier in it.
 pub(crate) fn complaint(status: reqwest::StatusCode, body: &str) -> String {
     match serde_json::from_str::<Value>(body)
         .ok()
@@ -644,9 +640,8 @@ mod tests {
 
     /// A body this client cannot read is named by its encoding rather than quoted.
     ///
-    /// note: the bytes of a compressed body are not words. Quoted as prose they are a third of a
-    /// header with a replacement character wherever a byte was not UTF-8, and that went into the
-    /// session log, a file people send each other. A reader could not tell an endpoint that
+    /// note: quoted as prose, a compressed body was a third of a header with replacement
+    /// characters, written into the session log, and a reader could not tell an endpoint that
     /// compressed its answer from one that sent nonsense.
     #[test]
     fn a_body_this_client_cannot_read_says_which_encoding_arrived() {
