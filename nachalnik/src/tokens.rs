@@ -36,10 +36,9 @@ fn uncounted_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) ->
 
 /// Turns content into a token count.
 ///
-/// note: The kernel never claims to know a provider's tokenizer. Every token figure it reports
-/// comes from this trait, and the default implementation is an admitted estimate; swap in a
-/// real tokenizer with [`Kernel::set_counter`](crate::Kernel::set_counter) when the numbers
-/// need to be exact.
+/// note: every token figure the kernel reports comes from this trait, and the default is an
+/// admitted estimate: the kernel never claims to know a provider's tokenizer. Install a real one
+/// with [`Kernel::set_counter`](crate::Kernel::set_counter) when the numbers must be exact.
 ///
 /// note: the counting methods are called with the context locked - counting an item is part of
 /// adding it - so they must not call back into the [`Kernel`] the counter is installed in.
@@ -49,9 +48,8 @@ pub trait TokenCounter: Send + Sync {
 
     /// The counter's name, for a client that wants to say which one is installed.
     ///
-    /// note: the default is the implementing type's own path, which costs an implementor nothing.
-    /// Override it to say something friendlier. Use it to show a person, not to match on:
-    /// `type_name` makes no stability promise.
+    /// note: the default is the implementing type's path; override it to say something friendlier.
+    /// It is for showing a person, not for matching on: `type_name` makes no stability promise.
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
@@ -66,9 +64,8 @@ pub trait TokenCounter: Send + Sync {
 
     /// Returns the number of tokens a whole context item is expected to occupy.
     ///
-    /// note: the default counts the content, plus the tool calls and reasoning an assistant turn
-    /// carries. An assistant turn with empty text still costs the tokens of the tool call it
-    /// requests, so a report of `0` would be wrong.
+    /// note: the default counts the content plus an assistant turn's tool calls and reasoning,
+    /// since a turn with empty text still costs the calls it makes.
     fn count_item(&self, item: &ContextItem) -> usize {
         let mut tokens = self.count(&item.content);
 
@@ -94,10 +91,9 @@ pub trait TokenCounter: Send + Sync {
 
     /// Returns the number of tokens a projected message is expected to occupy.
     ///
-    /// note: this is the counterpart of [`TokenCounter::count_item`], and the budget is built from
-    /// it. An item and the message it becomes are not always the same size: a reference is labelled
-    /// on its way out, and an elided item goes as a marker. A request costs what was projected, not
-    /// what the context holds.
+    /// note: the counterpart of [`TokenCounter::count_item`], and the budget is built from it. An
+    /// item and its message can differ in size (a reference gains its label, an elided item goes as
+    /// a marker), and a request costs what was projected.
     fn count_message(&self, message: &Message) -> usize {
         let mut tokens = message.content.as_ref().map_or(0, |c| self.count(c));
 
@@ -117,19 +113,17 @@ pub trait TokenCounter: Send + Sync {
 
     /// Returns how many pieces of content inside `content` this counter would not count.
     ///
-    /// note: this is how a count says it did not measure something; a counter that returns `0` from
-    /// [`TokenCounter::count`] looks like one that measured content and found it free. An estimate
-    /// that is low by a known amount is a floor a client can act on; one that is low by an unknown
-    /// amount is not. The return value is passed to [`Budget::uncounted`](crate::Budget::uncounted)
-    /// and [`ContextItem::uncounted`](crate::ContextItem::uncounted), so a client can report that
-    /// the context is larger than the token count instead of showing the count alone.
+    /// note: this is how a count says it did not measure something: a `0` from
+    /// [`TokenCounter::count`] looks like content measured and found free. An estimate low by a
+    /// known amount is a floor a client can act on; one low by an unknown amount is not. The figure
+    /// feeds [`Budget::uncounted`](crate::Budget::uncounted) and
+    /// [`ContextItem::uncounted`](crate::ContextItem::uncounted), so a client can say the context
+    /// is larger than its token count.
     ///
-    /// note: it counts pieces rather than bytes or tokens, because a counter that could count the
-    /// bytes would not be reporting unknown content. One piece means there is content here and the
-    /// counter does not know its cost.
+    /// note: it counts pieces, not bytes or tokens, because a counter that could count those would
+    /// not be abstaining.
     ///
-    /// note: the default is `0`, meaning nothing is uncounted, which is correct for a real
-    /// tokenizer and is why this method is not required.
+    /// note: the default is `0`, which is right for a real tokenizer.
     fn uncounted(&self, content: &Content) -> usize {
         let _ = content;
 
@@ -160,9 +154,8 @@ pub trait TokenCounter: Send + Sync {
     /// Returns how many pieces of a projected message this counter would not count.
     ///
     /// note: the counterpart of [`TokenCounter::count_message`], and
-    /// [`Budget::uncounted`](crate::Budget::uncounted) is built from it. The budget counts tokens
-    /// over messages rather than items for the same reason: a request costs what was projected, and
-    /// an elided picture is a marker with no picture in it.
+    /// [`Budget::uncounted`](crate::Budget::uncounted) is built from it, over messages rather than
+    /// items for the same reason: an elided picture is a marker with no picture in it.
     fn uncounted_message(&self, message: &Message) -> usize {
         let content = message.content.as_ref().map_or(0, |c| self.uncounted(c));
         let reasoning = message.reasoning.as_ref().map_or(0, |r| self.uncounted(r));
@@ -172,30 +165,26 @@ pub trait TokenCounter: Send + Sync {
 
     /// Reports what a provider charged for a request this counter had estimated.
     ///
-    /// note: the kernel calls this after every response that carries [`Usage::input_tokens`] and
-    /// after every refusal that carries [`TooLong`](crate::TooLong), passing its own estimate for
-    /// the whole request, context and tool definitions, beside the provider's figure for the same
-    /// bytes. This is the only feedback the kernel gets: it does not have the model's tokenizer,
-    /// but it is told once per request how wrong its estimate was. A request containing anything
-    /// this counter could not price is not reported, because the two figures would not cover the
-    /// same bytes.
+    /// note: the kernel calls this after every response carrying [`Usage::input_tokens`] and every
+    /// refusal carrying [`TooLong`](crate::TooLong), with its own estimate for the whole request
+    /// (context and tool definitions) beside the provider's figure for the same bytes. It is the
+    /// kernel's only feedback on its estimates. A request containing anything this counter could
+    /// not price is not reported, because the two figures would not cover the same bytes.
     ///
-    /// note: the default does nothing, because deciding what to make of the feedback is not the
-    /// kernel's business. [`Calibrating`] acts on it.
+    /// note: the default does nothing; what to make of the feedback is not the kernel's business.
+    /// [`Calibrating`] acts on it.
     fn observe(&self, estimated: usize, reported: usize) {
         let _ = (estimated, reported);
     }
 
     /// Returns what this counter has learned from [`TokenCounter::observe`], if it learns at all.
     ///
-    /// note: this is the other half of `observe`. A [`Snapshot`](crate::Snapshot) that did not
-    /// carry the calibration would resume a long session with the counter back at `1.0`, so it
-    /// would re-learn over the next few requests what it had already been told. The calibration
-    /// carries only these four numbers: a counter whose learning does not fit them returns `None`
-    /// here and persists its own state, which leaves it no worse off.
+    /// note: the other half of `observe`. A [`Snapshot`](crate::Snapshot) without it would resume a
+    /// long session with the counter back at `1.0`, relearning what it had already been told. The
+    /// calibration holds only these four numbers; a counter whose learning does not fit them
+    /// returns `None` and persists its own state.
     ///
-    /// note: the default is `None`, which is correct for a counter that never changes its mind, and
-    /// is why this method is not required.
+    /// note: the default is `None`, which is right for a counter that never changes its mind.
     fn calibration(&self) -> Option<Calibration> {
         None
     }
@@ -216,16 +205,14 @@ pub trait TokenCounter: Send + Sync {
 
 /// A [`TokenCounter`] that divides the byte length of the content by a fixed number.
 ///
-/// note: This is an estimate, not a tokenizer. It is the default only because the alternative
-/// would be to embed a tokenizer (and thus a model-specific assumption) in the kernel.
+/// note: an estimate, not a tokenizer. It is the default because the alternative is a
+/// model-specific tokenizer in the kernel.
 ///
-/// note: It is usually a *low* estimate, and how low depends on what is being sent. Measured
-/// against a real API: about a third low on a short chat carrying four tool definitions, where
-/// the schemas and the per-message framing are most of the request, and a steady 7% low once the
-/// conversation is a few thousand tokens and the prose dominates. It cannot see framing, and it
-/// never sees the tokens a reasoning model spends thinking. Treat its figures as a floor, compare
-/// them against [`Budget::reported`](crate::Budget::reported), and put a real tokenizer in its
-/// place before making decisions that have to be right - or wrap it in [`Calibrating`].
+/// note: it is usually low: most on a short request, where tool schemas and per-message framing are
+/// most of it, least once the conversation's prose dominates. It cannot see framing or the tokens a
+/// reasoning model spends thinking. Treat its figures as a floor, compare them with
+/// [`Budget::reported`](crate::Budget::reported), and wrap it in [`Calibrating`] or replace it with
+/// a real tokenizer before decisions that must be right.
 #[derive(Debug, Clone, Copy)]
 pub struct BytesPerToken {
     /// The assumed average number of bytes per token; the count is rounded up.
@@ -239,28 +226,22 @@ impl Default for BytesPerToken {
 }
 
 impl TokenCounter for BytesPerToken {
-    /// note: every [`Blob`](crate::Blob) is subtracted before the division, so a picture counts
-    /// as nothing wherever it appears. That is wrong and it is the least wrong thing available
-    /// here. Its bytes are base64, and base64 over four is a number about an encoding rather
-    /// than about a model: one screenshot would arrive as a quarter of a million tokens and send
-    /// a compactor after a context that is nowhere near full. What an image really costs is a
-    /// formula over its *dimensions* that every vendor publishes and each publishes differently -
-    /// 85 plus 170 a tile, width times height over 750, 258 a tile - and none of them is
-    /// reachable from a byte length. [`Blob::meta`](crate::Blob::meta) is where the inputs to one
-    /// go, for a counter that has a formula to apply them to.
+    /// note: every [`Blob`](crate::Blob) is subtracted before the division, so a picture counts as
+    /// nothing wherever it appears. That is wrong, and the least wrong option here: base64 over
+    /// four describes an encoding, not a model, and would make one screenshot a quarter of a
+    /// million tokens and send a compactor after a context nowhere near full. What an image really
+    /// costs is a vendor-specific formula over its dimensions, which no byte length reaches;
+    /// [`Blob::meta`](crate::Blob::meta) carries the inputs for a counter that has one.
     ///
-    /// note: *wherever it appears* includes inside a [`Content::Blocks`] turn, the shape a
-    /// sentence-and-a-screenshot arrives in from both dialects. [`Content::byte_len`] sums the
-    /// blobs nested there, so matching on [`Content::Blob`] alone would count a picture as `0` on
-    /// its own and as its base64 over four in the turn a model was actually shown it in.
-    /// [`Content::blobs`] is the seam that reaches them, and it exists because a counter cannot
-    /// walk that nesting for itself.
+    /// note: wherever it appears includes inside a [`Content::Blocks`] turn, the shape a sentence
+    /// and a screenshot arrive in from both dialects. [`Content::byte_len`] sums the blobs nested
+    /// there, so [`Content::blobs`] is used to reach them; matching on [`Content::Blob`] alone
+    /// would count a nested picture as its base64 over four.
     ///
-    /// note: it under-reports rather than over-reports, and [`BytesPerToken::uncounted`] is what
-    /// stops it doing so silently. A context carrying pictures is larger than this says, by an
-    /// amount the budget states in pieces; a real tokenizer put in with
-    /// [`Kernel::set_counter`](crate::Kernel::set_counter) is the answer for anyone who needs the
-    /// number itself to be right.
+    /// note: it under-reports, and [`BytesPerToken::uncounted`] says so: the budget states in
+    /// pieces what it could not price. A real tokenizer installed with
+    /// [`Kernel::set_counter`](crate::Kernel::set_counter) is the answer when the number itself
+    /// must be right.
     fn count(&self, content: &Content) -> usize {
         let divisor = self.bytes_per_token.max(1);
         let blobs: usize = content.blobs().iter().map(|blob| blob.wire_len()).sum();
@@ -268,9 +249,8 @@ impl TokenCounter for BytesPerToken {
         content.byte_len().saturating_sub(blobs).div_ceil(divisor)
     }
 
-    /// note: one for every blob, at whatever depth. Blobs are all this counter declines to
-    /// measure - text and JSON it will always put a number on, however bad the number is - so the
-    /// figure a client reads is exactly "how many pictures are in here that nothing has priced".
+    /// note: one for every blob, at any depth. Blobs are all this counter declines to measure, so
+    /// the figure is exactly how many pictures nothing has priced.
     fn uncounted(&self, content: &Content) -> usize {
         content.blobs().len()
     }
@@ -310,12 +290,10 @@ impl Default for Calibration {
 
 /// A [`TokenCounter`] that corrects another one against what providers actually charge.
 ///
-/// The problem it solves is the one [`BytesPerToken`] admits to: an estimate made without the
-/// model's tokenizer is wrong by an amount nobody can know in advance, and the amount depends on
-/// the shape of what is being sent. The answer here is not to guess better but to *stop guessing
-/// after the first response*. The kernel knows what it estimated for a request and the provider
-/// says what the same bytes cost, so the ratio between them is a fact, and this counter
-/// multiplies by it from then on.
+/// An estimate made without the model's tokenizer is wrong by an amount that depends on what is
+/// sent and cannot be known in advance. Rather than guess better, this stops guessing after the
+/// first response: the kernel knows what it estimated for a request and the provider says what
+/// those bytes cost, and this counter multiplies by the ratio from then on.
 ///
 /// ```
 /// use std::sync::Arc;
@@ -334,20 +312,20 @@ impl Default for Calibration {
 /// kernel.recount();
 /// ```
 ///
-/// note: The correction is a single multiplier, so it spreads what is really a per-message
-/// overhead across the bytes - an approximation, but one calibrated against the truth rather than
-/// a constant picked in advance.
+/// note: the correction is a single multiplier, so it spreads what is really a per-message overhead
+/// across the bytes: an approximation, but calibrated against the provider rather than fixed in
+/// advance.
 ///
-/// note: It learns only from requests big enough to have a systematic error in them. On a request
-/// of a few dozen tokens the percentage error is noise, and a counter that chased it would arrive
-/// at a scale that is wrong for every request that matters.
+/// note: it learns only from requests large enough to carry a systematic error. On a few dozen
+/// tokens the percentage error is noise, and chasing it would give a scale that is wrong for every
+/// request that matters.
 ///
-/// note: It corrects what is counted *from then on*; figures already stored on context items do
-/// not change by themselves. [`Kernel::recount`] rewrites them when you ask, and says so on the
-/// event stream. [`Budget::reported`] remains the provider's own last word either way.
+/// note: it corrects what is counted from then on. Figures already stored on context items change
+/// only when [`Kernel::recount`] rewrites them, which it announces. [`Budget::reported`] stays the
+/// provider's own last word.
 ///
-/// note: The ratio is cumulative over every observation, so it settles rather than chasing the
-/// last request. Swapping the model invalidates it, which is what [`Calibrating::reset`] is for.
+/// note: the ratio is cumulative over every observation, so it settles instead of chasing the last
+/// request. A different model invalidates it; see [`Calibrating::reset`].
 #[derive(Debug)]
 pub struct Calibrating<C> {
     inner: C,
@@ -358,41 +336,35 @@ pub struct Calibrating<C> {
 /// corrupt a budget.
 const BOUNDS: (f64, f64) = (0.1, 10.0);
 
-/// How large a request has to be, on **both** sides of the ratio, before it is worth learning
-/// anything from.
+/// How large a request has to be, on both sides of the ratio, before it is worth learning from.
 ///
-/// note: Measured against a real API, the underlying estimate is out by about 7% on a request of
-/// a few thousand tokens - a systematic error worth correcting - and by tens of percent either
-/// way on requests of a few dozen, where the absolute error is a handful of tokens and the
-/// percentage is noise. Learning from the second kind makes the first kind worse, so it is
-/// ignored.
+/// note: on a request of a few thousand tokens the underlying estimate's error is systematic and
+/// worth correcting; on a few dozen it is a handful of tokens either way, and learning from it
+/// would make the large requests worse.
 ///
-/// note: both sides, because an endpoint charges for framing nobody counted - its own preamble,
-/// the scaffolding round a tool call - and that is a fixed cost, so on a small request it is the
-/// whole of the difference. A request estimated at a few dozen tokens can be charged at many
-/// times that; [`BOUNDS`] still lets the ratio reach 10, and every figure in the session would
-/// then read ten times what it is. A request the *provider* says is large enough is not the same
-/// claim as a request with enough content in it for the framing to be a percentage rather than
-/// the answer.
+/// note: both sides, because an endpoint charges for framing nobody counted (its preamble, the
+/// scaffolding round a tool call), a fixed cost that is the whole difference on a small request. A
+/// request estimated at a few dozen tokens can be charged many times that, [`BOUNDS`] still lets
+/// the ratio reach 10, and every later figure would then read ten times too high. A provider
+/// calling a request large does not mean it has enough content for the framing to be a small
+/// fraction of it.
 const WORTH_LEARNING_FROM: usize = 256;
 
-/// The scale a correction is actually applied at: inside [`BOUNDS`], and a number the arithmetic
-/// around it can be done with.
+/// The scale a correction is actually applied at: inside [`BOUNDS`], and a number arithmetic can be
+/// done with.
 ///
-/// note: one function rather than a `clamp` where the ratio is worked out, because there are two
-/// doors into that field and both have to hold the bound. [`TokenCounter::observe`] derives a
-/// ratio; [`TokenCounter::recalibrate`] is *handed* one, and what comes through it is a
-/// [`Snapshot`](crate::Snapshot)'s - `Calibration` is `serde` with public fields, so what a file
-/// says a scale is has been derived by nobody. A `0.0` there is the value
-/// [`Calibration::default`] is hand-written to avoid, arriving by another route: every figure in
-/// the session reported as nothing, and the next `observe` dividing by it, which comes out as an
-/// infinity that saturates to `u64::MAX` and is then added to a running total.
+/// note: one function rather than a `clamp` where the ratio is worked out, because two paths write
+/// the scale and both must hold the bound. [`TokenCounter::observe`] derives a ratio;
+/// [`TokenCounter::recalibrate`] is handed one from a [`Snapshot`](crate::Snapshot), and
+/// `Calibration` is `serde` with public fields, so that one was derived by nobody. A `0.0` arriving
+/// there, the value [`Calibration::default`] is hand-written to avoid, would report every figure as
+/// nothing, and the next `observe` would divide by it into an infinity that saturates to `u64::MAX`
+/// in a running total.
 ///
-/// note: the finite test is not redundant with the clamp. `f64::clamp` answers a NaN with a NaN
-/// rather than with a bound, and a NaN scale makes every count `0` - a float-to-integer `as`
-/// saturates one to zero - for the rest of the session, with `observe` unable to correct it
-/// because the same NaN comes back out of its own division. `1.0` is the honest answer to a number
-/// nothing can be done with: correct nothing, and let the next response teach it.
+/// note: the finite test is not redundant with the clamp: `f64::clamp` returns NaN for NaN, and a
+/// NaN scale makes every count `0` (a float-to-integer `as` saturates it to zero) for the rest of
+/// the session, which `observe` cannot correct because its own division returns the same NaN. `1.0`
+/// corrects nothing and lets the next response teach it.
 fn applicable(scale: f64) -> f64 {
     match scale.is_finite() {
         true => scale.clamp(BOUNDS.0, BOUNDS.1),
@@ -437,10 +409,9 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
         self.corrected(self.inner.count(content))
     }
 
-    // all three are delegated rather than left to the default implementations, so a wrapped counter
-    // with opinions of its own keeps them and only has them scaled. `count_message` matters most:
-    // the budget is counted over it, and a real tokenizer overrides it to charge for the
-    // per-message framing an estimate cannot see
+    // all three are delegated, so a wrapped counter keeps its own opinions and only has them
+    // scaled. `count_message` matters most: the budget is counted over it, and a real tokenizer
+    // overrides it to charge for the per-message framing an estimate cannot see
     fn count_schema(&self, schema: &Arc<Value>) -> usize {
         self.corrected(self.inner.count_schema(schema))
     }
@@ -453,9 +424,9 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
         self.corrected(self.inner.count_message(message))
     }
 
-    // not corrected, because a scale applies to tokens and these are pieces. Delegated all the
-    // same, so a wrapped counter that disowns something keeps disowning it: a `Calibrating` that
-    // answered `0` here would tell a client the budget is whole while content is still disowned
+    // not scaled, because a scale applies to tokens and these are pieces, but delegated, so a
+    // wrapped counter that declines something keeps declining it; answering `0` here would tell a
+    // client the budget is whole when it is not
     fn uncounted(&self, content: &Content) -> usize {
         self.inner.uncounted(content)
     }
@@ -473,13 +444,12 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
     }
 
     fn recalibrate(&self, calibration: Calibration) {
-        // through the same gate the ratio this counter works out for itself goes through; see
-        // `applicable` for what arrives here that has been through nothing.
+        // through the same gate as the ratio this counter works out itself; see `applicable` for
+        // why.
         //
-        // note: and worked out again from the two totals where there are any, as `observe` works
-        // it out, rather than taken as written. The scale is derived from them, and a float read
-        // back from JSON is not always the one that was written - so a resumed session counted on a
-        // scale one digit off the one it was saved with, and a snapshot was not equal to itself
+        // note: and recomputed from the two totals where there are any, as `observe` does, rather
+        // than taken as written: a float read back from JSON is not always the one written, so a
+        // resumed session was counted on a scale one digit off and a snapshot did not equal itself
         // after a round trip
         let scale = match calibration.estimated {
             0 => calibration.scale,
@@ -508,20 +478,16 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
         }
 
         // note: a request whose own ratio is outside the bounds is not believed at all, rather than
-        // believed and then clamped. `BOUNDS` is the width of a correction this counter is willing
-        // to hold at all. A pair of numbers that needs more than that is not a bias in the
-        // estimate; it is the estimate and the report being about different things, or one of them
-        // being nonsense. A cumulative ratio cannot undo the difference: the totals grow for the
-        // rest of the session, and a single request at a thousand times its estimate dominates
-        // every ordinary one. The clamp below would settle on `BOUNDS.1`, and every later request
-        // would read at that multiple of the truth. The request after that would be refused against
-        // a limit the context is nowhere near. A snapshot carries the correction, so a resumed
-        // session starts in the same place.
+        // believed and clamped. A pair needing more correction than `BOUNDS` allows is not a bias
+        // in the estimate but two figures about different things, or nonsense. The ratio is
+        // cumulative, so one request at a thousand times its estimate would dominate every ordinary
+        // one: the clamp would settle on `BOUNDS.1`, every later request would read at that
+        // multiple, the next would be refused against a limit the context is nowhere near, and a
+        // snapshot would carry that into a resumed session.
         //
-        // note: checked against the estimate rather than against the running ratio, so what is
-        // judged is this one request. The running total is the sum of requests that each passed
-        // this gate. Letting it back into the test would let the first absurd report through every
-        // later one.
+        // note: checked against this request's estimate rather than the running ratio, so only this
+        // request is judged; letting the running total into the test would let the first absurd
+        // report through every later one.
         let ratio = reported as f64 / own as f64;
         if !ratio.is_finite() || !(BOUNDS.0..=BOUNDS.1).contains(&ratio) {
             return;

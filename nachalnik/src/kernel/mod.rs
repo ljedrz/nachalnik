@@ -1,10 +1,10 @@
 //! The runtime: the state machine, the context it owns, and every operation a caller has on them.
 //!
-//! note: construction, resuming and observation, with the types the rest share. The state machine
-//! and the operations that move it are in `machine`. What a turn is made of is in `request` and
-//! `calls`, because a reader of this file wants to know what the kernel offers rather than how a
-//! stream of fragments is read. What a caller can do to the context is in `context`, public still,
-//! because the surface is too long to read at once with it.
+//! note: here are construction, resuming and observation, and the types the rest share. The state
+//! machine and its transitions are in `machine`. How a turn's request and calls are handled is in
+//! `request` and `calls`, so this file shows what the kernel offers rather than how a stream of
+//! fragments is read. What a caller can do to the context is in `context`, still public, because
+//! that surface is too long to read alongside this one.
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -102,11 +102,11 @@ pub enum State {
         item: ContextId,
         /// Why the model stopped.
         ///
-        /// note: "finished" and "finished well" are different things, and a client that only
-        /// matched on the variant could not tell them apart. A turn that ran out of output tokens
-        /// ends in `Finished` with [`StopReason::Length`], possibly with no content at all, because
-        /// a reasoning model can spend its whole budget before saying anything. Whether to
-        /// continue, warn or shrug is the client's call; the kernel does not let it pass unnoticed.
+        /// note: a client that matched only on the variant could not tell a finished turn from one
+        /// that finished well. A turn that ran out of output tokens ends here with
+        /// [`StopReason::Length`], possibly with no content, since a reasoning model can spend its
+        /// whole budget before saying anything. What to do about it is the client's call; the
+        /// kernel only makes sure it is visible.
         stop: StopReason,
     },
 }
@@ -237,20 +237,19 @@ struct InnerKernel {
 /// A kernel is a cheaply clonable handle to shared state, so clients, tools and policies can hold
 /// one.
 ///
-/// note: a kernel does nothing on its own. [`Kernel::step`] and [`Kernel::turn`] run on the
-/// caller's task, for as long as the caller lets them; between steps, nothing runs. It spawns no
-/// tasks, with one opted-in exception: [`Config::parallel_tool_calls`] gives each of a turn's tool
-/// calls a task of its own, for the length of the step that started them and no longer.
+/// note: a kernel does nothing on its own: [`Kernel::step`] and [`Kernel::turn`] run on the
+/// caller's task, and between steps nothing runs. It spawns no tasks, except that
+/// [`Config::parallel_tool_calls`] gives each of a turn's tool calls a task for the length of the
+/// step that started them.
 ///
-/// note: one agent is one kernel. A fleet of them shares nothing except whatever you hand to both -
-/// a [`Tool`], a [`Provider`] - and needs no coordination, because a kernel's state is its own.
-/// Several threads driving one kernel is also fine: reading is cheap and every mutation is atomic,
-/// so a client can render, exclude and preview while a turn is running. It cannot drive the loop
-/// twice at once; that is [`Error::Busy`], not a second request.
+/// note: one agent is one kernel. Kernels share only what you hand to both, such as a [`Tool`] or a
+/// [`Provider`], and need no coordination. Several threads on one kernel are fine: reading is cheap
+/// and every mutation is atomic, so a client can render, exclude and preview during a turn. Driving
+/// the loop twice at once is [`Error::Busy`], not a second request.
 ///
-/// note: a kernel is not `Drop`-safe against reference cycles: if you store a `Kernel` inside a
-/// [`Tool`], a [`Provider`] or a [`PermissionPolicy`] that the same kernel holds, the cycle keeps
-/// everything alive. Either store a [`std::sync::Weak`] to your own state, or drop the components
+/// note: a kernel is not `Drop`-safe against reference cycles: a `Kernel` stored inside a [`Tool`],
+/// [`Provider`] or [`PermissionPolicy`] that the same kernel holds keeps everything alive. Store a
+/// [`std::sync::Weak`] to your own state instead, or remove the components
 /// ([`Kernel::remove_tool`], [`Kernel::clear_provider`]) when you are done.
 #[derive(Clone)]
 pub struct Kernel(Arc<InnerKernel>);
@@ -288,9 +287,8 @@ impl Kernel {
     /// compactor, no parameters, and an empty context: it will not talk to anything or agree to
     /// anything until told.
     ///
-    /// note: the counter is wrapped rather than bare because [`Calibrating`] costs nothing until it
-    /// is told something: it corrects by `1.0` until a provider has reported what a request
-    /// actually cost, so it is [`BytesPerToken`] until there is something better. Unwrap it with
+    /// note: the counter is wrapped because [`Calibrating`] corrects by `1.0`, and so behaves as
+    /// plain [`BytesPerToken`], until a provider reports what a request cost. Unwrap it with
     /// [`Kernel::set_counter`] where a measurement needs a counter that never changes its mind.
     ///
     /// [`Calibrating<BytesPerToken>`]: Calibrating
@@ -325,29 +323,26 @@ impl Kernel {
     /// [`Event::SessionResumed`].
     ///
     /// The context, the parameters and the identifiers the session had already handed out - for
-    /// items, tool calls, permission requests and records - come back; everything else is as
-    /// [`Kernel::new`] leaves it, because a provider, a policy and a set of tools are the caller's
-    /// to supply and were never the session's to remember. The new log starts empty and numbers
-    /// its first record, [`Event::SessionResumed`], after the last one the snapshot's session had.
+    /// items, tool calls, permission requests and records - come back. Everything else is as
+    /// [`Kernel::new`] leaves it, because a provider, a policy and tools are the caller's to supply
+    /// and were never the session's to remember. The new log starts empty and numbers its first
+    /// record, [`Event::SessionResumed`], after the last one the snapshot's session had.
     ///
-    /// note: The name comes from the snapshot unless [`Config::session_name`] is set, which is
-    /// how a session gets forked rather than continued.
+    /// note: the name comes from the snapshot unless [`Config::session_name`] is set, which forks
+    /// the session rather than continuing it.
     ///
-    /// note: The items are recounted with this kernel's [`TokenCounter`], so a snapshot taken
-    /// under a different one reports honest numbers rather than inherited ones.
+    /// note: the items are recounted with this kernel's [`TokenCounter`], so the figures are this
+    /// counter's rather than inherited.
     ///
-    /// note: What the previous counter had *learned* comes back too, where both counters deal in
-    /// [`Calibration`](crate::Calibration)s, and it is offered *before* the items are counted - so
-    /// a resumed session does not spend its first requests relearning what it had been told, and
-    /// the figures it comes back with are corrected rather than the stale ones it was saved with.
-    /// That is a visible change in the numbers, and is what [`Kernel::recount`] before saving
-    /// would have produced.
+    /// note: where both counters deal in [`Calibration`](crate::Calibration)s, what the old one
+    /// learned is offered before the items are counted, so the resumed figures are already
+    /// corrected, as [`Kernel::recount`] before saving would have made them, and the first requests
+    /// are not spent relearning it.
     ///
-    /// note: Parameters come back with a [`Event::ModelParamsChanged`] of their own rather than
-    /// folded into [`Event::SessionResumed`], because a log is read for what is *in force* and a
-    /// resumed session that says so is one whose next request can be explained from the log alone.
-    /// It follows the resumption, which heads the log and is what tells a client this one is not
-    /// whole, and a snapshot carrying none says nothing, since nothing is in force.
+    /// note: parameters come back with an [`Event::ModelParamsChanged`] of their own, after
+    /// [`Event::SessionResumed`] (which heads the log and tells a client it is not whole), because
+    /// a log is read for what is in force and the next request should be explainable from the log
+    /// alone. A snapshot with no parameters emits none.
     pub fn resume(mut config: Config, snapshot: Snapshot) -> Self {
         config
             .session_name
@@ -398,10 +393,9 @@ impl Kernel {
             items,
             tokens,
         });
-        // after `session.resumed`, which is the head of a resumed log and is what kamchatka's
-        // `log` tool reads to tell a resumed log from a drained one. Only when there is something
-        // to say: a resume carrying none has changed nothing, and `model.params` over an empty map
-        // is a change nobody made.
+        // after `session.resumed`, which heads a resumed log and is what kamchatka's `log` tool
+        // reads to tell a resumed log from a drained one. Only when there are parameters:
+        // `model.params` over an empty map would announce a change nobody made
         if !params.is_empty() {
             kernel.emit(Event::ModelParamsChanged {
                 params: params.clone(),
@@ -415,21 +409,19 @@ impl Kernel {
     /// Tells the kernel that these tool call identifiers are already spoken for, and returns how
     /// many of them it had not already been told about.
     ///
-    /// note: [`Kernel::resume`] does this from [`Snapshot::used_calls`], which covers a session
-    /// picked back up in another process. This is for the other way of reading a snapshot: a client
-    /// that merges one into a session it is already running keeps the kernel it has, so the turns
-    /// it pushes arrive carrying identifiers this kernel never issued. Without this the next
-    /// response is free to hand one of them back, the repair has nothing to compare it against, and
-    /// the request that follows carries the same `tool_call_id` twice, which most providers reject
-    /// and which is very hard to see afterwards. See [`Event::ToolCallRepaired`].
+    /// note: [`Kernel::resume`] does this from [`Snapshot::used_calls`]. This is for a client that
+    /// merges a snapshot into a session it is already running, so the turns it pushes carry
+    /// identifiers this kernel never issued. Unreserved, the next response may hand one back, the
+    /// repair has nothing to compare it against, and the following request carries one
+    /// `tool_call_id` twice, which most providers reject. See [`Event::ToolCallRepaired`].
     ///
     /// note: a snapshot of this same session names identifiers this kernel did issue, and reserving
     /// them changes nothing: the originals are still in the context. A client merging one renames
     /// the colliding calls, and the results answering them, before pushing.
     ///
-    /// note: identifiers and nothing else. What they belonged to is not the kernel's business, and
-    /// one reserved for an item that is later excluded stays reserved, because an identifier is
-    /// never reused, not even by an item [`Kernel::undo`] took away.
+    /// note: identifiers only; what they belonged to is not the kernel's business. One reserved for
+    /// an item that is later excluded, or taken away by [`Kernel::undo`], stays reserved, because
+    /// an identifier is never reused.
     pub fn reserve_calls(&self, calls: impl IntoIterator<Item = ToolCallId>) -> usize {
         let mut seen = self.0.seen_calls.lock();
         let before = seen.len();
@@ -445,9 +437,8 @@ impl Kernel {
 
     /// Returns everything a later [`Kernel::resume`] needs to carry on from here.
     ///
-    /// note: cheap enough to take after every turn, and worth it: this is the only thing that can
-    /// rebuild a context. The event log cannot, by design: an event names an item rather than
-    /// carrying its contents, which is what makes the log affordable to keep.
+    /// note: cheap enough to take after every turn, and the only thing that can rebuild a context:
+    /// the event log names items rather than carrying them, which is what keeps it affordable.
     ///
     /// note: the context is read before the used call identifiers, not after. A turn reserves a
     /// call's identifier before it records the item carrying the call, and an identifier is never
@@ -457,16 +448,15 @@ impl Kernel {
     pub fn snapshot(&self) -> Snapshot {
         let session = self.session_name();
 
-        // `last_seq` under the context lock, because every change to the context is announced
-        // while holding it: every record numbered up to it describes a change these items already
-        // show, and every one after it a change they do not. That is what lets a caller write the
-        // log out to exactly this point and have the pair agree.
+        // `last_seq` under the context lock, because every context change is announced while
+        // holding it: records up to it describe changes these items show, and later ones changes
+        // they do not, so a caller can write the log out to exactly this point and have the pair
+        // agree.
         //
-        // note: and under the parameters' and the counter's, for the same reason: each setter
+        // note: and under the parameters' and the counter's locks for the same reason: each setter
         // announces while holding its own, and a recalibration applies and announces under the
-        // context's. Read before the context lock and let go, a change landing in between was
-        // named by a sequence this snapshot did not reflect. The order is the one on
-        // `InnerKernel`
+        // context's. Read earlier and let go, a change landing in between would be counted in
+        // `last_seq` without being reflected here. The order is the one on `InnerKernel`
         let (params, calibration, items, next_item, last_seq) = {
             let params = self.0.params.read();
             let counter = self.0.counter.read();
@@ -598,10 +588,9 @@ impl Kernel {
 
     /// Removes and returns the records up to and including `through`, oldest first.
     ///
-    /// note: the log is unbounded; capping it would stop it being append-only. This is the other
-    /// way to stop a long session growing forever: take the records, write them somewhere, and the
-    /// kernel stops holding them. No record goes missing; every record the kernel drops is handed
-    /// to the caller who asked.
+    /// note: the log is unbounded, since capping it would stop it being append-only. This is how a
+    /// long session stops growing: take the records and store them elsewhere. Every record the
+    /// kernel lets go of is handed to the caller who asked.
     pub fn drain_history(&self, through: u64) -> Vec<Record> {
         self.0.session.lock().drain_through(through)
     }
@@ -635,19 +624,16 @@ impl Kernel {
     /// events in the order the log holds them, even when several threads drive the same kernel.
     ///
     /// note: callers emit while still holding the lock that made the change: the machine lock for a
-    /// transition, the context lock for everything the context does. Releasing first and announcing
-    /// afterwards is wrong: two threads excluding the same item can then apply in one order and be
-    /// logged in the other, and the log's last word on that item contradicts the item. The lock
-    /// order is machine, then context, then session, and nothing goes back up it. `emit` takes the
-    /// session lock and nothing else, and `send` on a broadcast channel runs no subscriber code, so
-    /// holding a lock across it costs a memcpy and blocks nobody.
+    /// transition, the context lock for anything the context does. Released first, two threads
+    /// excluding the same item could apply in one order and be logged in the other, leaving the
+    /// log's last word contradicting the item. The lock order is machine, then context, then
+    /// session, never back up. `emit` takes only the session lock, and broadcasting runs no
+    /// subscriber code, so holding a lock across it blocks nobody.
     ///
-    /// note: the component setters hold their own lock the same way, which stops two clients
-    /// swapping the same component from applying in one order and being logged in the other, with
-    /// the log's last word on the provider naming the one that is not installed. A component's
-    /// [`Provider::info`] and the `name` of a policy, projector, counter or compactor must not
-    /// reach back into the kernel: each is called while the lock holding that component is held, to
-    /// say what was replaced.
+    /// note: component setters hold their own lock the same way, so two clients swapping one
+    /// component cannot apply in one order and be logged in the other. So [`Provider::info`] and
+    /// the `name` of a policy, projector, counter or compactor must not call back into the kernel:
+    /// each is called with that component's lock held, to say what was replaced.
     pub(crate) fn emit(&self, event: Event) {
         let mut session = self.0.session.lock();
 
@@ -697,11 +683,10 @@ impl Kernel {
 
     /// Returns what swapping one snapshot of the items for another did.
     ///
-    /// note: An item that survived as the same allocation is one the operation did not touch;
-    /// `Arc::make_mut` makes it free to check. One with a different allocation is looked at,
-    /// because a recount copies an item it moves a figure of, and a figure is the counter's rather
-    /// than a change of state, note, or content that an undo reverts. Both lists are in identifier
-    /// order, so the lookups are binary searches rather than a scan per item.
+    /// note: an item that survived as the same allocation was not touched, which `Arc::make_mut`
+    /// makes free to check. One with a new allocation is compared, because a recount copies an item
+    /// to change its figure, and a figure is the counter's, not a change an undo reverts. Both
+    /// lists are in identifier order, so the lookups are binary searches.
     fn diff(before: &[Arc<ContextItem>], after: &[Arc<ContextItem>]) -> Diff {
         let find = |items: &[Arc<ContextItem>], id: ContextId| {
             items
@@ -784,16 +769,14 @@ fn addition(item: &ContextItem) -> Event {
 
 /// The event for an item added in a state other than [`ContextState::Active`].
 ///
-/// note: `context.added` reports what an item is, not its state, because every state change is its
-/// own event. An item that arrives pinned or elided, because a loaded session left it that way,
-/// would otherwise reach the log as active when it is not. The second event, from `Active` to the
-/// item's actual state, is what a later `set_state` would emit and what a replayed log needs to
-/// rebuild the context. Returns `None` for an item that arrives active, whose state the addition
-/// already records.
+/// note: `context.added` reports what an item is, not its state, since every state change is its
+/// own event; an item that arrives pinned or elided, as a loaded session can leave it, would
+/// otherwise read in the log as active. The second event, from `Active` to its actual state, is
+/// what a later `set_state` would emit and what a replayed log needs. `None` for an item that
+/// arrives active.
 ///
-/// note: a field on `context.added` would report the state in one record. `Event` is
-/// `#[non_exhaustive]`, which does not cover its variants, and a field on one variant breaks every
-/// pattern and struct literal written against it.
+/// note: not a field on `context.added`, because `#[non_exhaustive]` on `Event` does not cover its
+/// variants: a new field breaks every pattern and struct literal written against that variant.
 fn arriving(item: &ContextItem) -> Option<Event> {
     (item.state != ContextState::Active).then(|| Event::ContextChanged {
         id: item.id,

@@ -1,9 +1,8 @@
 //! Decides on a model's tool calls, runs them, and records what they produced.
 //!
-//! note: the private half of [`super::Kernel`]'s execution path; see the sibling `request` module
-//! for why it is not in `mod.rs`. The state machine divides its work this way: everything here
-//! happens between the model asking for tools and the machine coming back to
-//! [`super::State::Idle`].
+//! note: the private half of [`super::Kernel`]'s execution path, out of `mod.rs` for the reason the
+//! sibling `request` module gives: everything between the model asking for tools and the machine
+//! returning to [`super::State::Idle`].
 
 use std::{
     panic::AssertUnwindSafe,
@@ -25,14 +24,13 @@ use super::{Batch, Kernel, PreparedCall, Restore, State};
 impl Kernel {
     /// Matches the model's calls to tools, asks the policy about each, and queues them.
     ///
-    /// note: no permission is announced until every call is queued. [`Kernel::settle`] then
-    /// announces them and moves the machine together, so a client sees a question only once there
-    /// is one to answer. [`Kernel::decide`] must not fail because the client was quick; announcing
-    /// a request while the policy is still being consulted about the next call in the batch would
-    /// make it fail.
+    /// note: no permission is announced until every call is queued; [`Kernel::settle`] then
+    /// announces them and moves the machine together, so a client sees a question only when it can
+    /// answer it. Announcing earlier, while the policy is still being consulted about the next call
+    /// in the batch, could make a quick client's [`Kernel::decide`] fail.
     ///
-    /// `turn` is the batch the turn asking for them was recorded in, and an answer to a call nobody
-    /// can run joins it.
+    /// `turn` is the batch the turn asking for them was recorded in; an answer to a call nobody can
+    /// run joins it.
     pub(super) async fn prepare_calls(&self, calls: &[ToolCall], mut turn: Batch) -> State {
         let mut prepared = Vec::with_capacity(calls.len());
         let mut announcements = Vec::with_capacity(calls.len());
@@ -65,9 +63,9 @@ impl Kernel {
                     call: call.id.clone(),
                     tool: call.tool.clone(),
                 });
-                // This joins the checkpoint the turn was recorded under. The turn and the kernel's
-                // answer to a call nobody can run are one thing that happened; a checkpoint each
-                // would let one `undo` leave a call answered and its neighbour not
+                // joins the checkpoint the turn was recorded under: the turn and the kernel's
+                // answer to a call nobody can run are one event, and separate checkpoints would let
+                // one `undo` leave a call answered and its neighbour not
                 self.record_tool_result(
                     call,
                     None,
@@ -110,10 +108,9 @@ impl Kernel {
 
             // what the call needs rather than what the tool might: see `Tool::needs`
             //
-            // note: asked under the same catch as `invoke`, since it reads the model's arguments
-            // just as `invoke` does. A tool that panics saying what a call needs has failed that
-            // call: nothing is asked and nothing runs, and the call is answered as one to a tool
-            // that is not there is, joining the turn's checkpoint
+            // note: under the same catch as `invoke`, since it reads the model's arguments too. A
+            // tool that panics here has failed the call: nothing is asked or run, and the call is
+            // answered as one to a missing tool, joining the turn's checkpoint
             let needs = match guarded(|| tool.needs(call)) {
                 Ok(needs) => needs,
                 Err(panic) => {
@@ -294,11 +291,10 @@ impl Kernel {
     async fn run(&self, tool: Arc<dyn Tool>, call: ToolCall) -> ToolOutput {
         // a tool that fails is not a kernel failure: the model is told, and the loop goes on.
         //
-        // note: a tool that panics has failed too, so the panic is caught at each poll rather than
-        // left to unwind through `step`. Unwound, it took the turn with it and answered nothing:
-        // the record ended at `tool.started`, and a client awaiting the step got a panic instead of
-        // a state. `AssertUnwindSafe` because what the tool leaves behind is its own; the kernel's
-        // state is changed under its locks, and none is held across a poll
+        // note: a panic is a failure too, so it is caught at each poll rather than unwinding
+        // through `step`, which took the turn with it, answered nothing, and handed a client a
+        // panic instead of a state. `AssertUnwindSafe` because what the tool leaves behind is its
+        // own; the kernel changes its state under its locks and holds none across a poll
         let sink = OutputSink::new(self.clone(), call.id.clone(), call.tool.clone());
         let mut running = tool.invoke(&call, sink);
         let caught = std::future::poll_fn(|cx| {
@@ -329,13 +325,12 @@ impl Kernel {
     /// [`Kernel::cancel_pending_calls`] uses. A checkpoint taken between two calls is folded in,
     /// because it would split the batch.
     fn record_output(&self, prepared: &PreparedCall, mut output: ToolOutput, batch: &mut Batch) {
-        // an output limit decides what the *model* is shown. It is not permission to throw the rest
-        // away. Unless the user has said otherwise, the whole output goes into the context too:
-        // excluded, listed, inspectable, and restorable like anything else.
+        // an output limit decides what the model is shown; it is not permission to throw the rest
+        // away. Unless the user said otherwise, the whole output goes into the context too,
+        // excluded and restorable like anything else.
         //
-        // note: a tool that panics saying what a call may return has its result held to the
-        // session's own limit. So does a tool that says nothing: the call has run, and what it
-        // returned is still its answer
+        // note: a tool that panics saying what a call may return, or says nothing, has its result
+        // held to the session's own limit; the call has run and its result is still its answer
         let limit = guarded(|| prepared.tool.limit(&prepared.call))
             .unwrap_or_else(|_| {
                 self.emit(Event::ToolPanicked {
@@ -363,15 +358,14 @@ impl Kernel {
                 output.is_error,
             );
             item.state = ContextState::Excluded;
-            // the same label its short copy gets, because the two are one call and the row
-            // somebody opens to read what was cut is this one. Labelled `fs` beside an `fs:read`
-            // copy, it would read as a different call by a tool that did not say what it did
+            // the same label its short copy gets: the two are one call, and this is the row
+            // somebody opens to read what was cut. Labelled plain `fs` beside an `fs:read` copy, it
+            // would look like a different call
             if let Some(label) = Self::operation_label(&*prepared.tool, &prepared.call) {
                 item.label = label;
             }
-            // the note says why it is out, which stops being true when somebody activates it. The
-            // `because` does not: this item is the whole of an output that was shortened, whatever
-            // state it ends up in
+            // the note says why it is out, which stops being true once somebody activates it; the
+            // `because` stays true in any state
             item.note = Some("the whole output; the model was shown a truncated copy".to_owned());
             item.included_because = Some(WHOLE_OUTPUT.to_owned());
 
@@ -393,31 +387,24 @@ impl Kernel {
     /// What a result of this call is called: the tool's name and the operation the call named, for
     /// a tool that does more than one thing.
     ///
-    /// note: rows labelled `context` say nothing about what they did, and the label is the only
-    /// place a row carries a name; the kind column reads `tool_result` for every one.
-    /// [`Tool::needs`] is how a call says which operation it is, and it is asked for every call to
-    /// consult the policy.
+    /// note: rows labelled `context` say nothing about what they did, and the label is a row's only
+    /// name (the kind column reads `tool_result` for all of them). [`Tool::needs`] says which
+    /// operation a call is, and is asked for every call anyway.
     ///
-    /// note: the tool's id, not the capability's domain. For every multi-operation tool in this
-    /// workspace the two are the same word, so the label is the subject exactly. Where they differ,
-    /// keep the tool's name: a tool called `shell` acting in `exec` would be `exec:run`, and every
-    /// MCP server tool declares `mcp:call`, so a context full of them would say `mcp:call` on every
-    /// row and name none of them.
+    /// note: the tool's id, not the capability's domain. For this workspace's multi-operation tools
+    /// they are the same word. Where they differ the tool's name wins: `shell` acts as `exec:run`,
+    /// and every MCP tool declares `mcp:call`, which would name none of them.
     ///
-    /// note: `None` for a tool that declares one operation, and for a call that named none of the
-    /// ones it declares. A tool that does one thing is described by its own name; appending its one
-    /// operation would be noise on every row. A call naming no operation declares all of them, and
-    /// the tool's name is the honest label.
+    /// note: `None` for a tool declaring one operation, where the operation would be noise on every
+    /// row, and for a call naming none of the tool's operations, which declares all of them.
     /// [`ContextKind::ToolResult`](crate::ContextKind::ToolResult) keeps the tool id either way, so
     /// `tool:<name>` selects what it always did.
     ///
     /// note: asked here rather than where a result is recorded, because a shortened output is
-    /// recorded as *two* items and both are that call. Labelled only where a result is recorded,
-    /// the whole would carry the bare tool name, and the row opened to read the cut part would not
-    /// say which read it came from.
+    /// recorded as two items and both should name the operation.
     ///
-    /// note: the tool the call was matched to, not the registry's. A tool removed from the registry
-    /// after its call was decided still runs that call, and the result is still that operation.
+    /// note: the tool the call was matched to, not the registry's: a tool removed after its call
+    /// was decided still runs that call.
     fn operation_label(tool: &dyn Tool, call: &ToolCall) -> Option<String> {
         if tool.spec().capabilities.len() < 2 {
             return None;
@@ -433,9 +420,9 @@ impl Kernel {
     /// Records a tool result in the context and broadcasts [`Event::ToolFinished`]. `tool` is the
     /// one the call was matched to, or `None` for a call naming no tool.
     ///
-    /// note: into a [`Batch`] the caller holds - the turn it answers, the calls of one turn, or the
-    /// whole of a truncated output, recorded as a second item - so that one [`Kernel::undo`] takes
-    /// back the whole of what happened rather than leaving half a tool call behind.
+    /// note: into a [`Batch`] the caller holds (the turn it answers, the calls of one turn, or a
+    /// truncated output's whole, recorded as a second item), so one [`Kernel::undo`] takes back
+    /// everything that happened rather than half a tool call.
     pub(super) fn record_tool_result(
         &self,
         call: &ToolCall,
@@ -452,11 +439,10 @@ impl Kernel {
         if let Some(label) = tool.and_then(|tool| Self::operation_label(tool, call)) {
             item.label = label;
         }
-        // note: `included_because`, not `note`, which is why an item is in its *current state* and
-        // is replaced when that changes. This item is `Active`, so it has no state to explain.
-        // Being a shortened copy is a fact about what it holds, and it outlives every state. Kept
-        // in the note, it would be lost the first time the item's state changed, and with it the
-        // only sentence saying which item holds the whole.
+        // note: `included_because`, not `note`: a note explains the current state and is replaced
+        // when it changes, and this item is `Active`. Being a shortened copy is a fact about its
+        // content that outlives every state; kept in the note, it would be lost at the first state
+        // change, and with it the only sentence saying which item holds the whole.
         item.included_because = match (truncated, whole) {
             (Some(bytes), Some(whole)) => Some(format!(
                 "{bytes} bytes were truncated by the output limit; the whole output is item {whole}"
@@ -486,14 +472,13 @@ impl Kernel {
 /// What a refused call is told: the policy's reason and the kernel's own account of what kind of
 /// refusal it was.
 ///
-/// note: `the call was not permitted` on its own is true and close to useless. It leaves open
-/// whether trying again is worth anything, so a model refused by a standing rule keeps asking, and
-/// a model refused by a person gives up on an approach that was never the problem. The kernel
-/// cannot know why; it knows which of the two happened, because it resolved the grant.
+/// note: `the call was not permitted` alone leaves open whether trying again is worth anything, so
+/// a model refused by a standing rule keeps asking, and one refused by a person abandons an
+/// approach that was never the problem. The kernel cannot know why, but it knows which of the two
+/// happened, because it resolved the grant.
 ///
-/// note: written for a reader who has never heard of this runtime: no `at the terminal`, no
-/// `verdict`, no `grant`. A tool result is read by a model, and a codebase's own idiom reads to one
-/// like a state it is supposed to recognise.
+/// note: written for a reader who has never heard of this runtime: no `at the terminal`, `verdict`
+/// or `grant`. A model reads a codebase's idiom as a state it should recognise.
 fn refusal(source: GrantSource, why: Option<String>) -> String {
     match source {
         // a standing rule: the same call and any paraphrase of it get the same answer. The useful
@@ -518,10 +503,9 @@ fn refusal(source: GrantSource, why: Option<String>) -> String {
 
 /// What a call whose tool failed is told: the error, and each cause beneath it.
 ///
-/// note: the causes because the top of a wrapped error is often only what was being done - "reading
-/// the config" - and the reason it failed is the error it wraps, which `to_string` leaves out. A
-/// cause whose words the message already holds is not said again, for an error that prints its
-/// cause itself as well as returning it.
+/// note: the causes, because the top of a wrapped error is often only what was being done ("reading
+/// the config") and the reason is the error it wraps, which `to_string` leaves out. A cause already
+/// in the message is not repeated, for errors that print their cause as well as returning it.
 fn described(error: &(dyn std::error::Error + 'static)) -> String {
     let mut said = error.to_string();
     let mut cause = error.source();
@@ -580,11 +564,11 @@ fn misparsed(written: &str) -> Misparsed {
 const QUOTED: usize = 200;
 
 /// What a call whose arguments are not a JSON object is answered with: which call, that the
-/// arguments did not parse, what the parser said and where, the text around that, and whatever
-/// the tool adds; see [`Tool::unparsed`].
+/// arguments did not parse, what the parser said and where, the text around that, and whatever the
+/// tool adds; see [`Tool::unparsed`].
 ///
-/// note: the text around the fault rather than the start of it, since a fault past a cut is
-/// common, and quoting the start of the text quotes the part that is fine.
+/// note: the text around the fault, not the start, because faults past any cut are common and the
+/// start is the part that is fine.
 fn unparsed_answer(
     call: &ToolCall,
     written: &str,
@@ -651,9 +635,9 @@ fn panicked_needing(payload: &(dyn std::any::Any + Send)) -> String {
 
 /// What a call whose tool panicked is told: that it crashed, and what the panic said.
 ///
-/// note: "crashed" rather than "panicked", for the reason [`refusal`] is written in no codebase's
-/// idiom. A payload that is not a string - `panic_any` with anything else - has nothing to show,
-/// and is said to have said nothing rather than rendered as a type name.
+/// note: "crashed" rather than "panicked", for the same reason [`refusal`] avoids a codebase's
+/// idiom. A payload that is not a string (`panic_any` with anything else) is said to have said
+/// nothing, not rendered as a type name.
 fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
     let said = payload
         .downcast_ref::<&str>()
@@ -668,14 +652,12 @@ fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
 
 /// What a call to a tool nobody registered is told, which is what it asked for and what is here.
 ///
-/// note: the tools *are* named, because a model told only that its word was wrong does not stop -
-/// it guesses again, and a model that spells every call `<tool>.<operation>` can read the
-/// definitions the whole time without seeing which part of what it wrote is the wrong part. A list
-/// to compare its own word against is the shortest thing that says so.
+/// note: the tools are named, because a model told only that its word was wrong guesses again; one
+/// that spells every call `<tool>.<operation>` can read the definitions all along without seeing
+/// which part it got wrong. A list to compare against says so most briefly.
 ///
-/// note: the ones registered rather than the ones a spelling is close to, because a suggestion is
-/// a guess about what was meant and this runtime does not know. The list is short by construction:
-/// these are the tools of one session.
+/// note: the registered ones, not the ones a spelling is close to, because a suggestion guesses
+/// what was meant and this runtime does not know. The list is short: these are one session's tools.
 fn unknown_tool(asked: &str, here: &[String]) -> String {
     let named = match here.is_empty() {
         true => "there are no tools in this session at all".to_owned(),

@@ -1,9 +1,9 @@
 //! Building a request, sending it, and handling the response.
 //!
-//! note: this is the private half of [`super::Kernel`]'s request path, in a file of its own because
-//! the public surface next door is long enough without it. A caller sees
-//! [`super::Kernel::preview_request`] and [`super::Kernel::step`]; this module is what they are
-//! made of. The only public operation here is the full notice's setter and getter, beside what
+//! note: the private half of [`super::Kernel`]'s request path, in a file of its own because the
+//! public surface next door is long enough without it. A caller sees
+//! [`super::Kernel::preview_request`] and [`super::Kernel::step`]; this is what they are made of.
+//! The only public operations here are the full notice's setter and getter, beside the code that
 //! places and retires the notice.
 
 use std::{
@@ -55,11 +55,10 @@ impl Kernel {
             }
         };
 
-        // the compactor has already had its turn above; this check is for when it could not get the
-        // request under the limit, because everything it might have taken is pinned or there was
-        // nothing of the kind it takes. Sending anyway buys one round trip and the endpoint's own
-        // account of a figure already on the screen. See `Config::refuse_oversized_requests` for
-        // the part of this that is a judgement rather than arithmetic.
+        // the compactor has had its turn above; this is for when it could not get the request under
+        // the limit, because what it might take is pinned or of no kind it takes. Sending anyway
+        // buys one round trip and the endpoint's account of a figure already on the screen. See
+        // `Config::refuse_oversized_requests` for why this is a setting
         if let Some(overrun) = self.oversized(provider.info().context_limit, &cost) {
             self.emit(Event::StepFailed {
                 overrun: Some(overrun),
@@ -86,17 +85,15 @@ impl Kernel {
             repairs: projection.repairs,
         });
 
-        // the counter learns from what the provider says this request cost, beside the estimate it
-        // made; it decides for itself whether that is worth anything to it.
+        // the counter learns from what the provider says this request cost, beside its estimate,
+        // and decides for itself what that is worth.
         //
-        // note: not when the counter said it could not price part of what went out. Then the two
-        // numbers are not about the same thing, and the difference between them is not an error to
-        // learn from. `Calibrating` corrects with a single multiplier, so what the provider billed
-        // for a picture it priced at nothing would be spread over the bytes it could see, and every
-        // estimate of prose after it would read high. The ratio is cumulative, so deleting the
-        // picture would not undo it. The counter disowned that content; respecting the disownment
-        // is the kernel's half, and both figures below go through this one door so neither can
-        // skip it.
+        // note: not when the counter could not price part of the request: the two numbers are then
+        // about different things. `Calibrating` corrects with one cumulative multiplier, so a
+        // picture it priced at nothing would be spread over the bytes it could see, every later
+        // estimate of prose would read high, and deleting the picture would not undo it. Respecting
+        // what the counter declined is the kernel's half, and both figures below go through this
+        // one door so neither can skip it.
         let observe = |reported: usize| {
             if cost.uncounted == 0 {
                 counter.observe(cost.tokens, reported);
@@ -109,12 +106,12 @@ impl Kernel {
         {
             Ok(response) => response,
             Err(e) => {
-                // a refusal for being too long is the one failure that carries a measurement, and
-                // the only one in the units the limit is enforced in. A counter that learns only
-                // from answered requests learns nothing where every request fails, which is where
-                // it most needs correcting: the figure on screen stays under a limit the model is
-                // already over, and the same request goes out again. It goes through the same door
-                // as reported usage.
+                // a refusal for being too long is the only failure that carries a measurement, and
+                // the only one in the limit's units. A counter that learned only from answered
+                // requests would learn nothing where every request fails, which is where it most
+                // needs correcting: the figure on screen would stay under a limit the model is
+                // already over, and the same request would go out again. It goes through the same
+                // door as reported usage.
                 let overrun = TooLong::of(&*e).map(|too_long| too_long.overrun);
                 if let Some(overrun) = overrun {
                     observe(overrun.tokens as usize);
@@ -144,19 +141,18 @@ impl Kernel {
 
         let response = Arc::new(response);
         *self.0.last_response.write() = Some(response.clone());
-        // gathered once, because a turn recorded as ordered blocks keeps its calls inside its
-        // content and `response.tool_calls` is empty for it; everything below wants the calls
-        // themselves, not where they happen to be written down
+        // gathered once, because a turn recorded as ordered blocks keeps its calls in its content
+        // and leaves `response.tool_calls` empty
         let calls: Vec<ToolCall> = response.calls().cloned().collect();
 
-        // note: the reasoning is recorded on the turn that produced it, so it is counted and can be
-        // excluded like everything else, and so a provider whose API insists on seeing its own
-        // thinking again can get it back. Whether it is sent is the projector's call.
+        // note: the reasoning is recorded on the turn that produced it, so it is counted and
+        // excludable like anything else, and a provider whose API wants its own thinking back can
+        // get it. Whether it is sent is the projector's call.
         //
         // note: recorded as the first of a batch, so the checkpoint it takes is written down under
         // the lock that took it. An answer to a call nobody can run joins that checkpoint; read
-        // again afterwards, the number could be a push that landed in between, and one `undo` would
-        // then take the answer with the push and leave the turn's call unanswered.
+        // again afterwards, the number could belong to a push that landed in between, and one
+        // `undo` would take the answer with the push and leave the turn's call unanswered.
         let content = response.content.clone().unwrap_or_default();
         let mut turn = Batch::default();
         let item = self.add_in(
@@ -191,11 +187,11 @@ impl Kernel {
         &self,
         counter: &dyn TokenCounter,
     ) -> Result<(ModelRequest, Projection, Cost)> {
-        // note: the tools, the projector with the context, and the parameters are read under
-        // their locks held together, because each setter announces while holding its own. Read one
-        // after another, a client that added a tool and then set the parameters could have a
-        // request go out with the parameters and without the tool, which no prefix of the log
-        // describes. The order is the one on `InnerKernel`
+        // note: the tools, the projector with the context, and the parameters are read with their
+        // locks held together, because each setter announces while holding its own. Read one after
+        // another, a client that added a tool and then set parameters could have a request go out
+        // with the parameters but not the tool, which no prefix of the log describes. The order is
+        // the one on `InnerKernel`
         let (tools, projection, params) = {
             let tools = self.0.tools.read();
             let projector = self.0.projector.read();
@@ -229,18 +225,18 @@ impl Kernel {
 
     /// Whether a request this size is one the model will refuse to read, and by how much.
     ///
-    /// note: `>` rather than a fraction of the limit. The question is whether the endpoint will
-    /// refuse this, and it refuses at the limit, so a margin here would be the kernel refusing
-    /// requests on its own account, which is a policy and not this crate's.
+    /// note: `>` rather than a fraction of the limit: the endpoint refuses at the limit, and a
+    /// margin would be the kernel refusing requests on its own account, a policy that is not this
+    /// crate's.
     ///
-    /// note: a request carrying something the counter could not price is bigger than the figure,
-    /// never smaller, so the comparison holds in the direction that matters. The estimate being an
-    /// estimate is why the whole check is a knob.
+    /// note: a request carrying something the counter could not price is larger than its figure,
+    /// never smaller, so a request this calls oversized really is. That the figure is an estimate
+    /// is why the check can be turned off.
     ///
-    /// note: a limit of `0` is no limit here, as it is to
+    /// note: a limit of `0` means no limit here, as for
     /// [`Budget::fraction_used`](crate::Budget::fraction_used): it is what an endpoint that does
-    /// not know says, and taken at its word it refused every request there was while the budget
-    /// beside it reported the limit as unknown.
+    /// not know says, and taken literally it refused every request while the budget called the
+    /// limit unknown.
     fn oversized(&self, limit: Option<usize>, cost: &Cost) -> Option<Overrun> {
         let limit = limit.filter(|limit| {
             *limit != 0 && self.0.config.refuse_oversized_requests && cost.tokens > *limit
@@ -254,10 +250,10 @@ impl Kernel {
 
     /// Asks the compactor whether the context needs managing, and applies whatever it says.
     ///
-    /// note: it measures what came of the pass rather than being told. The context is full when the
-    /// compactor still wants room after taking what it will; only somebody else can do anything
-    /// about that. [`Event::ContextFull`] says so when it happens and when it stops. With no
-    /// compactor, nothing wants room, so the context is never full.
+    /// note: it measures the result rather than being told: the context is full when the compactor
+    /// still wants room after its pass, and only somebody else can do anything about that.
+    /// [`Event::ContextFull`] says when that starts and stops. With no compactor nothing wants
+    /// room, so the context is never full.
     async fn maybe_compact(&self) {
         let Some(compactor) = self.compactor() else {
             return self.mark_full(false);
@@ -279,23 +275,21 @@ impl Kernel {
     /// Sets (or, with `None`, removes) what is put into the context as it becomes full, returning
     /// the previous one.
     ///
-    /// note: how the model is told, and the words are the caller's, since the kernel ships no text
-    /// the model reads - what the model can do about a full context depends on the tools it has,
-    /// which only the caller knows. The kernel owns *when* and *where*: the notice is pushed as
-    /// [`Event::ContextFull`] says the context is full, which is before a request, between a
-    /// turn's tool results and the next request - so a tool loop that fills the context hears it
-    /// in the same turn, while there is still room under the limit for the request that carries
-    /// it - and only where there is: a notice that would take that request over the limit is left
-    /// out, since the kernel would refuse the request and nobody would read it. It is pushed at
-    /// most once per fill, and excluded again as the context has room.
+    /// note: the words are the caller's, because the kernel ships no text the model reads, and what
+    /// the model can do about a full context depends on tools only the caller knows. The kernel
+    /// decides when and where. The notice is pushed as [`Event::ContextFull`] reports the context
+    /// full, which is before a request and between a turn's tool results and the next request, so a
+    /// tool loop that fills the context hears it in the same turn. It is pushed only if the request
+    /// still fits with it, since a request over the limit is refused unread; at most once per fill;
+    /// and it is excluded again once the context has room.
     ///
-    /// note: the notice in the context is recognised by what it is - its kind, source, label and
-    /// content - rather than by an identifier remembered here, so that a session resumed while
-    /// full does not stack a second copy on the first. A notice the person or the model excluded
-    /// stays excluded for the rest of that fill, and one they pinned is left where it is.
+    /// note: the notice is recognised by its kind, source, label and content rather than by a
+    /// remembered identifier, so a session resumed while full does not stack a second copy. One the
+    /// person or the model excluded stays excluded for the rest of that fill, and one they pinned
+    /// is left alone.
     ///
-    /// note: each placing and each retiring is an ordinary change to the context, so each is an
-    /// undo step, and neither is taken more than once per fill.
+    /// note: each placing and retiring is an ordinary context change and so an undo step, and
+    /// neither happens more than once per fill.
     pub fn set_full_notice(&self, notice: Option<ContextItem>) -> Option<ContextItem> {
         std::mem::replace(&mut *self.0.full_notice.write(), notice)
     }
@@ -330,12 +324,11 @@ impl Kernel {
         };
         let items = self.items();
         if full {
-            // note: any copy that still sends, pinned included, is the notice already said; one
-            // excluded by hand is not, and a fill after the one it was excluded in is told again.
+            // note: any copy that still sends, pinned included, counts as the notice already given;
+            // one excluded by hand does not, and a later fill is told again.
             //
-            // note: only where the request still fits with it. A notice is for the model to read,
-            // and one that would take the request over the limit is left out: the kernel would
-            // refuse the request, and the turn would end with nothing sent.
+            // note: only where the request still fits with it: one that would take the request over
+            // the limit would get the request refused, and the turn would end with nothing sent.
             if !items
                 .iter()
                 .any(|item| standing(item) && item.state.sends_content())
@@ -384,14 +377,13 @@ impl Kernel {
     /// Projects the context and reports what the projection costs.
     ///
     /// note: [`Kernel::budget`] goes through here, and the request builder projects the same way
-    /// under the locks it holds together and counts with the same [`projection_cost`], so that the
-    /// number a client is shown is the number that is about to be sent.
+    /// under its locks and counts with the same [`projection_cost`], so the number a client sees is
+    /// the number about to be sent.
     ///
-    /// note: counted over the messages that came out, not over the items that went in. They are
-    /// not the same figure: a reference is labelled on its way out, and an elided item is a marker
-    /// the size of a line where the item behind it may be ten thousand tokens. Summing the items
-    /// would have the budget report what the context is holding, which is not what the request
-    /// costs - and a compactor that elides would watch the total refuse to move and elide again.
+    /// note: counted over the messages produced, not the items: a reference gains its label, and an
+    /// elided item is a one-line marker for what may be ten thousand tokens. Summing items would
+    /// report what the context holds rather than what the request costs, and a compactor that
+    /// elides would see no change and elide again.
     pub(super) fn projected_with(&self, counter: &dyn TokenCounter) -> (Projection, Cost) {
         let projector = self.projector();
         let context = self.0.context.read();
@@ -403,19 +395,16 @@ impl Kernel {
 
     /// Gives every tool call a usable identifier unique within the session, announcing each change.
     ///
-    /// note: this runs before the model's turn is recorded, so the call and its result always
-    /// agree. Doing nothing would record a pair that cannot be matched up, which most providers
-    /// reject.
+    /// note: run before the model's turn is recorded, so a call and its result always agree; a pair
+    /// that cannot be matched is rejected by most providers.
     ///
-    /// note: the identifiers a whole session has used are remembered, not just the ones in the
-    /// response being repaired. A provider that numbers its calls from zero on every turn would
-    /// otherwise produce a request carrying the same `tool_call_id` twice, and one in which
-    /// excluding a single result silently leaves a call unanswered, because a set of identifiers
-    /// cannot tell the two apart.
+    /// note: every identifier the session has used is remembered, not just those in this response.
+    /// A provider that numbers its calls from zero every turn would otherwise produce a request
+    /// with one `tool_call_id` twice, in which excluding one result would silently leave a call
+    /// unanswered.
     ///
-    /// note: a turn recorded as ordered blocks keeps its calls in its content, so repairing one
-    /// means rewriting the sequence. This is only done when something needs repairing, which is
-    /// almost never, so the ordinary turn pays a walk over its own blocks and nothing else.
+    /// note: a turn recorded as ordered blocks keeps its calls in its content, so a repair rewrites
+    /// the sequence. That is rare, so an ordinary turn pays only a walk over its blocks.
     fn repair_call_ids(&self, response: &mut ModelResponse) {
         let Some(blocks) = response.content.as_ref().and_then(Content::as_blocks) else {
             self.rename_calls(&mut response.tool_calls);
@@ -495,14 +484,13 @@ impl Kernel {
 
 /// Counts what a projection costs, which is what a request carrying it would cost.
 ///
-/// note: the one definition of the projected total, so that [`Kernel::projected_with`], the request
-/// builder and [`Kernel::apply_compaction`] cannot disagree about it. It is counted over the
-/// messages that came out rather than the items that went in, for the reason on
-/// [`Kernel::projected_with`].
+/// note: the one definition of the projected total, so [`Kernel::projected_with`], the request
+/// builder and [`Kernel::apply_compaction`] cannot disagree. It counts the messages produced, not
+/// the items, for the reason on [`Kernel::projected_with`].
 ///
-/// note: the same walk answers both figures. Counted over the items, an abstention would report a
-/// picture inside an elided item as unpriced, when what goes out is a one-line marker with no
-/// picture; the budget would name a hole in a request that does not have one.
+/// note: one walk gives both figures. Counted over the items, a picture inside an elided item would
+/// be reported unpriced though what goes out is a marker with no picture: a hole in a request that
+/// has none.
 pub(super) fn projection_cost(projection: &Projection, counter: &dyn TokenCounter) -> Cost {
     projection
         .messages
@@ -515,8 +503,8 @@ pub(super) fn projection_cost(projection: &Projection, counter: &dyn TokenCounte
 
 /// What a projection costs: the estimate, and how much of the request the estimate does not cover.
 ///
-/// note: the two travel together everywhere, so the pair has a name rather than being two bare
-/// `usize`s in the same order, so readers do not have to remember which was which.
+/// note: the two travel together everywhere, so the pair is named rather than two bare `usize`s
+/// whose order readers must remember.
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct Cost {
     /// The estimated tokens.

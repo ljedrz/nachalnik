@@ -1,10 +1,9 @@
 //! The vocabulary both halves agree on: what a request carries, what a response brings back, and
 //! the [`Provider`] that turns one into the other.
 //!
-//! note: nothing in here knows about HTTP, JSON schemas or any particular vendor. It is the shape
-//! the kernel builds and a provider renders, which is what lets a dialect whose assistant turn is
-//! an ordered list of parts and one whose turn is a content slot beside a list of calls sit behind
-//! the same trait.
+//! note: nothing here knows about HTTP, JSON schemas or a vendor. It is the shape the kernel builds
+//! and a provider renders, so a dialect whose turn is an ordered list of parts and one whose turn
+//! is a content slot beside a list of calls fit behind the same trait.
 
 use std::{fmt, sync::Arc};
 
@@ -37,9 +36,8 @@ pub enum Role {
 impl Role {
     /// Returns the name the role conventionally goes by on the wire.
     ///
-    /// note: This exists so that a [`Provider`] does not have to match on a `#[non_exhaustive]`
-    /// enum whose only sensible fallback would be to guess. A provider whose format disagrees
-    /// with the convention is free to ignore it and map the roles itself.
+    /// note: so a [`Provider`] need not match on a `#[non_exhaustive]` enum whose only fallback
+    /// would be a guess. A provider whose format differs maps the roles itself.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::System => "system",
@@ -58,22 +56,18 @@ impl fmt::Display for Role {
 
 /// A single message in a [`ModelRequest`].
 ///
-/// note: Messages are not stored anywhere; they are produced from the context by a
-/// [`Projector`] every time a request is built. The context items are the state - see
-/// [`Context`].
+/// note: messages are not stored; a [`Projector`] produces them from the context for every request.
+/// The context items are the state; see [`Context`].
 ///
-/// note: a turn is recorded one of two ways, and never both. The conventional one is these three
-/// slots - a content, an optional reasoning, a flat list of calls - which is the dialect most
-/// APIs speak. The other is [`Content::Blocks`] in the content slot, an ordered sequence of
-/// thinking, text and calls, for a dialect where the order is itself the information: thinking,
-/// a sentence, a call, more thinking before the next one. A turn recorded that way leaves
-/// [`Message::reasoning`] and [`Message::tool_calls`] empty, so that there is never a second
-/// account of it to disagree with the first, and [`Message::calls`] is what reads either.
+/// note: a turn is recorded one of two ways, never both: three slots (a content, an optional
+/// reasoning, a flat list of calls), or [`Content::Blocks`] in the content slot, an ordered
+/// sequence of thinking, text and calls for a dialect where the order matters. A turn recorded as
+/// blocks leaves [`Message::reasoning`] and [`Message::tool_calls`] empty, so there is no second
+/// account to disagree with the first; [`Message::calls`] reads either.
 ///
-/// note: which of the two a request carries is [`LinearProjector::send_blocks`], and it is a
-/// [`Projector`]'s decision. What a projector cannot do is invent an order that was never
-/// recorded: a turn that arrived through a provider speaking the three-slot dialect has none to
-/// carry, and flattening one that does is lossy and says so in [`Projection::repairs`].
+/// note: which of the two a request carries is the [`Projector`]'s decision
+/// ([`LinearProjector::send_blocks`]). It cannot invent an order that was never recorded, and
+/// flattening one that was is lossy and reported in [`Projection::repairs`].
 ///
 /// [`LinearProjector::send_blocks`]: crate::LinearProjector::send_blocks
 /// [`Projection::repairs`]: crate::Projection::repairs
@@ -86,11 +80,10 @@ pub struct Message {
     /// The model's reasoning for an assistant message, where the provider exposes it and the
     /// [`Projector`] carries it back.
     ///
-    /// note: The kernel never looks inside this. It is here because some APIs require a
-    /// reasoning model's own thinking to be echoed back verbatim in later requests - a signed
-    /// block, an encrypted item - and a runtime that dropped it on the floor would simply not be
-    /// able to talk to them. Whether it is sent is [`LinearProjector::send_reasoning`], and what
-    /// it means on the wire is the provider's business.
+    /// note: the kernel never looks inside this. Some APIs require a reasoning model's thinking, a
+    /// signed block or an encrypted item, to be echoed back verbatim in later requests, and a
+    /// runtime that dropped it could not talk to them. Whether it is sent is
+    /// [`LinearProjector::send_reasoning`]; what it means on the wire is the provider's business.
     ///
     /// [`LinearProjector::send_reasoning`]: crate::LinearProjector::send_reasoning
     pub reasoning: Option<Content>,
@@ -145,12 +138,10 @@ impl Message {
 
     /// Returns the tool calls this message carries, wherever they are recorded.
     ///
-    /// note: this, rather than the [`Message::tool_calls`] field, is what a [`Provider`] should
-    /// read. A turn projected as [`Content::Blocks`] keeps its calls in the blocks, in the order
-    /// the model asked for them, and leaves that field empty; a provider reading the field
-    /// directly would send a request with the text of a turn and none of the calls in it, which
-    /// most APIs reject and which is very hard to see afterwards. Blocks win where there are
-    /// any - there is never both.
+    /// note: a [`Provider`] should read this rather than the [`Message::tool_calls`] field. A turn
+    /// projected as [`Content::Blocks`] keeps its calls in the blocks, in the order asked, and
+    /// leaves the field empty; a provider reading the field would send the turn's text without its
+    /// calls, which most APIs reject. A turn never has both.
     pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
         calls_in(self.blocks(), &self.tool_calls)
     }
@@ -201,10 +192,9 @@ impl fmt::Display for ToolCallId {
 
 /// The bytes a JSON value serializes to.
 ///
-/// note: it is walked to be measured, but it does not have to be *built*: this counts the bytes
-/// as they are written and throws them away. Token counting runs over every tool schema on every
-/// request, and rendering each one into a string that is immediately dropped is a cost worth not
-/// paying.
+/// note: it is walked to be measured but not built: the bytes are counted as they are written and
+/// thrown away. This runs over every tool schema on every request, so not rendering each into a
+/// string is worth it.
 fn json_len(value: &Value) -> usize {
     let mut counted = Counting(0);
     match serde_json::to_writer(&mut counted, value) {
@@ -257,21 +247,19 @@ pub struct ToolCall {
     pub args: Arc<Value>,
     /// Whatever the provider attached to this call and expects to see again, carried verbatim.
     ///
-    /// note: This is [`Params`] in the other direction, and it exists for the same reason: some
-    /// APIs hand back a piece of opaque state per call - Gemini's `thoughtSignature`, an
-    /// encrypted reasoning item - and *reject the next request* if it does not come back
-    /// attached to the call it belongs to. The kernel never looks inside it, never separates it
-    /// from its call, and a provider that ignores it loses nothing.
+    /// note: [`Params`] in the other direction. Some APIs hand back opaque state per call, such as
+    /// Gemini's `thoughtSignature` or an encrypted reasoning item, and reject the next request if
+    /// it does not come back attached to its call. The kernel never looks inside it or separates it
+    /// from its call; a provider that ignores it loses nothing.
     #[serde(default = "null", skip_serializing_if = "is_null")]
     pub extra: Arc<Value>,
     /// What the model wrote for the arguments, where it was not a JSON object; `args` is then
     /// empty.
     ///
-    /// note: the kernel answers such a call itself, saying it did not parse and where, and asks
-    /// neither the policy nor the tool about it; see [`Tool::unparsed`](crate::Tool::unparsed).
-    /// The arguments stay empty so that the call goes back to the model as one it made with
-    /// nothing in it, rather than as the text in a wrapper of the runtime's - which a model reads
-    /// as a shape to copy, and writes every later call in.
+    /// note: the kernel answers such a call itself, saying it did not parse and where, without
+    /// asking the policy or the tool; see [`Tool::unparsed`](crate::Tool::unparsed). The arguments
+    /// stay empty so the call goes back to the model as one it made with nothing in it, not as its
+    /// text inside a wrapper of the runtime's, which a model would copy into every later call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unparsed: Option<String>,
 }
@@ -359,10 +347,10 @@ impl ToolCall {
     /// Returns the size of the call in bytes: the tool's name, its arguments, and whatever the
     /// provider attached to it.
     ///
-    /// note: a call is not free and a turn whose text is empty is not a turn that costs nothing -
-    /// the model wrote the arguments, and they go out on every request that follows. These are
-    /// the three things [`TokenCounter::count_item`](crate::TokenCounter::count_item) adds on top
-    /// of the content, said once so that a [`Block::Call`] can be measured the same way.
+    /// note: a call is not free: the model wrote its arguments, and they go out on every later
+    /// request. These are the three parts
+    /// [`TokenCounter::count_item`](crate::TokenCounter::count_item) adds on top of the content,
+    /// stated once so a [`Block::Call`] is measured the same way.
     pub fn byte_len(&self) -> usize {
         let extra = match self.extra.is_null() {
             true => 0,
@@ -377,10 +365,9 @@ impl ToolCall {
 /// The knobs sent to the provider alongside the messages, in whatever shape that provider
 /// understands.
 ///
-/// note: the kernel does not interpret a temperature. It carries this map to the [`Provider`]
-/// verbatim, the only way for `thinking`, `safety_settings`, `reasoning_effort` and every future
-/// vendor invention to be as first-class as `temperature`, and for the kernel to be unable to send
-/// anything the user did not ask for.
+/// note: the kernel does not interpret any of it. It carries the map to the [`Provider`] verbatim,
+/// so `thinking`, `safety_settings`, `reasoning_effort` and future vendor knobs are as first-class
+/// as `temperature`, and the kernel cannot send anything the user did not ask for.
 pub type Params = Map<String, Value>;
 
 /// A request to a model: exactly what will be sent, and nothing else.
@@ -413,28 +400,26 @@ pub enum StopReason {
 
 /// The token counts a provider reported for a request.
 ///
-/// note: These are the provider's numbers, as opposed to the kernel's estimates, and the two
-/// are kept separate on purpose: [`Kernel::budget`] is what the kernel thinks, this is what the
-/// provider says, and a client showing both is telling the truth twice.
+/// note: the provider's numbers, kept apart from the kernel's estimates on purpose:
+/// [`Kernel::budget`] is what the kernel thinks, this is what the provider says, and a client can
+/// show both.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
     /// Tokens in the request.
     pub input_tokens: Option<u64>,
     /// Everything the model generated and is charged for, including reasoning.
     ///
-    /// note: including the reasoning, which a provider has to be careful about because dialects do
-    /// not agree and the field cannot mean two things. OpenAI's `completion_tokens` already
-    /// contains it; Google reports `candidatesTokenCount` and `thoughtsTokenCount` side by side and
-    /// defines its total as the two plus the prompt, so a provider speaking that dialect adds them.
-    /// The rule makes `input_tokens + output_tokens` the whole bill for a request whichever
-    /// endpoint answered it, and a figure that means one thing per provider is not a figure anybody
-    /// can put beside another.
+    /// note: reasoning included, because dialects disagree and the field cannot mean two things.
+    /// OpenAI's `completion_tokens` already contains it; Google reports `candidatesTokenCount` and
+    /// `thoughtsTokenCount` separately and defines its total as both plus the prompt, so a provider
+    /// speaking that dialect adds them. That makes `input_tokens + output_tokens` the whole bill
+    /// for a request whichever endpoint answered it.
     pub output_tokens: Option<u64>,
     /// How much of [`Self::output_tokens`] was reasoning, where the provider says.
     ///
-    /// note: a part of that number rather than a second one beside it, so it is never added to
-    /// anything - it is subtracted from it to find what the answer itself cost. `None` means the
-    /// provider did not say, which is not the same as zero and must not be shown as it.
+    /// note: a part of that number, not a second one, so it is never added to anything; subtract it
+    /// to find what the answer itself cost. `None` means the provider did not say, which is not
+    /// zero and must not be shown as zero.
     pub reasoning_tokens: Option<u64>,
     /// Request tokens that were served from the provider's cache.
     ///
@@ -447,17 +432,16 @@ pub struct Usage {
 impl Usage {
     /// Reads the counts as the dialect defines them, where an endpoint plainly did not.
     ///
-    /// note: one repair, and only the one that is *certain*. A cached prefix is inside the prompt
-    /// figure, so `cached_input_tokens > input_tokens` cannot be true of the dialect this crate
-    /// reads, and an endpoint reporting it is reporting the cache miss under the name of the
-    /// whole. The two are added, since that is what the field is going to be read as either way.
+    /// note: one repair, and only the one that is certain. A cached prefix is inside the prompt
+    /// figure, so `cached_input_tokens > input_tokens` cannot be true of this dialect; an endpoint
+    /// reporting it is reporting the cache miss as the whole. The two are added, since the field
+    /// will be read that way.
     ///
-    /// note: this must not guess, from the kernel's estimate, which convention an endpoint is
-    /// speaking - taking whichever of `input` and `input + cached` is nearer what was
-    /// estimated. The estimate is what the reported figure calibrates, so that reasoning is
-    /// circular, and it resolves in favour of whichever error the counter has already been
-    /// dragged towards. A usage figure disagreeing with an estimate is not settled here; it is
-    /// settled by [`Overrun`], which is the only measurement in the units the limit uses.
+    /// note: this must not guess the convention from the kernel's estimate, picking whichever of
+    /// `input` and `input + cached` is nearer. The estimate is what the reported figure calibrates,
+    /// so that would be circular and would favour whatever error the counter already has. A usage
+    /// figure that disagrees with an estimate is settled by [`Overrun`], the only measurement in
+    /// the units the limit uses.
     #[must_use]
     pub fn settled(self) -> Self {
         let Some((input, cached)) = self.input_tokens.zip(self.cached_input_tokens) else {
@@ -477,13 +461,11 @@ impl Usage {
 
 /// How long a request was, against the length the model would take.
 ///
-/// note: the only figure in a session that is measured in the units the *limit* is enforced in.
-/// [`Usage::input_tokens`] is what the endpoint charged for, and an aggregator in front of a
-/// model is free to normalise that to some other tokenizer's idea of the same bytes - it is a
-/// bill, and bills are quoted in one currency. An overrun a provider reports comes from the model
-/// refusing to read the request, so it is the model's own count of it, and where the two disagree
-/// this is the one a budget has to be kept in. One the kernel builds before sending, in
-/// [`Error::TooLong`](crate::Error::TooLong), carries the kernel's own estimate instead.
+/// note: the only figure measured in the units the limit is enforced in. [`Usage::input_tokens`] is
+/// what the endpoint charged, and an aggregator may normalise that to another tokenizer's count. An
+/// overrun a provider reports comes from the model refusing the request, so it is the model's own
+/// count, and where the two disagree a budget follows this. One the kernel builds before sending,
+/// in [`Error::TooLong`](crate::Error::TooLong), carries the kernel's estimate instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Overrun {
     /// How long the request was: what the provider said, or the kernel's estimate where the
@@ -491,19 +473,18 @@ pub struct Overrun {
     pub tokens: u64,
     /// What the model holds, where the provider knows it.
     ///
-    /// note: [`ModelInfo::context_limit`] rather than a number out of the refusal, which is a
-    /// sentence and names more numbers than it looks like it does. The difference between the two
-    /// is what somebody is told to free, so it is worth taking from the side that measured it.
+    /// note: [`ModelInfo::context_limit`] rather than a number parsed from the refusal, a sentence
+    /// that names more numbers than it seems to. The difference between the two is what somebody is
+    /// told to free, so it comes from the side that measured it.
     pub limit: Option<u64>,
 }
 
 /// A request the model refused to read, because it was longer than the model can take.
 ///
-/// note: a [`Provider`] returns this in place of a plain message where it recognises the refusal,
-/// which is a dialect's job and not this crate's: the sentence is a vendor's wording and nothing
-/// here reads one. The kernel does not parse an error either - [`BoxError`] is carried
-/// uninterpreted - but it will look for *this type* in what it was handed, because the number
-/// inside is the one thing a session that has run out of room cannot find out any other way.
+/// note: a [`Provider`] returns this in place of a plain message where it recognises the refusal;
+/// recognising a vendor's wording is a dialect's job, not this crate's. The kernel carries a
+/// [`BoxError`] uninterpreted but looks for this type in it, because the number inside is the one
+/// thing a session out of room cannot find out any other way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TooLong {
     /// The two numbers.
@@ -543,11 +524,10 @@ pub struct ModelResponse {
     pub content: Option<Content>,
     /// The model's reasoning output, where the provider exposes it.
     ///
-    /// note: The kernel records this on the assistant turn it belongs to, so it is as visible,
-    /// countable and excludable as everything else - and so that a provider whose API requires
-    /// reasoning to be echoed back verbatim can get it back out of [`Message::reasoning`]. It is
-    /// never separated from the turn that produced it, because for a signed or encrypted
-    /// reasoning block that would be worse than dropping it.
+    /// note: recorded on the assistant turn it belongs to, so it is as visible, countable and
+    /// excludable as anything else, and so a provider whose API requires it echoed back verbatim
+    /// can get it from [`Message::reasoning`]. It is never separated from its turn, because for a
+    /// signed or encrypted block that would be worse than dropping it.
     pub reasoning: Option<Content>,
     /// The tools the model wants invoked.
     pub tool_calls: Vec<ToolCall>,
@@ -557,8 +537,8 @@ pub struct ModelResponse {
     pub usage: Option<Usage>,
     /// The provider's own response payload.
     ///
-    /// note: Providers are encouraged to fill this in: it is the only way for a user to check
-    /// what the model *actually* said against what the provider mapped it to.
+    /// note: providers should fill this in: it is the only way to check what the model actually
+    /// said against what the provider mapped it to.
     pub raw: Option<Value>,
 }
 
@@ -589,13 +569,12 @@ impl ModelResponse {
 
     /// Creates a response whose turn is an ordered sequence of blocks.
     ///
-    /// note: the [`StopReason`] is derived rather than asked for, because with the blocks in hand
-    /// there is nothing to ask: a turn containing a call is a turn the model expects to be
-    /// answered. Override it afterwards where the provider said something else.
+    /// note: the [`StopReason`] is derived from the blocks: a turn containing a call expects an
+    /// answer. Override it where the provider said otherwise.
     ///
-    /// note: [`ModelResponse::reasoning`] and [`ModelResponse::tool_calls`] are left empty, and
-    /// have to be: they are the other way of recording the same turn, and a response carrying
-    /// both would be two accounts of it. [`ModelResponse::calls`] reads whichever is in use.
+    /// note: [`ModelResponse::reasoning`] and [`ModelResponse::tool_calls`] stay empty, since they
+    /// are the other way of recording the same turn; [`ModelResponse::calls`] reads whichever is in
+    /// use.
     pub fn blocks(blocks: impl IntoIterator<Item = Block>) -> Self {
         let content = Content::blocks(blocks);
         let stop = match content
@@ -630,12 +609,10 @@ impl ModelResponse {
 
     /// Returns what the model thought, wherever it is recorded.
     ///
-    /// note: the same accessor as [`ContextItem::thinking`](crate::ContextItem::thinking), on the
-    /// type a turn arrives as rather than the one it is kept as. A turn is recorded one of two
-    /// ways - the [`ModelResponse::reasoning`] field, or a [`Block::Reasoning`] among ordered
-    /// blocks - and which one a caller gets depends on the provider it is talking to. Reading the
-    /// field directly is right on one dialect only; this reads both, as [`ModelResponse::calls`]
-    /// does.
+    /// note: [`ContextItem::thinking`](crate::ContextItem::thinking) for the type a turn arrives
+    /// as. A turn records thinking in [`ModelResponse::reasoning`] or as [`Block::Reasoning`]s
+    /// among ordered blocks, depending on the provider, so reading the field alone is right for one
+    /// dialect only. This reads both, as [`ModelResponse::calls`] does.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
         thinking_in(
             self.content.as_ref().and_then(Content::as_blocks),
@@ -647,10 +624,9 @@ impl ModelResponse {
 /// The calls a turn asked for: the ones among its ordered blocks where it has blocks, and its flat
 /// list where it has none.
 ///
-/// note: one function for [`Message`], [`ModelResponse`] and
-/// [`ContextItem`](crate::ContextItem), because it is one rule about one turn seen as three types,
-/// and a copy that came to read the flat list beside the blocks would give a second account of what
-/// the model asked for.
+/// note: one function for [`Message`], [`ModelResponse`] and [`ContextItem`](crate::ContextItem),
+/// because it is one rule about one turn, and a copy that also read the flat list beside the blocks
+/// would give a second account of what the model asked for.
 pub(crate) fn calls_in<'a>(
     blocks: Option<&'a [Block]>,
     flat: &'a [ToolCall],
@@ -706,29 +682,26 @@ pub struct ModelInfo {
     pub reasoning: bool,
     /// The names of the [`Params`] this model accepts, where the provider publishes them.
     ///
-    /// note: empty means "not published", never "takes none" - an endpoint that says nothing
-    /// about its parameters is the common case, and a caller that read an empty list as a
-    /// prohibition would be inventing a restriction the provider never stated. What it is for is
-    /// the opposite mistake: a parameter set for a model that does not take it is accepted, sent
-    /// and ignored in silence, and this is the only thing that can say so.
+    /// note: empty means not published, never "takes none". Most endpoints say nothing, and reading
+    /// that as a prohibition would invent a restriction. The list is for the opposite mistake: a
+    /// parameter set for a model that does not take it is sent and silently ignored, and this is
+    /// the only thing that can say so.
     ///
-    /// note: a name with a `.` in it is a path into a parameter - `generationConfig.temperature`
-    /// is `temperature` inside `generationConfig` - for a dialect that keeps its knobs inside one.
+    /// note: a name with a `.` is a path into a parameter (`generationConfig.temperature`), for a
+    /// dialect that keeps its knobs inside one.
     ///
-    /// note: `serde(default)`, so a record written before this existed still reads - as "not
-    /// published", which is what it was.
+    /// note: `serde(default)`, so an older record reads as not published, which is what it was.
     #[serde(default)]
     pub parameters: Vec<String>,
-    /// Where the provider sends its requests, where it has an address to say: the base URL, with
-    /// no credentials in it.
+    /// Where the provider sends its requests, where it has an address to say: the base URL, with no
+    /// credentials in it.
     ///
-    /// note: part of what the kernel compares to announce [`Event::ModelChanged`](crate::Event),
-    /// so a provider moved to another address with the same model name is a change in the record.
-    /// Without it, a switch of address alone left a record saying the session never moved, and a
-    /// session resumed from it had nothing to say where it had been talking.
+    /// note: part of what the kernel compares to announce [`Event::ModelChanged`](crate::Event), so
+    /// moving to another address with the same model name is recorded as a change, and a resumed
+    /// session can say where it had been talking.
     ///
-    /// note: `None` for a provider with no address - a scripted one, or one in the same process -
-    /// and for a record written before this existed, which reads as having said nothing.
+    /// note: `None` for a provider with no address, such as a scripted or in-process one, and for
+    /// an older record.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
 }
@@ -791,9 +764,9 @@ impl ModelInfo {
 
 /// A source of model responses.
 ///
-/// note: This is the entire model abstraction. The kernel knows a provider's [`ModelInfo`] and
-/// how to ask it for a response; it has no notion of a privileged provider, no vendor-specific
-/// branches, and no shared HTTP client to inherit assumptions from.
+/// note: this is the entire model abstraction. The kernel knows a provider's [`ModelInfo`] and how
+/// to ask it for a response; there is no privileged provider, no vendor-specific branch and no
+/// shared HTTP client.
 #[async_trait::async_trait]
 pub trait Provider: Send + Sync {
     /// Returns the identity and capabilities of the model behind this provider.
@@ -801,19 +774,17 @@ pub trait Provider: Send + Sync {
 
     /// Returns the payload this provider would send for the given request, if it can show one.
     ///
-    /// note: The kernel has no wire format of its own, so this is the only way the exact thing
-    /// that goes to the model can be seen. What it is *not* is a guarantee: like a
-    /// [`Tool`](crate::Tool)'s declared capabilities, it is the provider's own account of itself,
-    /// and the kernel has nothing to check it against. Implement it by rendering the payload
-    /// here and having [`Provider::respond`] send *that*, rather than building a second one -
-    /// two code paths that are supposed to agree eventually do not, and a preview that has
-    /// quietly stopped matching is worse than none.
+    /// note: the kernel has no wire format of its own, so this is the only way to see exactly what
+    /// goes to the model. It is not a guarantee: like a [`Tool`](crate::Tool)'s declared
+    /// capabilities, it is the provider's own account. Implement it by rendering the payload here
+    /// and having [`Provider::respond`] send that payload, rather than building a second one that
+    /// can drift from it.
     ///
-    /// note: The body, not the transport. Headers, URLs and credentials are deliberately out of
-    /// scope: an `Authorization` header is not something to put on an event stream.
+    /// note: the body only. Headers, URLs and credentials are out of scope: an `Authorization`
+    /// header does not belong on an event stream.
     ///
-    /// note: The default returns `None`, which is the honest answer for a provider that cannot
-    /// render its request without sending it. [`Kernel::preview_payload`] then says so.
+    /// note: the default returns `None`, for a provider that cannot render a request without
+    /// sending it; [`Kernel::preview_payload`] then says so.
     fn render(&self, request: &ModelRequest) -> Option<Value> {
         let _ = request;
 
@@ -822,19 +793,17 @@ pub trait Provider: Send + Sync {
 
     /// Answers the given request.
     ///
-    /// note: A streaming provider should report fragments through `deltas` as they arrive; the
-    /// returned [`ModelResponse`] is still expected to be complete. Whether to stream at all is
-    /// the provider's business, or the user's via [`Params`] - the kernel does not ask.
+    /// note: a streaming provider reports fragments through `deltas` as they arrive and still
+    /// returns a complete [`ModelResponse`]. Whether to stream is the provider's or the user's
+    /// choice, via [`Params`].
     ///
-    /// note: Return `Err` for anything that is not an answer, and be suspicious of what counts.
-    /// Real services report a rate limit or a dead upstream as an `error` object inside an
-    /// otherwise successful `200`; a provider that only checks the status code hands the kernel an
-    /// empty response, which it records as the model having said nothing.
+    /// note: return `Err` for anything that is not an answer. Real services report a rate limit or
+    /// a dead upstream as an `error` object inside a `200`; a provider that checks only the status
+    /// code hands the kernel an empty response, recorded as the model saying nothing.
     ///
-    /// note: The kernel imposes no timeout, because it has no idea what a reasonable one is for
-    /// your model - a reasoning model can take minutes. Give the transport its own. A caller can
-    /// also drop the future driving [`Kernel::step`]: the kernel returns to
-    /// [`State::Idle`](crate::State::Idle) and says so on the event stream.
+    /// note: the kernel imposes no timeout, since a reasoning model can take minutes; give the
+    /// transport its own. A caller can also drop the future driving [`Kernel::step`], and the
+    /// kernel returns to [`State::Idle`](crate::State::Idle) and says so on the event stream.
     async fn respond(
         &self,
         request: ModelRequest,

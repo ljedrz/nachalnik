@@ -33,10 +33,9 @@ impl fmt::Display for ContextId {
 
 /// What a [`ContextItem`] is, in terms of the model protocol.
 ///
-/// note: This is the only taxonomy the kernel uses. The variants carrying data carry exactly what
-/// is needed to rebuild a wire message from the item alone: an assistant turn's tool calls, and a
-/// tool result's call identity. Without them, a context with excluded items could not be projected
-/// back into a valid request.
+/// note: the only taxonomy the kernel uses. The variants with data carry exactly what rebuilding a
+/// wire message from the item alone needs (an assistant turn's tool calls, a tool result's call
+/// identity), so a context with excluded items can still be projected into a valid request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -51,9 +50,9 @@ pub enum ContextKind {
         tool_calls: Vec<ToolCall>,
         /// The model's own reasoning, where the provider exposed it.
         ///
-        /// note: It lives on the turn, not in its own item, because some APIs require it echoed
-        /// back on exactly the turn it came from. Excluding a turn excludes its reasoning; that is
-        /// the only correct answer for a signed block.
+        /// note: on the turn, not in an item of its own, because some APIs require it echoed back
+        /// on exactly the turn it came from. Excluding a turn excludes its reasoning, the only
+        /// correct answer for a signed block.
         #[serde(default)]
         reasoning: Option<Content>,
     },
@@ -96,21 +95,19 @@ pub(crate) const WHOLE_OUTPUT: &str = "the whole of a tool output an output limi
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-/// note: one state for each thing the projector does with an item, and no more. `archived` (the
-/// whole of a shortened output) and `superseded` (an item [`Kernel::supersede`] replaced) used to
-/// be two more words for [`ContextState::Excluded`], and nothing branched on them. A word that
-/// names no behaviour is a second thing to learn, so the note says why an item is out and the state
-/// says only that it is. Both words still read back as `excluded`, so old snapshots and logs load.
+/// note: one state per thing the projector does with an item. `archived` (the whole of a shortened
+/// output) and `superseded` (an item [`Kernel::supersede`] replaced) were once more words for
+/// [`ContextState::Excluded`] that nothing branched on; now the note says why an item is out and
+/// the state only that it is. Both still read back as `excluded`, so old snapshots and logs load.
 ///
-/// note: [`ContextState::Elided`] is the one distinction the projector makes beyond in and out; its
-/// note says how.
+/// note: [`ContextState::Elided`] is the projector's one distinction beyond in and out.
 pub enum ContextState {
     /// Included in the projection.
     Active,
     /// Not included; the item's note says who took it out and why.
     ///
-    /// note: A person, the model, a [`Compactor`], or the kernel itself took it out. The kernel
-    /// keeps a shortened tool output out beside the copy the model is shown, and takes out an item
+    /// note: taken out by a person, the model, a [`Compactor`] or the kernel itself, which keeps a
+    /// shortened tool output out beside the copy the model is shown and takes out an item
     /// [`Kernel::supersede`] replaced. It is restored the same way whoever did it.
     #[serde(alias = "archived", alias = "superseded")]
     Excluded,
@@ -119,19 +116,17 @@ pub enum ContextState {
     Pinned,
     /// Included in the projection, but as a short marker instead of its content.
     ///
-    /// note: This state means it happened and the content is gone; it is different from
-    /// [`ContextState::Excluded`]. An excluded tool result takes its call down with it; the
-    /// projector must, or the request is malformed. The model reads a conversation in which the
-    /// call never happened. An elided item still answers its call, so the turn's shape survives and
-    /// only the content is gone. A [`Compactor`] should prefer it.
+    /// note: unlike [`ContextState::Excluded`], it keeps the item's place. An excluded tool result
+    /// takes its call down with it (the projector must, or the request is malformed), so the model
+    /// reads a conversation in which the call never happened; an elided one still answers its call,
+    /// and only the content is gone. A [`Compactor`] should prefer it.
     ///
-    /// note: The marker is the item's `note`; the projector supplies only the brackets. The content
-    /// is untouched, so restoring is [`Kernel::set_state`] to [`ContextState::Active`]; nothing was
-    /// copied or destroyed.
+    /// note: the marker is the item's `note`, in brackets the projector supplies. The content is
+    /// untouched, so restoring is [`Kernel::set_state`] to [`ContextState::Active`].
     ///
-    /// note: For an assistant turn, the reasoning goes with the words: see
-    /// [`LinearProjector::send_reasoning`](crate::LinearProjector::send_reasoning). The turn stays,
-    /// and its calls still answer their results.
+    /// note: an elided assistant turn loses its reasoning with its words (see
+    /// [`LinearProjector::send_reasoning`](crate::LinearProjector::send_reasoning)) but keeps its
+    /// calls, which still answer their results.
     Elided,
 }
 
@@ -187,10 +182,10 @@ pub struct ContextItem {
     pub kind: ContextKind,
     /// Where it came from.
     ///
-    /// note: It is free-form because the kernel never branches on it; it only reports it.
-    /// Constructors use `user`, `system`, `instruction`, `file`, `selection`, `diagnostic`,
-    /// `memory`, `tool_result`, `model` and `compaction`. An extension should use its own name, so
-    /// the source of injected tokens can be identified.
+    /// note: free-form because the kernel never branches on it, only reports it. Constructors use
+    /// `user`, `system`, `instruction`, `file`, `selection`, `diagnostic`, `memory`, `tool_result`,
+    /// `model` and `compaction`; an extension should use its own name, so injected tokens can be
+    /// traced to it.
     pub source: String,
     /// A short, human-facing name: a path, a command, a description.
     pub label: String,
@@ -199,20 +194,17 @@ pub struct ContextItem {
     /// The estimated size of the item as it would be sent, as counted by the active
     /// [`TokenCounter`].
     pub tokens: usize,
-    /// How many pieces of the item's content the active [`TokenCounter`] would not put a number
-    /// on.
+    /// How many pieces of the item's content the active [`TokenCounter`] would not put a number on.
     ///
-    /// note: the per-item half of [`Budget::uncounted`](crate::Budget::uncounted), and it is
-    /// here rather than only on the budget so that a client showing a context can say *which*
-    /// row is the one nobody priced. A pane listing an item at `0 tokens` next to one at `12,000`
-    /// invites exactly the wrong conclusion about which of the two to get rid of.
+    /// note: the per-item half of [`Budget::uncounted`](crate::Budget::uncounted), so a client can
+    /// show which row nobody priced: an item shown at `0 tokens` next to one at `12,000` invites
+    /// the wrong conclusion about which to drop.
     ///
-    /// note: set by the counter, whenever `tokens` is, and by the same rules - it does not
-    /// change by itself when the counter changes, and [`Kernel::recount`](crate::Kernel::recount)
-    /// is what brings both into line.
+    /// note: set by the counter whenever `tokens` is, by the same rules; it does not change when
+    /// the counter changes until [`Kernel::recount`](crate::Kernel::recount) brings both into line.
     ///
-    /// note: `serde(default)`, so a snapshot written before this existed still resumes, reading
-    /// `0` - which is what a counter that could not say so was reporting.
+    /// note: `serde(default)`, so an older snapshot resumes reading `0`, which is what a counter
+    /// that could not say so reported.
     #[serde(default)]
     pub uncounted: usize,
     /// Whether the item takes part in the next request.
@@ -224,21 +216,20 @@ pub struct ContextItem {
     pub meta: Value,
     /// Why the item is in the context at all.
     ///
-    /// note: this and `note` below are the two halves of "why is this here". A fact belongs here if
-    /// it outlives a state change. A shortened tool result is always a shortened tool result,
-    /// whatever state the item moves to, so which item holds the whole of it is recorded here. In
-    /// `note` it would be lost the first time the state changed, and someone trying to understand
-    /// the pair may change the state back and forth.
+    /// note: this and `note` below are the two halves of "why is this here", and a fact belongs
+    /// here if it outlives a state change. A shortened tool result stays one whatever its state, so
+    /// which item holds the whole of it is recorded here; in `note` it would be lost at the first
+    /// state change, and someone trying to understand the pair is likely to change the state back
+    /// and forth.
     ///
-    /// note: `serde(default)`, so a snapshot written before this existed still resumes.
+    /// note: `serde(default)`, so an older snapshot still resumes.
     #[serde(default)]
     pub included_because: Option<String>,
     /// Why the item is in its current state; set whenever the state changes.
     ///
-    /// note: it is replaced whenever the state is set, including with `None`, on purpose. A reason
-    /// for being excluded stops being true as soon as the item is put back, and a stale reason is
-    /// worse than none. Nothing that must survive a state change may be kept here; put that in
-    /// `included_because`.
+    /// note: replaced whenever the state is set, even with `None`, on purpose: a reason for being
+    /// excluded stops being true once the item is back, and a stale reason is worse than none.
+    /// Anything that must survive a state change goes in `included_because`.
     pub note: Option<String>,
 }
 
@@ -362,10 +353,10 @@ impl ContextItem {
     /// Returns the model's reasoning if this is an assistant turn that carries it in the
     /// conventional slot.
     ///
-    /// note: use [`ContextItem::thinking`] instead. A turn recorded as ordered blocks keeps its
-    /// thinking in its content, where this cannot see it. It can also carry more than one piece, so
-    /// this returns `None` for a turn that is visibly full of reasoning. It is kept because a
-    /// conventional turn has exactly one, and an [`Option`] is what a caller wants for that.
+    /// note: prefer [`ContextItem::thinking`]. A turn recorded as ordered blocks keeps its thinking
+    /// in its content, where this cannot see it, and may hold several pieces, so this returns
+    /// `None` for a turn full of reasoning. It stays because a conventional turn has exactly one,
+    /// for which an [`Option`] is what a caller wants.
     pub fn reasoning(&self) -> Option<&Content> {
         match &self.kind {
             ContextKind::AssistantMessage { reasoning, .. } => reasoning.as_ref(),
@@ -375,15 +366,13 @@ impl ContextItem {
 
     /// Returns the model's thinking, wherever it is recorded, in the order it was produced.
     ///
-    /// note: this is the counterpart of [`ContextItem::calls`] and exists for the same reason. An
-    /// ordered turn keeps its thinking in [`Block::Reasoning`](crate::Block::Reasoning) blocks
-    /// inside its content, so a client that only knew the conventional slot would show a reasoning
-    /// model as having done no reasoning.
+    /// note: the counterpart of [`ContextItem::calls`]: an ordered turn keeps its thinking in
+    /// [`Block::Reasoning`](crate::Block::Reasoning) blocks inside its content, and a client that
+    /// only knew the conventional slot would show a reasoning model as having done no reasoning.
     ///
-    /// note: it yields the content of each thinking block, not a [`Part`](crate::Part), because the
-    /// conventional slot is a [`Content`] and there is no part to borrow. Anything a provider
-    /// attached to a thinking block is reachable through the blocks themselves and belongs to the
-    /// provider, not to a client showing what the model thought.
+    /// note: it yields each block's content, not a [`Part`](crate::Part), because the conventional
+    /// slot is a [`Content`] with no part to borrow. What a provider attached to a thinking block
+    /// is reachable through the blocks and is the provider's, not a client's.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
         let (ordered, flat) = match &self.kind {
             ContextKind::AssistantMessage { reasoning, .. } => {
@@ -414,12 +403,11 @@ impl ContextItem {
 
     /// Returns the tool calls this turn asked for, wherever they are recorded.
     ///
-    /// note: an assistant turn records its calls either in
-    /// [`ContextKind::AssistantMessage::tool_calls`] or, when the order they came in is part of the
-    /// turn, as [`Block::Call`](crate::Block::Call) blocks inside a [`Content::Blocks`]. The turn
-    /// never uses both, so there is never a second account of what the model asked for. This reads
-    /// whichever is in use. A [`Projector`] pairing calls with results should read this; matching
-    /// on the kind alone would silently find no calls in an ordered turn.
+    /// note: a turn records its calls either in [`ContextKind::AssistantMessage::tool_calls`] or,
+    /// when their order is part of the turn, as [`Block::Call`](crate::Block::Call) blocks in a
+    /// [`Content::Blocks`], never both, so there is one account of what the model asked for. This
+    /// reads whichever is in use; a [`Projector`] pairing calls with results should use it, since
+    /// matching on the kind alone finds no calls in an ordered turn.
     pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
         let (ordered, flat) = match &self.kind {
             ContextKind::AssistantMessage { tool_calls, .. } => {

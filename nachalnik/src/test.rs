@@ -1,7 +1,7 @@
 //! Helpers for testing an agent without a model provider, enabled by the `test` feature.
 //!
-//! note: So the kernel's tests never need a network, and neither do yours. The core does not ship
-//! permission policies; a kernel does not decide what is allowed, but a test does.
+//! note: so the kernel's tests never need a network, and neither do yours. The permission policies
+//! here are ones the core does not ship: a kernel does not decide what is allowed, but a test does.
 
 use std::{collections::BTreeMap, collections::VecDeque, sync::Arc};
 
@@ -22,9 +22,9 @@ use crate::{
 
 /// A [`Provider`] that answers with prepared responses and remembers what it was asked.
 ///
-/// note: It streams a whole response's content as text in one delta: never reasoning, never a
-/// call's arguments, whatever the response's shape. A test of what a stream looks like needs its
-/// own provider.
+/// note: it streams a whole response's content as text in one delta, never reasoning or a call's
+/// arguments, whatever the response's shape; a test of what a stream looks like needs its own
+/// provider.
 pub struct ScriptedProvider {
     info: ModelInfo,
     script: Mutex<VecDeque<ModelResponse>>,
@@ -86,12 +86,12 @@ impl Provider for ScriptedProvider {
     }
 }
 
-/// A [`Provider`] that refuses everything, the way a model refuses a request longer than it
-/// will read.
+/// A [`Provider`] that refuses everything, the way a model refuses a request longer than it will
+/// read.
 ///
-/// note: it fails with a [`TooLong`] rather than with a sentence, because reading a vendor's
-/// wording is a dialect's job, while what to do with the numbers is the kernel's. The two are
-/// worth keeping apart in a test for the same reason they are in the crates.
+/// note: it fails with a [`TooLong`] rather than a sentence, because reading a vendor's wording is
+/// a dialect's job and what to do with the numbers is the kernel's; a test keeps them apart for the
+/// same reason the crates do.
 pub struct TooLongProvider {
     info: ModelInfo,
     tokens: u64,
