@@ -4,9 +4,9 @@
 //! An [MCP](https://modelcontextprotocol.io) bridge for [`nachalnik`]: a tool somebody else wrote,
 //! as a [`Tool`](nachalnik::Tool) like any other.
 //!
-// the example is `Server::spawn`'s, so it is documented under the feature that has one: a build
-// without `child-process` is a bridge to a server somebody else opened the transport to, and a
-// doctest calling a function that build does not have is a failure about nothing
+// the example calls `Server::spawn`, so it is documented under the feature that has it: a build
+// without `child-process` bridges to a server someone else opened the transport to, and a doctest
+// calling a function that build lacks fails for nothing
 #![cfg_attr(
     feature = "child-process",
     doc = r#"
@@ -29,15 +29,15 @@ println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
 
 //! # why this is not in the runtime
 //!
-//! `nachalnik` promises to spawn no processes, open no sockets and run nothing in the background.
-//! Speaking MCP consists of those things. MCP revises faster than a context library's version
+//! `nachalnik` promises to spawn no processes, open no sockets and run nothing in the background,
+//! and speaking MCP needs all three. MCP also revises faster than a context library's version
 //! should, so the runtime is not tied to it.
 //!
 //! It needs nothing the runtime does not already expose. An MCP tool is a `Tool` that forwards to a
 //! server. Tools arriving and leaving use [`Kernel::add_tool`](nachalnik::Kernel::add_tool) and
 //! [`remove_tool`](nachalnik::Kernel::remove_tool), which put them on the event stream. A stop is
-//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out and while it is
-//! with the server, which is then sent MCP's cancellation. A structured result is
+//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out and while the
+//! server has it, and the server is then sent MCP's cancellation. A structured result is
 //! [`Content::Json`](nachalnik::Content). A server's progress notifications are not forwarded yet:
 //! no progress token is sent, so none arrive.
 //!
@@ -63,14 +63,13 @@ pub use crate::{
 /// The MCP SDK this bridge is built on, re-exported.
 ///
 /// note: not a convenience. [`Server::connect`] is generic over `rmcp`'s transports and
-/// [`Server::info`] returns one of its types. Without this re-export a caller must add `rmcp`
-/// themselves and guess the version to name what those two deal in; a mismatched version fails to
-/// compile with an error about two types that have the same name. Re-exporting says which SDK this
-/// crate is holding and makes an SDK bump visible here rather than in somebody's build.
+/// [`Server::info`] returns one of its types, so without this a caller would add `rmcp` and guess
+/// the version, and a mismatch fails to compile with an error about two types of the same name.
+/// Re-exporting says which SDK this crate holds and makes an SDK bump visible here rather than in
+/// somebody's build.
 ///
-/// note: [`Server::spawn`] takes a `tokio::process::Command`, which is not re-exported. Anything
-/// using this runtime already has `tokio`; re-exporting all of it for one type would be strange for
-/// a bridge.
+/// note: [`Server::spawn`] takes a `tokio::process::Command`, which is not re-exported: anything
+/// using this runtime already has `tokio`.
 pub use rmcp;
 
 use std::fmt;
@@ -80,9 +79,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Something an MCP server did, or failed to do.
 ///
-/// note: A tool that runs and reports a failure is not one of these; it is an ordinary
-/// [`ToolOutput::error`](nachalnik::ToolOutput::error) handed back to the model because the model
-/// needs it. These are failures that mean the server will not answer.
+/// note: not a tool that runs and reports a failure, which is an ordinary
+/// [`ToolOutput::error`](nachalnik::ToolOutput::error) the model needs to see. These mean the
+/// server will not answer.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {

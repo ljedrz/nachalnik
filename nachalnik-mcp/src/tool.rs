@@ -23,27 +23,25 @@ const HEARTBEAT: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// How the capabilities of a server's tools are decided.
 ///
-/// MCP tools may carry annotations: `readOnlyHint`, `destructiveHint`, `openWorldHint`. The
-/// specification says clients should never make tool use decisions based on annotations from
-/// untrusted servers. They are hints. A server that would rather not be asked about need only claim
-/// to be read-only.
+/// MCP tools may carry annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`), which the
+/// specification calls hints that clients should never base tool-use decisions on when the server
+/// is untrusted: a server that would rather not be asked about need only claim to be read-only. A
+/// [`PermissionPolicy`](nachalnik::PermissionPolicy) acting on them would trust what it gates, so
+/// the default trusts nothing.
 ///
-/// A [`PermissionPolicy`](nachalnik::PermissionPolicy) acting on those hints would trust the thing
-/// it gates. The default trusts nothing.
-///
-/// note: Every tool from a server also declares `mcp:call`, the operation of calling somebody
-/// else's tool. A policy that knows nothing else about a tool can answer that. Which server it came
-/// from is provenance, not an act, so it is not a capability:
-/// [`Server::install`](crate::Server::install) returns the ids it installed, and a client that
-/// wants per-server rules holds that mapping.
+/// note: every tool from a server also declares `mcp:call`, the operation of calling somebody
+/// else's tool, which a policy that knows nothing else about a tool can answer. Which server it
+/// came from is provenance, not an act, so it is not a capability:
+/// [`Server::install`](crate::Server::install) returns the ids it installed, and a client wanting
+/// per-server rules keeps that mapping.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Trust {
-    /// Believe nothing. Tools declare only that they are somebody else's, and what may be done
-    /// with them is a decision your policy makes once, knowingly.
+    /// Believe nothing. Tools declare only that they are somebody else's, and what may be done with
+    /// them is a decision your policy makes once, knowingly.
     ///
-    /// note: The default, because it is the only option here that cannot be talked out of anything
-    /// by the server it is describing.
+    /// note: the default, because it is the only mode the server it describes cannot talk out of
+    /// anything.
     #[default]
     Nothing,
     /// Every tool from this server gets exactly these capabilities, whatever it says about itself,
@@ -66,10 +64,9 @@ pub enum Trust {
 impl Trust {
     /// Works out what a tool may do, given what it says about itself.
     pub(crate) fn capabilities(&self, annotations: Option<&ToolAnnotations>) -> Vec<Capability> {
-        // note: calling somebody else's tool is itself an operation, and every tool from a server
-        // declares it whatever else is believed about them. `Trust::Nothing` believes nothing, and
-        // without this its list would be empty. An empty list of capabilities is a call that needs
-        // nothing and is allowed by the strictest policy
+        // note: calling somebody else's tool is itself an operation, declared by every tool from a
+        // server whatever else is believed. Without it, `Trust::Nothing` would give an empty list:
+        // a call that needs nothing, which the strictest policy allows
         let mut capabilities = vec![Capability::of(Domain::Other("mcp".into()), "call")];
 
         match self {
@@ -134,11 +131,10 @@ impl Tool for McpTool {
         self.spec.clone()
     }
 
-    /// note: a call is interruptible while the server works on it, as `shell` is while a command
-    /// runs. A server that never answers would otherwise hold the turn indefinitely, and escape, a
-    /// deadline, and the first `ctrl+c` would do nothing. MCP's `notifications/cancelled` tells the
-    /// server to stop, and the model is told the call was stopped part-way because what the server
-    /// had done by then is not known here.
+    /// note: interruptible while the server works, as `shell` is while a command runs; otherwise a
+    /// server that never answers holds the turn, and escape, a deadline and the first `ctrl+c` do
+    /// nothing. MCP's `notifications/cancelled` tells the server to stop, and the model is told the
+    /// call stopped part-way, since what the server had done by then is not known here.
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         // before dispatching, so that a call interrupted before it went out says it did not run
         if output.is_interrupted() {
@@ -147,12 +143,12 @@ impl Tool for McpTool {
             ));
         }
 
-        // note: providers once kept arguments they could not parse as text under `_unparsed`, and
-        // a model that saw calls in that shape writes its own in it. Sent on as the arguments, it
-        // was a server answering about a missing parameter in a call whose text holds it. Text
-        // there that parses to one object, and stands alone, is the model's wrapper round a whole
-        // call, and that call is read; anything else is said to be what it is rather than sent.
-        // What a provider cannot parse now is answered by the kernel and never reaches here
+        // note: providers once kept arguments they could not parse under `_unparsed`, and a model
+        // that has seen calls in that shape writes its own in it; sent on as the arguments, the
+        // server answered about a missing parameter the call's text holds. Text there that parses
+        // to one object, standing alone, is the model's wrapper round a whole call, and that call
+        // is read; anything else is said to be what it is rather than sent. What a provider cannot
+        // parse now is answered by the kernel and never reaches here
         let unwrapped;
         let args = match call.args.get(UNPARSED).and_then(Value::as_str) {
             Some(written) => match serde_json::from_str::<Value>(written) {
@@ -207,15 +203,15 @@ impl Tool for McpTool {
             .await;
         let mut handle = match sent {
             Ok(handle) => handle,
-            // the server will not answer this call. That is a failure the model can act on, not a
-            // reason to stop the loop.
+            // the server will not answer this call: a failure the model can act on, not a reason to
+            // stop the loop.
             //
-            // note: not "refused". The server never saw the call: sending fails when the connection
-            // is gone, and a model told it was refused goes looking for what it did wrong.
+            // note: not "refused": sending fails when the connection is gone, so the server never
+            // saw the call, and a model told it was refused goes looking for what it did wrong.
             //
-            // note: the error says the connection is closed. The model calls the server's other
-            // tools next, and `Transport closed` alone does not say that each of them will fail the
-            // same way
+            // note: the error says the connection is closed, because the model tries the server's
+            // other tools next, and `Transport closed` alone does not say each will fail the same
+            // way
             Err(e) => {
                 return Ok(ToolOutput::error(format!(
                     "the call could not be sent to the MCP server: {e}{}",
@@ -280,22 +276,22 @@ impl Tool for McpTool {
 /// The largest image carried into the context, in base64.
 ///
 /// note: Anthropic's limit for one image, the strictest of the APIs that take one in a tool result.
-/// Past it the request is refused - this one and every later one, while the image stays in the
-/// context - so a larger one is named instead.
+/// Past it this request and every later one is refused while the image stays in the context, so a
+/// larger one is named instead.
 ///
-/// note: public so that a host can hand it to `Kernel::set_picture_limit`. A tool's output limit
-/// measures a picture with its text otherwise, and one this size is over any limit text is held to,
-/// so the model is shown its name instead of the picture.
+/// note: public so a host can pass it to `Kernel::set_picture_limit`. Otherwise a picture is
+/// measured with its text against the output limit, which one this size always exceeds, and the
+/// model is shown only its name.
 pub const LARGEST_IMAGE: usize = 5 * 1024 * 1024;
 
 /// Turns what a server returned into what the kernel records.
 ///
-/// note: MCP results are a list of blocks, and not all of them are text. An image goes in as the
-/// picture it is, beside the text it came with, and each provider sends it as its API lets it:
-/// Anthropic's and OpenAI's Responses as an image in the result, Gemini in the `functionResponse`'s
-/// own parts, Chat Completions as a line naming it, since its tool results are text. Anything else that is not text - audio, a binary resource,
-/// an image too large to send - is *named* rather than dropped silently: the model is told that
-/// something came back and what it was, which is a better answer than a gap.
+/// note: MCP results are a list of blocks, not all of them text. An image goes in as the picture it
+/// is, beside its text, and each provider sends it as its API allows: Anthropic's and OpenAI's
+/// Responses as an image in the result, Gemini in the `functionResponse`'s own parts, Chat
+/// Completions as a line naming it, since its tool results are text. Anything else that is not text
+/// (audio, a binary resource, an image too large to send) is named rather than dropped, so the
+/// model knows something came back and what it was.
 fn output_of(result: CallToolResult) -> ToolOutput {
     let failed = result.is_error.unwrap_or(false);
 
@@ -371,9 +367,9 @@ pub(crate) fn left_out(what: &str, media: Option<&str>) -> String {
 
 /// The text of one part of a resource, or the media type of a part that has none.
 ///
-/// note: one reading for both places a resource arrives - embedded in a call's result, and read on
-/// its own by `Server::resources` - so both say the same of the same part. Matched on the type
-/// rather than read out of its JSON, which copied the whole of a blob to find it had no text.
+/// note: one reading for both places a resource arrives, embedded in a call's result and read on
+/// its own by `Server::resources`, so both say the same of the same part. Matched on the type
+/// rather than read from its JSON, which copied a whole blob to find it had no text.
 pub(crate) fn text_of(contents: &ResourceContents) -> Result<&str, Option<&str>> {
     match contents {
         ResourceContents::TextResourceContents { text, .. } => Ok(text),
@@ -400,9 +396,9 @@ pub(crate) fn spec_of(id: String, tool: &rmcp::model::Tool, trust: &Trust) -> To
 /// What a model provider will accept in a tool's name: `[a-zA-Z0-9_-]`, starting with a letter or
 /// `_`, and no more than this many of them.
 ///
-/// note: the start is Google's rule - its API refuses a declaration named `7zip__list` with a 400,
-/// for every request the tool is offered in - and the charset and the length OpenAI's. A name has
-/// to pass both, since the same tools go to every dialect.
+/// note: the start is Google's rule (its API refuses a declaration named `7zip__list` with a 400 on
+/// every request that offers the tool); the charset and the length are OpenAI's. A name has to pass
+/// both, since the same tools go to every dialect.
 const LIMIT: usize = 64;
 
 /// What separates a server's name from its tool's.
@@ -435,11 +431,10 @@ pub(crate) fn sanitize(name: &str) -> String {
 
 /// The kernel's identifier for a tool from an MCP server.
 ///
-/// note: when the prefix and the tool's own name together exceed the limit, the prefix gives way.
-/// The tool's own name distinguishes one of a server's tools from another, so cutting the tail of
-/// the pair would cut that: a server with a 62-character name would otherwise have every tool
-/// arrive under the same identifier, each replacing the last. A prefix with no room left is
-/// dropped, not shortened to nothing.
+/// note: when the prefix and the tool's own name together exceed the limit, the prefix gives way,
+/// because the tool's name is what tells a server's tools apart: cutting the tail of the pair would
+/// give every tool of a server with a 62-character name the same identifier, each replacing the
+/// last. A prefix with no room left is dropped, not shortened to nothing.
 pub(crate) fn tool_id(prefix: Option<&str>, remote: &str) -> String {
     let remote = sanitize(remote);
     let Some(prefix) = prefix else {
@@ -507,17 +502,14 @@ mod tests {
 
     /// The names to try: short ones, ones that straddle the limit, and long ones.
     ///
-    /// note: `(?s).` rather than a charset, because the input is a name an MCP server chose and
-    /// the point of this function is that a server is under no obligation to have heard of the
-    /// restriction. Emoji, CJK, newlines, control characters and the empty string are all things
-    /// a server may legitimately send, and each is a way for an identifier to reach a provider as
-    /// something it rejects.
+    /// note: `(?s).` rather than a charset, because a server need not have heard of the
+    /// restriction: emoji, CJK, newlines, control characters and the empty string are all names it
+    /// may send, and each can reach a provider as something it rejects.
     ///
-    /// note: the lengths are stated because proptest's `*` tops out around thirty characters, so
-    /// `(?s).*` never produces a name that reaches [`LIMIT`], and raising the cap would break none
-    /// of the properties below. Truncation is half of what [`sanitize`] does, `{60,70}` is
-    /// the half of the strategy that reaches it, and it is weighted highest because the boundary
-    /// is where this function goes wrong.
+    /// note: lengths are given because proptest's `*` stops around thirty characters, so `(?s).*`
+    /// never produces a name that reaches [`LIMIT`], and the properties below would pass whatever
+    /// the cap. Truncation is half of what [`sanitize`] does, `{60,70}` is the half of the strategy
+    /// that reaches it, and it is weighted highest because the boundary is where this goes wrong.
     fn a_name() -> impl Strategy<Value = String> {
         prop_oneof![
             2 => "(?s).{0,8}",
@@ -594,17 +586,15 @@ mod tests {
     /// A collision, constructed rather than found: two tools on one server arriving under one
     /// identifier.
     ///
-    /// note: this is not a bug and is not to be "fixed". [`sanitize`]'s own note says a rewrite
-    /// can collide, and [`Installed::replaced`](crate::Installed::replaced) is what the bridge
-    /// answers with instead of assuming it displaced nothing - `bridge.rs` checks that it does.
-    /// What this pins is the shape of the remaining case, so that nobody reads the prefix giving
-    /// way in [`tool_id`] as having made identifiers unique: it makes the *tool's* name survive,
-    /// which is a different promise and the only one truncation can keep.
+    /// note: not a bug to "fix". [`sanitize`]'s note says a rewrite can collide, and
+    /// [`Installed::replaced`](crate::Installed::replaced) is the bridge's answer, which
+    /// `bridge.rs` checks. This pins the remaining case so that nobody reads the prefix giving way
+    /// in [`tool_id`] as making identifiers unique: it makes the tool's own name survive, a
+    /// different promise and the only one truncation can keep.
     ///
-    /// note: no generator would find this. It needs the prefix to be truncated at a boundary the
-    /// longer of the two tool names then reproduces out of the separator, and the two characters
-    /// the cut lands on to be underscores - and a search that is uniform over strings will not
-    /// put a sixty-first character anywhere in particular.
+    /// note: no generator would find it: it needs the prefix cut at a boundary that the longer tool
+    /// name reproduces from the separator, with underscores where the cut lands, and a search
+    /// uniform over strings will not put a sixty-first character anywhere in particular.
     #[test]
     fn rewriting_can_still_collide_and_the_bridge_reports_it() {
         // sixty-four characters after the rewrite, with underscores at the sixtieth and
