@@ -30,26 +30,24 @@ println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
 //! # why this is not in the runtime
 //!
 //! `nachalnik` promises to spawn no processes, open no sockets and run nothing in the background.
-//! Every one of those is what speaking MCP consists of. And MCP revises faster than a context
-//! library's version should, so the runtime is not tied to it either.
+//! Speaking MCP consists of those things. MCP revises faster than a context library's version
+//! should, so the runtime is not tied to it.
 //!
-//! It needs nothing the runtime does not already expose. An MCP tool is a `Tool` that forwards to
-//! a server; tools arriving and leaving is [`Kernel::add_tool`](nachalnik::Kernel::add_tool) and
-//! [`remove_tool`](nachalnik::Kernel::remove_tool), which put it on the event stream; a stop is
-//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out and while it
-//! is with the server, which is then sent MCP's cancellation; a structured result is
+//! It needs nothing the runtime does not already expose. An MCP tool is a `Tool` that forwards to a
+//! server. Tools arriving and leaving use [`Kernel::add_tool`](nachalnik::Kernel::add_tool) and
+//! [`remove_tool`](nachalnik::Kernel::remove_tool), which put them on the event stream. A stop is
+//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out and while it is
+//! with the server, which is then sent MCP's cancellation. A structured result is
 //! [`Content::Json`](nachalnik::Content). A server's progress notifications are not forwarded yet:
 //! no progress token is sent, so none arrive.
 //!
 //! # what it decides, and what it refuses to
 //!
-//! Each of these is a judgement call with a default here, and yours to change rather than the
-//! kernel's:
+//! These are judgement calls with defaults here, and yours to change rather than the kernel's:
 //!
-//! - **What a tool is allowed to do.** MCP tools carry *hints* about themselves, and the
-//!   specification says in as many words that a client should never make tool-use decisions
-//!   based on hints from a server it does not trust. So [`Trust`] defaults to believing none of
-//!   them; read its documentation before changing that.
+//! - **What a tool is allowed to do.** MCP tools carry hints. The specification says a client
+//!   should never make tool-use decisions based on hints from an untrusted server. [`Trust`]
+//!   defaults to believing none of them; read its documentation before changing that.
 //! - **What a tool is called.** Two servers may both offer `read`, and a kernel holds one tool per
 //!   identifier, so names are prefixed with the server's unless [`Server::without_prefix`] says
 //!   otherwise. Nothing is ever replaced quietly: [`Installed::replaced`] says what was displaced.
@@ -83,10 +81,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Something an MCP server did, or failed to do.
 ///
-/// note: A tool that *runs* and reports a failure is not one of these - that is an ordinary
-/// [`ToolOutput::error`](nachalnik::ToolOutput::error), handed back to the model, because it is
-/// information the model needs. These are the failures that mean the server is not going to
-/// answer.
+/// note: A tool that runs and reports a failure is not one of these; it is an ordinary
+/// [`ToolOutput::error`](nachalnik::ToolOutput::error) handed back to the model because the model
+/// needs it. These are failures that mean the server will not answer.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -117,10 +114,10 @@ impl std::error::Error for Error {
 mod tests {
     use super::*;
 
-    /// Both kinds of failure keep the one underneath them, for a caller to walk to or downcast.
+    /// Both failure kinds keep the underlying error for a caller to walk or downcast.
     ///
-    /// note: the `Display` says the same with or without it, so the chain is the only place its
-    /// loss would show.
+    /// note: `Display` reads the same with or without it, so the chain is the only place its loss
+    /// would show.
     #[test]
     fn an_error_keeps_the_failure_underneath_it() {
         let underneath = || -> Box<dyn std::error::Error + Send + Sync> {

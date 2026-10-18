@@ -1,8 +1,8 @@
 //! A connection to one MCP server, and what installing its tools into a kernel did.
 //!
-//! note: the connection lives as long as the [`Server`] does: dropping it ends the session, and for
-//! a server running as a child process the process goes with it. That is also why this crate is
-//! not the runtime - holding a process open is precisely what `nachalnik` promises not to do.
+//! note: the connection lives as long as the [`Server`]; dropping it ends the session, and for a
+//! child process the process goes with it. This crate is not the runtime: `nachalnik` does not hold
+//! processes open.
 
 use std::sync::Arc;
 
@@ -20,8 +20,8 @@ use crate::{
 /// The most pages one listing reads, of tools or of resources; see `Server::tools` and
 /// `Server::resources`.
 ///
-/// note: far past what a server offers - a page is commonly dozens of tools - and a bound all the
-/// same, since the cursor is the server's to hand back.
+/// note: far past what a server offers, and a bound all the same, since the cursor is the server's
+/// to hand back.
 const PAGES: usize = 100;
 
 /// What installing a server's tools into a kernel did.
@@ -42,12 +42,11 @@ pub struct Installed {
 impl Installed {
     /// Takes these tools back out of a kernel, returning how many were still there.
     ///
-    /// note: It removes what was actually added, rather than asking the server again and removing
-    /// whatever it says today. A server whose tool list has changed in between would otherwise
-    /// leave tools behind that nothing can name.
+    /// note: it removes what was actually added, not what the server says today; a changed list
+    /// would otherwise leave tools behind that nothing can name.
     ///
     /// note: by identifier, so a tool installed since under one of the same identifiers is what
-    /// goes. The later install's own `replaced` is what said that identifier was taken.
+    /// goes. The later install's `replaced` said that identifier was taken.
     pub fn remove_from(&self, kernel: &Kernel) -> usize {
         self.added
             .iter()
@@ -58,8 +57,8 @@ impl Installed {
 
 /// A connection to one MCP server.
 ///
-/// note: The connection is held for as long as this is. Dropping it ends the session, and for a
-/// server running as a child process that means the process goes with it.
+/// note: the connection lives as long as the [`Server`]; dropping it ends the session, and for a
+/// child process the process goes with it.
 pub struct Server {
     name: String,
     prefix: bool,
@@ -68,7 +67,7 @@ pub struct Server {
     /// [`Server::answering_within`].
     within: Option<std::time::Duration>,
     running: RunningService<RoleClient, ()>,
-    /// The process, where this spawned one; see [`Server::spawn`].
+    /// The process, if this spawned one; see [`Server::spawn`].
     ///
     /// note: after `running`, so that dropping this ends the session before the process goes.
     #[cfg(feature = "child-process")]
@@ -78,8 +77,8 @@ pub struct Server {
 impl Server {
     /// Connects to a server over a transport you have opened.
     ///
-    /// note: This is the general form, and what the others are written in terms of. A pipe, a
-    /// socket, a pair of streams in the same process for a test - the protocol does not care.
+    /// note: the general form; the others are written in terms of it. The protocol does not care: a
+    /// pipe, a socket, or a pair of streams in the same process for a test.
     pub async fn connect<T, E, A>(name: impl Into<String>, transport: T) -> Result<Self>
     where
         T: IntoTransport<RoleClient, E, A>,
@@ -100,21 +99,19 @@ impl Server {
 
     /// Connects to a server run as a child process, talking over its stdin and stdout.
     ///
-    /// note: This is how most MCP servers are distributed, and it is the reason this crate exists
-    /// separately: the runtime spawns no processes.
+    /// note: most MCP servers are distributed this way; the runtime spawns no processes, which is
+    /// why this crate exists separately.
     ///
-    /// note: its standard error is held and read rather than inherited, whatever the `Command`
-    /// says - all three streams are set to pipes below, over whatever it asked for. Inherited, a
-    /// server that logs a line per request writes it across whatever the caller has on the
-    /// terminal, a drawn screen included, and no caller can stop it. What it says is kept, a few
-    /// lines of it, for the one moment it is worth reading: a handshake that failed, where it is
-    /// the reason.
+    /// note: standard error is held and read rather than inherited, whatever the `Command` says;
+    /// all three streams are pipes. Inherited output writes across the caller's terminal, a drawn
+    /// screen included, and no caller can stop it. A few lines are kept for a failed handshake,
+    /// where they are the reason.
     ///
-    /// note: and spawned here rather than by `rmcp`, so that the process is this value's and goes
-    /// when it does. `rmcp`'s own transport kills a child it drops from a task it spawns, and a
-    /// runtime being shut down need not run that task - so a server still busy with a call, which
-    /// never reads the end of its input, outlived the program that started it. Held here with
-    /// `kill_on_drop`, whatever the `Command` says, it is killed in the drop itself.
+    /// note: spawned here rather than by `rmcp`, so the process is this value's and goes when it
+    /// does. `rmcp`'s transport kills a child it drops from a task it spawns, and a runtime being
+    /// shut down need not run that task, so a server still busy with a call, which never reads the
+    /// end of its input, outlived the program that started it. Held here with `kill_on_drop`,
+    /// whatever the `Command` says, it is killed in the drop itself.
     #[cfg(feature = "child-process")]
     pub async fn spawn(
         name: impl Into<String>,
@@ -174,12 +171,12 @@ impl Server {
         self
     }
 
-    /// Gives up on a call to one of this server's tools once it has waited this long for an answer,
-    /// telling the server to stop and the model that the call went unanswered.
+    /// Stops waiting for a tool's answer after this long, tells the server to stop, and tells the
+    /// model the call went unanswered.
     ///
-    /// note: no limit unless one is given, since how long a tool may take is the caller's to know.
-    /// A call that never comes back - a server that hangs, or a response `rmcp` drops because it
-    /// carries neither a result nor an error - holds the turn until it is interrupted otherwise.
+    /// note: no limit unless one is given; how long a tool may take is the caller's to know. A call
+    /// that never comes back holds the turn until it is interrupted. That includes a server that
+    /// hangs, or a response `rmcp` drops because it carries neither a result nor an error.
     pub fn answering_within(mut self, within: std::time::Duration) -> Self {
         self.within = Some(within);
         self
@@ -187,14 +184,14 @@ impl Server {
 
     /// Offers the tools under their own names rather than the server's plus theirs.
     ///
-    /// note: Shorter, and worth it for a single server. With two of them it is how one server's
-    /// `read` becomes the other's, said only in [`Installed::replaced`].
+    /// note: worth it for one server. With two, one server's `read` becomes the other's, said only
+    /// in [`Installed::replaced`].
     pub fn without_prefix(mut self) -> Self {
         self.prefix = false;
         self
     }
 
-    /// The name this connection was given, which is also the prefix its tools carry unless it was
+    /// The name this connection was given. Its tools carry this name as a prefix unless it was
     /// built [`without_prefix`](Server::without_prefix).
     pub fn name(&self) -> &str {
         &self.name
@@ -208,12 +205,12 @@ impl Server {
 
     /// Asks the server what it offers, and wraps each of them as a [`Tool`](nachalnik::Tool).
     ///
-    /// note: Nothing is registered anywhere by this; it hands back a list, and what to do with it
-    /// is yours. [`Server::install`] is the common answer.
+    /// note: Nothing is registered by this. It hands back a list; what to do with it is yours.
+    /// [`Server::install`] is the common answer.
     ///
-    /// note: a page at a time, to a hundred of them. A server hands the next page's cursor back
-    /// with each one, and one that always hands back another would be listed for ever - at
-    /// startup, where nothing interrupts it.
+    /// note: one page at a time, up to a hundred. A server returns the next page's cursor with each
+    /// one. A server that always returns another would be listed for ever at startup, where nothing
+    /// interrupts it.
     pub async fn tools(&self) -> Result<Vec<Arc<dyn Tool>>> {
         let listed = paged("tools", |page| async move {
             self.running
@@ -328,10 +325,10 @@ impl Server {
         Ok(items)
     }
 
-    /// Ends the session, and waits for the server to notice.
+    /// Ends the session and waits for the server to notice.
     ///
-    /// note: a spawned server is told by its input closing, and given three seconds to finish before
-    /// it is killed - the wait `rmcp`'s own transport made, so that what a server does on its way
+    /// note: a spawned server is told by its input closing and given three seconds to finish before
+    /// it is killed. It is the wait `rmcp`'s own transport made, so what a server does on its way
     /// out is done by the time this returns.
     pub async fn shutdown(self) -> Result<()> {
         let ended = self
@@ -407,9 +404,9 @@ const GRACE: std::time::Duration = std::time::Duration::from_secs(3);
 #[cfg(feature = "child-process")]
 const LINE: usize = 1024;
 
-/// A failed handshake with what the server said on its way out.
+/// A failed handshake, with what the server said on its way out.
 ///
-/// note: a type rather than the two joined into a string, so that the failure underneath is still
+/// note: a type rather than joining the two into a string, so the underlying failure is still
 /// [`Error::source`](std::error::Error::source) - the promise [`Error`] makes of both its kinds.
 #[cfg(feature = "child-process")]
 #[derive(Debug)]
@@ -435,9 +432,9 @@ impl std::error::Error for Said {
 /// Reads a spawned server's standard error to its end, keeping the start of each of the last
 /// [`KEPT`] lines.
 ///
-/// note: the start of a line, to [`LINE`] bytes, and the rest read and let go. The count of lines
-/// was bounded and the length of one was not, so a server writing without newlines - a progress
-/// bar redrawn with `\r`, or one that means harm - grew this without end for as long as it ran.
+/// note: the start of a line, to [`LINE`] bytes, and the rest read and let go. The line count was
+/// bounded but a line's length was not, so a server writing without newlines - a progress bar
+/// redrawn with `\r`, or a malicious one - grew this without end for as long as it ran.
 #[cfg(feature = "child-process")]
 async fn drain(
     stderr: tokio::process::ChildStderr,
