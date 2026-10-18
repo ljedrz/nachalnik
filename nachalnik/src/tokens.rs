@@ -58,9 +58,8 @@ pub trait TokenCounter: Send + Sync {
 
     /// Returns the number of tokens a tool definition is expected to occupy.
     ///
-    /// note: the default counts the JSON schema as content and shares it rather than copying it,
-    /// because measuring a schema is not a reason to copy it. This runs for every tool on every
-    /// request.
+    /// note: The default counts the schema as content and shares it, not copying. This runs for
+    /// every tool on every request.
     fn count_schema(&self, schema: &Arc<Value>) -> usize {
         self.count(&Content::Json(schema.clone()))
     }

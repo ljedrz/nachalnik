@@ -63,9 +63,8 @@ pub struct Projection {
 
 /// Turns context items into the messages of a request.
 ///
-/// note: This is where the shape of a request lives. The kernel has no opinion about whether a
-/// file belongs in a user message, a system message or a preamble; it asks the projector, and
-/// shows you the result.
+/// note: The kernel has no opinion about whether content goes in a user message, system message,
+/// or preamble; the projector decides.
 ///
 /// [`LinearProjector`] speaks the dialect in which a tool result is a message of its own. Not
 /// every API agrees - some want tool results as blocks inside a user turn, some keep
@@ -117,11 +116,10 @@ pub trait Projector: Send + Sync {
     /// installed in; the items it needs are the ones it is handed.
     fn project(&self, items: &[Arc<ContextItem>]) -> Projection;
 
-    /// What this is, for a client that wants to say which one is installed.
+    /// Name of this projector, for clients that display it.
     ///
-    /// note: The default is the implementing type's own path, which costs an implementor nothing
-    /// and is right often enough to be worth having. Override it to say something friendlier. It
-    /// is for showing a person, not for matching on: `type_name` makes no stability promise.
+    /// note: The default is the implementing type's path. Override to be friendlier. It is for
+    /// showing a person, not for matching: `type_name` makes no stability promise.
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
@@ -174,9 +172,8 @@ fn join(parts: Vec<&Part>) -> Option<Content> {
 pub struct LinearProjector {
     /// Whether a reference's label is prepended to its text, as `label:\n<content>`.
     ///
-    /// note: With this off, the model receives a file's contents without being told which file it
-    /// is - rarely what anyone wants. It is a prompt decision, so it is visible and optional rather
-    /// than baked in.
+    /// note: Without this, the model sees content without knowing which file it's from. This is
+    /// a prompt decision, kept visible and optional.
     pub label_references: bool,
     /// Whether tool calls and tool results whose counterpart is not in the projection are dropped
     /// from it.
@@ -403,10 +400,9 @@ impl LinearProjector {
     ) -> Option<Message> {
         let elided = item.state.is_elided();
 
-        // the turn as one ordered sequence, whichever way it was recorded. For a conventional turn,
-        // that is the order every provider has been assuming - what it thought, what it said, what
-        // it asked for - so flattening it back reproduces exactly what came in. For one recorded as
-        // blocks, it is the order the model actually produced
+        // the turn as one ordered sequence, however recorded. For a conventional turn, that is what
+        // every provider assumes: thought, words, calls. Flattening reproduces the input. For one
+        // recorded as blocks, it is the model's actual order
         let recorded: Vec<Block> = match item.content.as_blocks() {
             Some(blocks) => blocks.to_vec(),
             None => {
@@ -567,9 +563,8 @@ fn pairings(
                 *answers.entry(call.clone()).or_default() += 1;
             }
             ContextKind::AssistantMessage { .. } => {
-                // `calls()` rather than the kind's list: a turn recorded as ordered blocks keeps
-                // its calls in its content. Pairing that found none there would repair away every
-                // result it ever got
+                // `calls()` finds calls in content for ordered blocks. Using the kind's list would
+                // miss them, repairing away their results
                 for call in item.calls() {
                     *calls.entry(call.id.clone()).or_default() += 1;
                 }
