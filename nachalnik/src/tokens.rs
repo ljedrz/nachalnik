@@ -201,17 +201,15 @@ pub trait TokenCounter: Send + Sync {
         None
     }
 
-    /// Puts back what [`TokenCounter::calibration`] handed out, when a session is resumed.
+    /// Puts back what [`TokenCounter::calibration`] handed out when a session resumes.
     ///
-    /// note: The default does nothing, and a counter that does not implement
-    /// [`TokenCounter::calibration`] never sees this called - the kernel only offers back what a
+    /// note: the default does nothing. A counter that does not implement
+    /// [`TokenCounter::calibration`] never sees this called; the kernel only offers back what a
     /// counter gave it.
     ///
-    /// note: it changes what is counted from here on and not what has already been counted,
-    /// exactly as [`TokenCounter::observe`] does. So a caller reaching for this directly has to
-    /// either apply it before the items are counted, as [`Kernel::resume`] does, or recount
-    /// afterwards - and [`Kernel::recalibrate`] is the one that does both, which is why it is the
-    /// front door and this is the seam behind it.
+    /// note: it changes what is counted from here on, not what has already been counted, as
+    /// [`TokenCounter::observe`] does. A caller must apply it before items are counted, as
+    /// [`Kernel::resume`] does, or recount afterwards. [`Kernel::recalibrate`] does both.
     fn recalibrate(&self, calibration: Calibration) {
         let _ = calibration;
     }
@@ -501,8 +499,8 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
         }
 
         let mut learned = self.learned.write();
-        // what was estimated is what this counter had *already* corrected, so the totals are kept
-        // in the underlying counter's own units to keep the ratio from compounding
+        // the estimated total is already corrected by this counter, so totals stay in the
+        // underlying counter's own units to stop the ratio compounding
         let own = (estimated as f64 / learned.scale).round() as u64;
         // a request too small to have a systematic error says nothing about the ratio, and it is
         // too small when either side is: see `WORTH_LEARNING_FROM`
@@ -530,8 +528,8 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
             return;
         }
 
-        // saturating, because what these add to may have come out of a snapshot somebody wrote;
-        // see `applicable` for the same caution about the scale
+        // saturating, because these fields may have come from a snapshot. See `applicable` for the
+        // same caution about the scale
         learned.observations = learned.observations.saturating_add(1);
         learned.estimated = learned.estimated.saturating_add(own);
         learned.reported = learned.reported.saturating_add(reported as u64);

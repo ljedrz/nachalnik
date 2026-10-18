@@ -31,20 +31,19 @@ pub struct ToolSpec {
     pub description: String,
     /// The JSON schema of the tool's arguments.
     ///
-    /// note: Shared, because [`Tool::spec`] is called afresh for every request and a schema
-    /// copied each time is a cost that scales with how useful your tools are.
+    /// note: Shared, because [`Tool::spec`] is called afresh for every request and copying the
+    /// schema each time costs more the more useful the tools are.
     ///
-    /// note: **descriptive, not enforced.** The kernel sends this to the model and counts what it
-    /// costs to send; it never checks a call's arguments against it, and a tool is handed whatever
-    /// the model produced. Validating is [`Tool::invoke`]'s job, and a mismatch is an ordinary
-    /// [`ToolOutput::error`](crate::ToolOutput::error) - which the model reads and can act on,
-    /// where a refusal from underneath would be a failure it never sees the shape of.
+    /// note: descriptive, not enforced. The kernel sends it to the model and counts the cost of
+    /// sending; it never checks a call's arguments against it, and the tool receives whatever the
+    /// model produced. Validating is [`Tool::invoke`]'s job. A mismatch is an ordinary
+    /// [`ToolOutput::error`](crate::ToolOutput::error) that the model reads and can act on; a
+    /// refusal from underneath would be a failure the model never sees the shape of.
     ///
-    /// note: enforcing it would mean this crate choosing a JSON Schema dialect and a validator
-    /// for everybody who ever writes a tool, on behalf of models that disagree about which dialect
-    /// they follow - and the check is one line in the tool that already has to parse the
-    /// arguments to use them. A caller who wants it everywhere can wrap `Tool` once and install
-    /// the wrapper.
+    /// note: enforcing it would make this crate choose a JSON Schema dialect and a validator for
+    /// everyone who writes a tool, for models that disagree about dialects. The check is one line
+    /// in the tool, which already parses the arguments to use them. A caller who wants it
+    /// everywhere can wrap `Tool` once and install the wrapper.
     pub schema: Arc<Value>,
     /// The capabilities an invocation of this tool requires.
     pub capabilities: Vec<Capability>,

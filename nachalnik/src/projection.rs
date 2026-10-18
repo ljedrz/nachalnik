@@ -1,12 +1,10 @@
-//! Context items in, wire messages out.
+//! Turns context items into the messages of a request.
 //!
-//! note: the seam where the shape of a request is decided, and the one seam whose default a real
-//! API may well disagree with - which is why the trait is one method: a projector that disagrees
-//! replaces the whole shape rather than overriding a piece of it. What the default does behind
-//! that one method is three passes - count the calls against the results, build a message per
-//! item, put them in the order the wire needs - and none of that is anybody else's to reach.
-//! [`Projection`] is the answer to "what is about to be sent", available before anything is, and
-//! the [`Skipped`] list beside it is why that answer is shorter than the context it came from.
+//! note: the trait is one method because a real API may disagree with the default shape, and a
+//! projector that disagrees replaces the whole shape rather than overriding a piece of it. The
+//! default makes three private passes: match calls to results, build a message per item, and put
+//! them in the order the wire needs. [`Projection`] is what is about to be sent, available before
+//! anything is; [`Skipped`] lists the items left out of it and why.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -129,16 +127,16 @@ pub trait Projector: Send + Sync {
     }
 }
 
-/// Puts several blocks' worth of content into the one slot a conventional message has.
+/// Puts several blocks into the one slot a conventional message has.
 ///
-/// note: one of them is carried through untouched, because a [`Content::Json`] thinking block is
-/// how a signed or encrypted one travels, and a provider that received it as a string of its own
-/// serialization could not send it back. Several can only be joined as text, which is why
+/// note: one block is carried through untouched: a [`Content::Json`] thinking block is how a signed
+/// or encrypted one travels, and a provider that received it as a string of its own serialization
+/// could not send it back. Several blocks can only be joined as text, which is why
 /// [`LinearProjector::send_blocks`] exists and why joining is reported.
 ///
-/// note: what cannot survive either way is [`Part::extra`] - a conventional message has a
-/// [`Content`] in each slot and nowhere to put what a provider attached to it. The caller reports
-/// that rather than this, because a repair reads better naming the item it happened to.
+/// note: [`Part::extra`] cannot survive either way: a conventional message has a [`Content`] in
+/// each slot and nowhere to put what a provider attached to it. The caller reports it instead,
+/// because a repair reads better naming the item it happened to.
 fn join(parts: Vec<&Part>) -> Option<Content> {
     match parts.len() {
         0 => None,
@@ -277,11 +275,11 @@ impl Projector for LinearProjector {
     /// The type's path and the two switches a provider sets, as
     /// `nachalnik::projection::LinearProjector (blocks, no reasoning)`.
     ///
-    /// note: the switches because the type alone cannot tell a change apart from no change. Every
-    /// provider shipped with this crate installs one of these, and the kernel starts with the
-    /// default one - so a session announced `LinearProjector → LinearProjector` while the shape of
-    /// every assistant turn on the wire changed. The other fields stay out: nothing sets them, and
-    /// a name listing them all would be a debug print.
+    /// note: the switches are included because the type alone cannot tell a change from no change.
+    /// Every provider ships one of these, and the kernel starts with the default - so a session
+    /// announced `LinearProjector → LinearProjector` while the shape of every assistant turn on the
+    /// wire changed. The other fields stay out: nothing sets them, and a name listing them all
+    /// would be a debug print.
     fn name(&self) -> &'static str {
         match (self.send_blocks, self.send_reasoning) {
             (false, true) => concat!(module_path!(), "::LinearProjector"),
@@ -321,10 +319,10 @@ impl LinearProjector {
             }
 
             // an elided item goes in as a marker in place of what it says, and nothing else about
-            // the message changes: same role, and a tool result still answers its call. That is
-            // how it differs from excluding it - the turn keeps its shape, so the repair below
-            // never has to take the call down and rewrite history into one where it was never
-            // made. The words are the item's own note; this only supplies the brackets
+            // the message changes: same role, and a tool result still answers its call. It differs
+            // from excluding it: the turn keeps its shape, so the repair never has to take the call
+            // down and rewrite history as if the call was never made. The words are the item's own
+            // note; this only supplies the brackets
             let said = match item.state.is_elided() {
                 true => Content::text(format!(
                     "[... {} ...]",
@@ -405,10 +403,10 @@ impl LinearProjector {
     ) -> Option<Message> {
         let elided = item.state.is_elided();
 
-        // the turn as one ordered sequence, whichever way it was recorded. For a conventional one
-        // that is the order every provider has been assuming anyway - what it thought, what it
-        // said, what it asked for - so flattening it back below reproduces exactly what came in;
-        // for one recorded as blocks it is the order the model actually produced
+        // the turn as one ordered sequence, whichever way it was recorded. For a conventional turn,
+        // that is the order every provider has been assuming - what it thought, what it said, what
+        // it asked for - so flattening it back reproduces exactly what came in. For one recorded as
+        // blocks, it is the order the model actually produced
         let recorded: Vec<Block> = match item.content.as_blocks() {
             Some(blocks) => blocks.to_vec(),
             None => {
@@ -441,10 +439,10 @@ impl LinearProjector {
                     }
                 }
                 // an elided turn's thinking goes with its words. Keeping it would mean a turn whose
-                // content is a one-line marker still costing every token it ever thought - so
-                // eliding a turn would free nothing, and a compactor would watch the total refuse
-                // to move and elide it again. Worse under `send_blocks`: a signed thinking block
-                // would go out beside a marker that is not the words it was signed over
+                // content is a one-line marker still costing every token it ever thought, so
+                // eliding a turn would free nothing and a compactor would watch the total refuse to
+                // move and elide it again. Worse under `send_blocks`: a signed thinking block would
+                // go out beside a marker that is not the words it was signed over
                 Block::Reasoning(_) if elided || !self.send_reasoning => {}
                 // an elided turn loses its text and keeps everything else: the calls still answer
                 // their results, so the turn keeps its shape

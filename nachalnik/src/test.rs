@@ -1,9 +1,7 @@
 //! Helpers for testing an agent without a model provider, enabled by the `test` feature.
 //!
-//! note: These exist so that the kernel's own tests never need a network, and so that yours
-//! don't either. The permission policies here are also the off-the-shelf ones the core
-//! deliberately does not ship - a kernel has no business having opinions about what is allowed,
-//! but a test does.
+//! note: So the kernel's tests never need a network, and neither do yours. The core does not ship
+//! permission policies; a kernel does not decide what is allowed, but a test does.
 
 use std::{collections::BTreeMap, collections::VecDeque, sync::Arc};
 

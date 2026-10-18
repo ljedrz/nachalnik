@@ -616,9 +616,8 @@ impl Kernel {
                 });
             }
 
-            // a pass that moved nothing left the context as it found it, under this same lock - and
-            // it is the pass a compactor with nothing left to take answers with before every
-            // request
+            // a pass that moved nothing left the context unchanged under the same lock, and that is
+            // what a compactor with nothing left to take reports before every request
             let cost_after = match moved {
                 true => projection_cost(&projector.project(context.items()), counter),
                 false => cost_before,

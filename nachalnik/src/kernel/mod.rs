@@ -300,13 +300,13 @@ impl Kernel {
         Self::with_items(config, [])
     }
 
-    /// Creates a kernel as [`Kernel::new`] does, with `items` already in its context, in order.
+    /// Creates a kernel like [`Kernel::new`], with `items` already in its context, in order.
     ///
-    /// note: for what a client sets a session up with - a system instruction, files named on a
-    /// command line. Pushed after `new`, each is an operation like any other, so the first
-    /// [`Kernel::undo`] in a session nobody has said anything in yet takes the setup away. Placed
-    /// here, they are where the undo history starts, as the items of a resumed session are. Each
-    /// is still announced as it would be pushed, after [`Event::SessionStarted`].
+    /// note: for what a client sets up a session with: a system instruction, files named on a
+    /// command line. Pushed after `new`, each item is an operation like any other, so the first
+    /// [`Kernel::undo`] in an empty session removes the setup. Placed here, they start the undo
+    /// history, as resumed session items do. Each is announced after [`Event::SessionStarted`], as
+    /// it would be when pushed.
     pub fn with_items(config: Config, items: impl IntoIterator<Item = ContextItem>) -> Self {
         let kernel = Self::build(config);
         kernel.emit(Event::SessionStarted {
@@ -359,9 +359,8 @@ impl Kernel {
         {
             let counter = kernel.counter();
             // before the items are counted, not after: a resumed context that reported one set of
-            // figures and then corrected itself on the first response would be showing the user
-            // two different budgets for the same bytes, which is the thing a snapshot exists to
-            // avoid
+            // figures and then corrected itself on the first response would show the user two
+            // different budgets for the same bytes, which a snapshot exists to avoid
             if let Some(calibration) = snapshot.calibration {
                 counter.recalibrate(calibration);
             }
@@ -523,9 +522,9 @@ impl Kernel {
             tools: RwLock::new(BTreeMap::new()),
             policy: RwLock::new(Arc::new(AskAlways)),
             projector: RwLock::new(Arc::new(LinearProjector::default())),
-            // note: wrapped, not bare, for the reason on `Kernel::new`. `BytesPerToken` is an
-            // admitted estimate and a low one, and this way a user who never reads the
-            // documentation still gets the honest number
+            // note: wrapped, not bare, for the reason on `Kernel::new`. `BytesPerToken` is a low
+            // estimate, and wrapping it means a user who never reads the documentation still gets
+            // the honest number
             counter: RwLock::new(Arc::new(Calibrating::new(BytesPerToken::default()))),
             compactor: RwLock::new(None),
             params: RwLock::new(Params::new()),
@@ -700,11 +699,11 @@ impl Kernel {
 
     /// Returns what swapping one snapshot of the items for another did.
     ///
-    /// note: An item that survived as the same allocation is one the operation did not touch,
-    /// which `Arc::make_mut` makes free to check. One that is a different allocation is looked
-    /// at, because a recount copies an item it moves a figure of, and a figure is the counter's
-    /// rather than a change of state, note or content that an undo reverts. Both lists are in
-    /// identifier order, so the lookups are binary searches rather than a scan apiece.
+    /// note: An item that survived as the same allocation is one the operation did not touch;
+    /// `Arc::make_mut` makes it free to check. One with a different allocation is looked at,
+    /// because a recount copies an item it moves a figure of, and a figure is the counter's rather
+    /// than a change of state, note, or content that an undo reverts. Both lists are in identifier
+    /// order, so the lookups are binary searches rather than a scan per item.
     fn diff(before: &[Arc<ContextItem>], after: &[Arc<ContextItem>]) -> Diff {
         let find = |items: &[Arc<ContextItem>], id: ContextId| {
             items

@@ -377,10 +377,10 @@ impl ToolCall {
 /// The knobs sent to the provider alongside the messages, in whatever shape that provider
 /// understands.
 ///
-/// note: The kernel has no idea what a temperature is. It carries this map to the [`Provider`]
-/// verbatim, which is the only way for `thinking`, `safety_settings`, `reasoning_effort` and
-/// every future vendor invention to be as first-class as `temperature` - and for the kernel to
-/// be unable to send anything the user did not ask for.
+/// note: the kernel does not interpret a temperature. It carries this map to the [`Provider`]
+/// verbatim, the only way for `thinking`, `safety_settings`, `reasoning_effort` and every future
+/// vendor invention to be as first-class as `temperature`, and for the kernel to be unable to send
+/// anything the user did not ask for.
 pub type Params = Map<String, Value>;
 
 /// A request to a model: exactly what will be sent, and nothing else.
@@ -420,15 +420,15 @@ pub enum StopReason {
 pub struct Usage {
     /// Tokens in the request.
     pub input_tokens: Option<u64>,
-    /// Everything the model generated and is charged for, reasoning included.
+    /// Everything the model generated and is charged for, including reasoning.
     ///
-    /// note: *including* the reasoning, which is the half a provider has to be careful about,
-    /// because the dialects do not agree and the field cannot mean two things. OpenAI's
-    /// `completion_tokens` already contains it; Google reports `candidatesTokenCount` and
-    /// `thoughtsTokenCount` side by side and defines its own total as the two plus the prompt, so
-    /// a provider speaking that dialect adds them. The rule is what makes `input_tokens +
-    /// output_tokens` the whole bill for a request whichever endpoint answered it - and a figure
-    /// that means one thing per provider is not a figure anybody can put beside another.
+    /// note: including the reasoning, which a provider has to be careful about because dialects do
+    /// not agree and the field cannot mean two things. OpenAI's `completion_tokens` already
+    /// contains it; Google reports `candidatesTokenCount` and `thoughtsTokenCount` side by side and
+    /// defines its total as the two plus the prompt, so a provider speaking that dialect adds them.
+    /// The rule makes `input_tokens + output_tokens` the whole bill for a request whichever
+    /// endpoint answered it, and a figure that means one thing per provider is not a figure anybody
+    /// can put beside another.
     pub output_tokens: Option<u64>,
     /// How much of [`Self::output_tokens`] was reasoning, where the provider says.
     ///
@@ -846,8 +846,8 @@ pub trait Provider: Send + Sync {
 mod tests {
 
     /// A call recorded before `ToolCall::unparsed` existed, with what did not parse kept under
-    /// `_unparsed`, reads back as one with it - and a wrapper round text that does parse, which
-    /// only a model can have written, is left as it was.
+    /// `_unparsed`, reads back as one with it. A wrapper round text that does parse, which only a
+    /// model can have written, is left as it was.
     #[test]
     fn a_call_recorded_the_old_way_reads_as_unparsed() {
         let old: ToolCall = serde_json::from_value(serde_json::json!({
@@ -900,8 +900,7 @@ mod tests {
         );
     }
 
-    /// A prompt figure smaller than its own cache is the one shape that says out loud which
-    /// convention an endpoint is speaking.
+    /// A prompt figure smaller than its own cache shows which convention an endpoint is speaking.
     #[test]
     fn a_prompt_smaller_than_its_own_cache_is_the_miss_and_is_read_as_one() {
         let exclusive = Usage {
