@@ -558,17 +558,15 @@ const OPENS_THINKING: &str = "<think>";
 /// [`OpenAiCompatible::thinking_in_content`].
 const CLOSES_THINKING: &str = "</think>";
 
-/// The thinking and the answer, out of content the two were written into together, or `None` where
-/// there is no `</think>` in it and so nothing to take apart.
+/// Splits content into the thinking and the answer, or `None` if it contains no `</think>`.
 ///
-/// note: the first one only. A model that has closed its thinking and gone on to write about the
-/// tags is writing about them, and re-reading the second as a delimiter would take the answer apart
-/// at a word in it.
+/// note: only the first `</think>`. A model that writes about the tags after closing its thinking
+/// may include `</think>` in the answer, and treating a later one as a delimiter would split the
+/// answer at a word in it.
 ///
-/// note: the opener is *stripped where it is there and not required to be*. The case this exists
-/// for is a chat template that ends the prompt inside the block, so the model's first token is
-/// already thinking and the only delimiter it ever emits is the closing one - which is why the
-/// thinking is taken to start at the start of the content rather than at a tag.
+/// note: the opener is stripped when it is present and not required. A chat template that ends the
+/// prompt inside the block means the model's first token is already thinking and it only ever emits
+/// the closing delimiter, so thinking starts at the start of the content rather than at a tag.
 fn thinking_of(content: &str) -> Option<(&str, &str)> {
     let at = content.find(CLOSES_THINKING)?;
     let (thought, rest) = content.split_at(at);
@@ -786,10 +784,9 @@ fn parts_of(content: &Content) -> Option<Value> {
         let data = |blob: &Blob| format!("data:{};base64,{}", blob.media_type, blob.data);
 
         match content.as_blob() {
-            // note: a picture and a document are two different parts in this dialect, and the
-            // media type is the only thing that says which. Sending a PDF as `image_url` is a 400
-            // from every endpoint that implements the spec: the field means an image, not an
-            // attachment
+            // note: a picture and a document are two different parts in this dialect, and the media
+            // type is the only thing that says which. Sending a PDF as `image_url` is a 400 from
+            // every endpoint that implements the spec: the field means an image, not an attachment
             Some(blob) if blob.media_type.starts_with("image/") => json!({
                 "type": "image_url",
                 "image_url": { "url": data(blob) },
@@ -1710,10 +1707,10 @@ mod tests {
 
     /// A fragment continuing a call whose arguments are already whole still continues it.
     ///
-    /// note: a fragment is a whole call again only with a name, arguments that parse, *and* a
-    /// call whose own arguments already do. Arguments that parse are not enough on their own: a
-    /// fragment naming no tool that arrives after them continues the call, and taken for a new
-    /// one it would run the tool twice for a model that asked once.
+    /// note: a fragment is a whole call again only with a name, arguments that parse, and a call
+    /// whose own arguments already parse. Arguments that parse are not enough: a fragment naming no
+    /// tool that arrives after them continues the call, and taken as a new one it would run the
+    /// tool twice for a model that asked once.
     #[test]
     fn a_fragment_continuing_a_call_whose_arguments_already_parse_still_continues_it() {
         let deltas = DeltaSink::disconnected();

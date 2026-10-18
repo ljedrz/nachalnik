@@ -52,12 +52,12 @@ fn error_in(event: &Value) -> Option<&Value> {
     }
 }
 
-/// The status an error object stands for, by number where it gives one and by name where it names
-/// one that a status would have said; `0` where it does neither.
+/// The status an error object stands for: its number where it gives one, or its name where it names
+/// one; `0` where it does neither.
 ///
 /// note: by name because two dialects do not number theirs. The Responses API calls a rate limit
-/// `rate_limit_exceeded` and Anthropic's calls it a `rate_limit_error`, and as `0` neither was
-/// waited out - the one refusal that most wants to be.
+/// `rate_limit_exceeded` and Anthropic's calls it a `rate_limit_error`; as `0` neither was waited
+/// out.
 pub(crate) fn code_of(error: &Value) -> u64 {
     if let Some(code) = error["code"]
         .as_u64()
@@ -93,14 +93,14 @@ pub(crate) enum Read {
     /// A body in which nothing was an event and which was not an error object either. The dialect
     /// reads the whole body as a whole answer if it is one.
     Unstreamed(String),
-    /// A refusal that came where the answer should have: an error object as the first event of a
-    /// stream, or as the whole of a body that was not one.
+    /// A refusal where the answer should have been: an error object as the first event of a stream,
+    /// or as the whole of a body that was not a stream.
     ///
     /// note: an answer rather than an error, because it is the same refusal a status would have
     /// been, and [`sent`](crate::waiting::sent) waits a transient one out the same way. OpenRouter
-    /// sends its status before the model has produced anything, so a rate limit it meets after
-    /// that - once its own failover has run out - can only arrive here. Nothing has been handed
-    /// to the caller yet, so sending the request again repeats nothing.
+    /// sends its status before the model produces anything, so a rate limit it meets after that,
+    /// once its failover has run out, can only arrive here. Nothing has been handed to the caller
+    /// yet, so sending the request again repeats nothing.
     Refused {
         /// The code inside the error object, or `0` where it names none.
         code: u64,
@@ -133,9 +133,8 @@ pub(crate) async fn read(
     asking: &Asking<'_>,
     events: &mut impl Events,
 ) -> Result<Read, BoxError> {
-    // bytes rather than a `String`, because a chunk boundary is not a character boundary: the
-    // tail of a split character waits in here for the rest of itself, and only whole lines are
-    // decoded
+    // bytes rather than a `String`, because a chunk boundary is not a character boundary: the tail
+    // of a split character waits here for the rest of itself, and only whole lines are decoded
     let mut buffer: Vec<u8> = Vec::new();
     // how much of `buffer` is known to hold no newline. A line arriving over many chunks is
     // searched once instead of from its start at every chunk, which would be quadratic in the
@@ -267,15 +266,15 @@ pub(crate) async fn read(
                 .to_owned();
             buffer.drain(..=end);
 
-            // the OpenAI dialect's own end of the stream, which a server may send and then keep
-            // the connection open after. Waited past, a finished answer sat out the whole of
-            // `PATIENCE` and was then reported as a stall; nothing after it belongs to the answer
+            // the OpenAI dialect's end of the stream; a server may send it and keep the connection
+            // open. If waited past, a finished answer sat out the whole of `PATIENCE` and was
+            // reported as a stall; nothing after it belongs to the answer.
             //
             // note: on the line and on the event alike, since the sentinel is an event by every
             // account the format gives and may be written over several `data:` lines like any
-            // other. Read on one line only, a sentinel a proxy had re-wrapped was not recognised,
-            // and an answer that had already arrived sat out the whole of `PATIENCE` to be
-            // reported as a stall
+            // other. If read on one line only, a sentinel re-wrapped by a proxy was not recognised,
+            // and an answer that had already arrived sat out the whole of `PATIENCE` to be reported
+            // as a stall
             if done(line.strip_prefix("data:")) {
                 stopped = Stopped::Done;
                 marked = true;
@@ -376,9 +375,8 @@ pub(crate) async fn read(
         }
     }
 
-    // a body that closed cleanly before the server said the turn was over - no finish, and no
-    // `[DONE]` - is cut off all the same: the close is the transport's word, not the answer's.
-    // Every other way of stopping early has already said so
+    // a body that closed before the server said the turn was over, with no finish and no `[DONE]`,
+    // is cut off all the same. The close is the transport's word, not the answer's
     if stopped == Stopped::Done && !marked && !events.finished() && !seen.is_empty() {
         asking.say(format!(
             "{} closed the stream before saying the turn was over; what had arrived is kept",
@@ -613,12 +611,12 @@ mod tests {
         }
     }
 
-    /// The two shapes a body that is not JSON is reported in are one reading of the same bytes,
-    /// and a whole page is read the way a stream reports one.
+    /// The two shapes a body that is not JSON is reported in are one reading of the same bytes; a
+    /// whole page is read the way a stream reports one.
     ///
-    /// note: the non-streaming path quoted the first three hundred characters verbatim, so the
-    /// same page a streaming turn reports in one sentence put its doctype, its `<head>` and its
-    /// whole stylesheet into the conversation. One flag apart, one body, two readings.
+    /// note: the non-streaming path quoted the first three hundred characters verbatim, so the same
+    /// page a streaming turn reports in one sentence put its doctype, its `<head>` and its whole
+    /// stylesheet into the conversation.
     #[test]
     fn a_body_that_is_not_json_is_read_the_same_way_wherever_it_arrives() {
         let page = concat!(

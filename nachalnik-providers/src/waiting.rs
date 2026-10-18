@@ -566,9 +566,9 @@ async fn body(
     let mut body = Vec::new();
     let mut vigil = Vigil::waiting(patience);
 
-    // note: the same refusal the streaming path makes, and here it covers the two bodies nothing
-    // else does: a whole answer and the body of a refusal. Both are read as text below, and the
-    // bytes of a compressed one are not text
+    // note: the same refusal as the streaming path. This covers the two bodies nothing else does: a
+    // whole answer and the body of a refusal. Both are read as text below, and the bytes of a
+    // compressed one are not text
     if let Some(encoded) = compressed(asking.model, response.headers()) {
         return Err(encoded);
     }
@@ -605,7 +605,7 @@ async fn body(
 
 /// The error for a response that started and then said nothing for as long as it was given.
 ///
-/// note: not retried, unlike a request that never answered at all. The model may well have been
+/// note: not retried, unlike a request that never answered at all. The model may have been
 /// generating, and every attempt is billed.
 pub(crate) fn stalled(model: &str, waited: Duration) -> BoxError {
     format!(

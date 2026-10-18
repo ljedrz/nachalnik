@@ -840,9 +840,9 @@ impl Client {
             };
             let parsed: Value = match serde_json::from_str(&said) {
                 Ok(parsed) => parsed,
-                // note: an error, not an empty answer. Read as one, a 200 that is not JSON - a
-                // body cut short, a proxy's page - comes back as every question unanswered, which
-                // is also what a model that declined all of them looks like
+                // note: an error, not an empty answer. A 200 whose body is not JSON - a body cut
+                // short, a proxy's page - is returned as every question unanswered, which is also
+                // what a model that declined all of them looks like
                 Err(e) if status.is_success() => {
                     let words = crate::markup::quoted(&crate::markup::unmarked(&said));
                     return Err(
