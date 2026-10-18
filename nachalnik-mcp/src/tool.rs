@@ -23,20 +23,19 @@ const HEARTBEAT: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// How the capabilities of a server's tools are decided.
 ///
-/// MCP tools may carry annotations describing themselves - `readOnlyHint`, `destructiveHint`,
-/// `openWorldHint` - and the specification says, in as many words, that clients "should never make
-/// tool use decisions based on annotations received from untrusted servers". They are hints. A
-/// server that would rather not be asked about need only claim to be read-only.
+/// MCP tools may carry annotations: `readOnlyHint`, `destructiveHint`, `openWorldHint`. The
+/// specification says clients should never make tool use decisions based on annotations from
+/// untrusted servers. They are hints. A server that would rather not be asked about need only claim
+/// to be read-only.
 ///
-/// A [`PermissionPolicy`](nachalnik::PermissionPolicy) that acted on those hints would therefore
-/// be taking the word of the thing it is meant to be gating. So the default here takes nobody's
-/// word for anything.
+/// A [`PermissionPolicy`](nachalnik::PermissionPolicy) acting on those hints would trust the thing
+/// it gates. The default trusts nothing.
 ///
-/// note: Whichever of these is in use, every tool from a server also declares `mcp:call` - the
-/// operation of calling somebody else's tool, which is true of all of them and is the subject a
-/// policy that knows nothing else about them can answer. Which *server* it came from is provenance
-/// rather than an act, so it is not spelled as one: [`Server::install`](crate::Server::install)
-/// returns the ids it installed, and a client that wants per-server rules holds that mapping.
+/// note: Every tool from a server also declares `mcp:call`, the operation of calling somebody
+/// else's tool. A policy that knows nothing else about a tool can answer that. Which server it came
+/// from is provenance, not an act, so it is not a capability:
+/// [`Server::install`](crate::Server::install) returns the ids it installed, and a client that
+/// wants per-server rules holds that mapping.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Trust {
@@ -47,11 +46,11 @@ pub enum Trust {
     /// by the server it is describing.
     #[default]
     Nothing,
-    /// Give every tool from this server exactly these capabilities, whatever it says about itself,
-    /// beside the `mcp:call` every tool from a server declares under every mode.
+    /// Every tool from this server gets exactly these capabilities, whatever it says about itself,
+    /// plus `mcp:call`, which every tool from a server declares under every mode.
     ///
-    /// note: For when you know what a server is - your own, or one you have read - and want its
-    /// tools gated like the rest of your own.
+    /// note: For a server you know - your own, or one you have read - and want its tools gated like
+    /// your own.
     Fixed(Vec<Capability>),
     /// Believe the server's annotations.
     ///
@@ -67,10 +66,10 @@ pub enum Trust {
 impl Trust {
     /// Works out what a tool may do, given what it says about itself.
     pub(crate) fn capabilities(&self, annotations: Option<&ToolAnnotations>) -> Vec<Capability> {
-        // note: calling somebody else's tool server is itself the operation, and every tool from
-        // one declares it whatever else is believed about them. `Trust::Nothing` believes nothing,
-        // and without this its list would be *empty* - and an empty list of capabilities is a
-        // call that needs nothing and is allowed by the strictest policy there is
+        // note: calling somebody else's tool is itself an operation, and every tool from a server
+        // declares it whatever else is believed about them. `Trust::Nothing` believes nothing, and
+        // without this its list would be empty. An empty list of capabilities is a call that needs
+        // nothing and is allowed by the strictest policy
         let mut capabilities = vec![Capability::of(Domain::Other("mcp".into()), "call")];
 
         match self {
@@ -135,11 +134,11 @@ impl Tool for McpTool {
         self.spec.clone()
     }
 
-    /// note: interruptible while the server works on it, as `shell` is while a command runs. A
-    /// server that never answers would otherwise hold the turn for as long as it liked, and escape,
-    /// a deadline and a first `ctrl+c` would do nothing. MCP's own `notifications/cancelled` tells
-    /// the server to stop, and the model is told the call was stopped part-way, since what the
-    /// server had done by then is not known here.
+    /// note: a call is interruptible while the server works on it, as `shell` is while a command
+    /// runs. A server that never answers would otherwise hold the turn indefinitely, and escape, a
+    /// deadline, and the first `ctrl+c` would do nothing. MCP's `notifications/cancelled` tells the
+    /// server to stop, and the model is told the call was stopped part-way because what the server
+    /// had done by then is not known here.
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         // before dispatching, so that a call interrupted before it went out says it did not run
         if output.is_interrupted() {
@@ -208,12 +207,13 @@ impl Tool for McpTool {
             .await;
         let mut handle = match sent {
             Ok(handle) => handle,
-            // the server is not going to answer this one; that is a failure the model can act on,
-            // not a reason to stop the loop
-            // note: not "refused". The server never saw the call: sending fails when the connection
-            // is gone, and a model told it was refused goes looking for what it did wrong
+            // the server will not answer this call. That is a failure the model can act on, not a
+            // reason to stop the loop.
             //
-            // note: and a closed connection is said to be one. The model calls the server's other
+            // note: not "refused". The server never saw the call: sending fails when the connection
+            // is gone, and a model told it was refused goes looking for what it did wrong.
+            //
+            // note: the error says the connection is closed. The model calls the server's other
             // tools next, and `Transport closed` alone does not say that each of them will fail the
             // same way
             Err(e) => {
@@ -279,13 +279,13 @@ impl Tool for McpTool {
 
 /// The largest image carried into the context, in base64.
 ///
-/// note: Anthropic's limit for one image, the strictest of the APIs that take one in a tool
-/// result; past it the request is refused - this one and every later one, while the image stays
-/// in the context - so a larger one is named instead, as every image was before.
+/// note: Anthropic's limit for one image, the strictest of the APIs that take one in a tool result.
+/// Past it the request is refused - this one and every later one, while the image stays in the
+/// context - so a larger one is named instead.
 ///
 /// note: public so that a host can hand it to `Kernel::set_picture_limit`. A tool's output limit
-/// measures a picture with its text otherwise, and one this size is over any limit text is held
-/// to, so the model is shown its name instead of the picture.
+/// measures a picture with its text otherwise, and one this size is over any limit text is held to,
+/// so the model is shown its name instead of the picture.
 pub const LARGEST_IMAGE: usize = 5 * 1024 * 1024;
 
 /// Turns what a server returned into what the kernel records.
@@ -334,8 +334,8 @@ fn output_of(result: CallToolResult) -> ToolOutput {
                 Err(media) => left_out("an embedded resource", media),
             },
             ContentBlock::ResourceLink(link) => format!("[a resource: {}]", link.uri),
-            // `ContentBlock` is `#[non_exhaustive]`: a kind of content this crate has not heard
-            // of is reported as one, rather than vanishing
+            // `ContentBlock` is `#[non_exhaustive]`: an unknown kind of content is reported as one,
+            // rather than vanishing
             other => format!(
                 "[a {} block this bridge does not understand]",
                 serde_json::to_value(other)
@@ -371,16 +371,15 @@ pub(crate) fn left_out(what: &str, media: Option<&str>) -> String {
 
 /// The text of one part of a resource, or the media type of a part that has none.
 ///
-/// note: one reading for both places a resource arrives - embedded in a call's result, and read
-/// on its own by `Server::resources` - so that the two say the same of the same part. Matched on
-/// the type rather than read out of its JSON, which copied the whole of a blob to find that it
-/// had no text.
+/// note: one reading for both places a resource arrives - embedded in a call's result, and read on
+/// its own by `Server::resources` - so both say the same of the same part. Matched on the type
+/// rather than read out of its JSON, which copied the whole of a blob to find it had no text.
 pub(crate) fn text_of(contents: &ResourceContents) -> Result<&str, Option<&str>> {
     match contents {
         ResourceContents::TextResourceContents { text, .. } => Ok(text),
         ResourceContents::BlobResourceContents { mime_type, .. } => Err(mime_type.as_deref()),
-        // `#[non_exhaustive]`: a kind of part this crate has not heard of is one with no text it
-        // can read, rather than one that vanishes
+        // `#[non_exhaustive]`: an unknown kind of part has no text it can read, rather than
+        // vanishing
         _ => Err(None),
     }
 }
@@ -412,9 +411,9 @@ const SEPARATOR: &str = "__";
 /// Rewrites a name into the characters a model provider will accept, and no more of them than it
 /// will; [`tool_id`] then sees to how it starts.
 ///
-/// note: An MCP server is under no obligation to have heard of the restriction. Rewriting a name
-/// can produce a collision, which is why [`Server::install`](crate::Server::install) reports what
-/// it displaced rather than assuming it displaced nothing.
+/// note: An MCP server need not have heard of the restriction. Rewriting a name can collide, so
+/// [`Server::install`](crate::Server::install) reports what it displaced rather than assuming it
+/// displaced nothing.
 pub(crate) fn sanitize(name: &str) -> String {
     let mut out: String = name
         .chars()
@@ -434,13 +433,13 @@ pub(crate) fn sanitize(name: &str) -> String {
     out
 }
 
-/// A tool from an MCP server, as the kernel will know it.
+/// The kernel's identifier for a tool from an MCP server.
 ///
-/// note: where the two together are over the limit, it is the *prefix* that gives way. The tool's
-/// own name is the half that tells one of a server's tools from another, and cutting the tail off
-/// the pair cuts exactly that: a server whose name is sixty-two characters long would otherwise
-/// have every one of its tools arrive under the same identifier, each quietly replacing the last.
-/// A prefix that has no room left is dropped rather than shortened to nothing.
+/// note: when the prefix and the tool's own name together exceed the limit, the prefix gives way.
+/// The tool's own name distinguishes one of a server's tools from another, so cutting the tail of
+/// the pair would cut that: a server with a 62-character name would otherwise have every tool
+/// arrive under the same identifier, each replacing the last. A prefix with no room left is
+/// dropped, not shortened to nothing.
 pub(crate) fn tool_id(prefix: Option<&str>, remote: &str) -> String {
     let remote = sanitize(remote);
     let Some(prefix) = prefix else {
@@ -528,8 +527,8 @@ mod tests {
     }
 
     proptest! {
-        // note: no seed file, the way the runtime's properties are configured. A failure is
-        // reproduced by lifting the counterexample it prints into a named case
+        // note: no seed file, as the runtime's properties are configured. A failure is reproduced
+        // by lifting the printed counterexample into a named case
         #![proptest_config(ProptestConfig {
             failure_persistence: None,
             ..ProptestConfig::default()
@@ -542,10 +541,9 @@ mod tests {
             prop_assert!(acceptable(&id), "{id:?} from {name:?}");
         }
 
-        /// note: one character in, one character out, up to the cap - a rewrite rather than a
-        /// filter. It matters because the alternative reads the same on every name anybody would
-        /// think to try: dropping what it cannot use also produces something acceptable, and
-        /// turns two names that differ only outside the charset into one identifier.
+        /// note: sanitize rewrites rather than filters: one character in, one character out, up to
+        /// the cap. Dropping disallowed characters would also produce an acceptable name, but it
+        /// would turn two names that differ only in disallowed characters into one identifier.
         #[test]
         fn rewriting_replaces_rather_than_removes(name in a_name()) {
             let expected = name.chars().count().clamp(1, LIMIT);
@@ -562,9 +560,9 @@ mod tests {
             prop_assert_eq!(sanitize(&name), name);
         }
 
-        /// note: stated over every pair of names rather than over one long server name. The
-        /// tool's own name is the half that tells one of a server's tools from another, so it is
-        /// the half that must arrive whole however long the prefix was.
+        /// note: it covers every pair of names, not just one long server name. The tool's own name
+        /// distinguishes one of a server's tools from another, so it must arrive whole however long
+        /// the prefix was.
         #[test]
         fn a_tools_own_name_survives_however_long_the_prefix(
             prefix in a_name(),
@@ -578,8 +576,8 @@ mod tests {
             prop_assert!(id.ends_with(&own), "{id:?} lost {remote:?}");
         }
 
-        /// note: a server that was asked for no prefix gets none, not an empty one - the
-        /// difference being a leading `__` on every tool it offers.
+        /// note: a server asked for no prefix gets no prefix, not an empty one; an empty prefix
+        /// would add a leading `__` to every tool it offers.
         #[test]
         fn an_unprefixed_tool_is_its_own_rewritten_name(remote in a_name()) {
             prop_assert_eq!(tool_id(None, &remote), led(sanitize(&remote)));
