@@ -1,50 +1,50 @@
-//! Anthropic's own dialect, the Messages API: an assistant turn is an ordered list of typed blocks.
+//! Anthropic's Messages API dialect: an assistant turn is an ordered list of typed blocks.
 //!
-//! note: the third wire format rather than a setting on either of the others, for the reasons the
-//! Gemini dialect gives: a different path, a different auth header, the instructions outside the
-//! conversation, tool results as blocks inside a user turn, and a stream of named events - a block
-//! opened, fragments of it, the block closed - rather than chunks of a message.
+//! note: a third wire format, not a setting on either of the others, for the reasons the Gemini
+//! dialect gives: a different path, a different auth header, instructions outside the conversation,
+//! tool results as blocks inside a user turn, and a stream of named events for a block opening, its
+//! fragments and its closing, rather than chunks of a message.
 //!
-//! note: what makes it worth having is the thinking. A thinking block carries a `signature`, and a
-//! turn that used tools has to send its thinking back *with* that signature or the next request is
-//! refused; the OpenAI dialect has nowhere to keep one. Here a block's own fields ride on the block
-//! - [`Part::extra`], [`ToolCall::extra`] - and go back out on the same block.
+//! note: the thinking is what makes it worth having. A thinking block carries a `signature`; a turn
+//! that used tools must send its thinking back with that signature or the next request is refused.
+//! The OpenAI dialect has nowhere to keep one. Here a block's own fields are kept on the block -
+//! [`Part::extra`], [`ToolCall::extra`] - and go back out on the same block.
 //!
-//! note: what goes back out is only what this API defines for each kind of block, and not whatever
-//! happens to be in `extra`. A session that started against Gemini carries `thoughtSignature` on
-//! its parts, and a field this API does not know is a 400; thinking with no signature at all - any
-//! other provider's - cannot be sent either, so it is left out rather than sent and refused.
+//! note: only what this API defines for each kind of block goes back out, not whatever is in
+//! `extra`. A session that started against Gemini carries `thoughtSignature` on its parts, and a
+//! field this API does not know is a 400. Thinking with no signature at all, any other provider's,
+//! cannot be sent either, so it is left out rather than sent and refused.
 //!
-//! note: OpenRouter answers this dialect too, at `/api/v1/messages`, and adds to it: a `provider`
-//! and a `cost`, ids of its own, and a `[DONE]` after `message_stop`. All of it is read past.
+//! note: OpenRouter answers this dialect too, at `/api/v1/messages`, and adds a `provider`, a
+//! `cost`, ids of its own, and a `[DONE]` after `message_stop`. All of it is read past.
 //!
 //! # Two things the newest models hold against an edited history
 //!
-//! Both come from the same rule on Anthropic's side: that the start of a conversation, once sent,
-//! is sent the same way again.
+//! Both come from the same rule on Anthropic's side: the start of a conversation, once sent, is
+//! sent the same way again.
 //!
-//! **A signed thinking block is bound to the conversation before it** on Claude Fable 5.1, Opus
-//! 5.5 and Sonnet 5.5. Its signature records the instructions, the tools and every message ahead of
-//! it, and once any of those is edited - an item excluded, rewritten or elided, the instructions
-//! changed, a tool added - every later thinking block is invalid. Accounts created on or after
-//! 2026-08-31 are refused for sending one, with a 400 that says the block "is bound to a different
-//! conversation"; older ones are not, for now. Editing earlier turns is what a session here does
-//! as a matter of course, so on those models, on such an account, either turn the thinking off -
+//! **A signed thinking block is bound to the conversation before it** on Claude Fable 5.1, Opus 5.5
+//! and Sonnet 5.5. Its signature records the instructions, the tools and every message ahead of it.
+//! Once any of those is edited - an item excluded, rewritten or elided, the instructions changed, a
+//! tool added - every later thinking block is invalid. Accounts created on or after 2026-08-31 are
+//! refused for sending one, with a 400 that says the block "is bound to a different conversation";
+//! older ones are not, for now. Editing earlier turns is what a session here does as a matter of
+//! course, so on those models, on such an account, either turn the thinking off -
 //! `{"type": "between_tools"}` as the `thinking` parameter, on Sonnet 5.5, at an effort of `high`
 //! or below - or use a model without the rule: Opus 5, Opus 4.8, Sonnet 5, Haiku 4.5. Opus 5.5's
-//! thinking cannot be turned off. This one is not handled here: what would settle it is in
+//! thinking cannot be turned off. This one is not handled here; what would settle it is in
 //! POSTPONED.md.
 //!
 //! **An instruction added mid-session is said where it stands.** The instructions a conversation
 //! starts with are `system`; one added later - a reconcile's, a fork's question - is a
 //! `role: "system"` message in the conversation, so the start of the prompt, and the cache of it,
 //! is left as it was. This API takes one only after a user turn, and only before an assistant turn
-//! or at the end - the first message, or one after an answer, is a 400 - so one added after an
-//! answer waits for the next user turn and is said after it. A model that takes none, Haiku 4.5
-//! among them, refuses it with "role 'system' is not supported on this model"; that request is
-//! sent again with every instruction joined into `system`, and so is every later one to the same
-//! model. Nothing in the API's description of a model says which kind it is. OpenRouter takes the
-//! message in place for either kind of model.
+//! or at the end; the first message, or one after an answer, is a 400. So one added after an answer
+//! waits for the next user turn and is said after it. A model that takes none, Haiku 4.5 among
+//! them, refuses it with "role 'system' is not supported on this model"; that request is sent again
+//! with every instruction joined into `system`, and so is every later one to the same model.
+//! Nothing in the API's description of a model says which kind it is. OpenRouter takes the message
+//! in place for either kind of model.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -68,18 +68,17 @@ pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 /// The version of the API this dialect is written against, sent with every request.
 pub const VERSION: &str = "2023-06-01";
 
-/// How much a turn may generate, where the endpoint has not said what the model takes.
+/// How much a turn may generate when the endpoint has not said what the model takes.
 ///
-/// note: this API requires `max_tokens` on every request and has no default to fall back on, so
-/// one has to be chosen. `max_tokens` in the parameters replaces it.
+/// note: this API requires `max_tokens` on every request and has no default, so one has to be
+/// chosen. `max_tokens` in the parameters replaces it.
 const DEFAULT_MAX_TOKENS: u64 = 16_384;
 
 /// The most a turn is allowed by default, whatever the model takes.
 ///
-/// note: a model that takes 128K of output would otherwise be asked for all of it on every
-/// request, and an endpoint that counts `max_tokens` against the context window refuses a long
-/// conversation for room it was never going to use. The parameter is still there for a turn that
-/// needs more.
+/// note: a model that takes 128K of output would otherwise be asked for all of it on every request.
+/// An endpoint that counts `max_tokens` against the context window refuses a long conversation for
+/// room it was never going to use. The parameter is still there for a turn that needs more.
 const MOST_BY_DEFAULT: u64 = 32_000;
 
 /// Anthropic's Messages API, streamed, with the order of a turn and its signatures kept.
@@ -93,8 +92,8 @@ pub struct Anthropic {
     output_limit: Mutex<Option<u64>>,
     /// What the endpoint said the model supports, as it said it.
     capabilities: Mutex<Option<Value>>,
-    /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
-    /// puts it back rather than dropping it.
+    /// The caller-set limit, if any. Kept across model and endpoint changes instead of being
+    /// dropped.
     configured: Option<usize>,
     /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
@@ -112,10 +111,10 @@ pub struct Anthropic {
     app: Attribution,
 }
 
-/// One block of the turn, being assembled from the stream.
+/// One block of the turn, assembled from the stream.
 ///
-/// note: the text is accumulated in a `String` and made into a [`Content`] once, because appending
-/// to an `Arc<str>` rebuilds it every time and a streamed paragraph would be quadratic.
+/// note: text is accumulated in a `String` and made into a [`Content`] once, because appending to
+/// an `Arc<str>` rebuilds it every time and a streamed paragraph would be quadratic.
 enum Partial {
     Text(String, Map<String, Value>),
     Thinking(String, Map<String, Value>),
@@ -158,11 +157,11 @@ impl Anthropic {
         }
     }
 
-    /// Says which app these requests are being made on behalf of.
+    /// Says which app these requests are made on behalf of.
     ///
-    /// note: OpenRouter serves this API at `/api/v1/messages` and keeps its ranking of apps for it
-    /// as for chat completions, so the same [`Attribution`] a program hands its other clients goes
-    /// here too - sent only to OpenRouter, and not to Anthropic's own API, which keeps no ranking.
+    /// note: OpenRouter serves this API at `/api/v1/messages` and ranks apps for it as for chat
+    /// completions, so the same [`Attribution`] a program gives its other clients goes here too -
+    /// sent only to OpenRouter, not to Anthropic's own API, which keeps no ranking.
     #[must_use]
     pub fn attributed_to(mut self, app: Attribution) -> Self {
         self.app = app;
@@ -185,18 +184,18 @@ impl Anthropic {
         self.attempts.load(Ordering::SeqCst)
     }
 
-    /// Waits this long for a stream that says nothing before giving the request up, rather than
-    /// the two and a half minutes it waits unless told; see [`Dialect::set_patience`].
+    /// Sets how long to wait for a silent stream before giving up the request; the default is two
+    /// and a half minutes. See [`Dialect::set_patience`].
     #[must_use]
     pub fn with_patience(self, patience: std::time::Duration) -> Self {
         *self.patience.lock() = patience;
         self
     }
 
-    /// Measures against this limit rather than against whatever the endpoint advertises.
+    /// Measures against this limit, not whatever the endpoint advertises.
     ///
     /// note: sticky across [`Endpoint::set_model`] and [`Endpoint::set_endpoint`], as the other
-    /// dialects' is. `None` means "ask the endpoint", which is the default.
+    /// dialects' is. `None` means "ask the endpoint", the default.
     pub fn with_context_limit(mut self, limit: Option<usize>) -> Self {
         self.configured = limit;
         *self.context_limit.get_mut() = limit;
@@ -205,11 +204,11 @@ impl Anthropic {
 
     /// Asks the endpoint what the model takes in and how much it may generate.
     ///
-    /// note: two questions, because two kinds of endpoint speak this dialect. Anthropic's
-    /// describes one model at `/models/{id}`; OpenRouter has no such path for an id with a `/` in
-    /// it, and answers only the listing - in this dialect's shape when asked with its headers,
-    /// twenty to a page unless asked for more. The first is asked first, and the listing only
-    /// where it said nothing. OpenRouter's own shape, `context_length` and
+    /// note: two questions, because two kinds of endpoint use this dialect. Anthropic's describes
+    /// one model at `/models/{id}`. OpenRouter has no such path for an id with a `/` in it and
+    /// answers only the listing, in this dialect's shape when asked with its headers, twenty to a
+    /// page unless asked for more. `/models/{id}` is asked first, and the listing only where it
+    /// said nothing. OpenRouter's own shape, `context_length` and
     /// `top_provider.max_completion_tokens`, is read as well, for a proxy that answers with it.
     pub async fn probe(&self) {
         let (base, model) = (self.endpoint(), self.model());
@@ -236,9 +235,9 @@ impl Anthropic {
             .filter(Value::is_object);
     }
 
-    /// What the model supports, as the endpoint's description of it says - which kinds of
-    /// `thinking` it takes, whether it takes an `effort` - or `None` where the endpoint said
-    /// nothing in that shape. Read by [`Anthropic::probe`] and passed on uninterpreted.
+    /// What the model supports, as the endpoint's description says: which kinds of `thinking` it
+    /// takes, whether it takes an `effort`, or `None` where the endpoint said nothing in that
+    /// shape. Read by [`Anthropic::probe`] and passed on uninterpreted.
     ///
     /// note: Anthropic's `/models` answers it; an endpoint that describes its models in another
     /// shape leaves it `None`.
@@ -315,9 +314,9 @@ impl Anthropic {
 
     /// The blocks an assistant turn goes back out as.
     ///
-    /// note: a turn recorded as blocks goes back in the order it arrived in. One recorded the
-    /// conventional way - by a session that started against another provider - is assembled as
-    /// what was said and then the calls; its thinking has no signature and is not sent.
+    /// note: a turn recorded as blocks goes back in the order it arrived in. A turn recorded
+    /// conventionally by a session against another provider is assembled as what was said, then the
+    /// calls; its thinking has no signature and is not sent.
     fn turn(message: &Message) -> Vec<Value> {
         let Some(blocks) = message.blocks() else {
             let mut turn: Vec<Value> = message
@@ -337,8 +336,8 @@ impl Anthropic {
                     .map(|text| Self::carrying(text, &part.extra, &["citations"])),
                 Block::Reasoning(part) => Self::thought(part),
                 Block::Call(call) => Some(Self::asking(call)),
-                // `Block` is `#[non_exhaustive]`: a variant this provider has never heard of is
-                // dropped rather than guessed at, and the turn is still valid without it
+                // `Block` is `#[non_exhaustive]`. An unknown variant is dropped rather than guessed
+                // at, and the turn is still valid without it
                 _ => None,
             })
             .collect()
@@ -364,8 +363,8 @@ impl Anthropic {
             return Some(Value::Object(extra.clone()));
         }
 
-        // note: an empty text is still a thought. The newer models omit what they thought by
-        // default and send the signature over nothing, and the signature is what has to go back
+        // note: an empty text is still a thought. Newer models omit what they thought by default
+        // and send the signature over nothing; the signature is what has to go back
         let signature = extra.get("signature").filter(|value| !is_empty(value))?;
         Some(json!({
             "type": "thinking",
@@ -376,9 +375,9 @@ impl Anthropic {
 
     /// One tool call, as a `tool_use` block.
     fn asking(call: &ToolCall) -> Value {
-        // this API takes an object and nothing else. Arguments that never were one - a call
-        // recorded before `ToolCall::unparsed`, which answered it - go as none, rather than inside
-        // a wrapper of ours that a model reads as a shape to write its calls in
+        // this API takes an object and nothing else. Arguments that were never an object - a call
+        // recorded before `ToolCall::unparsed`, which answered it - go as none rather than inside a
+        // wrapper a model reads as a shape to write calls in
         let input = match &*call.args {
             Value::Object(_) => (*call.args).clone(),
             _ => json!({}),
@@ -400,8 +399,8 @@ impl Anthropic {
             "tool_use_id": message.tool_call_id.as_ref().map(wire_id).unwrap_or_default(),
         });
 
-        // text as a string, and anything that is more than text - a screenshot - as the blocks
-        // it is made of; nothing at all is an empty result, which this API takes with no content
+        // text as a string, and anything more than text - a screenshot - as the blocks it is made
+        // of. Nothing at all is an empty result, which this API takes with no content
         let content = match message.content.as_ref() {
             Some(Content::Json(value)) => Some(json!(value.to_string())),
             Some(said @ Content::Blocks(_)) => Some(json!(Self::said(Some(said)))),
@@ -451,8 +450,8 @@ impl Anthropic {
                 extra: rest(&["id", "name", "input"]),
             }),
             // a server tool's call and its result, and whatever comes next. Dropped rather than
-            // guessed at, as the Gemini dialect drops a part it has no variant for; what is
-            // dropped is still in `ModelResponse::raw`
+            // guessed at, as the Gemini dialect drops a part it has no variant for; what is dropped
+            // is still in `ModelResponse::raw`
             _ => None,
         }
     }
@@ -495,10 +494,9 @@ impl Anthropic {
 
 /// A call's identifier as this API takes one: letters, digits, `_` and `-`, and nothing else.
 ///
-/// note: the identifiers in a session are whoever made them - another provider, or the kernel
-/// repairing a call that came without one - and this API refuses a `tool_use` whose id has
-/// anything else in it. The same rewriting is applied to the call and to its result, so the pair
-/// still matches.
+/// note: a session's identifiers come from whoever made them - another provider, or the kernel
+/// repairing a call that came without one. This API refuses a `tool_use` whose id has anything else
+/// in it. The same rewriting is applied to the call and its result, so the pair still matches.
 fn wire_id(id: &ToolCallId) -> String {
     let rewritten: String =
         id.0.chars()
@@ -516,12 +514,11 @@ fn wire_id(id: &ToolCallId) -> String {
     }
 }
 
-/// Puts the instructions waiting for a place after the user turn the conversation ends with, if
-/// it ends with one.
+/// Puts waiting instructions after the final user turn, if the conversation ends with one.
 ///
-/// note: the only place this API takes a `system` message is after a user turn and before an
-/// assistant turn or at the end - anywhere else, the first of the conversation included, is a
-/// 400. An instruction added after an answer waits for the next user turn, and is said after it.
+/// note: this API only takes a `system` message after a user turn and before an assistant turn, or
+/// at the end. Anywhere else, including the first message of the conversation, is a 400. An
+/// instruction added after an answer waits for the next user turn and is said after it.
 fn instructed(messages: &mut Vec<Value>, waiting: &mut Vec<String>) {
     if messages.last().is_some_and(|last| last["role"] == "user") {
         messages.extend(
@@ -550,22 +547,22 @@ fn is_empty(value: &Value) -> bool {
     }
 }
 
-/// Asks for the prompt to be cached, unless the parameters said otherwise.
+/// Asks for the prompt to be cached unless the parameters say otherwise.
 ///
-/// note: on by default, because this API caches nothing it is not asked to, and an agent sends the
-/// same conversation again on every turn - unasked, every one of them is billed in full, where a
-/// cache read costs a tenth of that. Two breakpoints, the shape Anthropic gives for a tool loop:
-/// the top-level `cache_control`, which follows the end of the conversation as it grows, and one on
-/// the end of the instructions - or of the tools, where there are none - which holds when the
-/// conversation is edited further back. Here it is edited further back as a matter of course: an
-/// item excluded, rewritten or elided changes the prefix from that point on, and without the second
-/// breakpoint everything before it would be written again too.
+/// note: on by default, because this API caches nothing it is not asked to, and an agent resends
+/// the whole conversation every turn - unasked, each is billed in full, while a cache read costs a
+/// tenth of that. Two breakpoints, the shape Anthropic gives for a tool loop: the top-level
+/// `cache_control`, which follows the end of the conversation as it grows, and one on the end of
+/// the instructions - or of the tools, where there are none - which holds when the conversation is
+/// edited further back. Here it is edited further back as a matter of course: an item excluded,
+/// rewritten or elided changes the prefix from that point on, and without the second breakpoint
+/// everything before it would be written again too.
 ///
-/// note: `cache_control` in the parameters replaces the default for both, so a `ttl` given there
-/// is the TTL of both - this API refuses a later breakpoint that outlives an earlier one - and
-/// `false` or `null` asks for no caching at all, for an endpoint that refuses the field. `false`
-/// as well, because a program that reads `null` as "take the parameter away" - kamchatka's
-/// `/params` does - would otherwise have no way to say it.
+/// note: `cache_control` in the parameters replaces the default for both, so a `ttl` given there is
+/// the TTL of both - this API refuses a later breakpoint that outlives an earlier one - and `false`
+/// or `null` asks for no caching at all, for an endpoint that refuses the field. `false` as well,
+/// because a program that reads `null` as "take the parameter away", as kamchatka's `/params`
+/// does, would otherwise have no way to say it.
 fn cached(body: &mut Value, asked: Option<&Value>) {
     let cache = asked
         .cloned()
@@ -669,10 +666,10 @@ impl Provider for Anthropic {
         // top
         instructions.append(&mut waiting);
 
-        // note: in a user turn the results come first. This API refuses one that answers a call
-        // after something else has been said, and a reference or a note the kernel put between
-        // the call and its result is exactly that something; moved behind the results, it is
-        // still said, in the same turn
+        // note: in a user turn the results come first. This API refuses a turn that answers a call
+        // after something else has been said, and a reference or note the kernel put between the
+        // call and its result is exactly that something; moved behind the results, it is still said
+        // in the same turn
         for message in &mut messages {
             if message["role"] == "user"
                 && let Some(blocks) = message["content"].as_array_mut()
@@ -708,10 +705,9 @@ impl Provider for Anthropic {
             );
         }
 
-        // note: the fields built from the request itself are not replaced, for the reason the
-        // other dialects give: a parameter is carried beside the conversation, not in place of
-        // it. `stream` is not one of them: `false` is a whole message, and a whole message is
-        // read as the stream it would have been
+        // note: the fields built from the request itself are not replaced: a parameter is carried
+        // beside the conversation, not in place of it. `stream` is not one of them: `false` is a
+        // whole message, and a whole message is read as the stream it would have been
         for (key, value) in &request.params {
             match key.as_str() {
                 "model" | "messages" | "system" | "tools" => {}
@@ -812,9 +808,9 @@ impl Spent {
     ///
     /// note: this API's `input_tokens` is only the part of the prompt that was neither read from
     /// the cache nor written to it, and `Usage::input_tokens` is the whole prompt with the cached
-    /// part inside it - so the three are added. Reported as they stand, a conversation served from
-    /// the cache would read as a few tokens long, and every figure calibrated on it would be wrong.
-    /// `output_tokens` already counts the thinking, which is what `Usage` asks.
+    /// part inside it, so the three are added. Reported as they stand, a conversation served from
+    /// the cache would read as a few tokens long, and any figure calibrated on it would be wrong.
+    /// `output_tokens` already counts the thinking, as `Usage` requires.
     fn usage(&self) -> Option<Usage> {
         let input = match (self.input, self.cache_written, self.cache_read) {
             (None, None, None) => None,
@@ -885,12 +881,12 @@ impl Events for Streamed {
     }
 }
 
-/// A body that was not a stream, read as the events it would have been streamed as - or, where it
-/// is not a message, the error that says so.
+/// A body that was not streamed, read as the events it would have been streamed as, or the error if
+/// it is not a message.
 ///
-/// note: what comes back where `stream` did not reach the server, which a proxy that rewrote the
-/// body is enough for. A whole message's blocks are the blocks a stream would have opened, with
-/// everything already in them.
+/// note: used where `stream` did not reach the server, such as when a proxy rewrote the body. A
+/// whole message's blocks are the blocks a stream would have opened, with everything already in
+/// them.
 fn unstreamed(
     body: String,
     mut streamed: Streamed,
@@ -960,9 +956,9 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
                 json,
                 extra,
             } => {
-                // the fragments are the arguments where any came, and what the block opened with
-                // where none did; fragments that are not JSON are handed over as written, so the
-                // model is shown what it wrote rather than a call run on nothing
+                // Fragments are the arguments where any came, and what the block opened with where
+                // none did. Non-JSON fragments are handed over as written, so the model sees what
+                // it wrote instead of a call run on nothing
                 let call = match json.trim() {
                     "" if input.is_object() => ToolCall::new(id, name, input),
                     _ => crate::called(id, name, &json),
@@ -1005,8 +1001,8 @@ impl Endpoint for Anthropic {
         self.model()
     }
 
-    /// note: `limit` for Anthropic's own listing, which pages twenty at a time unless asked for
-    /// more; OpenRouter lists everything either way and reads past the query.
+    /// note: `limit` for Anthropic's listing, which pages twenty at a time unless asked for more;
+    /// OpenRouter lists everything either way and reads past the query.
     async fn models(&self) -> Vec<String> {
         let base = self.endpoint();
         let Some(body) = self.get(format!("{base}/models?limit=1000")).await else {

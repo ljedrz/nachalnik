@@ -3,23 +3,20 @@
 use nachalnik::{LinearProjector, Provider, async_trait};
 use serde_json::{Number, Value};
 
-/// The half of a model's service its user drives, rather than the kernel.
+/// The half of a model's service its user drives, not the kernel's.
 ///
-/// note: [`Provider`] is the kernel's half, and it is one method: the kernel asks for an answer
-/// and has no opinion about where the answer comes from. Where the requests go, what the endpoint
-/// serves, which model is being asked and what the last retry was about belong to whoever built
-/// the client - a `/model` command, a status line, a run that compares two endpoints - and they
-/// are the same questions whichever model is behind them. So they are a trait of this crate's own
-/// rather than something the runtime was made to carry: the runtime has no network in it and no
-/// business knowing that one exists.
+/// note: [`Provider`] is the kernel's half: one method, and the kernel has no opinion where the
+/// answer comes from. Where requests go, what the endpoint serves, which model is asked, and what
+/// the last retry was about belong to whoever built the client - a `/model` command, a status line,
+/// a run comparing two endpoints - and are the same whichever model is behind them. They are this
+/// crate's trait, not the runtime's: the runtime has no network and no business knowing one exists.
 ///
-/// note: [`Provider`] is deliberately *not* a supertrait, because a model can answer every
-/// question below and none of the questions a turn is made of. A System One
-/// [`Client`](crate::system1::Client) has an address, a key, a model identifier, a listing and a
-/// usage report, and it generates no text and calls no tools, so there is no turn for it to drive.
-/// Requiring one of everything in here would mean either shutting it out of the crate or handing
-/// the kernel an assistant turn manufactured out of probabilities. The turn-driving half is
-/// [`Dialect`], and it is the one that carries the `Provider` bound.
+/// note: [`Provider`] is deliberately not a supertrait. A model can answer every question here and
+/// none of a turn's questions. A System One [`Client`](crate::system1::Client) has an address, a
+/// key, a model identifier, a listing and a usage report, generates no text and calls no tools, so
+/// it has no turn to drive. Requiring all of this would shut it out of the crate or hand the kernel
+/// an assistant turn manufactured out of probabilities. The turn-driving half is [`Dialect`], which
+/// carries the `Provider` bound.
 #[async_trait]
 pub trait Endpoint: Send + Sync {
     /// Where the requests are going.
@@ -28,21 +25,21 @@ pub trait Endpoint: Send + Sync {
     /// Which model is being asked.
     fn model(&self) -> String;
 
-    /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for
-    /// the status line, which has no room for the rest of it.
+    /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for the
+    /// status line, which has no room for the rest.
     ///
-    /// note: hand-parsed rather than through a URL crate, because the whole use of it is a string
-    /// to draw. Anything this does not recognise as a URL is handed back as it came, since a
-    /// status line showing nothing would be worse than one showing something odd.
+    /// note: hand-parsed, not through a URL crate, because the whole use is a string to draw.
+    /// Anything not recognised as a URL is handed back as it came: a status line showing nothing is
+    /// worse than one showing something odd.
     fn host(&self) -> String {
         let endpoint = self.endpoint();
         let after_scheme = endpoint
             .split_once("://")
             .map_or(endpoint.as_str(), |(_, rest)| rest);
 
-        // the query and the fragment too, and not only the path: a key passed as `?key=` would
-        // otherwise be drawn on the status line of an endpoint given with no path - and for the
-        // same reason not a `user:password@` before the host, which is a credential too
+        // Split on `?` and `#` too, not just `/`: a `?key=` would otherwise be drawn on the status
+        // line of an endpoint with no path. Also strip `user:password@` before the host: it is a
+        // credential
         let authority = after_scheme
             .split(['/', '?', '#'])
             .next()
@@ -71,27 +68,25 @@ pub trait Endpoint: Send + Sync {
 
 /// An [`Endpoint`] whose model answers in turns: the wire format a conversation is carried in.
 ///
-/// note: this is the trait a client of this crate holds when what it wants is a session. Both
-/// halves in one bound, so a single `Arc` answers the kernel and the status line, which is what
-/// lets a program hold a model without knowing which wire format is behind it and swap one for
-/// the other while a session is running.
+/// note: the trait a client holds for a session. Both halves in one bound, so a single `Arc`
+/// answers the kernel and the status line, letting a program hold a model without knowing the wire
+/// format behind it and swap one for the other during a session.
 ///
-/// note: the two methods below live here rather than on [`Endpoint`] because both are questions
-/// about a *turn*, and a model that does not produce one has no answer to either. `projection`
-/// is about the shape of a message on the wire, and `lists_every_parameter` is about
+/// note: the two methods live here rather than on [`Endpoint`] because both are questions about a
+/// turn, and a model that does not produce one has no answer to either. `projection` is about the
+/// shape of a message on the wire; `lists_every_parameter` is about
 /// [`nachalnik::ModelInfo::parameters`], which arrives through `Provider`.
 pub trait Dialect: Endpoint + Provider {
-    /// Whether [`nachalnik::ModelInfo::parameters`] is the whole of what the model takes, or only
-    /// the part of it this endpoint publishes.
+    /// Whether [`nachalnik::ModelInfo::parameters`] lists everything the model takes, or only the
+    /// part this endpoint publishes.
     ///
     /// note: it decides what may be said about a parameter that is *not* on the list, and the two
-    /// answers are different claims. An exhaustive list settles it - the parameter is sent, the
-    /// model does not take it, and it is ignored, which is the thing `/params` exists to say. A
-    /// list of the sampling knobs alone settles nothing: `reasoning_effort` is absent from
-    /// `mercury-2.5`'s and is read all the same, validated hard enough that a bad value comes back
-    /// a 400. Reporting that one as ignored would be inventing a restriction out of a list that
-    /// never claimed to be complete, which is the failure this crate takes seriously everywhere
-    /// else it reads somebody's metadata.
+    /// answers are different claims. An exhaustive list settles it: the parameter is sent, the
+    /// model does not take it, and it is ignored - that is what `/params` exists to say. A partial
+    /// list settles nothing: `reasoning_effort` is absent from `mercury-2.5` yet is still read, and
+    /// a bad value returns a 400. Calling it ignored would invent a restriction from a list that
+    /// never claimed to be complete, the failure this crate takes seriously when reading anyone's
+    /// metadata.
     ///
     /// note: defaulted to `true` because a dialect that publishes one list of everything is the
     /// ordinary case. An endpoint that knows better says so.
@@ -100,30 +95,30 @@ pub trait Dialect: Endpoint + Provider {
     }
 
     /// What the endpoint publishes about one of [`nachalnik::ModelInfo::parameters`] beyond its
-    /// name, where it publishes anything.
+    /// name.
     ///
-    /// note: read from the listing and from nothing else. No endpoint here publishes a
-    /// parameter's type or its range, and a table of them kept in this crate would be somebody's
-    /// documentation as of the day it was copied, said of a model it may not describe. A default
-    /// is a value, so its type is in it.
+    /// note: read from the listing and from nothing else. No endpoint here publishes a parameter's
+    /// type or its range, and a table of them kept in this crate would be somebody's documentation
+    /// as of the day it was copied, said of a model it may not describe. A default is a value, so
+    /// its type is in it.
     ///
-    /// note: defaulted to nothing, which is what an endpoint that publishes nothing has said.
+    /// note: defaults to nothing, which is what an endpoint that publishes nothing has said.
     fn published(&self, parameter: &str) -> Published {
         let _ = parameter;
         Published::default()
     }
 
-    /// How many times a request for a turn is sent while the server keeps saying it is busy -
-    /// a `429`, a `503`, a connection that timed out - the first included. Four unless set, and
-    /// never fewer than one.
+    /// How many times a request for a turn is sent while the server says it is busy (`429`, `503`,
+    /// or a timed-out connection), including the first attempt. Four unless set, and never fewer
+    /// than one.
     ///
-    /// note: four is for somebody watching, who would rather be told than kept waiting. A run
-    /// nobody watches can ask for more, and a limit shared by several sessions can outlast four:
-    /// the waits double from two seconds and stop growing at a minute, so ten tries are about
-    /// five minutes. A server that asks to be left longer than a minute is still not waited for,
-    /// however many tries are left, since that is a quota spent rather than a server busy.
+    /// note: four is for someone watching, who would rather be told than kept waiting. A run nobody
+    /// watches can ask for more. A limit shared by several sessions can outlast four: the waits
+    /// double from two seconds and stop growing at a minute, so ten tries are about five minutes. A
+    /// server that asks to be left longer than a minute is not waited for, however many tries are
+    /// left, since that is a quota spent rather than a server busy.
     ///
-    /// note: defaulted to doing nothing, for a dialect that does not send a request again.
+    /// note: defaults to doing nothing, for a dialect that does not send a request again.
     fn set_tries(&self, tries: usize) {
         let _ = tries;
     }
@@ -131,35 +126,35 @@ pub trait Dialect: Endpoint + Provider {
     /// How long a stream may say nothing - before its first byte or between two - before the
     /// request is given up on. Two and a half minutes unless set.
     ///
-    /// note: a free endpoint under load can hold a request in its queue for longer than that
-    /// before the first byte and then answer it normally, and a request given up on there is a
-    /// model that never answers, though it would if waited for.
+    /// note: a free endpoint under load can hold a request in its queue longer than that before the
+    /// first byte and still answer it normally. Giving up on it there means a model that never
+    /// answers, though it would if waited for.
     ///
-    /// note: a client handed over with a whole-request timeout of its own - see
-    /// `OpenAiCompatible::client_with` - cuts off a long queue followed by a long answer
-    /// first, as a connection error; give such a client the patience plus the time an answer
-    /// takes. The clients the providers build for themselves have no such timeout.
+    /// note: a client with its own whole-request timeout - see `OpenAiCompatible::client_with` -
+    /// cuts off a long queue followed by a long answer first, as a connection error. Give such a
+    /// client the patience plus the time an answer takes. The clients the providers build for
+    /// themselves have no such timeout.
     ///
-    /// note: defaulted to doing nothing, for a dialect that does not stream.
+    /// note: defaults to doing nothing, for a dialect that does not stream.
     fn set_patience(&self, patience: std::time::Duration) {
         let _ = patience;
     }
 
     /// The projection this dialect can carry.
     ///
-    /// note: it is answered here, beside the `to_wire` that has to honour it, because the two drift
-    /// apart when they are decided in different places. The budget is counted over the messages the
-    /// projector produced - which is what makes it the size of the request rather than the size
-    /// of the context - so a projector that hands over something the wire format then drops does
-    /// not merely waste the effort. It charges the person for bytes that never leave the process,
-    /// and goes on doing it for as long as those messages are in the context.
+    /// note: it is here beside `to_wire`, which must honour it, because the two drift apart when
+    /// decided in different places. The budget is counted over the messages the projector produced,
+    /// so it is the size of the request rather than the context. A projector that hands over
+    /// something the wire format then drops does not merely waste effort. It charges the person for
+    /// bytes that never leave the process, and keeps doing so while those messages are in the
+    /// context.
     fn projection(&self) -> LinearProjector {
         LinearProjector {
             // note: `to_wire` does not put an assistant turn's thinking on the wire, and cannot:
             // most endpoints speaking this dialect reject a message carrying a field they do not
-            // know, and there is no agreed name for that one. Projecting it would only mean
-            // paying for it. The turn keeps its reasoning either way: it is in the record, on the
-            // context tab, and can be excluded like everything else.
+            // know, and there is no agreed name for that one. Projecting it would only mean paying
+            // for it. The turn keeps its reasoning either way: it is in the record, on the context
+            // tab, and can be excluded like everything else.
             send_reasoning: false,
             ..Default::default()
         }
@@ -168,8 +163,8 @@ pub trait Dialect: Endpoint + Provider {
 
 /// What an endpoint publishes about one parameter beyond its name; see [`Dialect::published`].
 ///
-/// note: `#[non_exhaustive]`, so that what a listing says about a parameter can grow. Build one
-/// with [`Published::default`] and the `with_` methods.
+/// note: `#[non_exhaustive]`, so what a listing says about a parameter can grow. Build one with
+/// [`Published::default`] and the `with_` methods.
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Published {

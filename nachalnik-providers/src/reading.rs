@@ -1,11 +1,11 @@
-//! What comes back from a request: a stream read an event at a time, and a server's own account of
-//! why it would not answer.
+//! What comes back from a request: a stream read an event at a time, and the server's own account
+//! of why it would not answer.
 //!
-//! note: shared by both dialects, like [`waiting`](crate::waiting). What an event *says* differs
-//! between them, and each answers that through [`Events`]; getting events off a socket - a chunk
-//! that splits a character, a last line with no newline after it, a body that was never a stream,
-//! a stream that stops or goes quiet - is the same problem in both, and solved twice it gets fixed
-//! in one copy at a time.
+//! note: shared by both dialects, like [`waiting`](crate::waiting). What an event says differs
+//! between them, and each dialect answers that through [`Events`]. Reading events off a socket is
+//! the same problem in both: a chunk can split a character, a last line can have no newline, a body
+//! may never have been a stream, and a stream can stop or go quiet. Solving it twice would fix one
+//! copy at a time.
 
 use nachalnik::{BoxError, DeltaSink};
 use serde_json::Value;
@@ -35,11 +35,10 @@ pub(crate) trait Events {
 
 /// The error object an event carries, wherever its dialect puts it.
 ///
-/// note: three places. Under `error`, which is how the chat-completions dialect, OpenRouter,
-/// Google and Anthropic send one; the event itself, where it is the Responses API's flat
-/// `{"type": "error", "message": ...}`; and under `response`, where a Responses stream ends in
-/// `response.failed`. A `null` under `error` is no error: a Responses body always carries the
-/// field.
+/// note: three places. Under `error`, used by the chat-completions dialect, OpenRouter, Google and
+/// Anthropic; the event itself, as the Responses API's flat `{"type": "error", "message": ...}`;
+/// and under `response`, where a Responses stream ends in `response.failed`. A `null` under `error`
+/// is not an error: a Responses body always carries the field.
 fn error_in(event: &Value) -> Option<&Value> {
     if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
         return Some(error);
@@ -91,8 +90,8 @@ pub(crate) enum Read {
     Events(Vec<Value>, Stopped),
     /// Somebody asked to stop before anything had arrived.
     Interrupted,
-    /// A body in which nothing was an event and which was not an error object either: the whole
-    /// of it, for the dialect to read as a whole answer if it is one.
+    /// A body in which nothing was an event and which was not an error object either. The dialect
+    /// reads the whole body as a whole answer if it is one.
     Unstreamed(String),
     /// A refusal that came where the answer should have: an error object as the first event of a
     /// stream, or as the whole of a body that was not one.
@@ -125,10 +124,10 @@ impl std::error::Error for BrokeOff {}
 
 /// Reads a stream to its end, handing each event to `events` as it arrives.
 ///
-/// note: what stops this is the server, an interrupt, or the stall watch - and once anything has
-/// arrived, all three are answers rather than failures, which is why what comes back is what had
-/// arrived rather than an error. A turn that was cut off mid-answer has been generated and billed for; throwing it
-/// away is the one thing worse than reporting it short.
+/// note: the server, an interrupt, or the stall watch stops the read. Once anything has arrived,
+/// all three are answers rather than failures, so the result is what had arrived, not an error. A
+/// turn cut off mid-answer has been generated and billed for; throwing it away is worse than
+/// reporting it short.
 pub(crate) async fn read(
     response: &mut reqwest::Response,
     asking: &Asking<'_>,
@@ -138,20 +137,19 @@ pub(crate) async fn read(
     // tail of a split character waits in here for the rest of itself, and only whole lines are
     // decoded
     let mut buffer: Vec<u8> = Vec::new();
-    // how much of `buffer` is already known to hold no newline: a line that arrives over many
-    // chunks - a Gemini call's whole arguments, an image - is searched once rather than from its
-    // start at every chunk, which is quadratic in the length of the line
+    // how much of `buffer` is known to hold no newline. A line arriving over many chunks is
+    // searched once instead of from its start at every chunk, which would be quadratic in the
+    // line's length
     let mut searched = 0;
-    // every byte, until one of them is part of an event: a body that never was a stream is read
-    // whole, rather than as whatever followed its last newline
+    // every byte until one is part of an event: a body that was never a stream is read whole, not
+    // as whatever followed its last newline
     let mut unstreamed: Vec<u8> = Vec::new();
     let mut seen: Vec<Value> = Vec::new();
     // the `data:` lines of an event spread over several, joined as the format joins them, until
     // the blank line that ends it
     let mut spread = String::new();
-    // note: a stream is over once the server says so - by the finish it reported, or by its own
-    // end-of-stream marker - and the connection staying open after neither is a server that has
-    // said all it is going to
+    // note: a stream is over once the server says so, by its reported finish or its end-of-stream
+    // marker. If the connection stays open after neither, the server has said all it is going to
     let mut stopped = Stopped::Done;
     // whether that marker arrived, which a clean close is told apart from below
     let mut marked = false;
@@ -162,8 +160,8 @@ pub(crate) async fn read(
     }
 
     loop {
-        // the timeout is what makes a model that says nothing at all interruptible; without it
-        // this sits in `chunk` until the server feels like talking
+        // the timeout makes a silent model interruptible. Without it this sits in `chunk` until the
+        // server talks
         let mut ended = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
             Ok(Ok(Some(bytes))) => {
                 if vigil.heard() {
@@ -178,32 +176,32 @@ pub(crate) async fn read(
                 buffer.extend_from_slice(&bytes);
                 false
             }
-            // a last line with no newline after it is still a line, and a last event with no blank
-            // line after it still an event: the end of the body is what ends both
+            // a last line with no newline after it is still a line. A last event with no blank line
+            // after it is still an event: the end of the body ends both
             Ok(Ok(None)) => {
                 buffer.extend_from_slice(b"\n\n");
                 true
             }
             // the body stopped arriving in the middle of an answer. Everything parsed so far is
-            // kept and the socket is abandoned, as the interrupt does for the other way a stream
-            // ends early. Not retried: every attempt is billed, and an answer that reliably
-            // outruns an upstream's patience would be paid for four times and fail anyway
+            // kept and the socket is abandoned. Not retried: every attempt is billed, and an answer
+            // that reliably outruns an upstream's patience would be paid for four times and fail
+            // anyway
             Ok(Err(e)) => {
                 // note: not a byte of the body, so nothing was handed to anybody and nothing of an
-                // answer is known to have been made - a reset stream, a body that would not decode
-                // from its first byte. That is the one break worth sending again, and `sent` does,
-                // as it would for a busy server. One that broke after its first byte may already be
-                // billed, and is not
+                // answer is known - a reset stream, or a body that would not decode from its first
+                // byte. That is the one break worth sending again, and `sent` does, as it would for
+                // a busy server. One that broke after its first byte may already be billed, and is
+                // not
                 if unstreamed.is_empty() && seen.is_empty() {
                     return Err(BrokeOff(crate::with_causes(&e)).into());
                 }
-                // nothing arrived that was an event, so there is nothing to keep and the
-                // transport's own account, with its causes, is the most useful thing there is
+                // nothing arrived that was an event, so there is nothing to keep. The transport's
+                // own account, with its causes, is the most useful thing there is
                 if seen.is_empty() {
                     return Err(crate::with_causes(&e).into());
                 }
                 // a turn whose finish already arrived is a complete answer that lost its trailing
-                // bytes, and calling that cut off would be inventing a fault
+                // bytes. Calling that cut off would be inventing a fault
                 if !events.finished() {
                     asking.say(format!(
                         "{} was cut off mid-answer ({e}); what had arrived is kept",
@@ -219,10 +217,10 @@ pub(crate) async fn read(
                     break;
                 }
                 let silence = vigil.waited();
-                // note: a finish and then quiet is a server that has said all it is going to and
-                // kept the connection open without a `[DONE]`. What may still follow a finish is
-                // the usage, which comes with it or straight after, so the first silence worth
-                // mentioning is enough to stop waiting for it
+                // note: a finish followed by quiet means the server has said all it will and kept
+                // the connection open without a `[DONE]`. Usage may follow a finish, with it or
+                // straight after, so the first silence worth mentioning is enough to stop waiting
+                // for it
                 if events.finished() && !matches!(silence, Silence::Ordinary) {
                     break;
                 }
@@ -354,8 +352,8 @@ pub(crate) async fn read(
             seen.push(event);
         }
 
-        // what is left is a line or an event not yet ended, and one that never ends is not read for
-        // ever: what arrived before it is kept, as for a stream cut off
+        // what is left is a line or an event not yet ended; one that never ends is not read for
+        // ever. What arrived before it is kept, as for a stream cut off
         if buffer.len() + spread.len() > LARGEST {
             if seen.is_empty() {
                 return Err(too_large(asking.model));
@@ -368,8 +366,8 @@ pub(crate) async fn read(
             stopped = Stopped::CutOff;
             break;
         }
-        // and asked after every chunk as well as in the quiet and between lines, since a body
-        // that trickles without ending a line is none of those
+        // asked after every chunk as well as in the quiet and between lines, because a body that
+        // trickles without ending a line is none of those
         if asking.deltas.is_interrupted() {
             stopped = Stopped::Interrupted;
         }
@@ -411,13 +409,13 @@ pub(crate) async fn read(
     Ok(Read::Unstreamed(body))
 }
 
-/// Whether what one `data:` event carried is the dialect's own end of the stream.
+/// Whether a `data:` event payload is the dialect's end-of-stream marker.
 ///
-/// note: on the joined event as well as on one line, and with the newline the format joins `data:`
-/// lines with taken out again. The marker is an event by every account the format gives, and
-/// matched on a line of its own it went unrecognised when a proxy re-wrapped it over two - which
-/// is not merely a reason reported badly: the answer had already arrived, and not recognising
-/// what ends the stream spends the stall bound and then throws it away.
+/// note: strip the newline the format joins `data:` lines with, so a joined event and a single line
+/// both match. The marker is an event by every account the format gives. Matched on a line of its
+/// own, it went unrecognised when a proxy re-wrapped it over two: the answer had already arrived,
+/// and not recognising the end of the stream spends the stall bound and then throws the answer
+/// away.
 fn done(payload: Option<&str>) -> bool {
     payload.is_some_and(|payload| payload.trim().replace('\n', "") == DONE)
 }
@@ -478,12 +476,12 @@ pub(crate) fn failure(error: &Value) -> String {
     said(error).unwrap_or_else(|| quoted(&error.to_string()))
 }
 
-/// What to say about a request the server refused: its own sentence, rather than its envelope.
+/// What to say about a request the server refused: its own sentence, not its envelope.
 ///
-/// note: a spent quota comes back as an envelope of JSON - the message, the remedy, the rate-limit
-/// headers, and the account's `user_id` - and all of it would go into the transcript and into the
-/// session log, which is a file people send each other. What a reader needs is the sentence.
-/// Nobody needs an identifier for their account written into it.
+/// note: a spent quota comes back as a JSON envelope - the message, the remedy, the rate-limit
+/// headers, and the account's `user_id` - and all of it would go into the transcript and the
+/// session log, a file people send each other. A reader needs the sentence; nobody needs their
+/// account identifier written into it.
 pub(crate) fn complaint(status: reqwest::StatusCode, body: &str) -> String {
     match serde_json::from_str::<Value>(body)
         .ok()
@@ -513,8 +511,8 @@ fn said(value: &Value) -> Option<String> {
     };
 
     let mut said = message.chars().take(400).collect::<String>();
-    // the upstream's own words, where the wrapper is only reporting that something upstream
-    // failed - "Provider returned error" on its own names neither the provider nor the problem
+    // the upstream's own words, where the wrapper only reports that something upstream failed:
+    // "Provider returned error" names neither the provider nor the problem
     if let Some(raw) = error["metadata"]["raw"]
         .as_str()
         .map(str::trim)
@@ -526,19 +524,18 @@ fn said(value: &Value) -> Option<String> {
     Some(said)
 }
 
-/// The sentences inside a rejected request's list of what was wrong with it, each named by the
-/// parameter it is about.
+/// The sentences in a rejected request's list of what was wrong, each named by the parameter it is
+/// about.
 ///
-/// note: a validated endpoint answers a bad parameter with a *list* rather than a sentence -
-/// Inception's `message` is the pydantic shape, `[{"type": "value_error", "loc": ["body",
-/// "reasoning_effort"], "msg": "...", "input": "banana", "ctx": {...}}]` - and the answer to what
-/// a request got wrong is where the words are most worth having: which parameter, and what it
-/// takes.
+/// note: a validated endpoint answers a bad parameter with a list rather than a sentence.
+/// Inception's `message` is the pydantic shape `[{"type": "value_error", "loc": ["body",
+/// "reasoning_effort"], "msg": "...", "input": "banana", "ctx": {...}}]`. The list says which
+/// parameter is wrong and what it takes.
 ///
 /// note: `loc` is prepended only where the message does not already name the field. Pydantic's
-/// own wording varies on exactly that point - a `value_error` raised by a validator usually names
-/// it, a type failure says "Input should be a valid boolean" and names nothing - and a message
-/// that does not say which parameter it means is a message somebody has to guess at.
+/// wording varies: a `value_error` raised by a validator usually names the field, while a type
+/// failure says "Input should be a valid boolean" and does not name it. Without the parameter, the
+/// reader has to guess which one the message means.
 fn refusals(message: &Value) -> Option<String> {
     let listed = message.as_array().filter(|listed| !listed.is_empty())?;
 
@@ -649,11 +646,10 @@ mod tests {
 
     /// A body this client cannot read is named by its encoding rather than quoted.
     ///
-    /// note: the bytes of a compressed body are not words, and quoted as prose they are a third
-    /// of a header with a replacement character wherever a byte was not UTF-8 - which went into
-    /// the session log, a file people send each other. Nothing on the screen told apart an
-    /// endpoint that compressed its answer from one that sent nonsense, which is the reading a
-    /// person takes away.
+    /// note: the bytes of a compressed body are not words. Quoted as prose they are a third of a
+    /// header with a replacement character wherever a byte was not UTF-8, and that went into the
+    /// session log, a file people send each other. A reader could not tell an endpoint that
+    /// compressed its answer from one that sent nonsense.
     #[test]
     fn a_body_this_client_cannot_read_says_which_encoding_arrived() {
         let mut headers = reqwest::header::HeaderMap::new();
@@ -678,12 +674,12 @@ mod tests {
         assert!(!why.contains(gzipped), "and no header: {why}");
     }
 
-    /// The end of a stream is recognised on one `data:` line and on the several an event may be
-    /// spread over.
+    /// The end of a stream is recognised on one `data:` line and on the several lines an event may
+    /// be spread over.
     ///
-    /// note: the marker is an event by every account the format gives, and matched on one line
-    /// only it went unrecognised when a proxy re-wrapped it into two. The answer had arrived; it
-    /// sat out the whole of the stall bound to be reported as a stall.
+    /// note: the end-of-stream marker is an event in the format. Matching it on one line only
+    /// missed it when a proxy re-wrapped it into two, so an answer that had arrived waited through
+    /// a stall that was then reported as a stall.
     #[test]
     fn the_end_of_a_stream_is_recognised_joined_as_well_as_whole() {
         assert!(done(Some(" [DONE] ")));
@@ -841,13 +837,12 @@ mod tests {
         );
     }
 
-    /// A refusal for length comes back as the numbers in it, not only as the sentence.
+    /// A refusal for length includes the numbers, not only the sentence.
     ///
-    /// note: tested through the whole seam, because the reading has to survive what this crate
-    /// does to a body on the way - and what it does is put the status in front of it, which is a
-    /// number in the message that is not a token count. The fixture is what `openrouter.ai`
-    /// answers, and it sends the same complaint both as a status and as an error object inside a
-    /// perfectly good 200.
+    /// note: tested through the whole seam, because the reading must survive the crate putting the
+    /// status in front of the body; that status is a number in the message, not a token count. The
+    /// fixture is what `openrouter.ai` answers: the same complaint as a status and as an error
+    /// object inside a 200.
     #[test]
     fn a_refusal_for_length_keeps_the_numbers_that_say_what_to_do_about_it() {
         let refused_as = |said: String| {
@@ -887,10 +882,9 @@ mod tests {
         );
     }
 
-    /// note: the two wordings pydantic gives the same kind of failure, which is why `loc` is read.
-    /// A validator that raised the error usually names the parameter in the message; a type
-    /// failure says "Input should be a valid boolean" and names nothing. Both are quoted from what
-    /// `api.inceptionlabs.ai` answers.
+    /// note: pydantic gives two wordings for the same failure, which is why `loc` is read. A
+    /// validator usually names the parameter in the message; a type failure says "Input should be a
+    /// valid boolean" and names nothing. Both are quoted from `api.inceptionlabs.ai`.
     #[test]
     fn a_request_refused_by_a_list_of_failures_is_reported_by_the_sentences_in_it() {
         let status = reqwest::StatusCode::BAD_REQUEST;
@@ -925,8 +919,8 @@ mod tests {
             "the parameter it is about is named: {said}"
         );
 
-        // two at once are two sentences, and a list with nothing readable in it falls through to
-        // the clip rather than reporting an empty refusal
+        // two errors produce two sentences. A list with nothing readable falls through to the clip
+        // instead of reporting an empty refusal
         let two = concat!(
             r#"{"error":{"message":[{"loc":["body","a"],"msg":"first"},"#,
             r#"{"loc":["body","b"],"msg":"second"}]}}"#,
@@ -939,8 +933,8 @@ mod tests {
         assert!(complaint(status, r#"{"error":{"message":[]}}"#).contains("message"));
     }
 
-    /// The shape a stream that fails halfway sends, which is not the shape a refused request
-    /// sends. Copied out of a live session against `inception/mercury-2.5-preview`.
+    /// A stream that fails halfway sends a different shape than a refused request. Copied out of a
+    /// live session against `inception/mercury-2.5-preview`.
     #[test]
     fn an_error_that_arrives_mid_stream_is_read_the_same_way() {
         let midstream = concat!(

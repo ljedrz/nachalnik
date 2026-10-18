@@ -77,10 +77,9 @@ pub(super) fn render(provider: &OpenAiCompatible, request: &ModelRequest) -> Val
         }
     }
 
-    // note: after the parameters, and added to an `include` of the caller's rather than put in
-    // place of it. Unless the caller asked the server to keep the conversation itself - `store:
-    // true`, which is theirs to ask - the sealed reasoning is the only way a turn's thinking
-    // reaches the next request, and an `include` set for some other reason would quietly lose it
+    // note: added to the caller's `include` after the parameters, not put in place of it. Unless
+    // the caller set `store: true`, the sealed reasoning is the only way a turn's thinking reaches
+    // the next request; an `include` set for another reason would quietly lose it
     if body["store"] != json!(true) {
         match body["include"].as_array_mut() {
             Some(included) if !included.iter().any(|it| it == SEALED) => {
@@ -94,12 +93,12 @@ pub(super) fn render(provider: &OpenAiCompatible, request: &ModelRequest) -> Val
     body
 }
 
-/// One message of the conversation as the items it goes out as.
+/// One conversation message as the items it is sent as.
 ///
 /// note: an instruction stays where it was put, as a `system` message among the others, rather than
-/// being gathered into `instructions` at the top. OpenAI caches a prompt by its prefix and by
-/// nothing else, so an instruction added mid-session and moved to the front would make every
-/// request after it a miss from the first token.
+/// being gathered into `instructions` at the top. OpenAI caches a prompt by its prefix only, so an
+/// instruction added mid-session and moved to the front makes every request after it a miss from
+/// the first token.
 fn items_of(message: &Message, items: &mut Vec<Value>) {
     match message.role {
         Role::Assistant => turn(message, items),
@@ -160,8 +159,8 @@ fn part(content: &Content) -> Value {
 
 /// An assistant turn, as the items it was answered with, in the order it was.
 ///
-/// note: a turn recorded the conventional way - by a session that started against another provider
-/// - goes out as what was said and then the calls. Its thinking has no sealed form and is not sent.
+/// note: a turn recorded by a session that started against another provider goes out as what was
+/// said and then the calls. Its thinking has no sealed form and is not sent.
 fn turn(message: &Message, items: &mut Vec<Value>) {
     let Some(blocks) = message.blocks() else {
         if let Some(text) = message.content.as_ref().map(Content::to_text)
@@ -189,10 +188,8 @@ fn turn(message: &Message, items: &mut Vec<Value>) {
         }
     }
 
-    // note: a reasoning item has to be followed by what it reasoned towards - a message or a call
-    // - and this API refuses one that is not. A turn cut off after it had thought and before it
-    // said anything leaves one at its end, and that turn would otherwise refuse every request the
-    // session made after it
+    // note: a reasoning item must be followed by a message or a call; this API refuses one that is
+    // not. A turn ending in a reasoning item would refuse every later request from the session
     while items.len() > from && items.last().is_some_and(|item| item["type"] == "reasoning") {
         items.pop();
     }
@@ -225,11 +222,11 @@ fn thought(part: &Part) -> Option<Value> {
     Some(item)
 }
 
-/// One tool call, as a `function_call` item.
+/// One tool call as a `function_call` item.
 ///
-/// note: without the item's own `id`. The call is matched to its result by `call_id`, and an `id`
-/// names an item the server kept - which with `store: false` it did not, and which through
-/// OpenRouter is one OpenRouter made up.
+/// note: no `id` of its own. The call is matched to its result by `call_id`; an `id` names a
+/// server-kept item. With `store: false` the server kept none, and through OpenRouter the `id` is
+/// one OpenRouter made up.
 fn asking(call: &ToolCall) -> Value {
     json!({
         "type": "function_call",
@@ -303,8 +300,8 @@ pub(super) async fn respond(
                 // stopped before it said any of it: a request somebody stopped, which is not a
                 // broken response, as it is not before the stream has said anything at all
                 false if stopped == Stopped::Interrupted => Ok(interrupted()),
-                // a stream that only ever said a response exists has not answered, and read as
-                // an answer it is a turn that finished having said nothing
+                // a stream that only said a response exists has not answered; read as an answer, it
+                // is a turn that finished having said nothing
                 false => Err(not_a_stream(&Value::Array(events).to_string())),
             }
         }
@@ -354,12 +351,12 @@ impl Streamed {
             .map(|(_, partial)| partial)
     }
 
-    /// An item, opened or finished: what it says replaces what was assembled of it only where the
-    /// fragments said nothing, so a stream and a whole answer arrive at the same turn.
+    /// An item, opened or finished: its text replaces assembled fragments only where the fragments
+    /// said nothing, so a stream and a whole answer arrive at the same turn.
     ///
-    /// note: and what arrives whole is handed on as it would have been in fragments, once: an item
-    /// that opens with its text in it, or finishes with text no fragment carried, is a whole
-    /// answer's or a terse stream's, and the screen is otherwise shown nothing of it.
+    /// note: a whole item is handed on once, as if it had arrived in fragments. An item that opens
+    /// with text, or finishes with text no fragment carried, is a whole answer's or a terse
+    /// stream's, and without this the screen is shown nothing of it.
     fn item(&mut self, index: u64, item: &Value, deltas: &DeltaSink) {
         let Some(opened) = opened(item) else {
             return;
@@ -412,9 +409,9 @@ impl Streamed {
                     if name.is_empty() {
                         *name = called;
                     }
-                    // note: the finished item's arguments where it has them, rather than the
-                    // fragments: they are the same text when nothing went wrong, and the item's
-                    // are the server's account of it when something did
+                    // note: use the finished item's arguments where present, not the fragments.
+                    // They are the same text when nothing went wrong; the item's are the server's
+                    // account when something did
                     if !whole.is_empty() {
                         *arguments = whole;
                     }
@@ -506,8 +503,8 @@ impl Events for Streamed {
                 }
             }
             "response.completed" | "response.incomplete" => self.ended(&event["response"], deltas),
-            // `response.created`, `response.in_progress`, the `.done` of each fragment - already
-            // whole in the item they belong to - and whatever is added next
+            // `response.created`, `response.in_progress`, each fragment's `.done` (already whole in
+            // the item it belongs to), and whatever is added next
             _ => {}
         }
     }
@@ -578,9 +575,9 @@ fn opened(item: &Value) -> Option<Partial> {
             name: item["name"].as_str().unwrap_or_default().to_owned(),
             arguments: item["arguments"].as_str().unwrap_or_default().to_owned(),
         }),
-        // a hosted tool's call - a web search, a file search - and whatever comes next: dropped
-        // rather than guessed at, as the other dialects drop what they have no variant for. It is
-        // still in `ModelResponse::raw`
+        // a hosted tool's call - a web search, a file search - and whatever comes next are dropped
+        // rather than guessed at, as other dialects drop what they have no variant for. It is still
+        // in `ModelResponse::raw`
         _ => None,
     }
 }
@@ -597,8 +594,8 @@ fn joined(parts: &Value, kind: &str) -> String {
         .join("\n\n")
 }
 
-/// A body that was not a stream, read as the events it would have been - or, where it is not a
-/// response, the error that says so.
+/// Reads a non-stream body as the events it would have been, or returns the error if it is not a
+/// response.
 fn whole(
     body: String,
     mut streamed: Streamed,
@@ -680,10 +677,10 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
     }
 }
 
-/// What a response cost, as this API reports it.
+/// The cost of a response, as this API reports it.
 ///
-/// note: `input_tokens` already holds the cached part and `output_tokens` the reasoning, which is
-/// what [`Usage`] asks of both - unlike Anthropic's, nothing has to be added.
+/// note: `input_tokens` already holds the cached part, and `output_tokens` holds the reasoning,
+/// which is what [`Usage`] asks of both. Unlike Anthropic's, nothing has to be added.
 fn usage_of(reported: &Value) -> Usage {
     Usage {
         input_tokens: reported["input_tokens"].as_u64(),

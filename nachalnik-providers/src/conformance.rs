@@ -40,17 +40,17 @@ use tokio::{
 
 /// What a provider calls a turn whose stream stopped arriving partway.
 ///
-/// note: a [`StopReason::Other`] rather than a variant of its own, because `Other` is the
-/// runtime's own place for "anything else the provider reported" and a word providers have to
-/// agree on does not need the core to hold it. What makes them agree is this case: the literal
-/// lives in each provider, and one that spells it differently fails here.
+/// note: [`StopReason::Other`] rather than a new variant, because `Other` is the runtime's place
+/// for "anything else the provider reported" and a word providers must agree on does not need the
+/// core to hold it. The literal lives in each provider; a provider that spells it differently fails
+/// here.
 const CUT_OFF: &str = "cut off";
 
 /// The wire format a provider under test speaks.
 ///
-/// note: the dialects disagree about the *bodies*, not about the questions. Two calls in one turn
-/// are two calls in both; what differs is how a server says so, which is why each case below
-/// supplies a body per dialect rather than one body.
+/// note: dialects disagree about bodies, not questions. Two calls in one turn are two calls in
+/// both; only how a server says so differs, which is why each case supplies a body per dialect
+/// rather than one body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Dialect {
@@ -128,11 +128,10 @@ impl Conformance {
         }
     }
 
-    /// Runs every case, and panics naming all of the ones that failed.
+    /// Runs every case and panics, naming every failed case.
     ///
-    /// note: all of them, rather than stopping at the first. A provider that has drifted has
-    /// usually drifted in more than one place, and finding that out one `cargo test` at a time is
-    /// how a sweep turns into an afternoon.
+    /// note: all of them, not just the first. A provider that has drifted usually drifted in more
+    /// than one place.
     pub async fn check(&self) {
         // reqwest is built with `rustls-no-provider`, so a client cannot reach `https://` until
         // one is named; a caller who built their client by hand has not necessarily done it
@@ -232,10 +231,10 @@ impl Conformance {
 
     /// A chunk boundary is not a character boundary.
     ///
-    /// note: bytes decoded lossily as they arrive turn a character split between two reads into
-    /// two decodes - one with its tail missing and one with its head - and so into two replacement
-    /// characters, which then go into the context and into whatever record is kept. Every split
-    /// point through the text is tried, because one fixed split point proves only that one worked.
+    /// note: lossy decoding as bytes arrive turns a character split between two reads into two
+    /// decodes, each missing a piece, and so into two replacement characters. Those go into the
+    /// context and any record kept. Every split point is tried, because one fixed split point
+    /// proves only that one worked.
     async fn split_character(&self) -> Outcome {
         const SAID: &str = "zażółć — 大";
         let body = match self.dialect {
@@ -285,16 +284,15 @@ impl Conformance {
     /// A turn that thought reports the thinking inside what it generated.
     ///
     /// note: `Usage::output_tokens` is everything the model generated and is charged for, reasoning
-    /// included, so that `input + output` is the whole bill whichever endpoint answered. The
-    /// dialects do not hand it over that way: OpenAI's `completion_tokens` already contains the
-    /// reasoning, Google reports thoughts and candidates side by side, and a Google endpoint
-    /// speaking the OpenAI dialect omits the details object and leaves the thinking to be found in
-    /// the difference between the total and its parts. Three shapes, and one figure every provider
-    /// has to arrive at.
+    /// included, so `input + output` is the whole bill whichever endpoint answered. Dialects do not
+    /// hand it over that way: OpenAI's `completion_tokens` already contains the reasoning; Google
+    /// reports thoughts and candidates side by side; a Google endpoint speaking the OpenAI dialect
+    /// omits the details object, so the thinking is the difference between the total and its parts.
+    /// Every provider must arrive at one `output_tokens` figure from these three shapes.
     ///
-    /// note: what is asserted is the *relationship* rather than a number pulled from a fixture -
-    /// the answer's own cost has to come back by subtracting the reasoning from the output. A
-    /// provider that reports the two side by side passes the sum and fails this.
+    /// note: the assertion is the relationship, not a fixture number. The answer's cost comes back
+    /// by subtracting reasoning from output. A provider that reports the two side by side passes
+    /// the sum and fails this.
     async fn reasoning_is_inside_what_was_generated(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -442,10 +440,9 @@ impl Conformance {
 
     /// A body that ends before any of it arrived is an error that says why.
     ///
-    /// note: reqwest's own line for it is `error decoding response body`, which is a category.
-    /// What happened - the connection closed short of the length it promised - is in the causes
-    /// under it, and the kernel records an error as its `Display`, so a provider that passes the
-    /// error on without them reports a dropped connection as nothing anybody can act on.
+    /// note: reqwest reports `error decoding response body`; the causes under it say the connection
+    /// closed short of the length it promised. The kernel records an error as its `Display`, so a
+    /// provider that drops the causes reports a dropped connection as nothing anybody can act on.
     async fn cut_off_before_anything(&self) -> Outcome {
         match self.ask("data: {}\n\n", Delivery::Cut(0)).await {
             Ok(response) => Outcome::Failed(format!(
@@ -517,9 +514,9 @@ impl Conformance {
             ),
         };
 
-        // the connection goes away just inside the third chunk, so the two before it are whole
-        // lines that arrived and the third is a line that never finished. Found rather than
-        // counted, because the prefix is a different length in each dialect
+        // the connection drops inside the third chunk, so the first two lines arrived whole and the
+        // third never finished. Found rather than counted because the prefix length differs by
+        // dialect
         let marker = body
             .find("NEVER-ARRIVED")
             .expect("the third chunk is in the body");
@@ -623,8 +620,8 @@ impl Conformance {
             }
         };
 
-        // `thinking()` rather than the field, for the reason `calls()` is used above: one dialect
-        // records a turn as ordered blocks and keeps its thinking in them
+        // `thinking()` rather than the field, because one dialect records a turn as ordered blocks
+        // and keeps its thinking in them
         let thought = response
             .thinking()
             .map(|content| content.to_text())
@@ -648,11 +645,10 @@ impl Conformance {
 
     /// Two calls in one turn are two calls.
     ///
-    /// note: the OpenAI body here is the shape Google's *compatible* endpoint sends - one whole
-    /// call per chunk, each with an identifier of its own and no `index` anywhere. Read as index
-    /// zero, every call in a turn lands on the first: two `write`s become one call named
-    /// `writewrite` whose arguments are two JSON objects run together, and the model is told there
-    /// is no such tool.
+    /// note: the OpenAI body matches Google's compatible endpoint: one whole call per chunk, each
+    /// with its own identifier and no `index`. Read as index zero, every call lands on the first,
+    /// so two `write`s become one call named `writewrite` with two JSON objects run together, and
+    /// the model is told there is no such tool.
     async fn two_calls(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -717,8 +713,8 @@ impl Conformance {
         }
 
         // note: a turn that asked for tools says so in both dialects, though Google's spells it
-        // `STOP`. The kernel runs the calls either way; what reads this is a caller or a record
-        // asking why the turn ended
+        // `STOP`. The kernel runs the calls either way; a caller or record reads this to learn why
+        // the turn ended
         match &response.stop {
             StopReason::ToolUse => Outcome::Passed,
             other => Outcome::Failed(format!(
@@ -729,10 +725,9 @@ impl Conformance {
 
     /// An index that starts at one leaves no unfilled call at zero.
     ///
-    /// note: minimax numbers its calls from one. Used as a position in a list, that leaves an
-    /// empty call at zero - no name, no identifier - which the kernel then repairs and hands to
-    /// the model as a tool that does not exist. Google's dialect has no index at all, so there is
-    /// nothing here to ask it.
+    /// note: minimax numbers its calls from one. Used as a list position, that leaves an empty call
+    /// at zero with no name or identifier, which the kernel repairs and hands to the model as a
+    /// tool that does not exist. Google's dialect has no index, so there is nothing to ask it.
     async fn numbered_from_one(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -768,12 +763,12 @@ impl Conformance {
         }
     }
 
-    /// A call's arguments arrive a few characters at a time, against an index.
+    /// Call arguments arrive a few characters at a time, matched to a call by index.
     ///
-    /// note: the ordinary OpenAI shape, and the other half of what an index is for: the first
-    /// fragment carries the name and the identifier, the rest carry nothing but more of the
-    /// arguments. A provider that resolved calls by identifier alone would drop every fragment
-    /// after the first. Google's dialect sends whole calls, so there is nothing here to ask it.
+    /// note: the ordinary OpenAI shape. The first fragment carries the name and identifier; later
+    /// fragments carry only more arguments. The index joins fragments to a call. A provider that
+    /// matched calls by identifier alone would drop every fragment after the first. Google sends
+    /// whole calls, so this does not apply to it.
     async fn fragmented_arguments(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -823,14 +818,14 @@ impl Conformance {
 
     /// Several calls in one turn, each with its arguments in fragments.
     ///
-    /// note: the two cases above meet here, and the combination is the one a real turn takes:
-    /// `two_calls` sends whole calls and `fragmented_arguments` fragments a single one, so neither
-    /// asks what happens when a second call's fragments follow a first's. An endpoint can send a
-    /// turn with the first call's arguments a closing brace short and the second's whole, and a
-    /// provider that misfiles fragments produces the same turn from a good stream.
+    /// note: the combination a real turn takes. `two_calls` sends whole calls and
+    /// `fragmented_arguments` fragments one, so neither covers a second call's fragments following
+    /// a first's. An endpoint can send a turn whose first call is short a closing brace and whose
+    /// second is whole; a provider that misfiles fragments produces the same turn from a good
+    /// stream.
     ///
-    /// note: the openers carry `"arguments": ""`, because that is how the endpoints that do this
-    /// announce a call, and because an empty fragment is what `loose_fragment` below turns on.
+    /// note: openers carry `"arguments": ""` because that is how these endpoints announce a call,
+    /// and because an empty fragment is what `loose_fragment` tests.
     async fn fragmented_calls(&self) -> Outcome {
         let body = match self.dialect {
             Dialect::OpenAi => concat!(
@@ -898,20 +893,19 @@ impl Conformance {
         Outcome::Passed
     }
 
-    /// A fragment carrying neither an index nor an identifier belongs to whatever was being
-    /// written, not to whatever was announced last.
+    /// A fragment with no index or identifier belongs to the call being written, not the last one
+    /// announced.
     ///
-    /// note: the shape is a call still being streamed when the *next* one is announced, and then a
-    /// loose fragment. Read as "the last call in the list", it lands on the new call - so the old
-    /// one is short a brace and the new one carries a stray leading one, and a single misfiled
-    /// character breaks two calls rather than none. That is the one way this end can produce the
-    /// truncation an endpoint also produces, and what tells the two apart is the missing character
-    /// turning up on the next call.
+    /// note: a call is still being streamed when the next one is announced, then a loose fragment
+    /// arrives. If the fragment is read as belonging to the last call in the list, it lands on the
+    /// new call, so the old call is short a brace and the new one carries a stray leading one. One
+    /// misfiled character breaks two calls rather than none. That is the one way this end can
+    /// produce the truncation an endpoint also produces; the missing character turning up on the
+    /// next call tells them apart.
     ///
     /// note: the second call's opener carries `"arguments": ""` on purpose. An empty string
-    /// announces a call rather than writing to one, so a provider that counted it would put
-    /// "last written to" on a call nothing had been streamed to and fail this exactly as the list
-    /// position did.
+    /// announces a call rather than writing to one, so a provider that counted it would mark a call
+    /// nothing was streamed to as last written to and fail, just as the list position did.
     async fn loose_fragment(&self) -> Outcome {
         let Dialect::OpenAi = self.dialect else {
             return Outcome::Skipped(
@@ -1093,9 +1087,9 @@ impl Conformance {
         }
     }
 
-    /// What the provider said a request cost reaches the kernel.
+    /// The provider's reported usage reaches the kernel.
     ///
-    /// note: the figure everything downstream reports as what a run *actually* cost, as against
+    /// note: this is the figure everything downstream reports as what a run actually cost, against
     /// the kernel's own estimate. A provider that dropped it would leave a caller with two
     /// estimates and no measurement.
     async fn usage(&self) -> Outcome {
@@ -1142,12 +1136,11 @@ impl Conformance {
 
     // ---------------------------------------------------------------------------- the machinery
 
-    /// Puts one question to the provider, through a socket, and hands back what it made of the
-    /// answer.
+    /// Puts one question to the provider through a socket and returns what it made of the answer.
     ///
-    /// note: through a `Kernel` rather than by calling `respond` directly, because that is the
-    /// path a caller has: the request is built by the projector, the answer is recorded, and what
-    /// is asserted on is what a session would have ended up holding.
+    /// note: it goes through a `Kernel` rather than calling `respond` directly, because that is the
+    /// path a caller has: the projector builds the request, the answer is recorded, and assertions
+    /// are on what a session would have ended up holding.
     async fn ask(
         &self,
         body: &'static str,
@@ -1191,11 +1184,11 @@ enum Delivery {
 
 /// Answers every request with `body`, delivered however `delivery` says.
 ///
-/// note: it answers more than one connection, because a provider that retries a request is a
-/// provider doing what it is supposed to do and should not deadlock a test for it.
+/// note: it answers more than one connection, because a provider that retries a request is doing
+/// what it is supposed to do and should not deadlock a test.
 ///
-/// note: `Content-Length` rather than a chunked body, so that the server says nothing about
-/// framing that the provider might lean on. What is being tested is what it does with the bytes.
+/// note: `Content-Length` rather than a chunked body, so the server says nothing about framing that
+/// the provider might lean on. The test is what the provider does with the bytes.
 async fn server(body: &'static str, delivery: Delivery) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
