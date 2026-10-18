@@ -6,8 +6,8 @@
 //! That is weaker in kind than what `shell` gets and the readmes say so; the reason it is worth
 //! having anyway is that a model reads a refusal here in the same words either way.
 //!
-//! note: every open goes through [`Reach::open`] rather than a path handed to `tokio::fs`, so that
-//! what is opened is what was checked; see there.
+//! note: every open goes through [`Reach::open`] rather than a path handed to `tokio::fs`, so what
+//! is opened is what was checked; see there.
 
 use std::{
     collections::HashMap,
@@ -185,18 +185,18 @@ const HEADER: usize = 256;
 /// line that fits `budget` and saying where to read on from; or a sentence saying why there is
 /// nothing to show.
 ///
-/// note: cut here, at a line, rather than left to the kernel's output limit, which cuts at a byte
-/// and says only how many went. A model shown that has to guess where the file broke off and read
-/// on through `shell` - an `exec:run` call a session may be asking about, for a file it is allowed
-/// to read. Cut here, the answer names the next line, and `from` reads on from it inside `fs:read`.
+/// note: cut at a line, not at the kernel's output limit, which cuts at a byte and says only how
+/// many went. A model shown part of a file has to guess where it broke off and read on through
+/// `shell`, an `exec:run` call a session may be asking about, for a file it is allowed to read. The
+/// answer names the next line, and `from` reads on from it inside `fs:read`.
 ///
-/// note: line by line, keeping only what is shown, so a file of any size can be read a part at a
-/// time; what [`COUNTED`] bounds is the counting. A file larger than that is not read to its end
-/// to say how many lines it has, and the answer says that more follow instead of how many.
+/// note: reads line by line, keeping only what is shown, so a file of any size can be read a part
+/// at a time. [`COUNTED`] bounds the counting. A file larger than that is not read to its end to
+/// count its lines; the answer says more follow instead of how many.
 ///
-/// note: the whole file with nothing added where it fits and nothing narrower was asked for, which
-/// is the answer `read` has always given: a line of bookkeeping on every small file is a toll on
-/// the common case for the sake of the rare one.
+/// note: returns the whole file with nothing added where it fits and nothing narrower was asked
+/// for. A line of bookkeeping on every small file is a toll on the common case for the sake of the
+/// rare one.
 fn read(
     reach: &Reach,
     path: &Path,
@@ -205,8 +205,8 @@ fn read(
     policy: &Careful,
 ) -> std::io::Result<Result<String, String>> {
     let file = reach.open_for(path, Access::Reading, policy)?;
-    // a size is what a file says about itself, and `/proc` says nothing - so this decides only
-    // whether to count to the end, and a file claiming less than it holds is counted anyway
+    // a file's size is what it reports; `/proc` reports nothing. This decides only whether to count
+    // to the end, and a file claiming less than it holds is counted anyway
     let countable = file.metadata().is_ok_and(|meta| meta.len() <= COUNTED);
     let mut reader = std::io::BufReader::new(file);
     let room = budget.saturating_sub(HEADER.min(budget / 2));
@@ -259,9 +259,8 @@ fn read(
 
     let Some((first, through)) = shown else {
         return Ok(match (number, span.whole()) {
-            // a file with nothing in it read whole is a file with nothing in it: an answer rather
-            // than a refusal, in the brackets a read's own header goes in, so that it cannot be
-            // taken for a file holding those words
+            // an empty file read whole returns `"[the file is empty]"` - an answer, not a refusal.
+            // The brackets mark it as the read's own header, not file content
             (0, true) => Ok("[the file is empty]".to_owned()),
             (0, false) => Err("the file is empty, so there is no line to start from".to_owned()),
             _ => Err(format!(
@@ -279,9 +278,9 @@ fn read(
             kept.truncate(valid);
             String::from_utf8(kept).expect("cut where it stops being valid")
         }
-        // a byte that is not UTF-8 names the line it is in and where in that line, and `kept`
-        // holds whole lines from `first` on - so the line is the one that many newlines before
-        // it, and where in it is the one after the last of them
+        // an invalid UTF-8 byte names the line it is in and where in that line. `kept` holds whole
+        // lines from `first` on, so the line is `first` plus the newlines before it, and where in
+        // it is the byte after the last newline
         Err(e) => {
             let at = e.utf8_error().valid_up_to();
             let before = &e.as_bytes()[..at];
@@ -363,12 +362,11 @@ fn next_line(
     }
 }
 
-/// The whole of a file `edit` is to change, as text - or, past [`KEPT`], a refusal saying how else
+/// Reads the whole of a file `edit` is to change, as text; past [`KEPT`], refuses saying how else
 /// to change it.
 ///
-/// note: one byte past the ceiling is read rather than the size asked for first, because a size is
-/// what a file says about itself: `/proc` reports nothing, and a log is larger by the time it has
-/// been read.
+/// note: reads one byte past the ceiling rather than the size first, because a size is what a file
+/// says about itself: `/proc` reports nothing, and a log is larger by the time it has been read.
 async fn whole(reach: &Reach, path: &Path, policy: &Careful) -> std::io::Result<String> {
     use tokio::io::AsyncReadExt as _;
 
@@ -395,19 +393,17 @@ async fn whole(reach: &Reach, path: &Path, policy: &Careful) -> std::io::Result<
     String::from_utf8(bytes).map_err(|e| untext(None, &e.utf8_error(), policy))
 }
 
-/// What a file that is not UTF-8 is answered with, naming where it stops being text - the line
-/// and where in it for a `read`, which is counting lines, and the byte for an `edit`, which is
-/// not - and what to do about it.
+/// What a non-UTF-8 file is answered with, naming where it stops being text: the line and where in
+/// it for `read`, which counts lines, and the byte for `edit`, which does not; and what to do about
+/// it.
 ///
-/// note: `stream did not contain valid UTF-8` is the whole of what was said, and it is neither
-/// the line nor the byte: it is the operating system on a stream, where a model cannot tell a
-/// file with one Latin-1 byte in it from a binary one, so it has nothing to search and reaches
-/// for `shell` to find out.
+/// note: `stream did not contain valid UTF-8` is the operating system's message on a stream, not
+/// the line or byte. A model cannot tell a file with one Latin-1 byte from a binary one, so it has
+/// nothing to search and reaches for `shell` to find out.
 ///
 /// note: the two ways out are named where the model could take them: `grep` reads bytes and says
-/// how a file came to be binary, and `shell` is a tool that reads them as bytes. Whether `read`
-/// showed nothing is this one's to say, and `edit` says the same sentence about a file it changed
-/// no line of, which is the point.
+/// how a file came to be binary, and `shell` reads them as bytes. Whether `read` showed nothing is
+/// this one's to say. `edit` says the same sentence about a file it changed no line of.
 fn untext(
     line: Option<(u64, usize)>,
     fault: &std::str::Utf8Error,
@@ -435,8 +431,8 @@ fn untext(
     )
 }
 
-/// Replaces the whole of a file `allows` answered for, creating it if it is not there; see
-/// [`Reach::replace`] for why that is not an open that empties it.
+/// Replaces the whole file at `path`, creating it if it is not there. See [`Reach::replace`] for
+/// why that is not an open that empties it.
 async fn write(reach: &Arc<Reach>, path: &Path, content: String) -> std::io::Result<()> {
     let (reach, path) = (reach.clone(), path.to_path_buf());
     tokio::task::spawn_blocking(move || reach.replace(&path, content.as_bytes()))
@@ -444,13 +440,13 @@ async fn write(reach: &Arc<Reach>, path: &Path, content: String) -> std::io::Res
         .map_err(std::io::Error::other)?
 }
 
-/// One lock for each file a `write` or an `edit` is changing, by the path it resolved to.
+/// One lock per file a `write` or `edit` is changing, keyed by the resolved path.
 ///
-/// note: `edit` reads the whole file, changes it and writes it back, so two edits of one file in a
-/// parallel batch each read the old contents and the second rename keeps only its own change -
-/// and both answer that they replaced one occurrence. Held from the read through the rename, the
-/// second reads what the first wrote. Keyed by the resolved path, so that two names for one file
-/// are one lock; a lock nobody holds is dropped the next time one is taken.
+/// note: `edit` reads the whole file, changes it and writes it back, so two parallel edits of one
+/// file both read the old contents and the second rename keeps only its own change; both answer
+/// that they replaced one occurrence. Held from the read through the rename, the second reads what
+/// the first wrote. Keyed by the resolved path, so two names for one file are one lock; a lock
+/// nobody holds is dropped when the next is taken.
 #[derive(Default)]
 pub(super) struct Changing(parking_lot::Mutex<HashMap<PathBuf, Weak<tokio::sync::Mutex<()>>>>);
 
@@ -524,16 +520,14 @@ impl Write {
 /// Why a `write` or an `edit` was handed a path that ends in a separator, which is a directory and
 /// no file; `None` where it does not.
 ///
-/// note: refused rather than resolved to the name without it, which is what a path goes through
-/// here: a model writing `trail/` means the directory, and `fs` makes a directory only to hold a
-/// file it writes - so
-/// resolving it would make a file called `trail`, which nothing asked for and which stands there
-/// answering as a directory's worth of what was meant to go in one. Checked on the text and
-/// before the reach, so a path outside it is still refused as the path it is.
+/// note: refused rather than resolved to the name without the separator: `trail/` means the
+/// directory, and `fs` makes a directory only to hold a file it writes, so resolving would create a
+/// file called `trail` that nothing asked for. Checked on the text before the reach, so a path
+/// outside it is still refused as written.
 ///
-/// note: on an absolute path as well as a relative one. The resolver shortens both the same way,
-/// so `/tmp/build/` where there is no `/tmp/build` was a file made there; only `/` itself, which
-/// is nothing once the separator is gone, is left to the open.
+/// note: applies to absolute and relative paths; the resolver shortens both the same way.
+/// `/tmp/build/` with no `/tmp/build` was a file made there. Only `/` itself, which is empty once
+/// the separator is removed, is left to the open.
 ///
 /// note: the directory is offered to `shell` only where `shell` may run.
 fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
@@ -573,13 +567,13 @@ impl Edit {
         args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        // note: said with how to add text, because that is what an `edit` with a `new` and no
-        // `old` is almost always trying to do, and "required" alone sends a model back with the
-        // same call and an `old` it has to invent
+        // note: includes how to add text, because an `edit` with `new` and no `old` is usually
+        // trying to add text; `required` alone would send the model back with the same call and an
+        // `old` it has to invent.
         //
-        // note: where `new` is text, and only there. A `new` that is an object is the rest of the
-        // call nested inside it, `old` included, and told `old` was missing and how to add text, a
-        // model sent the same nesting back. `new` is read first so that it is the one refused
+        // note: applies only where `new` is text. If `new` is an object, it is the rest of the call
+        // nested inside, `old` included, and a model told `old` was missing and how to add text
+        // sends the same nesting back. `new` is read first, so it is the one refused
         if args["old"].is_null() && args["new"].is_string() {
             return Ok(ToolOutput::error(format!(
                 "the `old` argument is required, and nothing was done; {INSERTING}"
@@ -602,10 +596,10 @@ impl Edit {
         let _changing = self.2.hold(&path).await;
         let before = match whole(&self.0, &path, &self.1).await {
             Ok(before) => before,
-            // note: the system's `No such file or directory` is the whole of what was said, and it
-            // says neither that nothing was changed nor that an edit is the wrong operation for a
-            // file that is not there yet - which is what an edit of a missing file almost always
-            // is. Whether `write` may run is the policy's answer, not this one's
+            // note: the system's `No such file or directory` is the whole message; it says neither
+            // that nothing was changed nor that `edit` is wrong for a missing file, which an edit
+            // of a missing file almost always is. Whether `write` may run is the policy's answer,
+            // not this one's
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let write = match self.1.reachable(&Capability::fs("write")) {
                     true => ", and `write` makes a new one, and the directories it goes in",
@@ -619,13 +613,11 @@ impl Edit {
             }
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };
-        // note: the argument asks for enough of the surrounding lines to name one place, and this
-        // checks that it does. `find` takes the first of however many there are, so unchecked, an
-        // `old` occurring twice would edit one of them and answer `replaced one occurrence`,
-        // which is true of the file and reads as the edit being done. What it costs is the half
-        // nobody goes back for: a model that has been told its change landed does not read the
-        // file again. An empty `old` is the same failure at the other end - it names position
-        // zero and would put `new` at the front of the file.
+        // note: the argument must name one place with enough surrounding lines, and this checks
+        // that. `find` takes the first match, so unchecked, an `old` occurring twice would edit one
+        // and answer `replaced one occurrence`, which reads as the edit being done. The cost is
+        // that a model told its change landed does not read the file again. An empty `old` names
+        // position zero and would put `new` at the front of the file.
         // `write`, where it is offered and may run; see `Careful::reachable`
         let or_write = |what: &str| match self.1.reachable(&Capability::fs("write")) {
             true => format!(", or use `write` for the whole file{what}"),
@@ -689,8 +681,8 @@ impl Edit {
 /// spelling and not the other exactly when one of them is there and the other is not. What to do
 /// about it is said as the file's own spelling, which `read` has just shown the model.
 fn eol(before: &str, old: &str) -> String {
-    // a single line with no line ending in it cannot be spelled wrong, and a file with lines of
-    // both endings has no one spelling to be told about
+    // a single line with no line ending cannot be spelled wrong, and a file with both endings has
+    // no one spelling to report
     if !old.contains('\n') && !old.contains('\r') {
         return String::new();
     }

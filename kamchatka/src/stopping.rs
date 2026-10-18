@@ -1,16 +1,15 @@
 //! <kbd>ctrl+c</kbd>, subscribed once rather than once per turn round a loop.
 //!
-//! note: [`tokio::signal::ctrl_c`] is an `async fn`, so the subscription is made when the future
-//! is first polled and dropped with the future. Its own documentation says as much - the future
-//! completes on the first ctrl+c *after* the initial call to `poll` - and a `select!` that names
-//! it directly builds a new one every time round the loop. Between one iteration finishing and the
-//! next poll there is nothing subscribed, and a signal delivered in that window is not delivered
-//! late, it is gone: the handler sets a flag, the driver broadcasts it to whoever is listening,
-//! and a receiver made afterwards starts from the present.
+//! note: [`tokio::signal::ctrl_c`] is an `async fn`, so the subscription is made when the future is
+//! first polled and dropped with the future. The future completes on the first ctrl+c after the
+//! initial `poll`. A `select!` that names it directly builds a new one every time round the loop,
+//! so nothing is subscribed between iterations and a signal in that window is gone, not late. The
+//! handler sets a flag, the driver broadcasts it, and a receiver made afterwards starts from the
+//! present.
 //!
-//! note: three loops in this program read a *second* press as "leave now", which is what makes the
-//! window worth closing rather than noting. The press that lands in it is the second one, arriving
-//! while the first is still being handled, and it is the one that means it.
+//! note: three loops read a second press as "leave now", so the window is worth closing. The press
+//! in it is the second one, arriving while the first is still being handled, and it means "leave
+//! now".
 
 use std::io;
 
@@ -39,10 +38,9 @@ impl Stopping {
 ///
 /// note: what a closed terminal window, a dropped ssh connection, `timeout`, `systemctl stop` and
 /// `docker stop` send. Left to its default each ends the process where it stands, with no
-/// `session.finished` and no record written - and a `shell` command, in a process group of its
-/// own, is not sent the terminal's hangup and keeps running after the agent that started it. So
-/// each loop takes one of these as `/quit`: the running turn is stopped and waited for, and the
-/// session ends the way a session ends.
+/// `session.finished` and no record written. A `shell` command in its own process group is not sent
+/// the terminal's hangup and keeps running after the agent that started it. So each loop takes one
+/// of these as `/quit`: the running turn is stopped and waited for, and the session ends.
 ///
 /// note: one arrival is enough, unlike `ctrl+c`, because neither is somebody at a keyboard who
 /// might mean less than "leave".
@@ -69,7 +67,7 @@ impl Terminated {
 
     /// The same, saying which of the two it was.
     ///
-    /// note: for the exit status, which is `128` plus the signal by convention - so a hangup and a
+    /// note: for the exit status, which is `128` plus the signal by convention, so a hangup and
     /// `SIGTERM` leave with different ones, although both end the session the same way.
     pub async fn which_arrived(&mut self) -> Ending {
         tokio::select! {
@@ -81,7 +79,7 @@ impl Terminated {
 
 /// Which request to end arrived; see [`Terminated::which_arrived`].
 ///
-/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+/// note: `#[non_exhaustive]`, which every public enum in this workspace carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Ending {
@@ -97,18 +95,17 @@ mod tests {
 
     use super::*;
 
-    /// `arrived` waits for a signal, and is still waiting after one has been dropped.
+    /// `arrived` waits for a signal and is still waiting after one has been dropped.
     ///
-    /// note: it is [`Terminated::which_arrived`] with the answer thrown away, and the one loop
-    /// that waits on it decides whether a session is over - so a future that completed at once
-    /// would end every drawn session the moment it drew. Both halves are here because either
-    /// alone is half a claim: a future that never completed would pass a check that only watched
-    /// it wait. The signal is sent to this process, because `Terminated::new` is what installs
-    /// the handler and a subscription nothing sends anything to cannot be told from a wait.
+    /// note: it is [`Terminated::which_arrived`] with the answer thrown away, and the loop waiting
+    /// on it decides whether a session is over. A future that completed at once would end every
+    /// drawn session the moment it drew. The signal is sent to this process because
+    /// `Terminated::new` installs the handler; a subscription nothing sends to cannot be told from
+    /// a wait. A future that never completed would pass a check that only watched it wait, so both
+    /// halves are needed.
     ///
-    /// note: the first wait is dropped by its timeout, and the second still catches what was
-    /// sent - which is what the cancel-safety the note on `pressed` claims, read rather than
-    /// believed.
+    /// note: the first wait is dropped by its timeout, and the second still catches what was sent,
+    /// which is what the cancel-safety note on `pressed` claims, checked rather than believed.
     #[tokio::test]
     async fn arrived_waits_for_a_signal_and_survives_the_wait_being_dropped() {
         for signal in ["TERM", "HUP"] {

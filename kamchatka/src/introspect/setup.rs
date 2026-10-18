@@ -141,11 +141,11 @@ impl Tool for Setup {
 
 /// Which model this is, what it is being sent, and whose conversation it inherited.
 ///
-/// note: the resume line is the one worth having and the one that could not be worked out from
-/// inside. A context restored from a snapshot carries turns in the first person that this model
-/// never produced - possibly a different model's - and there is nothing in an assistant turn that
-/// says which hand wrote it. A model asked about its earlier reasoning in a resumed session will
-/// own all of it, because it has no way not to. This is the way not to.
+/// note: the resume line is worth having and cannot be worked out from inside. A context restored
+/// from a snapshot carries first-person turns this model never produced, possibly a different
+/// model's. An assistant turn says nothing about which hand wrote it. A model asked about its
+/// earlier reasoning in a resumed session will own all of it, because it has no way not to. This
+/// line is the way not to.
 fn model(kernel: &Kernel) -> String {
     let mut out = match kernel.model_info() {
         Some(info) => {
@@ -300,10 +300,10 @@ fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
         "\n{}",
         shown(&specs, limits, kernel.default_tool_output_limit())
     ));
-    // note: read off the configuration rather than stated, as `rules` does, so that a session run
-    // `--discard-cut-off-output` is not told here that the whole of anything cut is still
-    // available and the opposite two actions away. What that costs is a model going looking for
-    // content this session was told to drop
+    // note: read from the configuration rather than stated, as `rules` does, so a session run with
+    // `--discard-cut-off-output` is not told here that the whole of anything cut is still available
+    // and the opposite is two actions away. The cost is that a model looks for content this session
+    // was told to drop
     out.push_str(match config.keep_truncated_output {
         true => {
             "The whole of anything cut is excluded beside what you were shown and can be \
@@ -321,11 +321,11 @@ fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
     out
 }
 
-/// How much of an answer reaches the model, by subject: the figure they share, then the rest.
+/// How much of an answer reaches the model, by subject: the shared figure, then the rest.
 ///
-/// note: only the subjects these tools actually declare, so a session that is not offering `fs`
-/// is not told what `fs:read` would be cut at. It is the rule `if_reachable` is named for, one
-/// level down: everything named in an answer reads as a thing that is there.
+/// note: include only the subjects these tools declare, so a session that does not offer `fs` is
+/// not told what `fs:read` would be cut at. This is the rule `if_reachable` is named for, one level
+/// down: everything named in an answer is read as something that is there.
 fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -> String {
     let mut held: Vec<(String, usize)> = specs
         .iter()
@@ -338,8 +338,8 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
     held.sort();
     held.dedup();
 
-    // note: the kernel's own ceiling, which is what cuts a tool with no row in that table - every
-    // tool from an MCP server. Without it a session offering nothing but those would read
+    // note: the kernel's own ceiling cuts a tool with no row in that table, including every tool
+    // from an MCP server. Without it, a session offering only those tools would read
     // `Nothing here cuts an answer short` while the kernel cuts all of them at 32,000 bytes, and a
     // model reading that has no reason to ask for less
     let elsewhere = specs.iter().any(|spec| {
@@ -376,9 +376,10 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
         .map(|(bytes, _)| *bytes)
         .unwrap_or_default();
 
-    // note: grouped by the figure rather than a clause per row. The table ships with two numbers
-    // - a report of a fixed shape is cut at less than a piece of the session - so several subjects
-    // share the second one, and a clause each would say `at 8,000` over and over to say it once
+    // note: group by the figure rather than giving a clause per row. The table ships with two
+    // numbers (a fixed-shape report is cut at less than a piece of the session), so several
+    // subjects share the second one. A clause each would repeat `at 8,000` instead of saying it
+    // once
     let mut groups: Vec<(usize, Vec<&str>)> = Vec::new();
     for (subject, bytes) in held.iter().filter(|(_, bytes)| *bytes != common) {
         match groups.iter_mut().find(|(at, _)| at == bytes) {
@@ -510,9 +511,9 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                 verdict_word(verdict),
                 match tools.is_empty() {
                     true => "nothing here is judged by it".to_owned(),
-                    // note: the clause the operator's own view puts beside that row, so a model
-                    // reading either of them learns the same thing about the one rule that
-                    // decides whether a command may open a socket
+                    // note: the clause beside that row in the operator's view, so a model reading
+                    // either view learns the same thing about the rule that decides whether a
+                    // command may open a socket
                     false => format!(
                         "{}{}",
                         tools.join(", "),
@@ -526,12 +527,11 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         }
     }
 
-    // note: the decided ones listed and the rest counted, which is what the permissions tab does
-    // and for the reason its own note gives: a row for a `.aws` rule nobody has thought about is
-    // not information. Most of the path rules ship as `ask`, and a row each would spend tokens
-    // saying "undecided" over and over in a session where nobody has said anything about a path.
-    // The count still goes out, because an answer that listed the decided rules and stood
-    // silently for the rest would be a different kind of dishonest.
+    // note: the decided ones listed and the rest counted, as the permissions tab does. A row for a
+    // `.aws` rule nobody has thought about is not information. Most path rules ship as `ask`, and a
+    // row each would spend tokens repeating "undecided" in a session where nobody has said anything
+    // about a path. The count still goes out: listing the decided rules and standing silently for
+    // the rest would be dishonest.
     let (decided, undecided): (Vec<_>, Vec<_>) = policy
         .paths()
         .into_iter()
@@ -555,17 +555,17 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         ));
     }
 
-    // the same split the path rules get, and for the same reason its note gives: a row of `ask`
-    // nobody has thought about is not information, and a report that listed none of them and
-    // said nothing would be standing silently for every one of those answers
+    // the same split the path rules get, for the same reason: a row of `ask` nobody has thought
+    // about is not information, and a report listing none of them and saying nothing would stand
+    // silently for every one of those answers
     let (decided, undecided): (Vec<_>, Vec<_>) = broader
         .into_iter()
         .partition(|(_, _, verdict, _)| *verdict != Verdict::Ask);
     if !decided.is_empty() {
-        // note: what these cover is the third column, because the two kinds do not cover the same
-        // sort of thing: a domain is a set of operations and a server is a set of tools. A heading
-        // about single actions binding the tool they name would be true of neither - `--auto-allow
-        // log` is every operation in `log`, and `server big` names no tool at all
+        // note: what these cover is the third column, because a domain is a set of operations and a
+        // server is a set of tools. A heading about single actions binding the tool they name would
+        // be true of neither: `--auto-allow log` is every operation in `log`, and `server big`
+        // names no tool at all
         out.push_str("\nand the broader rules, which have no row of their own above:\n");
         for (rule, covers, verdict, _) in &decided {
             out.push_str(&format!(
@@ -601,9 +601,8 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 
     let waiting = kernel.pending_permissions();
     if !waiting.is_empty() {
-        // note: shown on purpose. An agent that can see it is blocked on somebody's answer is an
-        // agent that can decide to do something else with the turn, where otherwise the call
-        // appears to have hung
+        // note: shown on purpose. An agent that can see it is blocked on somebody's answer can
+        // decide to do something else with the turn; otherwise the call appears to have hung
         out.push_str(&format!(
             "\n{} call(s) of yours are waiting on somebody to answer: {}\n",
             waiting.len(),
@@ -629,11 +628,11 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 
 /// What will happen to this context without anybody asking for it.
 ///
-/// note: `look` says whether an item is going into the next request. It has never said what
-/// decided that, and a model that can read the verdict but not the rule cannot argue with either.
-/// These are the two seams that rewrite a context on their own, the projector and the compactor,
-/// and the counter and the limit they are measured by, named so that they can be looked up, with
-/// the numbers that say when each of them acts.
+/// note: `look` says whether an item is going into the next request, but never what decided that. A
+/// model that can read the verdict but not the rule cannot argue with either. This names the two
+/// seams that rewrite a context on their own, the projector and the compactor, and the counter and
+/// the limit they are measured by, so they can be looked up, with the numbers that say when each
+/// acts.
 fn rules(kernel: &Kernel, policy: &Careful) -> String {
     let config = kernel.config();
     let budget = kernel.budget();

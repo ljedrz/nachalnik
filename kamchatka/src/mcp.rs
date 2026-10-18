@@ -1,9 +1,8 @@
 //! MCP servers, spawned and offered as tools like any other.
 //!
-//! note: a thin wrapper around [`nachalnik_mcp`] and nothing more - it spawns what it was told to
-//! spawn, installs the tools, and hands back the servers. It is in the library rather than in
-//! `main.rs` because an embedder that wants somebody else's tools should not have to re-derive the
-//! one part of this that is not obvious: the name.
+//! note: a thin wrapper around [`nachalnik_mcp`]. It spawns servers, installs their tools, and
+//! hands back the servers. It is in the library rather than `main.rs` so an embedder using
+//! another's tools does not have to re-derive the name.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -15,24 +14,23 @@ use nachalnik_mcp::Server;
 
 use crate::tools::Careful;
 
-/// Starts the servers that were asked for, and puts their tools in the same list as the rest.
+/// Starts the requested servers and puts their tools in the same list as the rest.
 ///
-/// note: the name matters more than it looks. It prefixes every tool the server offers and it is
-/// what `--auto-allow-server <name>` grants permission to - so `files=npx -y ...` is one server and
-/// not the next one. Taken from the program instead it would be `npx` or `python3` for most of
-/// the servers people actually run, which is why `name=command` is accepted and worth giving.
+/// note: the name prefixes every tool the server offers and is what `--auto-allow-server <name>`
+/// grants permission to, so `files=npx -y ...` is one server and not the next. Taken from the
+/// program it would be `npx` or `python3` for most servers, which is why `name=command` is
+/// accepted.
 ///
-/// note: the policy is told which tools came from which server, rather than working it out from
-/// their names. A prefix is optional and is dropped when a name would not otherwise fit, so the
-/// only thing that reliably knows where a tool came from is whatever installed it - which is
-/// here.
+/// note: the policy is told which tools came from which server rather than working it out from
+/// their names. A prefix is optional and is dropped when a name would not otherwise fit, so only
+/// the installer reliably knows where a tool came from.
 ///
-/// note: the servers have to outlive every session that offers their tools. Dropping one takes its
-/// child process with it, and leaves its tools registered and unable to answer.
+/// note: servers must outlive every session that offers their tools. Dropping one takes its child
+/// process with it and leaves its tools registered and unable to answer.
 ///
 /// note: every server is spawned and listed before any tool goes into the kernel, so an `Err`
-/// leaves the kernel and the policy as they were. Installing as it went would leave the tools of
-/// the servers before the one that failed registered, and their servers dropped with the `Err`.
+/// leaves the kernel and policy unchanged. Installing as it went would leave earlier servers' tools
+/// registered and their servers dropped with the `Err`.
 pub async fn attach(
     kernel: &Kernel,
     policy: &Careful,
@@ -41,13 +39,13 @@ pub async fn attach(
     attach_within(kernel, policy, specs, None).await
 }
 
-/// [`attach`], with every call to a server's tools given up on once it has waited `within`; `None`
-/// waits as long as the server takes.
+/// [`attach`], but every call to a server's tools is abandoned after waiting `within`; `None` waits
+/// as long as the server takes.
 ///
-/// note: a server that hangs, or answers with something `rmcp` drops - an id with neither a
-/// result nor an error - left the call waiting until the turn was interrupted. No limit on the
-/// startup: the first `npx -y` can take minutes to download its package, and each server is named
-/// on standard error before it starts.
+/// note: a server that hangs, or answers with something `rmcp` drops (an id with neither a result
+/// nor an error), left the call waiting until the turn was interrupted. There is no startup limit:
+/// the first `npx -y` can take minutes to download its package, and each server is named on
+/// standard error before it starts.
 pub async fn attach_within(
     kernel: &Kernel,
     policy: &Careful,
@@ -60,8 +58,7 @@ pub async fn attach_within(
 
     // note: refused before anything is spawned, whatever the servers offer. The name is what
     // `--auto-allow-server` grants and what answering "always" at the prompt answers for, so two
-    // servers under one - two `npx` lines with no `name=` - would be granted together whichever
-    // of them was meant
+    // servers under one name would be granted together whichever was meant
     let mut names = HashMap::new();
     for spec in specs {
         let (name, line) = named(spec);
@@ -81,9 +78,9 @@ pub async fn attach_within(
         let mut command = tokio::process::Command::new(program);
         command.args(words);
 
-        // note: told apart by what failed, because both arrive as `Error::Connect` and only the
-        // spawn fails with an I/O error of its own. A program that is not there never got as far
-        // as a handshake, and saying it did not answer one sends somebody looking at the server
+        // note: told apart by what failed because both arrive as `Error::Connect` and only the
+        // spawn fails with an I/O error. A program that is not there never reached a handshake, and
+        // saying it did not answer one sends somebody looking at the server
         let mut server = Server::spawn(name, command).await.map_err(|e| match &e {
             nachalnik_mcp::Error::Connect(why) if why.is::<std::io::Error>() => {
                 format!("`{line}` could not be started: {why}")
@@ -99,11 +96,11 @@ pub async fn attach_within(
             .map_err(|e| format!("`{line}` would not list its tools: {e}"))?;
         // note: refused rather than let stand, as a failed handshake is. Two names can still put
         // two tools under one identifier - `a` offering `b__c` and `a__b` offering `c`, or two long
-        // ones cut short to fit - and installing the second would quietly take the first one's out
-        // from under it
+        // ones cut short to fit - and installing the second would quietly take the first one's
+        // identifier out from under it.
         //
-        // note: and a server offering one name twice is refused as well, and said as that. Nothing
-        // `name=command` does can separate its two tools
+        // note: a server offering one name twice is refused as well. Nothing `name=command` does
+        // can separate its two tools
         let clashes = claim(&mut taken, &tools);
         let (elsewhere, twice): (Vec<String>, Vec<String>) =
             clashes.into_iter().partition(|id| taken.contains(id));

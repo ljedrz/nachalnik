@@ -13,18 +13,17 @@ use super::{
 impl App {
     /// A name for a session, from the seconds since the epoch it started at.
     ///
-    /// note: this is the session's identity *and* the name of the two files it leaves behind.
-    /// Those go in a directory called `kamchatka`, so the program's name in a filename would say
-    /// what the directory already says, and a bare count of seconds says nothing to anybody
-    /// reading it. `2026-09-08T06-45-17Z` names the session, sorts the same way, and answers the
-    /// question somebody is looking at a list of them to ask.
+    /// note: this is the session's identity and the name of the two files it leaves behind. They go
+    /// in a directory called `kamchatka`, so the filename does not repeat the program's name. A
+    /// bare count of seconds says nothing to a reader. `2026-09-08T06-45-17Z` names the session,
+    /// sorts the same way, and answers what someone scanning a list wants to know.
     ///
-    /// note: UTC, and it says so, because a local time would be a name that quietly means
-    /// something different depending on where it was written.
+    /// note: UTC, and it says so, because a local time means something different depending on where
+    /// it was written.
     ///
-    /// note: to the second, so two sessions started inside one second collide. The identifier a
-    /// session gets from the runtime by default is a counter that restarts with the process,
-    /// which is fine as an identity and writes over the last session's record.
+    /// note: to the second, so two sessions started inside one second collide. The runtime's
+    /// default identifier is a counter that restarts with the process, which is fine as an identity
+    /// and writes over the last session's record.
     pub fn session_stamp(secs: u64) -> String {
         // note: the epoch where the seconds are past what the calendar holds, year 9999, which is
         // not a moment this program is started at
@@ -84,8 +83,8 @@ impl App {
         let history = self.introspect.as_ref().map(|it| it.history());
         let snapshot = crate::introspect::snapshot_with(&snapshot, history.as_ref())?;
 
-        // named, because "No such file or directory" on its own leaves somebody guessing which
-        // one; `-r` says which file it could not read and this should match it
+        // names the file, because "No such file or directory" alone does not say which one; `-r`
+        // names the file it could not read, and this matches it
         let (log_shown, state_shown) = (log.display(), state.display());
         let log_beside = beside(log, (records.join("\n") + "\n").as_bytes())
             .map_err(|e| format!("could not write {log_shown}: {e}"))?;
@@ -152,8 +151,8 @@ impl App {
             );
             return;
         }
-        // a file and nothing else, for the reason `attach::contents` gives: a pipe with nobody
-        // writing to it would be waited on by the thread this session runs on
+        // a file and nothing else, for the reason `attach::contents` gives: the session thread
+        // would wait on a pipe with nobody writing to it
         let snapshot: nachalnik::Snapshot = match std::fs::metadata(&file)
             .map_err(|e| format!("could not read {file}: {e}"))
             .and_then(|meta| match meta.is_file() {
@@ -185,12 +184,11 @@ impl App {
         // can pair a loaded result with. Excluded items are not projected, so an old copy of the
         // same conversation cannot answer the new one's calls
         //
-        // note: except what is pinned. A pin is the person saying this stays, and `--system-prompt`
-        // is pinned - a load that quietly excluded the system instruction would be answering a
-        // question about a saved conversation by revoking the one thing the session was told to
-        // hold on to. And with it what it is paired with: a pinned result whose call was excluded
-        // goes out of the request as an orphan, and so does a pinned call's result, so the turn
-        // asking a pinned call stays, whole, and so does every result answering one of its calls
+        // note: pinned items are excepted. A pin is the person saying this stays, and
+        // `--system-prompt` is pinned; excluding the system instruction would revoke the one thing
+        // the session was told to hold on to. What a pin is paired with stays too: a pinned result
+        // whose call was excluded, and a pinned call's result, would go out as orphans, so the turn
+        // asking a pinned call stays whole, and so does every result answering one of its calls
         let items = self.kernel.items();
         let mut held: HashSet<&ToolCallId> = items
             .iter()
@@ -215,18 +213,16 @@ impl App {
             Some(format!("excluded for the session loaded from {file}")),
         );
 
-        // what the counter had learned, which is the one piece of a seam's state a snapshot
-        // carries; without it the next few requests would be spent relearning what this file
-        // already knows.
+        // A snapshot carries what the counter had learned, the one piece of a seam's state it
+        // keeps; without it the next few requests would relearn what this file already knows.
         //
-        // note: `Kernel::recalibrate` rather than reaching through to the counter, and before the
-        // items are counted rather than after. Counting first and correcting afterwards would give
-        // every loaded item a figure from the scale this session happened to be on, while the
-        // budget beside it is projected live and so is already on the loaded one - and the `held`
-        // column would disagree with the `sending` column on the same row by exactly the
-        // correction. The front door also recounts, which is
-        // what brings the items already here - the ones the load is about to set aside, and which
-        // `held back` adds to the loaded ones - onto the same scale
+        // note: use `Kernel::recalibrate` rather than reaching through to the counter, and
+        // recalibrate before the items are counted. Counting first and correcting afterwards would
+        // give every loaded item a figure from the scale this session is on, while the budget
+        // beside it is projected live and is already on the loaded scale; the `held` and `sending`
+        // columns would then disagree on the same row by exactly the correction. The front door
+        // also recounts, which brings the items already here onto the same scale: the ones the load
+        // is about to set aside, and the ones `held back` adds to the loaded ones
         if let Some(calibration) = snapshot.calibration {
             self.kernel.recalibrate(calibration);
         }
@@ -240,11 +236,10 @@ impl App {
         let renamed = rename_taken_calls(&mut snapshot, &taken);
 
         let ids = self.kernel.push_all(snapshot.items);
-        // the rest are identifiers this kernel never issued, and nothing else would tell it so: a
-        // provider that numbers its calls from zero every turn would hand one of them back, the
-        // kernel would have nothing to compare it against, and the next request would carry the
-        // same `tool_call_id` twice. `-r` gets this from `Kernel::resume`; this is the same fact,
-        // said to a kernel that is already running
+        // the rest are identifiers this kernel never issued: a provider that numbers its calls from
+        // zero every turn would hand one back, the kernel would have nothing to compare it against,
+        // and the next request would carry the same `tool_call_id` twice. `-r` gets this from
+        // `Kernel::resume`; this is the same fact, said to a kernel that is already running
         self.kernel.reserve_calls(snapshot.used_calls);
         let params = snapshot.params.clone();
         let replaced = self.kernel.params() != params;
@@ -264,7 +259,7 @@ impl App {
                     _ => "were",
                 },
                 // one undo for the push and one for the excluding, which is no undo at all when
-                // nothing was excluded - and a second one then would take back something of the
+                // nothing was excluded - a second one then would take back something of the
                 // person's own
                 match standing.len() {
                     0 => "`/undo` takes the loaded ones back out",
@@ -282,7 +277,7 @@ impl App {
                 ),
             );
         }
-        // note: said, because nothing else would: `/undo` walks the context back and not the
+        // note: said because nothing else would: `/undo` walks the context back but not the
         // parameters, and the next request goes out with the snapshot's
         if replaced {
             self.say(
@@ -303,12 +298,12 @@ impl App {
     /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
     ///
     /// note: two files, because they answer different questions: the log says what happened, and
-    /// the snapshot is what can be picked back up. An event names an item rather than carrying
-    /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
-    /// either the story or the state.
+    /// the snapshot is what can be picked back up. An event names an item rather than carrying it,
+    /// so the log alone cannot rebuild a context; keeping only one loses either the story or the
+    /// state.
     ///
-    /// note: the snapshot is what `/load` reads back into a running session and what
-    /// `kamchatka -r` starts from.
+    /// note: the snapshot is what `/load` reads back into a running session and what `kamchatka -r`
+    /// starts from.
     pub(super) fn save(&mut self, path: &str) {
         let stem = stem(path);
         // note: a directory is a place to put it rather than a name for it. Taken whole as the
@@ -356,9 +351,9 @@ impl App {
             }
         };
 
-        // said rather than asked about: writing the same session again is the ordinary case and
-        // a prompt every time would be noise, but a typo landing on somebody else's file should
-        // not pass in silence. A name just claimed is this save's own, empty file
+        // said rather than asked about: writing the same session again is the ordinary case, so a
+        // prompt every time would be noise, but a typo landing on somebody else's file should not
+        // pass in silence. A name just claimed is this save's own, empty file
         let replacing: Vec<String> = [&log, &state]
             .into_iter()
             .filter(|path| !claimed && path.exists())
@@ -397,11 +392,11 @@ impl App {
 
 /// Writes `bytes` to a new file beside `path`, flushed to disk, for a rename to put in its place.
 ///
-/// note: `0600`, and not whatever the umask allows. A session is the whole conversation - every
-/// tool result and whatever was pasted at the desk - and the rename puts this file's mode in place
-/// of the target's, so under an ordinary umask a save over a file somebody had made private came
-/// back readable by everyone. The record the session writes on its own goes through here too, into
-/// a directory only its owner can open; this is the same rule for a path somebody named.
+/// note: `0600`, not whatever the umask allows. A session is the whole conversation - every tool
+/// result and whatever was pasted at the desk - and the rename puts this file's mode in place of
+/// the target's, so under an ordinary umask a save over a private file came back readable by
+/// everyone. The record the session writes on its own goes through here too, into a directory only
+/// its owner can open; this is the same rule for a path somebody named.
 pub(crate) fn beside(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
     use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
 
@@ -517,7 +512,7 @@ fn rename_taken_calls(snapshot: &mut nachalnik::Snapshot, taken: &HashSet<ToolCa
 /// What `/save` and `/load` name a session's two files after: the path without its suffix, or
 /// `session` where that leaves nothing.
 ///
-/// note: nothing is left by no argument and by an argument that was only a suffix, and the second
+/// note: nothing is left by no argument or by an argument that was only a suffix, and the second
 /// would otherwise be the stem of `.json` and `.jsonl` - two dotfiles `ls` does not show.
 fn stem(path: &str) -> &str {
     match without_suffix(path) {
@@ -526,17 +521,16 @@ fn stem(path: &str) -> &str {
     }
 }
 
-/// A session's path with the extension taken off, whichever of the two it was spelled with.
+/// A session's path with the extension taken off, whichever of the two it used.
 ///
-/// note: shared by `/save`, `/load` and `--check` because commands that accept different
-/// spellings do not round-trip. A session is two files - the snapshot and the log - so
-/// `/save notes.jsonl` writes `notes.json` beside `notes.jsonl`, and `/load` taking that same
-/// argument at its word would go looking for `notes.jsonl.json`.
+/// note: shared by `/save`, `/load` and `--check`, because commands that accept different spellings
+/// do not round-trip. A session is two files, the snapshot and the log: `/save notes.jsonl` writes
+/// `notes.json` beside `notes.jsonl`, and `/load` given that argument would look for
+/// `notes.jsonl.json`.
 ///
 /// note: the suffix is matched without regard to case, the way `attach::media_type` reads an
-/// extension - and the stem is left exactly as it was typed, because that half really does name a
-/// different file. What it buys is a suffix typed in capitals still being read as the suffix
-/// `/save` wrote.
+/// extension, so a suffix typed in capitals is still read as the suffix `/save` wrote. The stem is
+/// left exactly as it was typed, because it names a different file.
 pub(crate) fn without_suffix(path: &str) -> &str {
     for suffix in [".jsonl", ".json"] {
         let Some(at) = path.len().checked_sub(suffix.len()) else {

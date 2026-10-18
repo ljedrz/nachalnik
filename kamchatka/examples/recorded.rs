@@ -1,7 +1,7 @@
 //! A recorded session, run headless so the whole exchange can be read afterwards.
 //!
-//! Not part of the crate's story - a scratch harness for watching the introspection tools work
-//! against a real model, with a context limit small enough that managing it is not optional.
+//! A scratch harness for watching the introspection tools work against a real model, with a
+//! context limit small enough that managing it is not optional.
 //!
 //! ```console
 //! KAMCHATKA_API_KEY=... KAMCHATKA_CONTEXT_LIMIT=10000 DIALECT=openai \
@@ -9,18 +9,16 @@
 //!   cargo run -p kamchatka --example recorded
 //! ```
 //!
-//! `TASK` sets the question and `TASK2` a second line to follow it, `BRIEF` replaces the system
-//! instruction, `PLANT` puts memories in the context before the question is asked, `OUT` names the
-//! directory the recording is written to, `INTROSPECT=off` takes the four introspection tools away,
-//! and `KAMCHATKA_MODEL` names the model - this reads the variable rather than taking a `-m`,
-//! unlike the program it is built out of.
+//! `TASK` sets the question. `TASK2` adds a second line. `BRIEF` replaces the system instruction.
+//! `PLANT` puts memories in the context before the question. `OUT` names the recording directory.
+//! `INTROSPECT=off` removes the four introspection tools. `KAMCHATKA_MODEL` names the model; unlike
+//! the program, this example reads the variable rather than taking `-m`.
 //!
-//! note: **`DIALECT` defaults to Google's native one**, which is what the ordered-blocks path
-//! wants and is wrong for every other endpoint. Left out against an OpenAI-compatible base URL
-//! the run comes back `404 Not Found` on the first request, recorded as `model.failed` in
-//! `events.jsonl` and reported out here as `the last turn failed` - which names neither the
-//! endpoint nor the dialect. So a base URL that is not Google's wants `DIALECT=openai` beside it,
-//! as in the command above.
+//! note: `DIALECT` defaults to Google's native dialect, which the ordered-blocks path wants and is
+//! wrong for every other endpoint. Without it against an OpenAI-compatible base URL the first
+//! request returns `404 Not Found`, recorded as `model.failed` in `events.jsonl` and reported as
+//! `the last turn failed`, which names neither the endpoint nor the dialect. A non-Google base URL
+//! needs `DIALECT=openai` beside it, as in the command above.
 
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
@@ -45,11 +43,11 @@ fn task() -> String {
     })
 }
 
-/// What it is told, with the budget it really has.
+/// The brief tells the model the budget it really has.
 ///
-/// note: the budget written in from `KAMCHATKA_CONTEXT_LIMIT`, which is what the provider is held to.
-/// A brief saying ten thousand over a session limited to some other figure is a model told one
-/// number and shown another by its own `budget` call.
+/// note: the budget is read from `KAMCHATKA_CONTEXT_LIMIT`, which is what the provider is held to.
+/// A brief with a different number than the session limit tells the model one number and shows
+/// another through its `budget` call.
 fn brief(budget: usize) -> String {
     format!(
         "You are working in a Rust workspace on this machine, through a shell.
@@ -76,15 +74,14 @@ Check your budget before and after anything expensive. Answer only when you are 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // this binary is its own confiner, the way the program is: the shell tool re-executes it with
-    // `--confine-and-run` and it restricts itself before exec'ing the command
+    // the shell tool re-executes this binary with `--confine-and-run`, and it restricts itself
+    // before exec'ing the command
     if let Some(code) = sandbox::run_if_asked() {
         std::process::exit(code);
     }
 
-    // the budget is the whole point, and the provider already reads it from here - so it is
-    // required rather than set, which keeps this example free of the one `unsafe` that setting an
-    // environment variable costs in edition 2024
+    // the provider reads `KAMCHATKA_CONTEXT_LIMIT`, so it is required rather than set. Setting an
+    // environment variable costs one `unsafe` in edition 2024, which this example avoids
     let budget: usize = std::env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())
@@ -93,9 +90,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              is held to",
         )?;
 
-    // two dialects, one trait. `DIALECT=openai` points this at anything OpenAI-compatible -
-    // OpenRouter, ollama, a proxy - and the only thing downstream that changes is whether the
-    // projector is asked for ordered blocks, because that shape is Google's and not theirs
+    // `DIALECT=openai` points this at OpenAI-compatible endpoints such as OpenRouter, ollama, or a
+    // proxy. The only downstream change is whether the projector is asked for ordered blocks,
+    // because that shape is Google's
     let ordered = std::env::var("DIALECT").as_deref() != Ok("openai");
     let model = std::env::var("KAMCHATKA_MODEL").unwrap_or_else(|_| {
         match ordered {
@@ -114,22 +111,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .map_err(|e| format!("could not reach {model}: {e}"))?;
 
-    // the control arm of a comparison is the same model, on the same task, with no way to see or
-    // change what it is carrying: `INTROSPECT=off` is what takes its hands away
+    // the control arm uses the same model on the same task with no way to see or change its
+    // context: `INTROSPECT=off` removes the introspection tools
     let introspecting = std::env::var("INTROSPECT").as_deref() != Ok("off");
     let Wired {
         mut app,
         mut events,
         mut finished,
     } = Setup {
-        // forty, because managing a context takes turns of its own and eight is the program's
-        // number for somebody sitting there to say `/continue`
+        // forty requests, because managing a context takes turns of its own, and eight is the
+        // program's number for a user to say `/continue`
         requests: Some(40),
         // no compactor: what is interesting is whether it manages the budget itself
         compact: None,
-        // and a ceiling, because forty requests against a model that has found a loop is a
-        // recording nobody wanted and a bill somebody pays. The deadline below bounds the time;
-        // this bounds what the time can be spent on, which is the other half
+        // a ceiling of 200,000 tokens, because forty requests against a model in a loop is an
+        // unwanted recording and a bill. The deadline bounds the time; this bounds what the time
+        // can be spent on
         spend: Some(200_000),
         allow: [
             Capability::fs("read"),
@@ -142,9 +139,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .map(Subject::Capability)
         .collect(),
-        // refused outright rather than left to be asked about, and it reaches the shell:
-        // `Sandbox::of` leaves the working directory writable for anything short of a refusal, and
-        // a recorded demo is no reason to let a model edit the repository it is reading
+        // Write and edit are refused outright rather than left to be asked about, and the refusal
+        // reaches the shell: `Sandbox::of` leaves the working directory writable unless they are
+        // refused, and a recorded demo is no reason to let a model edit the repository it is
+        // reading
         deny: [Capability::fs("write"), Capability::fs("edit")]
             .into_iter()
             .map(Subject::Capability)
@@ -170,8 +168,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.confinement
     );
 
-    // `PLANT=label::content` puts something in the context before the question is asked, which is
-    // how a run about *inspecting* a context gets one worth inspecting
+    // `PLANT=label::content` puts something in the context before the question is asked, so a run
+    // about inspecting a context has one worth inspecting
     if let Ok(planted) = std::env::var("PLANT") {
         for item in planted.split("||") {
             let (label, content) = item.split_once("::").unwrap_or(("notes", item));
@@ -182,10 +180,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // the loop is `kamchatka --headless`, driven from a string instead of a pipe, and `TASK2` is
-    // the second line somebody types
+    // the loop is `kamchatka --headless`, driven from a string instead of a pipe. `TASK2` is the
+    // second line a user types.
     //
-    // note: what stays here rather than moving into the program is what this example is *for*: a
+    // note: what stays here rather than moving into the program is what this example is for: a
     // planted context, a budget small enough that managing it is not optional, and `session.md`,
     // which is a reading of the context rather than a log of the session
     let started = std::time::Instant::now();
@@ -197,17 +195,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     lines.push('\n');
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    // every question granted, which is what a recording somebody is watching wants and the
-    // opposite of what the program defaults to; see `OnAsk` in `args.rs`
+    // every question is granted, which is what a recording someone is watching wants and the
+    // opposite of the program default; see `OnAsk` in `args.rs`.
     //
-    // note: the deadline is the driver's rather than a `timeout` around it. Wrapped in one, the
-    // future is dropped where it stands, so the session is never finished and the records of the
-    // turn it was stopped in go nowhere - and a run that hit its deadline is one worth reading
+    // note: the deadline is the driver's rather than a `timeout` around it. Wrapped in a timeout,
+    // the future is dropped where it stands, so the session is never finished and the records of
+    // the turn it was stopped in go nowhere. A run that hit its deadline is worth reading
     // afterwards
     let mut driver =
         Headless::new(Grant::Allow, &mut records, &mut prose).deadline(Duration::from_secs(600));
-    // not `?`, which would skip the write below: a run that failed is the one worth reading
-    // afterwards. The error is still the exit code; it waits until the record is on disk
+    // Do not use `?`, which would skip the write below: a failed run is worth reading afterwards.
+    // The error is still the exit code, and it waits until the record is on disk
     let failed = driver
         .run(&mut app, &mut events, &mut finished, lines.as_bytes())
         .await

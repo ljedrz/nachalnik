@@ -9,13 +9,12 @@ use crate::app::{
 impl App {
     /// Stops offering one of the tools, or offers it again.
     ///
-    /// note: one word covers both directions and every tool there is, including the ones an MCP
-    /// server brought - see [`App::toggle`]. A command that could only drop a tool would have no
-    /// way back: a session that dropped `fs` would have dropped it.
+    /// note: covers every tool, including ones an MCP server brought, in both directions; see
+    /// [`App::toggle`]. A command that could only drop a tool would have no way back: a session
+    /// that dropped `fs` would have dropped it.
     ///
-    /// note: it names what it did in terms of the *next request*, because that is when it takes
-    /// effect and because it is the thing a person is usually doing this for. Nothing about the
-    /// session as it stands changes.
+    /// note: the message names what it did in terms of the next request, because that is when it
+    /// takes effect. Nothing about the session as it stands changes.
     pub(super) fn toggle_tool(&mut self, id: &str) {
         if id.is_empty() {
             self.say(
@@ -41,11 +40,10 @@ impl App {
 
     /// What the model is offered, and what this session is holding back.
     ///
-    /// note: both, since `toggle` goes both ways: a list of what is on tells somebody how to turn
-    /// a tool off and nothing about how to get it back, and the name of a tool that is off is
-    /// precisely what they would have to remember. They are one list with a mark rather than two,
-    /// because what is being read is one question - what can this model do - and a second list
-    /// under a heading is a second place to look for a name.
+    /// note: both, since `toggle` goes both ways. A list of what is on tells somebody how to turn a
+    /// tool off but not how to get it back; the name of a tool that is off is what they would have
+    /// to remember. One list with a mark rather than two, because the question is one - what can
+    /// this model do - and a second list is a second place to look for a name.
     pub(super) fn tools(&mut self) {
         let offered = self
             .kernel
@@ -88,26 +86,23 @@ impl App {
 
     /// What the policy will answer about, and where the tab is to change any of it.
     ///
-    /// note: the same rows the permissions tab draws, out of the same [`App::permissions`], and
-    /// the same [`text::NOTHING_DECIDED`] where there are none. What a headless run is given is
-    /// this page rather than the tab, because a tab is where somebody *changes* a rule and a
-    /// caller with no keys changes nothing - but what it may have asked is what the rules are, and
-    /// answering that with silence was the same answer as a policy that allows nothing.
+    /// note: the same rows the permissions tab draws, out of the same [`App::permissions`], and the
+    /// same [`text::NOTHING_DECIDED`] where there are none. A headless run gets this page rather
+    /// than the tab: a tab is where somebody changes a rule, and a caller with no keys changes
+    /// nothing, but it may ask what the rules are, and silence answers like a policy that allows
+    /// nothing.
     ///
-    /// note: the tab is opened as well as the page. A person at a desk sent `/permissions` to be able
-    /// to change a rule, and a page printed down a pipe of somebody else's session changes
-    /// nothing there.
+    /// note: the tab is opened as well as the page. A person at a desk sent `/permissions` to
+    /// change a rule; a page printed down a pipe of somebody else's session changes nothing there.
     ///
-    /// note: no clip and no column widths, because there is no window here to fit. What is worth
-    /// saying of a rule is its subject, its answer and what it covers, and all three are said in
-    /// full - a row cut at some width a script's terminal happens to be would be a rule whose
-    /// coverage reads as less than it is.
+    /// note: no clip and no column widths, because there is no window to fit. A rule's subject,
+    /// answer and coverage are all said in full; a row cut at a script's terminal width reads as
+    /// covering less than it does.
     pub(super) fn permissions_page(&mut self) {
         self.show(Tab::Permissions);
-        // note: the page only where there is no tab to read it off, which is the same line
-        // `/help` draws. Somebody at a desk sent this to be *on* the tab and to change a rule
-        // there, and a panel floating over the tab they were sent to would be the opposite of
-        // that - while a caller with no screen is sent a page or is sent silence
+        // note: the page only where there is no tab to read it off, the same line `/help` draws. A
+        // person at a desk sent this to be on the tab and change a rule there; a floating panel
+        // over the tab would be the opposite. A caller with no screen is sent a page or silence
         if self.keys {
             return;
         }
@@ -174,7 +169,7 @@ impl App {
             self.set_spend((tokens > 0).then_some(tokens));
             let said = match self.spend() {
                 // a ceiling under what has already gone is a session that stops here, and saying
-                // only what the new number is would leave somebody to find that out by being
+                // only the new number would leave somebody to find that out by being
                 // refused. It is a legitimate thing to want - one way to stop a session is to tell
                 // it that it has spent enough - so it is answered rather than argued with
                 Some(limit) if self.overspent() => format!(
@@ -218,9 +213,9 @@ impl App {
     /// Shows or changes how many requests one turn sends before it pauses; `0` takes the limit
     /// away, as `--max-requests-per-turn 0` does.
     ///
-    /// note: the kernel's own setting, changed in place, so it holds from the next request - the
-    /// running turn's included - and a restart to change `--max-requests-per-turn` is not needed.
-    /// Not carried into a snapshot: a resumed session, and a `/restart`, starts from
+    /// note: the kernel's own setting, changed in place, so it holds from the next request, the
+    /// running turn included, and no restart is needed to change `--max-requests-per-turn`. Not
+    /// carried into a snapshot: a resumed session, and a `/restart`, starts from
     /// `--max-requests-per-turn` again.
     pub(super) fn requests_command(&mut self, rest: &str) {
         let rest = rest.trim();
@@ -266,10 +261,9 @@ impl App {
 
     /// Says how much of what `/spend` just reported was the advisor's, where any was.
     ///
-    /// note: a line of its own rather than a clause in each of the sentences above, and only when
-    /// there is something to say. The figure is in the total whichever key paid for it, and a
-    /// person whose advisor has a key of its own is owed the split: what the model spent is
-    /// otherwise not a number they can read off this.
+    /// note: a line of its own, only when there is something to say. The figure is in the total
+    /// whichever key paid for it, and a person whose advisor has a key of its own is owed the
+    /// split: what the model spent is otherwise not a number they can read off this.
     pub(super) fn say_advice_spent(&mut self) {
         let advice = self.spent_on_advice();
         if advice > 0 {

@@ -1,5 +1,5 @@
-//! Cutting a projection down to one frame: the longest lines first, to the longest length that
-//! lets the whole of it fit, measured the way serde_json writes it.
+//! Cuts a projection to one frame: the longest lines first, to the longest length that lets it fit,
+//! measured as serde_json writes it.
 
 use serde::Serialize;
 
@@ -42,10 +42,10 @@ impl Attached {
         self.abridge_within(MAX_LINE);
     }
 
-    /// The same, inside a frame of any length.
+    /// Cuts the projection to fit inside a frame of any length.
     ///
-    /// note: apart so that what it promises can be held to it at a length a test can afford. At
-    /// [`MAX_LINE`] one case is thirty-two megabytes, and the cases worth having are hundreds.
+    /// note: separate so a test can afford the length and hold it to its promise. At [`MAX_LINE`]
+    /// one case is thirty-two megabytes; the useful cases are hundreds.
     fn abridge_within(&mut self, limit: usize) {
         let whole = measured(self) + ENVELOPE;
         if whole <= limit {
@@ -110,11 +110,10 @@ fn escaped(text: &str) -> usize {
     text.chars().map(escaped_char).sum()
 }
 
-/// The longest length every size can be held to and still come to no more than `room` in all.
+/// The longest length every size can be held to and still total no more than `room`.
 ///
-/// note: the shortest first, because each one that fits whole hands what it did not use to the
-/// ones still over. Where they all fit there is no length to hold them to, which is what `MAX`
-/// says.
+/// note: shortest first, because each one that fits whole passes its unused room to the ones still
+/// over. If they all fit, there is no length to hold them to; `MAX` says so.
 fn level(sizes: &[usize], room: usize) -> usize {
     let mut sorted = sizes.to_vec();
     sorted.sort_unstable();
@@ -130,8 +129,8 @@ fn level(sizes: &[usize], room: usize) -> usize {
     usize::MAX
 }
 
-/// Cuts a text to the longest start of it that is no more than `cap` long as JSON, and says how
-/// many bytes went; `None` where it was short enough already.
+/// Cuts text to the longest start no more than `cap` long as JSON. Returns the bytes removed, or
+/// `None` if already short enough.
 fn cut(text: &mut String, cap: usize) -> Option<usize> {
     if escaped(text) <= cap {
         return None;
@@ -162,11 +161,11 @@ mod tests {
         remote::protocol::{Line, VERSION},
     };
 
-    /// The arithmetic a projection is cut by is serde_json's own, character for character.
+    /// The cut uses serde_json's own arithmetic, character for character.
     ///
-    /// note: what the cut is exact *because of*. Measured as text rather than as JSON, a message
-    /// of quotes and newlines comes out twice the length it was cut to and one of control
-    /// characters six times, and the projection it was cut to fit goes past the frame anyway.
+    /// note: that is why the cut is exact. Measured as text instead of JSON, quotes and newlines
+    /// double a message's length and control characters make it six times as long, so a projection
+    /// cut to fit goes past the frame anyway.
     #[test]
     fn a_text_is_measured_the_way_serde_json_writes_it() {
         let text = "plain, \"quoted\", back\\slash, a\ttab\nand\rbreaks, \u{0}\u{1f}\u{7f}, \
@@ -206,8 +205,8 @@ mod tests {
         assert_eq!(cut(&mut quoted, 4), Some(2));
         assert_eq!(quoted, "\"\"");
 
-        // and a character is not split: `ü` is two bytes, and a length of four keeps `aü` whole
-        // and not one byte of the second `ü`
+        // a character is not split: `ü` is two bytes, so a length of four keeps `aü` whole and not
+        // one byte of the second `ü`
         let mut letters = "aüü".to_owned();
         assert_eq!(cut(&mut letters, 4), Some(2));
         assert_eq!(letters, "aü");
@@ -216,8 +215,8 @@ mod tests {
         assert_eq!(letters, "a");
     }
 
-    /// Any text, with the characters that measure differently as JSON in it often enough to
-    /// matter: the two-byte escapes, the six-byte ones, and characters of two, three and four bytes.
+    /// Any text, often with characters that measure differently as JSON: two-byte escapes, six-byte
+    /// ones, and characters of two, three and four bytes.
     fn any_text(longest: usize) -> impl Strategy<Value = String> {
         proptest::string::string_regex(&format!("[a-z \"\\\\\n\t\u{1}\u{1f}é漢🦀]{{0,{longest}}}"))
             .expect("a pattern for the text")
@@ -378,8 +377,8 @@ mod tests {
                         }
                     }
                 }
-                // the lines cut are the longest ones: every line left whole was shorter than every
-                // line that was cut, and the cut ones end within a character of each other
+                // the lines cut are the longest ones: every whole line is shorter than every cut
+                // line, and the cut lines end within a character of each other
                 if let (Some(&longest_whole), Some(&(shortest_cut, _))) =
                     (untouched.iter().max(), cut.iter().min())
                 {
@@ -412,8 +411,8 @@ mod tests {
                     measured(&longest_counts) + ENVELOPE <= limit,
                     "the counts outgrew the room kept for them"
                 );
-                // and no further than it had to: what is left over is the rounding, a character a
-                // line, and the room kept for each count - not a length chosen short to be safe
+                // and no further than it had to: what is left over is rounding, a character per
+                // line, and room kept for each count, not a length chosen short to be safe
                 let left = limit - (measured(&after) + ENVELOPE);
                 prop_assert!(left <= 29 * n, "{left} bytes to spare across {n} line(s)");
             }

@@ -134,8 +134,8 @@ impl Tool for Fork {
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
             Some(op) => vec![domains::fork(op)],
-            // an operation this tool does not have is refused by `invoke` with a list of the ones
-            // it does; what it must not be is a call that needed nothing and was therefore allowed
+            // `invoke` refuses an operation this tool does not have, with a list of the ones it
+            // does. Such a call must not be one that needed nothing and was therefore allowed
             None => self.spec().capabilities,
         }
     }
@@ -229,36 +229,34 @@ struct Asked<'a> {
 /// Answers on a copy of the context, and hands back only what was said.
 ///
 /// note: the copy is a whole second [`Kernel`] resumed from a [`Snapshot`](nachalnik::Snapshot) of
-/// this one, which is why this needed nothing added to the runtime: forking a session is what
-/// `snapshot` and `resume` already are, and the documentation for `resume` says as much. It gets
-/// this session's provider and projector so that it is answering the same model in the same
-/// dialect, and it gets **no tools**, no compactor and a limit of one request. A fork can think;
-/// it cannot act, and it cannot go on thinking after it has answered once.
+/// this one. Forking is what `snapshot` and `resume` already are, so nothing was added to the
+/// runtime. It gets this session's provider and projector, answering the same model in the same
+/// dialect, and gets **no tools**, no compactor and a limit of one request. A fork can think; it
+/// cannot act, and it cannot go on thinking after it has answered once.
 ///
-/// note: nothing the fork does reaches this session's context, and nothing it does reaches this
-/// session's event log either - it has a log of its own that goes when it does. What it *is*
-/// visible as is the text it streams, relayed into this tool's own [`OutputSink`], so a person
-/// watching the terminal sees a fork thinking rather than a tool that has gone quiet.
+/// note: nothing the fork does reaches this session's context or event log; it has a log of its own
+/// that goes when it does. What it is visible as is the text it streams, relayed into this tool's
+/// own [`OutputSink`], so a person watching the terminal sees a fork thinking rather than a tool
+/// that has gone quiet.
 ///
-/// note: a copy of the context as the turn that asked for it left it, not as it stands when this
-/// call runs. A turn's calls run one after another, so two forks asked together would otherwise
-/// differ by the first one's answer - the second handed what the first said, which is the
-/// comparison two forks are asked for spoiled - and `without` cannot keep out a result that does
-/// not exist yet. So the results of the other calls in the same turn are left out, excluded
-/// rather than deleted like a `without`, and not counted among the items asked about.
+/// note: the copy is taken as the context stood when the turn asked for it, not as it stands when
+/// this call runs. A turn's calls run one after another, so two forks asked together would
+/// otherwise differ by the first one's answer: the second would be handed what the first said,
+/// spoiling the comparison. And `without` cannot keep out a result that does not exist yet. So the
+/// results of the other calls in the same turn are left out - excluded rather than deleted like a
+/// `without` - and not counted among the items asked about.
 ///
-/// note: and a call that writes to the context rather than answering one is not covered by that:
-/// a note is not a result, and there is nothing in a snapshot saying which call put an item there.
-/// The copy is taken as the context stands, and compared with the copy the fork beside it was
-/// given, so the two forks of a turn are either alike or the reply says how they are not.
+/// note: a call that writes to the context rather than answering one is not covered by that: a note
+/// is not a result, and a snapshot does not say which call put an item there. The copy is taken as
+/// the context stands and compared with the copy the fork beside it was given, so two forks of a
+/// turn are either alike or the reply says how they are not.
 ///
 /// note: `looked` is called once the copy is taken, and is nothing but a place for a test to stand
 /// between the copy and what is made of it.
 ///
-/// note: and what it was charged, added to `forked` for the session's ceiling. Read off the fork's
-/// own log once its turn is over, whatever the turn came to, rather than off the stream the relay
-/// reads: the relay is stopped as soon as the turn ends, and a figure it had not reached yet would
-/// be spent and never counted.
+/// note: what it was charged is added to `forked` for the session's ceiling. Read off the fork's
+/// own log once its turn is over, rather than off the stream the relay reads: the relay is stopped
+/// as soon as the turn ends, and a figure it had not reached yet would be spent and never counted.
 async fn branch(
     kernel: &Kernel,
     asked: Asked<'_>,
@@ -284,9 +282,9 @@ async fn branch(
     // the same context. Held in a block of its own, because nothing in it awaits and the future
     // that held it across an await could not be sent between threads
     let (fork, items, left_out, unanswered, extra) = {
-        // a panic in here - the projector is somebody else's code - leaves what was read last as
-        // it was, since that is written only at the end, so the lock is taken back rather than
-        // every later fork failing on it
+        // a panic here - the projector is somebody else's code - leaves what was read last as it
+        // was, since that is written only at the end, so the lock is taken back rather than every
+        // later fork failing on it
         let mut last = last_read
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -317,8 +315,8 @@ async fn branch(
         for item in &mut snapshot.items {
             // named first: a sibling's result the caller also named is one it asked to leave out
             if without.contains(&item.id) {
-                // excluded rather than deleted, so the fork's own account of itself can still name
-                // the item by the number this session knows it by
+                // excluded rather than deleted, so the fork can still name the item by the number
+                // this session knows it by
                 item.state = ContextState::Excluded;
                 item.note = Some("left out of this fork".into());
                 left_out.push(item.id);
@@ -343,10 +341,10 @@ async fn branch(
         );
         fork.set_provider(provider);
         fork.set_projector(kernel.projector());
-        // whose items the count is about: what follows adds a system instruction of this tool's own,
-        // and `ask` adds the question - neither of them the caller's, so neither is counted. A fork is
-        // worth having because two runs are comparable, and a number that moves with which of the two
-        // operations asked for it is not
+        // The count is about the fork's items. What follows adds a system instruction of this
+        // tool's own, and `ask` adds the question; neither is the caller's, so neither is counted.
+        // A fork is worth having because two runs are comparable, and a count that moved with
+        // which of the two operations asked for it would not be
         let theirs: std::collections::BTreeSet<ContextId> =
             fork.items().iter().map(|item| item.id).collect();
         // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
@@ -375,12 +373,12 @@ async fn branch(
             .copied()
             .collect();
         let items = read.len();
-        // note: what the fork before this one read, where it was another fork of this same turn. Two
-        // forks in a turn are the comparison `fork` exists for, and a call that writes to the
-        // context - `context` with a `note`, say - adds an item the fork before it did not have, so
-        // the two copies differ however carefully the siblings above are excluded. Nothing in the
-        // snapshot says which call wrote an item, so this compares the two rather than guessing, and
-        // the sentence below is weakened by what it finds
+        // note: what the previous fork read, where it was another fork of this turn. Two forks in a
+        // turn are the comparison `fork` exists for. A call that writes to the context, such as
+        // `context` with a `note`, adds an item the previous fork did not have, so the two copies
+        // differ even when siblings are excluded. Nothing in the snapshot says which call wrote an
+        // item, so this compares the two rather than guessing, and the sentence below is weakened
+        // by what it finds
         let extra: Vec<ContextId> = match asking_in.as_ref().map(|(turn, _)| *turn) {
             Some(turn) => {
                 let earlier = (last.turn == Some(turn)).then(|| last.items.clone());
@@ -414,7 +412,7 @@ async fn branch(
         }
     });
 
-    // the same heartbeat the `shell` tool runs on, and for the same reason: the fork is a whole
+    // It uses the same heartbeat as the `shell` tool, for the same reason: the fork is a whole
     // request that could take a minute, and escape has to reach it
     let outcome = {
         let turn = fork.turn();
@@ -454,29 +452,28 @@ async fn branch(
         Some(question) => format!("a copy of you, asked `{question}`, on {items} of your items"),
         None => format!("what you would say if you answered now, drafted on {items} of your items"),
     };
-    // note: said either way, because "on 9 of your items" does not say whether that is all of them,
-    // and a fork's worth is which items the copy did not get. A model can ask a copy to disregard
+    // note: said either way, because "on 9 of your items" does not say whether that is all of them.
+    // A fork's worth is which items the copy did not get. A model can ask a copy to disregard
     // something rather than take it away with `without`, and report the matching answer as an
-    // ablation - the copy was asked to pretend, and nothing in the reply would distinguish the
-    // two. Where the copy really did see everything, the reply says so.
+    // ablation: the copy was asked to pretend, and nothing in the reply distinguishes the two.
+    // Where the copy really did see everything, the reply says so.
     //
     // note: weakened to what was named, because something else may have been kept away. Two forks
-    // in one turn, or a fork beside any other call whose result had already landed, leaves the
-    // copy an item short of the caller's context - and "nothing of yours was taken away" beside a
-    // count that has already come up short is the one sentence here a model reads as "these two
-    // runs saw the same context", which is the inference two forks in a turn exist to support. What
-    // the other call kept out is a clause of its own below.
+    // in one turn, or a fork beside another call whose result already landed, leaves the copy an
+    // item short of the caller's context. "Nothing of yours was taken away" beside a count that
+    // came up short is read as "these two runs saw the same context", which is the inference two
+    // forks in a turn exist to support. What the other call kept out is a clause of its own below.
     //
-    // note: and the same sentence stands or falls on the copy being what the caller's context was
-    // when the turn began, which a call that writes to the context makes untrue for every fork
-    // after it. The siblings above are excluded by the tool that answered them, and a note is
-    // nobody's result - so the two copies are compared rather than the items attributed, and
-    // where they differ the reply says what the later copy has that the earlier one did not.
+    // note: the sentence stands or falls on the copy being the caller's context when the turn
+    // began. A call that writes to the context makes that untrue for every fork after it. Siblings
+    // above are excluded by the tool that answered them, and a note is nobody's result, so the two
+    // copies are compared rather than the items attributed. Where they differ, the reply says what
+    // the later copy has that the earlier one did not.
     match (left_out.is_empty(), extra.is_empty()) {
-        // note: the claim is about this copy against the caller's context, so it is only true
-        // where a call before this one in the turn did not add to the context. A sibling that
-        // writes to the context - `context` with a `note` - does, and the copy then holds
-        // something the fork beside it did not, which is what the sentence says nothing about
+        // note: the claim compares this copy to the caller's context and is true only if no earlier
+        // call in the turn added to the context. A sibling that writes to the context (`context`
+        // with a `note`) does add to it, so the copy holds something the fork beside it did not;
+        // the claim says nothing about that
         (true, false) => {
             out.push_str(". Nothing you named with `without` was taken away.");
             out.push_str(&written_beside(&extra));
@@ -493,15 +490,15 @@ async fn branch(
                 ", without {}, which the copy could not read at all.",
                 numbers.join(", ")
             ));
-            // and what a sibling wrote, which taking items away does not make any less true: the
-            // two copies differ by those as well as by what was named
+            // The two copies differ by what a sibling wrote as well as by what was named; taking
+            // items away does not make that any less true
             if !extra.is_empty() {
                 out.push_str(&written_beside(&extra));
             }
         }
     }
-    // and what the calls beside this one kept out of the copy, which is a fact about the context
-    // it was asked on rather than about the question it was asked
+    // The calls beside this one kept items out of the copy; that is a fact about the context it was
+    // asked on, not about the question it was asked
     if !unanswered.is_empty() {
         let numbers: Vec<String> = unanswered.iter().map(|id| id.to_string()).collect();
         out.push_str(&match numbers.as_slice() {
@@ -534,9 +531,9 @@ async fn branch(
         .map(|content| content.to_text())
         .unwrap_or_default();
     match said.trim().is_empty() {
-        // it asked for a tool instead of answering, and there is nothing in a fork to run one.
-        // Saying so beats handing back a blank: a caller reading an empty draft has no way to
-        // tell a copy that had nothing to say from one that tried to do something
+        // it asked for a tool instead of answering, and a fork has nothing to run one. Saying so
+        // beats a blank: a caller reading an empty draft cannot tell a copy that had nothing to say
+        // from one that tried to do something
         true => out.push_str(&format!(
             "\n--- it said nothing ({:?}) ---\nit asked for {} instead of answering, and a fork \
              has no tools; ask it something it can answer from what it already has.\n",
@@ -552,12 +549,11 @@ async fn branch(
         )),
     }
 
-    // note: the answer before the thinking, which is the opposite of the order it was produced
-    // in and the right way round for the one thing that happens to this output: an output limit
-    // cuts from the end. On a reasoning model the thinking is the bulk of a fork, so with the
-    // thinking first the limit eats the answer and leaves the deliberation about how to answer.
-    // Nothing about this order is a claim about what the copy did; the two sections are labelled
-    // and the reasoning says it is reasoning
+    // note: the answer comes before the thinking, the opposite of the order it was produced in. An
+    // output limit cuts from the end, and on a reasoning model the thinking is the bulk of a fork,
+    // so thinking first would make the limit eat the answer and leave the deliberation about how to
+    // answer. This order is not a claim about what the copy did; the sections are labelled, and the
+    // reasoning says it is reasoning
     if let Some(reasoning) = &response.reasoning {
         out.push_str(&format!(
             "\n--- its reasoning, which it produced before the answer above ---\n{}\n",
@@ -569,7 +565,7 @@ async fn branch(
 }
 
 /// What a copy has that the fork beside it in the turn did not, because another call wrote to the
-/// context between the two, as a sentence to follow the rest of the reply.
+/// context between the two; a sentence to follow the rest of the reply.
 fn written_beside(extra: &[ContextId]) -> String {
     let numbers: Vec<String> = extra.iter().map(|id| id.to_string()).collect();
     format!(
@@ -676,8 +672,8 @@ mod tests {
                     *written.lock().unwrap() =
                         Some(kernel.push(ContextItem::user("written between the two copies")));
                     *running.lock().unwrap() = Some(std::thread::spawn(second));
-                    // the second fork's copy, if it can take one before this fork compares; it
-                    // cannot, where the lock is held from before the copy, and this waits it out
+                    // the second fork takes a copy before this fork compares if it can. It cannot
+                    // when the lock is held from before the copy, so this waits
                     let _ = taken.recv_timeout(Duration::from_millis(300));
                 }
             }),

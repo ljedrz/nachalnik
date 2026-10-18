@@ -26,26 +26,23 @@ use super::{CHANGES, Pinned};
 
 /// How many of its own changes one call may walk back or forward.
 ///
-/// note: a bound at all, because `undo` is a loop over a journal and a model that means "all of
-/// it" writes a big number. Said in the schema and refused above it rather than clamped: clamped,
-/// a call asking for a hundred would get sixty-four and read as though it had got a hundred.
+/// note: a bound because `undo` loops over a journal and "all of it" is a big number. Stated in the
+/// schema, and anything above it refused rather than clamped: clamped, a call for a hundred would
+/// get sixty-four and read as though it had got a hundred.
 const WALK: u64 = 64;
 
-/// Changes the context: moves items between states, rewrites one, writes something down, walks
-/// its own changes back.
+/// Changes the context: moves items between states, rewrites one, writes something down, walks its
+/// own changes back.
 ///
-/// note: it keeps the set of items it pinned itself, which is the mechanism that stops a model
-/// quietly unpinning what a person pinned. A pin is a promise, and the promise was not made to the
-/// model.
+/// note: it keeps the set of items it pinned itself, stopping a model from unpinning what a person
+/// pinned. A pin is a promise to the person, not the model.
 ///
-/// note: it also keeps a journal of what it has done, which is what `undo` walks - deliberately
-/// *not* [`Kernel::undo`]. The kernel's undo stack is the person's, bound to the `u` key in the
-/// terminal, and a model walking it back would be undoing their work rather than its own. And the
-/// top of that stack, at the moment a tool is running, is always the assistant turn that asked for
-/// the call: one step would erase the model's own question, orphan the answer it is waiting for,
-/// and leave the loop rebuilding a request from before it asked. A journal of this tool's own
-/// changes has neither problem, and it is the honest scope of "undo my mistakes" - the mistakes
-/// being the ones it made.
+/// note: it also keeps a journal of what it has done, which is what `undo` walks - deliberately not
+/// [`Kernel::undo`]. The kernel's undo stack is the person's, bound to the `u` key in the terminal.
+/// A model walking it back would undo the person's work, not its own. While a tool is running, the
+/// top of that stack is always the assistant turn that asked for the call: one step would erase the
+/// model's question, orphan the answer it waits for, and leave the loop rebuilding a request from
+/// before it asked. A journal of this tool's own changes has neither problem.
 pub(super) struct Changes {
     pinned: Pinned,
     /// What its answers may send the model to; see `introspect::if_reachable`.
@@ -58,14 +55,14 @@ pub(super) struct Changes {
 impl Changes {
     /// Builds one; [`Context`](super::Context) is the only caller.
     ///
-    /// note: the journal is handed in, shared with whoever writes the session down, so that a
-    /// snapshot carries it and a resumed session's model can walk back what it did before - see
-    /// [`crate::introspect::History`]. What `undo` walks is still only what this session's model
-    /// did: the journal starts empty, and only a snapshot of this session fills it.
+    /// note: the journal is handed in, shared with whoever writes the session down, so a snapshot
+    /// carries it and a resumed session's model can walk back what it did before - see
+    /// [`crate::introspect::History`]. `undo` walks only what this session's model did: the journal
+    /// starts empty, and only a snapshot of this session fills it.
     ///
     /// note: the pinned set is handed in too, because it is shared with the half that reports it:
-    /// what was pinned here is what `budget` says the model may unpin, and a second set would
-    /// have the two disagreeing about a promise.
+    /// what was pinned here is what `budget` says the model may unpin. A second set would make the
+    /// two disagree about a promise.
     pub(super) fn new(pinned: Pinned, policy: Arc<Careful>, journal: Arc<Mutex<Journal>>) -> Self {
         Self {
             pinned,
@@ -87,12 +84,12 @@ pub(crate) struct Journal {
 }
 
 impl Journal {
-    /// Takes what this tool has just done to these items as the way it left them, in every entry.
+    /// Takes what this tool just did to these items as the way it left them, in every entry.
     ///
-    /// note: every change this tool makes, not only the ones it journals. Pinning a pinned item
-    /// for a new reason rewrites its note and moves nothing, so it is no step of its own - and an
-    /// entry still holding the old note would read the model's own restating as somebody else's
-    /// change, and refuse to walk back a pin the model had made.
+    /// note: every change this tool makes, not only the ones it journals. Pinning a pinned item for
+    /// a new reason rewrites its note and moves nothing, so it is no step of its own. An entry
+    /// still holding the old note would read the model's own restating as somebody else's change,
+    /// and refuse to walk back a pin the model had made.
     fn refresh(&mut self, kernel: &Kernel, ids: &[ContextId]) {
         for entry in self.done.iter_mut().chain(self.undone.iter_mut()) {
             for (id, left) in &mut entry.left {
@@ -106,13 +103,11 @@ impl Journal {
     }
 }
 
-/// One change in the journal: the way back from it, and what it left each item it touched as.
+/// One change in the journal: the way back from it, and what it left each touched item as.
 ///
-/// note: what it left them as, because somebody else may have moved one since. The model's undo
-/// put an item back where the model had had it whatever had happened to it in between - a person's
-/// later exclusion, or their edit of what the model had revised, walked back by a move of the
-/// model's that knew nothing about it. An item that no longer looks the way this change left it is
-/// left alone, and the answer says so.
+/// note: what it left them as, because somebody else may have moved one since. The model's undo put
+/// an item back where the model had it, whatever happened in between. An item that no longer looks
+/// the way this change left it is left alone, and the answer says so.
 #[derive(Serialize, Deserialize)]
 struct Entry {
     undoing: Undoing,
@@ -121,7 +116,7 @@ struct Entry {
 
 /// What an item looked like: its state, its note and what it says.
 ///
-/// note: not its metadata, which this tool writes beside a pin - so a pin's own bookkeeping is not
+/// note: not its metadata, which this tool writes beside a pin, so a pin's own bookkeeping is not
 /// read as somebody else's change.
 #[derive(PartialEq, Serialize, Deserialize)]
 struct Left {
@@ -165,9 +160,9 @@ fn moved_since(left: &[(ContextId, Left)], item: &ContextItem) -> Option<String>
 
 /// One change, recorded as the way back from it.
 ///
-/// note: the way back rather than the change itself, because applying one returns the way back
-/// from *that* - so undo and redo are the same operation run against two stacks, and there is no
-/// second representation to keep in step with the first.
+/// note: the way back rather than the change itself, because applying one returns the way back from
+/// that. Undo and redo are the same operation run against two stacks, with no second representation
+/// to keep in step.
 #[derive(Serialize, Deserialize)]
 enum Undoing {
     /// Put these items into these states, with these notes.
@@ -198,22 +193,19 @@ struct Applied {
 }
 
 impl Undoing {
-    /// Applies it, and hands back the way from where that leaves things to where they were.
+    /// Applies it, and returns the way back from where that leaves things to where they were.
     ///
-    /// note: `protected` is asked here too, as every other move in this tool asks it. A person who
-    /// pins an item after the model elided it has made a decision about that item, and an `undo`
-    /// that went straight to `set_state` would take the pin off again, silently - the one thing
-    /// the word pin promises will not happen.
+    /// note: `protected` is checked here too, as in every other move. Pinning an item after the
+    /// model elided it is a decision about that item. An `undo` that went straight to `set_state`
+    /// would remove the pin silently, which a pin promises will not happen.
     ///
-    /// note: one [`Kernel::set_states`] for the whole of it, rather than a `set_state` an item or a
-    /// state at a time. One operation is one undo, and walking back a move of three items into two
-    /// states would otherwise leave two checkpoints on the person's stack - two undos for what the
-    /// model called one change. Grouped by the state they land in all the same, for saying what
-    /// was done.
+    /// note: one [`Kernel::set_states`] for the whole operation, not one `set_state` per item or
+    /// state. One operation is one undo; otherwise walking back three items into two states would
+    /// leave two checkpoints on the stack - two undos for one change. Items are grouped by the
+    /// state they land in, to say what was done.
     ///
-    /// note: `own_turn` is `None` because a change recorded earlier cannot be about the turn this
-    /// call is speaking in: that item did not exist when the change was made, and identifiers are
-    /// never reused.
+    /// note: `own_turn` is `None` because a change recorded earlier cannot be about this call's
+    /// turn: the item did not exist when the change was made, and identifiers are never reused.
     fn apply(
         self,
         kernel: &Kernel,
@@ -293,17 +285,15 @@ impl Undoing {
 impl Changes {
     /// Runs one of the eight operations that change something.
     ///
-    /// note: it is handed the operation and the reason rather than reading either, because both
-    /// are the vocabulary's and the vocabulary belongs to the half next door: that is the tool a
-    /// model called, it holds the list of twelve, and it is what says so when a call names none of
-    /// them. What is in here is what changing a context *is*.
+    /// note: the operation and reason are handed in rather than read here, because the vocabulary
+    /// belongs to the tool a model called. That tool holds the list of twelve and says when a call
+    /// names none of them.
     ///
-    /// note: one at a time, because under `--parallel-tool-calls` two calls run on two threads, and
-    /// an operation is a change to the kernel and then an entry describing it. A walk back that ran
-    /// between the two would take the entry before the one it is about, and an entry made after
-    /// another call's change describes the items as that call left them rather than as this one
-    /// did. Which of two calls asked for together goes first is still not said; that each is whole
-    /// is.
+    /// note: one at a time, because under `--parallel-tool-calls` two calls run on two threads. An
+    /// operation is a kernel change and then an entry describing it. A walkback between the two
+    /// would take the entry before the one it is about, and an entry made after another call's
+    /// change describes items as that call left them, not as this one did. The order of parallel
+    /// calls is unspecified; each is whole.
     pub(super) fn make(
         &self,
         kernel: &Kernel,
@@ -319,17 +309,16 @@ impl Changes {
             "note" => self.note(kernel, args, reason),
             "undo" => self.walk(kernel, args, reason, true),
             "redo" => self.walk(kernel, args, reason, false),
-            // note: the four moves are operations of their own, named for what they do, rather
-            // than one `prune` action with a `state` argument. That would put the word for *one*
-            // of them over all four - including `pin` and `restore`, which are its opposite, so
-            // "prune to pin it" would be the spelling of protecting something - and disagree with
-            // every place the result is read back, all of which name the state. A model asks for
-            // `restore` as an action, and it is right to.
+            // note: the four moves are separate operations named for what they do, not one `prune`
+            // action with a `state` argument. That would put one word over all four, including
+            // `pin` and `restore`, which are its opposite, so "prune to pin it" would mean
+            // protecting something. It would also disagree with every place the result is read
+            // back, which name the state. A model asks for `restore` as an action.
             //
-            // note: the state is read here, where the four are named, rather than inside the move,
-            // where a word it did not know would want a listing of what to say instead - a listing
-            // to keep current in a branch nothing can reach: `CHANGES` is what gets a call this
-            // far and the four above are the rest of it.
+            // note: the state is read here, where the four are named, not inside the move. Inside
+            // the move, an unknown word would need a listing of what to say instead, kept current
+            // in a branch nothing can reach. `CHANGES` gets a call this far; the four moves are the
+            // rest.
             other => match state_of(other) {
                 Some(state) => self.moved(kernel, call, args, reason, other, state),
                 None => ToolOutput::error(unknown(other, &CHANGES)),
@@ -357,9 +346,9 @@ fn already(clashes: &[ContextId], label: &str) -> String {
         return String::new();
     }
 
-    // note: a few of them named and the rest counted, because the point of the sentence is that
-    // there *are* others and what to do about it. Forty numbers would say the same thing in forty
-    // times the tokens, and the one that matters is reachable by the name either way.
+    // note: a few are named and the rest counted, because the point is that others exist and what
+    // to do about them. Forty numbers would say the same in forty times the tokens; the one that
+    // matters is reachable by the name either way.
     let shown: Vec<String> = clashes.iter().take(4).map(|id| format!("[{id}]")).collect();
 
     format!(
@@ -403,9 +392,9 @@ impl Changes {
         action: &str,
         state: ContextState,
     ) -> ToolOutput {
-        // a selector, or a list of numbers, and never both. Naming a class of items is what makes
-        // this usable for the job it is mostly for - "the tool results I am done with" is one
-        // thought, and reading twelve numbers off a listing to say it is not
+        // a selector, or a list of numbers, and never both. A selector lets a model name a class
+        // of items, such as "the tool results I am done with", instead of reading twelve numbers
+        // off a listing
         let named = match named(&kernel.items(), args) {
             Ok(named) => named,
             Err(refusal) => return ToolOutput::error(refusal),
@@ -505,8 +494,8 @@ impl Changes {
             ));
             out.push_str(&match (restated.is_empty(), changed.unchanged.is_empty()) {
                 (true, _) => "\n".to_owned(),
-                // named only where there is something to tell them from; the reason was rewritten
-                // on the ones the kernel reported as changed, and those are all of them here
+                // Show numbers only when they distinguish items. The reason was rewritten on every
+                // changed item here
                 (false, true) => {
                     format!(" - what changed is the reason, which now reads `{reason}`\n")
                 }
@@ -666,8 +655,8 @@ impl Changes {
 
         let now = kernel.item(id).map(|item| item.tokens).unwrap_or_default();
         // note: the write goes through whatever the item's state, and an item the request does not
-        // carry is one whose new words nobody reads until it is put back - which the figures
-        // below cannot say, since they are the same figures either way
+        // carry is one whose new words nobody reads until it is put back, which the figures below
+        // cannot say, since they are the same either way
         let going = Going::of(kernel);
         let unread = match kernel.item(id) {
             Some(now) if !going.sends_content(&now) => match going.left_out.get(&id) {
@@ -752,11 +741,10 @@ impl Changes {
         };
 
         let before = kernel.budget().used();
-        // pinned as it is written rather than pinned afterwards: a push and a state change are two
-        // checkpoints on the *person's* undo stack, and writing one note is one thing the model
-        // did. It is the same reason `revise` puts its own account in the metadata instead of the
-        // note, and `because` is already carrying the sentence a second checkpoint would have been
-        // spent on
+        // pin as written rather than afterwards. A push and a state change are two undo
+        // checkpoints; one note is one thing the model did. `revise` puts its account in metadata
+        // instead of the note for the same reason, and `because` already carries the sentence a
+        // second checkpoint would have been spent on
         let mut item = ContextItem::new(ContextKind::Reference, "agent", label, content.to_owned())
             .because(reason.to_owned());
         if pin {
@@ -768,8 +756,8 @@ impl Changes {
         if pin {
             self.note_pin(kernel, id, ContextState::Pinned, Some(reason.to_owned()));
         }
-        // the way back from having written it is to put it away; nothing here destroys anything,
-        // so an undone note is excluded and still listed rather than gone
+        // to undo having written it, put it away. Nothing here destroys anything, so an undone note
+        // is excluded and still listed rather than gone
         self.record(
             kernel,
             Undoing::States(vec![(
@@ -797,9 +785,9 @@ impl Changes {
     /// back the way from where that left things to where they were. There is no separate "redo"
     /// representation to be written, or to fall out of step with the first one.
     fn walk(&self, kernel: &Kernel, args: &Value, reason: &str, back: bool) -> ToolOutput {
-        // note: read rather than clamped. Clamped, a `steps` of nought, a negative number or a
-        // word would each walk one change back, and a hundred would walk sixty-four - each of
-        // them a call that did something other than what it said
+        // note: read rather than clamped. Clamped, `steps` of 0, a negative number, or a word would
+        // each walk one change back, and a hundred would walk sixty-four - each a call that did
+        // something other than what it said
         let steps = match &args["steps"] {
             Value::Null => 1,
             Value::Number(given) if given.as_u64().is_some_and(|it| (1..=WALK).contains(&it)) => {
@@ -817,11 +805,11 @@ impl Changes {
         let mut put_back = Vec::new();
         let mut left_alone = Vec::new();
         let mut touched = Vec::new();
-        // how many of this tool's own entries the walk took, whatever it did with them. It is what
-        // tells a walk that spent one on a refusal from a walk that had none to spend
+        // `spent` is how many of this tool's own entries the walk took. It distinguishes a walk
+        // that spent one on a refusal from one that spent none
         let mut spent = 0;
-        // taken before the journal, and copied, so that the two locks are never held in this
-        // order anywhere - `note_pin` below holds the other one on its own
+        // taken before the journal and copied, so the two locks are never held in this order
+        // anywhere; `note_pin` holds the other one on its own
         let mut mine = self.pinned.lock().clone();
         {
             let mut journal = self.journal.lock();
@@ -834,9 +822,9 @@ impl Changes {
                     break;
                 };
                 spent += 1;
-                // an item that has since gone, or that is no longer this tool's to move, gives
-                // nothing to walk to, and the entry is spent either way rather than left to be
-                // retried against a context it no longer describes
+                // an item that has since gone, or is no longer this tool's to move, gives nothing
+                // to walk to. The entry is spent either way rather than retried against a context
+                // it no longer describes
                 let step = undoing.apply(kernel, &mine, &left);
                 put_back.extend(step.did);
                 left_alone.extend(step.left);
@@ -844,9 +832,9 @@ impl Changes {
                     continue;
                 };
                 // note: the copy is kept current as the walk goes, because the next step asks
-                // `protected` against it. Read once, a pin this step put back would be the
-                // person's to the step after it, and walking back a `pin` and the `restore` that
-                // followed would stop halfway and call the model's own pin a promise
+                // `protected` against it. Read once, a pin this step put back would be the person's
+                // to the next step, and walking back a `pin` and the `restore` that followed would
+                // stop halfway and call the model's own pin a promise
                 if let Undoing::States(states) = &inverse {
                     for (id, ..) in states {
                         touched.push(*id);
@@ -855,8 +843,8 @@ impl Changes {
                         }
                     }
                 }
-                // and what this step left them as, for the step that walks it back in turn and for
-                // every other entry naming the same items
+                // What this step left items as, for the step that walks it back and for every other
+                // entry naming the same items
                 let inverse = Entry::now(kernel, inverse);
                 let ids: Vec<ContextId> = inverse.left.iter().map(|(id, _)| *id).collect();
                 journal.refresh(kernel, &ids);
@@ -882,10 +870,10 @@ impl Changes {
         };
 
         let mut out = match put_back.is_empty() {
-            // note: which of the two it was, because the sentence is the one the model reads and
-            // the two are opposites. An entry spent on a refusal is an entry that was there; a
-            // model told "there was nothing of yours to walk back" reads that as never having made
-            // the change, and the only other evidence is the counter moving under it
+            // note: which of the two it was, because the model reads this sentence and the two are
+            // opposites. An entry spent on a refusal existed; telling the model there was nothing
+            // of yours to walk back reads as never having made the change. The only other evidence
+            // is the counter moving under it
             true if spent > 0 => format!(
                 "none of your {} change(s) could be walked {direction}, and the {} of them there \
                  were spent on it. `undo` and `redo` only move the changes this tool made; the \
@@ -898,9 +886,9 @@ impl Changes {
                      the changes this tool made; the person you work with has an undo of their \
                      own, and it is not this one.\n"
                 );
-                // note: a snapshot written before the journal went into it carries none, so after
-                // a resume from one the model's own earlier changes are not in it either - and
-                // without this the answer reads as though they had been the person's
+                // note: a snapshot written before the journal went into it carries none, so after a
+                // resume from one the model's earlier changes are not in it either. Without this,
+                // the answer reads as though they had been the person's
                 if super::reads::resumed(kernel) && !carried {
                     said.push_str(
                         "This session was resumed from a snapshot, and the changes this tool made \
@@ -924,9 +912,9 @@ impl Changes {
         out.push_str(&format!(
             "{done} change(s) of yours can still be undone, {undone} redone.\n"
         ));
-        // walking back an elision is content returning; walking one forward puts the marker back,
-        // and a marker that grew the request is not what somebody undoing something is asking
-        // about. Either way it is a state going back to what it was, which is the content
+        // walking back an elision returns content; walking forward puts the marker back. A marker
+        // that grew the request is not what an undo asks about. Either way it is a state going
+        // back to what it was, which is the content
         out.push_str(&cost(kernel, before, Grew::Content));
 
         ToolOutput::new(out)
@@ -934,8 +922,8 @@ impl Changes {
 
     /// Records a change, and makes whatever had been walked back unreachable.
     ///
-    /// note: the same rule the kernel's own redo stack follows, and for the same reason: a redo
-    /// that reached across work done since would be overwriting it rather than restoring anything.
+    /// note: the same rule as the kernel's redo stack, for the same reason: a redo that reached
+    /// across work done since would overwrite it rather than restore anything.
     fn record(&self, kernel: &Kernel, undoing: Undoing) {
         let entry = Entry::now(kernel, undoing);
         let mut journal = self.journal.lock();
@@ -943,12 +931,12 @@ impl Changes {
         journal.done.push(entry);
     }
 
-    /// Remembers whether this tool is the one holding an item pinned, and with what note.
+    /// Remembers whether this tool holds an item pinned, and with what note.
     ///
     /// note: in the item's metadata as well as in `Mine`, because `Mine` is the process's and the
-    /// metadata is the snapshot's. A resumed session had every pin the person's - which fails
-    /// safe, and refused the model a pin it had made itself. `annotate` takes no checkpoint, so a
-    /// pin is still one undo on the person's stack.
+    /// metadata is the snapshot's. Without it, a resumed session had every pin as the person's,
+    /// which fails safe and refused the model a pin it had made itself. `annotate` takes no
+    /// checkpoint, so a pin is still one undo on the person's stack.
     fn note_pin(&self, kernel: &Kernel, id: ContextId, state: ContextState, note: Option<String>) {
         if state == ContextState::Pinned
             && let Some(item) = kernel.item(id)
@@ -997,19 +985,18 @@ fn state_of(word: &str) -> Option<ContextState> {
 /// Every item of the turn this call is speaking in, from the assistant turn that asked to the
 /// message that started it.
 ///
-/// note: `own_turn` answers for one item, and a turn is more than the one holding the call. The
-/// user message is a context item of its own, and the question the model is in the middle of
-/// asking sits in it - so a reading that skipped the assistant turn and nothing else told a model
-/// searching for a name, an identifier or an error string it had just been handed that the
-/// context already held it, when the only place it was is the question.
+/// note: `own_turn` answers for one item, but a turn is more than the item holding the call. The
+/// user message is its own context item, and the question the model is asking sits in it. Skipping
+/// the assistant turn and nothing else told a model searching for a name, identifier or error
+/// string it was just handed that the context already held it, when the only place it was is the
+/// question.
 ///
-/// note: back to the boundary rather than one item, because the assistant turns of a turn are not
-/// adjacent to each other: each one's result lands between them, and a call in the fourth of them
-/// has two results and three turns in front of it. What a turn is made of is the message that
-/// started it, the assistant turns in it and their results; the first item that is none of those
-/// ends the walk. A session carried on past the request cap is a turn with no new message in it, so
-/// a walk from one of its later calls reaches the message the person wrote rather than stopping
-/// at the turn boundary the loop can see.
+/// note: the walk goes to the boundary, not one item, because a turn's assistant turns are not
+/// adjacent: each result lands between them. A call in the fourth assistant turn has two results
+/// and three turns in front of it. A turn is the message that started it, its assistant turns and
+/// their results; the first item that is none of those ends the walk. A session past the request
+/// cap is a turn with no new message, so a walk from a later call reaches the message the person
+/// wrote instead of stopping at the turn boundary the loop can see.
 pub(super) fn asking_turn(kernel: &Kernel, call: &ToolCallId) -> BTreeSet<ContextId> {
     let Some(asked) = own_turn(kernel, call) else {
         return BTreeSet::new();
@@ -1052,14 +1039,13 @@ pub(super) fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> 
     })
 }
 
-/// Why a change might leave the next request bigger than it found it, which is what the figures
-/// are worth saying beside.
+/// Why a change might make the next request bigger than before.
 ///
-/// note: named, and passed by the caller that made the change, because one explanation cannot
-/// serve all four of them: a single one would tell a model that wrote a *note* that its extra
-/// tokens were the marker of an elision it had not performed. A wrong account of a number is worse
-/// than the bare number, and the sentence is there at all because models read the two figures and
-/// do not work out which way they went.
+/// note: the caller that made the change names and passes this value, because one explanation
+/// cannot serve all four variants. A single explanation would tell a model that wrote a *note* that
+/// its extra tokens were the marker of an elision it had not performed. A wrong account of a number
+/// is worse than the bare number. The sentence is there at all because models read the two figures
+/// and do not work out which way they went.
 #[derive(Debug, Clone, Copy)]
 enum Grew {
     /// An elision replaced content with a marker carrying the reason given for it.
@@ -1089,20 +1075,19 @@ impl Grew {
             ),
             // a note is content somebody asked to carry, so its cost is the answer to the request
             // rather than a surprise in it. `note` says on its own line that it goes into every
-            // request from here on, which is the part worth knowing
+            // request from here on
             Self::Asked => String::new(),
         }
     }
 }
 
-/// What the next request costs now, beside what it cost before the change.
+/// What the next request costs now, compared with what it cost before the change.
 ///
-/// note: it says which way the figures went in *both* directions. A drop is what the caller asked
-/// for and still needs explaining: a model compares the new figure against one it remembers from a
-/// `budget` call several turns earlier rather than against the `from ~` in the sentence it has
-/// just been handed, reads a drop as growth, concludes that excluding *adds* cost, and walks its
-/// work back. Hence both halves of what follows: the direction in words, and where the number it
-/// is measured against comes from.
+/// note: it says which way the figure went, up or down. A drop still needs explaining, even though
+/// the caller asked for it. A model compares the new figure with one it remembers from a `budget`
+/// call several turns earlier, not with the `from ~` in the sentence it has just been handed. It
+/// reads a drop as growth, concludes that excluding *adds* cost, and walks its work back. So the
+/// sentence states the direction in words and says where the compared number comes from.
 fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
     let budget = kernel.budget();
     let now = budget.used();
@@ -1122,13 +1107,13 @@ fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
                  landed since is in the figure too.",
                 thousands(before - now)
             ),
-            // note: said rather than left as two figures that happen to match, because a model
-            // reads growth even into two numbers that are not different - the same misreading as
-            // the one above. It says nothing about *why* it did not move, because
-            // that differs by action and this arm serves all of them - a pin changes what
+            // note: this says the figures are the same instead of leaving two matching numbers,
+            // because a model reads growth even into two numbers that are not different. This is
+            // the same misreading as above. It does not say why the figure did not move, because
+            // the reason differs by action and this arm serves all actions: a pin changes what
             // compaction may take rather than what the request carries, and an exclusion of
-            // something already held back has nothing left to take out. What it does rule out
-            // is the other reading of an unmoved figure, which is a change that never took
+            // something already held back has nothing left to take out. It rules out the other
+            // reading of an unmoved figure: a change that never took
             Ordering::Equal => " That is the same figure as before, to the token, rather than a \
                                 change that did not take."
                 .to_owned(),

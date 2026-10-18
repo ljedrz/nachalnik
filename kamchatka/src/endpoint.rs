@@ -1,14 +1,14 @@
 //! Where this program's requests go, which key pays for them, and what it says about itself.
 //!
-//! note: the providers themselves are [`nachalnik_providers`], a crate of their own, and they
-//! read no environment at all - where to send a request and what to measure it against are the
-//! caller's to decide. This is that caller: four variables, documented in `--help` and in the
-//! README, and one place that turns them into a provider. A dialect each, because the address
-//! they default to is the one thing the two do not share.
+//! note: the providers are [`nachalnik_providers`], a crate of their own, and they read no
+//! environment at all: where to send a request and what to measure it against are the caller's to
+//! decide. This module is that caller. It reads four variables, documented in `--help` and in the
+//! README, and turns them into a provider. A dialect each, because the address they default to is
+//! the one thing the two do not share.
 //!
-//! note: named for what it settles rather than for what it hands back. A module called
-//! `provider` next to [`nachalnik_providers`] would read as the place one is implemented rather
-//! than the place one is addressed.
+//! note: named for what it settles rather than what it hands back. A module called `provider` next
+//! to [`nachalnik_providers`] would read as the place one is implemented rather than the place one
+//! is addressed.
 
 use std::{env, sync::Arc};
 
@@ -18,50 +18,50 @@ use nachalnik_providers::{
     anthropic::DEFAULT_BASE_URL as ANTHROPIC_BASE_URL, gemini::DEFAULT_BASE_URL, is_openrouter,
 };
 
-/// The project these requests are made on behalf of, where the endpoint keeps a ranking of apps.
+/// The project these requests are made on behalf of; the endpoint keeps a ranking of apps.
 ///
-/// note: this crate's own directory rather than the repository root, because the identifier
-/// should name the thing making the requests. `nachalnik` is the runtime and makes none - it owns
-/// no client and no provider - and a page called `kamchatka` that resolved to the library would
-/// leave a visitor to find the program inside it. It also keeps the identifier free for anything
-/// else in this workspace that ever calls out.
+/// note: this crate's own directory rather than the repository root, because the identifier should
+/// name the thing making the requests. `nachalnik` is the runtime and makes none: it owns no client
+/// and no provider. A page called `kamchatka` that resolved to the library would leave a visitor to
+/// find the program inside it. This also keeps the identifier free for anything else in this
+/// workspace that ever calls out.
 ///
-/// note: `HEAD` rather than a branch name. This is a primary key: OpenRouter builds the app's
-/// page against it, so changing it later does not rename the app, it starts a new one and orphans
-/// what the old one had. `tree/master/...` would be that change, waiting for the day the default
-/// branch is renamed.
+/// note: `HEAD` rather than a branch name. This is a primary key: OpenRouter builds the app's page
+/// against it, so changing it later does not rename the app, it starts a new one and orphans what
+/// the old one had. `tree/master/...` would be that change, waiting for the day the default branch
+/// is renamed.
 ///
-/// note: what goes out is the name of the program and what kind of program it is - not the key,
-/// not the model, not a word of what was asked - and it goes only to OpenRouter.
+/// note: what goes out is the name of the program and what kind of program it is, not the key, not
+/// the model, and not a word of what was asked. It goes only to OpenRouter.
 /// `KAMCHATKA_NO_ATTRIBUTION` turns it off, because a program that names its user's tooling to a
 /// third party should say so and let them stop it.
 const APP_URL: &str = "https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka";
 const APP_TITLE: &str = "kamchatka";
 
-/// Which of OpenRouter's categories the app page is filed under, which is what puts it in the
-/// marketplace rather than only in the rankings.
+/// Which of OpenRouter's categories the app page is filed under; this puts it in the marketplace
+/// rather than only in the rankings.
 ///
 /// note: two, because two per request is the documented limit, and these are the two that are
-/// simply true - `cli-agent` is "terminal-based coding assistants" in their own words, and
+/// simply true: `cli-agent` is "terminal-based coding assistants" in their own words, and
 /// `programming-app` is the wider one it also is. The rest of the coding group is somebody else:
 /// this is not an editor plugin, it does not run in anybody's cloud, and it builds no apps.
 ///
 /// note: nothing checks the spelling, here or in the provider, because OpenRouter drops a category
-/// it does not recognise without an error. What catches a typo is opening the page the attribution
+/// it does not recognise without an error. A typo is caught by opening the page the attribution
 /// built and seeing what it says.
 const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
 
 /// What this program says about itself to an endpoint that keeps a ranking of apps, or nothing
 /// where `KAMCHATKA_NO_ATTRIBUTION` is set.
 ///
-/// note: one value for every client that sends it - the conversation's provider and the advisor -
-/// and one switch for all of them. Somebody who turned attribution off for their conversation
-/// has not agreed to be named by a second client on the same account, and two switches would be
-/// a way to be half off without noticing.
+/// note: one value for every client that sends it, the conversation's provider and the advisor, and
+/// one switch for all of them. Somebody who turned attribution off for their conversation has not
+/// agreed to be named by a second client on the same account, and two switches would be a way to be
+/// half off without noticing.
 ///
-/// note: the [`Attribution::default`] names nothing and sends nothing, so a client handed it is
-/// one that was never attributed; where it goes, `nachalnik_providers` decides by the same
-/// address test for both.
+/// note: [`Attribution::default`] names nothing and sends nothing, so a client handed it is one
+/// that was never attributed. Where it goes, `nachalnik_providers` decides by the same address test
+/// for both.
 pub fn attribution() -> Attribution {
     match env::var_os("KAMCHATKA_NO_ATTRIBUTION") {
         Some(_) => Attribution::default(),
@@ -72,8 +72,8 @@ pub fn attribution() -> Attribution {
 /// The context limit somebody set by hand, if they set one.
 ///
 /// note: a value that is not a number, or not a positive one, is [`None`] here rather than a
-/// refusal: `checked_limit` is what a program reads at startup, and this is here for a caller
-/// that wants the figure and has no startup to refuse one in.
+/// refusal. `checked_limit` is what a program reads at startup; this is for a caller that wants the
+/// figure and has no startup to refuse one in.
 pub fn configured_limit() -> Option<usize> {
     checked_limit().ok().flatten()
 }
@@ -198,10 +198,10 @@ fn is_openai(url: &str) -> bool {
     host(url) == host(OPENAI_BASE_URL)
 }
 
-/// Whether `url` is one of the services known to refuse every request that comes without a key.
+/// Whether `url` is one of the services that refuse requests without a key.
 ///
-/// note: on the host alone, as [`is_openrouter`] reads one, so Google's `/v1beta/openai` counts
-/// as well as its native `/v1beta`, whatever the port and whoever is named before an `@`.
+/// note: the check reads the host alone, as [`is_openrouter`] does, so Google's `/v1beta/openai`
+/// counts as well as its native `/v1beta`, whatever the port and whoever is named before an `@`.
 fn checks_a_key(url: &str) -> bool {
     is_openrouter(url)
         || is_openai(url)
@@ -229,18 +229,17 @@ fn host(url: &str) -> String {
         .to_ascii_lowercase()
 }
 
-/// Every variable this program reads a key from, none of which a command it runs for the model
-/// inherits.
+/// Every variable this program reads a key from. A command it runs for the model inherits none of
+/// them.
 ///
-/// note: all of them rather than the one that won. A command the model writes is the model's
-/// hands, and what `printenv` prints goes into the context, the request and the record - and with
-/// the network granted, anywhere. The confinement holds a command to its directory and says
-/// nothing about what the command was handed when it started, so a key in its environment is the
-/// one secret it could always reach.
+/// note: all of them, not just the one that won. A command the model writes acts for the model, so
+/// what `printenv` prints goes into the context, the request and the record, and with the network
+/// granted, anywhere. Confinement holds a command to its directory and says nothing about what it
+/// was handed when it started, so a key in its environment is the one secret it could always reach.
 ///
 /// note: the shell only. An MCP server is a program the person chose, running unconfined with
-/// everything they can read, and a server that calls an API of its own may read one of these names
-/// for its own key; taking them from it would be a nuisance and not a boundary.
+/// everything they can read. A server that calls an API of its own may read one of these names for
+/// its own key; taking them from it would be a nuisance, not a boundary.
 pub const KEYS: [&str; 5] = [
     "KAMCHATKA_API_KEY",
     "OPENROUTER_API_KEY",
@@ -249,12 +248,12 @@ pub const KEYS: [&str; 5] = [
     "KAMCHATKA_SYSTEM1_API_KEY",
 ];
 
-/// Every variable this program reads an address from, which a command it runs for the model does
-/// not inherit where the address carries a `user:password@`.
+/// Every variable this program reads an address from. A command it runs for the model does not
+/// inherit one when the address carries a `user:password@`.
 ///
 /// note: that part of an address is a key written into it, which [`shown`] already keeps off every
-/// screen, and it would reach the context through `printenv` as a key in [`KEYS`] would. An
-/// address without one is no secret, and a command is handed it as before.
+/// screen, and it would reach the context through `printenv` as a key in [`KEYS`] would. An address
+/// without one is no secret, and a command is handed it as before.
 pub const ADDRESSES: [&str; 2] = ["KAMCHATKA_BASE_URL", "KAMCHATKA_SYSTEM1_BASE_URL"];
 
 /// Whether `url` carries a `user:password@` before its host.
@@ -265,24 +264,24 @@ pub fn has_credentials(url: &str) -> bool {
 /// Whether requests can be sent to `url` at all: an `http://` or `https://` scheme, a host, and
 /// nothing after the path.
 ///
-/// note: read by hand rather than parsed, like `Endpoint::host`, because what it catches is the
-/// ways a person gets an address wrong - a word that is not one, and a scheme left off, which
-/// makes `localhost:11434` a URL whose scheme is `localhost`. Either left to the provider fails on
-/// the next request, as a transport error, after the switch has already been announced. Anything
-/// subtler still reaches the provider, and its error says why.
+/// note: read by hand rather than parsed, like `Endpoint::host`, because it catches the ways a
+/// person gets an address wrong: a word that is not one, and a scheme left off, which makes
+/// `localhost:11434` a URL whose scheme is `localhost`. Left to the provider, either fails on the
+/// next request as a transport error, after the switch has already been announced. Anything subtler
+/// still reaches the provider, and its error says why.
 ///
-/// note: and a query string or a fragment, which no request can be built on. Every path is
-/// appended to the base as it stands, so `…/v1?token=…` was asked for `…/v1?token=…/chat/
-/// completions` - a request that never worked, and whose failure wrote the token into the record,
-/// since the transport's error names the URL it could not reach.
+/// note: and a query string or a fragment, which no request can be built on. Every path is appended
+/// to the base as it stands, so a base of `…/v1?token=…` produced a request for
+/// `…/v1?token=…/chat/completions`, which never worked, and whose failure wrote the token into the
+/// record, because the transport's error names the URL it could not reach.
 pub fn is_an_address(url: &str) -> bool {
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;
     };
 
-    // the host, which is neither a `user:password@` before it nor a `:port` after it: `http://:8080`
-    // and `http://user:pw@/v1` name none, and the second was drawn on the status line whole, since
-    // a host that is not there is shown as the address it was not found in
+    // the host, which is neither a `user:password@` before it nor a `:port` after it:
+    // `http://:8080` and `http://user:pw@/v1` name no host. The second was drawn whole on the
+    // status line, since a host that is not there is shown as the address it was not found in
     let authority = rest.split('/').next().unwrap_or_default();
     let host = authority
         .rsplit_once('@')
@@ -317,11 +316,11 @@ pub fn shown(url: &str) -> String {
     }
 }
 
-/// The base URL `variable` held, if it is one; refused at startup rather than on the first
+/// The base URL `variable` held, if it is one. It is refused at startup rather than on the first
 /// request.
 ///
-/// note: what the variable held is said back with the variable's name, because the failure it
-/// saves is a `builder error` on the first turn that names neither.
+/// note: the error names the variable and says what it held, because the failure it saves is a
+/// `builder error` on the first turn that names neither.
 fn addressed(variable: &str, url: String) -> Result<String, BoxError> {
     match is_an_address(&url) {
         true => Ok(url),
@@ -340,18 +339,17 @@ pub fn base_url() -> String {
 
 /// What an address variable holds, where it is set.
 ///
-/// note: a value that is not text is read with what is not text in it replaced, rather than as no
-/// value at all. Read as unset - which is what `env::var` answering `Err` for both made of it - a
-/// base URL a person had set was the default one, and the request went to a third party with the
-/// key and the conversation meant for the address written. Read this way it is a value
-/// [`is_an_address`] refuses, by the variable's name, before anything is sent.
+/// note: `env::var` treats non-text as unset; this reads it with the non-text replaced. Treated as
+/// unset, a base URL someone set becomes the default and the request goes to a third party with the
+/// key and conversation. Read this way, it is a value [`is_an_address`] refuses, naming the
+/// variable, before anything is sent.
 fn address_in(variable: &str) -> Option<String> {
     env::var_os(variable).map(|value| value.to_string_lossy().into_owned())
 }
 
-/// The wire format a session speaks, which is what decides the address it goes to by default.
+/// The wire format a session speaks, which decides the default address.
 ///
-/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+/// note: `#[non_exhaustive]`, as every public enum in this workspace carries it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Wire {
@@ -366,17 +364,16 @@ pub enum Wire {
     Responses,
 }
 
-/// Where this session's own requests go, in whichever dialect it was asked to speak.
+/// Where this session's requests go, in the dialect it was asked to speak.
 ///
-/// note: the dialect is half the answer and cannot be read out of the environment, which is why
-/// this takes the flag rather than working it out. `KAMCHATKA_BASE_URL` is read by both, and the
-/// defaults behind it are different services - so an `--api gemini` session that never set the
-/// variable would otherwise report OpenRouter's address and Google's key.
+/// note: the dialect cannot be read from the environment, so this takes the flag.
+/// `KAMCHATKA_BASE_URL` is read by both, but the defaults are different services; without the flag,
+/// an `--api gemini` session that never set the variable would report OpenRouter's address and
+/// Google's key.
 ///
-/// note: the advisor is what asks, and the question is whose key [`api_key`] just handed it. A key
-/// is an OpenRouter key because it is being sent to OpenRouter, not because of the variable
-/// it was read from: all three names are ordinary things to export, and `KAMCHATKA_API_KEY` is
-/// whatever the endpoint this points at issued.
+/// note: the advisor asks, and the question is whose key [`api_key`] handed it. A key is an
+/// OpenRouter key because it is sent to OpenRouter, not because of the variable it was read from.
+/// `KAMCHATKA_API_KEY` is whatever the endpoint issued.
 pub fn session_endpoint(wire: Wire) -> String {
     match wire {
         Wire::OpenAi | Wire::Responses => base_url(),
@@ -387,17 +384,16 @@ pub fn session_endpoint(wire: Wire) -> String {
 
 /// Builds a provider from the environment, asking the endpoint what the model's limit is.
 ///
-/// note: the model is optional, and having none is how a session started without `-m` begins.
-/// Everything that does not depend on which model it is - the address, the key, the attribution,
-/// the listing `/models` reads - is settled here all the same, so that picking one afterwards is a
-/// command rather than a restart. The probe is the one thing skipped: there is no model for it to
-/// ask a limit about, and `set_model` runs it the moment there is.
+/// note: the model is optional; none is how a session without `-m` begins. Everything
+/// model-independent - the address, key, attribution, the listing `/models` reads - is settled
+/// here, so picking a model later is a command rather than a restart. The probe is skipped: there
+/// is no model to ask a limit about, and `set_model` runs it when there is one.
 pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
     connect_with(model, false).await
 }
 
-/// [`connect`], sending each assistant turn's thinking back with it where `send_reasoning` says
-/// so; see [`OpenAiCompatible::send_reasoning`].
+/// [`connect`], sending each assistant turn's thinking back when `send_reasoning` says so; see
+/// [`OpenAiCompatible::send_reasoning`].
 pub async fn connect_with(
     model: Option<&str>,
     send_reasoning: bool,
@@ -476,32 +472,32 @@ pub mod advise {
 
     /// Which key pays for the advice.
     ///
-    /// note: named for *whose key it is*, because that is what carries a rule about where it may
-    /// go. A key held for this goes wherever `KAMCHATKA_SYSTEM1_BASE_URL` points it, since the
-    /// person who set both decided that; a borrowed one is an OpenRouter key and goes to OpenRouter
+    /// note: the variants are named for whose key it is, because that carries a rule about where it
+    /// may go. A dedicated key goes wherever `KAMCHATKA_SYSTEM1_BASE_URL` points it, because the
+    /// person who set both decided that. A borrowed key is an OpenRouter key and goes to OpenRouter
     /// and nowhere else.
     ///
-    /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+    /// note: `#[non_exhaustive]`, which every public enum in this workspace carries.
     #[non_exhaustive]
     pub enum Account {
         /// `KAMCHATKA_SYSTEM1_API_KEY`, held for the advisor itself.
         Dedicated(String),
         /// An OpenRouter key this session already has: its own, where the conversation goes to
-        /// OpenRouter too, or `OPENROUTER_API_KEY`. A session that was not given a second key is
-        /// not thereby a session that cannot have an advisor.
+        /// OpenRouter too, or `OPENROUTER_API_KEY`. A session that was not given a second key can
+        /// still have an advisor.
         Borrowed(String),
-        /// None at all, for an advisor pointed somewhere other than OpenRouter and given no key
-        /// of its own: an engine on this machine checks none, and no OpenRouter key is borrowed
-        /// for anywhere else.
+        /// None at all, for an advisor pointed somewhere other than OpenRouter and given no key of
+        /// its own. An engine on this machine checks none, and no OpenRouter key is borrowed for
+        /// anywhere else.
         Keyless,
     }
 
     /// Which account, and never the key.
     ///
     /// note: written out rather than derived, because the field is a credential. A derived `Debug`
-    /// prints every field, so the first panic message, `assert_eq!` or log line that ever formatted
-    /// one of these would put somebody's key where they did not put it - and a type whose whole
-    /// purpose is deciding where a key may go should not be the thing that spills it.
+    /// prints every field, so the first panic message, `assert_eq!` or log line that formatted one
+    /// would put somebody's key where they did not put it. This type decides where a key may go, so
+    /// it must not be the thing that spills it.
     impl fmt::Debug for Account {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let held = match self {
@@ -528,20 +524,20 @@ pub mod advise {
     /// Where the advisor's questions go: OpenRouter, unless `KAMCHATKA_SYSTEM1_BASE_URL` names
     /// something else.
     ///
-    /// note: what something else is for is an engine of one's own, or a service the client knows
-    /// the address of - [`system1`]'s documentation lists both. A provider that sells a System One
-    /// model and is not on OpenRouter's list is reached through OpenRouter's bring-your-own-key,
-    /// so it needs nothing here.
+    /// note: something else is an engine of one's own, or a service the client knows the address
+    /// of; [`system1`]'s documentation lists both. A provider that sells a System One model and is
+    /// not on OpenRouter's list is reached through OpenRouter's bring-your-own-key, so it needs
+    /// nothing here.
     pub fn base_url() -> String {
         address_in("KAMCHATKA_SYSTEM1_BASE_URL")
             .unwrap_or_else(|| system1::DEFAULT_BASE_URL.to_owned())
     }
 
-    /// Which model answers: `KAMCHATKA_SYSTEM1_MODEL`, and nothing if it is not set.
+    /// The model is `KAMCHATKA_SYSTEM1_MODEL`, and nothing if it is not set.
     ///
-    /// note: no default, because a default would be one vendor's model chosen for everybody who
-    /// asked for advice. A session asked for with `--rate-shell-commands` and no model is refused
-    /// at startup, with the listing to pick one from.
+    /// note: no default, because a default would pick one vendor's model for everyone. A session
+    /// with `--rate-shell-commands` and no model is refused at startup, with the listing to pick
+    /// one from.
     pub fn model() -> Result<String, BoxError> {
         env::var("KAMCHATKA_SYSTEM1_MODEL").map_err(|_| {
             format!(
@@ -552,12 +548,12 @@ pub mod advise {
         })
     }
 
-    /// Whose key is available to pay for it, given where this session's own requests go.
+    /// Which key pays, given where this session's requests go.
     ///
-    /// note: `session_endpoint` is not where the advisor's questions will go - it is where the
-    /// *conversation* goes, which is the only thing that says whose key [`api_key`] just handed
-    /// over. It is a parameter rather than something read here so that a caller cannot get it by
-    /// accident: the answer decides whether somebody's credential is sent to a third party.
+    /// note: `session_endpoint` is where the conversation goes, not where the advisor's questions
+    /// go; that decides whose key [`api_key`] is handed over. It is a parameter, not read here, so
+    /// a caller cannot get it by accident: the answer decides whether a credential is sent to a
+    /// third party.
     pub fn account(session_endpoint: &str) -> Result<Account, BoxError> {
         chosen(
             env::var("KAMCHATKA_SYSTEM1_API_KEY").ok(),
@@ -570,14 +566,15 @@ pub mod advise {
 
     /// Which key may pay, and whether any may.
     ///
-    /// note: split out from [`account`] so the rule can be checked without the environment - what
-    /// is left above reads the environment and decides nothing. The rule is the one thing here
-    /// that can leak a credential, so it is the one thing that wants a test with no key in it.
+    /// note: split out from [`account`] so the rule can be checked without the environment; the
+    /// rest reads the environment and decides nothing. The rule can leak a credential, so it wants
+    /// a test with no key.
     ///
-    /// note: a borrowed key is borrowed only where *both* ends are OpenRouter's. `own` is whatever
-    /// the conversation's endpoint issued, so it is OpenRouter's only where the conversation goes
-    /// there; and an advisor pointed at a local engine would otherwise be handed an OpenRouter
-    /// credential it has no business with. `OPENROUTER_API_KEY` is OpenRouter's by its name.
+    /// note: a borrowed key is borrowed only where both ends are OpenRouter's. `own` is
+    /// whatever the conversation's endpoint issued, so it is OpenRouter's only where the
+    /// conversation goes there; an advisor at a local engine would otherwise be handed an
+    /// OpenRouter credential it has no business with. `OPENROUTER_API_KEY` is OpenRouter's by its
+    /// name.
     fn chosen(
         dedicated: Option<String>,
         own: Option<String>,
@@ -594,10 +591,9 @@ pub mod advise {
             return Ok(Account::Dedicated(key));
         }
 
-        // note: Workers AI is the one address other than OpenRouter's that is known to check a
-        // key - it is a Cloudflare account - and known not to take a borrowed one, so going with
-        // none there is a 401 on the first command rather than a session that never had an
-        // advisor. Said now, while nothing is running
+        // note: Workers AI is the one address besides OpenRouter's known to check a key; it is a
+        // Cloudflare account and known not to take a borrowed key, so no key there means a 401 on
+        // the first command, not a session without an advisor. Checked here, before anything runs
         if system1::is_workers_ai(advisor_endpoint) {
             return Err(format!(
                 "--rate-shell-commands needs a Cloudflare API token for {advisor_endpoint}: set \
@@ -606,8 +602,8 @@ pub mod advise {
             .into());
         }
 
-        // note: no key rather than a refusal, for the reason a session needs none - see
-        // `key_for`. An engine that does check one answers the first question with a 401
+        // note: no key rather than a refusal, for the reason a session needs none - see `key_for`.
+        // An engine that checks one answers the first question with a 401
         if !is_openrouter(advisor_endpoint) {
             return Ok(Account::Keyless);
         }
@@ -627,16 +623,16 @@ pub mod advise {
 
     /// Builds the advisor from the environment, checking that the model it names is served.
     ///
-    /// note: the listing is asked for here rather than on the first refusal, for the reason
-    /// `Gemini::probe` is called at startup: a model name that is not served comes back a 400,
-    /// and the moment to find that out is before a session is running rather than the first time
-    /// a permission question depends on it.
+    /// note: the listing is asked for here, not on the first refusal, for the reason
+    /// `Gemini::probe` is called at startup: an unserved model name returns a 400, and the moment
+    /// to find that out is before a session runs, not when a permission question first depends on
+    /// it.
     pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
         let model = model()?;
         let account = account(session_endpoint)?;
-        // note: checked as the session's address is, and not left to the probe below: an address
-        // no request can be built on has no listing either, and an address with no listing is
-        // one the probe says nothing about
+        // note: checked as the session's address is, not left to the probe below: an address no
+        // request can be built on has no listing, and the probe says nothing about an address with
+        // no listing
         let url = addressed("KAMCHATKA_SYSTEM1_BASE_URL", base_url())?;
         let engine =
             Arc::new(Client::new(model, url, account.api_key()).attributed_to(attribution()));
@@ -649,13 +645,11 @@ pub mod advise {
     mod tests {
         use super::*;
 
-        /// The rule that decides whether somebody's credential leaves for a service that did not
-        /// issue it.
+        /// Whether a credential is sent to a service that did not issue it.
         ///
-        /// note: a key is an OpenRouter key because it is being *sent* to OpenRouter, not because
-        /// of the variable it was read from - `KAMCHATKA_API_KEY` is whatever the endpoint it
-        /// points at issued, and every address below is one this program documents somebody
-        /// pointing it at.
+        /// note: a key is an OpenRouter key because it is sent to OpenRouter, not because of the
+        /// variable it was read from. `KAMCHATKA_API_KEY` is whatever the endpoint it points at
+        /// issued. Every address below is one this program documents somebody pointing it at.
         #[test]
         fn a_key_is_only_borrowed_where_it_is_openrouters() {
             let openrouter = "https://openrouter.ai/api/v1";
@@ -685,8 +679,8 @@ pub mod advise {
             assert!(matches!(&borrowed, Account::Borrowed(_)));
             assert_eq!(borrowed.api_key(), "sk-the-session-key");
 
-            // and where it is not - each of these holds a key somebody else issued, the last one
-            // because a host is not a suffix match - `OPENROUTER_API_KEY` pays, or nothing does
+            // and where it is not: each holds a key somebody else issued, the last one because a
+            // host is not a suffix match. `OPENROUTER_API_KEY` pays, or nothing does
             for elsewhere in [
                 "http://localhost:11434/v1",
                 "https://generativelanguage.googleapis.com/v1beta",
@@ -706,8 +700,8 @@ pub mod advise {
                 assert!(said.contains(elsewhere), "{said}");
             }
 
-            // and an advisor pointed somewhere other than OpenRouter is handed no OpenRouter key
-            // at all, the session's or the named one: it goes with none
+            // an advisor pointed somewhere other than OpenRouter gets no OpenRouter key: not the
+            // session's, not the named one
             for advisor in [
                 "http://127.0.0.1:8000/v1",
                 "https://openrouter.ai.example.com/api/v1",
@@ -722,8 +716,8 @@ pub mod advise {
                 );
             }
 
-            // a session with no key at all is refused where the advice goes to OpenRouter, which
-            // checks one, whatever the session is pointed at
+            // a session with no key is refused where the advice goes to OpenRouter, which checks
+            // one, whatever the session is pointed at
             assert!(chosen(None, None, None, openrouter, openrouter).is_err());
             assert!(chosen(None, None, None, "http://localhost:11434/v1", openrouter).is_err());
 
@@ -766,12 +760,11 @@ pub mod advise {
             assert!(chosen(blank(), None, None, openrouter, workers).is_err());
         }
 
-        /// Which account is which, said out loud, and the key never is.
+        /// Which account is which, said out loud; the key never is.
         ///
-        /// note: an account is decided in an `assert_eq!`, a panic message or a log line sooner
-        /// or later, and the field is a credential - so a `Debug` that named it would put somebody's
-        /// key wherever such a line ends up. What a reader needs is which of the two accounts was
-        /// chosen, and which is the answer either word carries.
+        /// note: an account is decided in an `assert_eq!`, a panic message or a log line, and the
+        /// field is a credential, so a `Debug` that named it would put somebody's key wherever such
+        /// a line ends up. A reader needs to know which of the two accounts was chosen.
         #[test]
         fn an_account_says_which_it_is_and_never_says_its_key() {
             let held = [
@@ -806,14 +799,13 @@ pub mod gemini {
         address_in("KAMCHATKA_BASE_URL").unwrap_or_else(|| DEFAULT_BASE_URL.to_owned())
     }
 
-    /// Builds a provider from the environment, asking the endpoint what the model's limit is.
+    /// Builds a provider from the environment, asking the endpoint for the model's limit.
     ///
-    /// note: no attribution. It is OpenRouter that keeps a ranking of the apps calling it, and
-    /// there is nothing to tell Google that it has asked for.
+    /// note: no attribution. OpenRouter keeps a ranking of the apps calling it; there is nothing to
+    /// tell Google that it has asked for.
     ///
-    /// note: the model is optional for the reason it is above, and here the probe is not merely
-    /// pointless without one: it asks for `{base}/models/{model}` by name, so with nothing to put
-    /// there it would be asking the endpoint about a model called nothing.
+    /// note: the model is optional for the reason above. Without one, the probe asks for
+    /// `{base}/models/{model}` by name, so it would ask the endpoint about a model called nothing.
     pub async fn connect(model: Option<&str>) -> Result<Arc<Gemini>, BoxError> {
         let provider = Arc::new(
             Gemini::new(
@@ -838,8 +830,8 @@ pub mod anthropic {
 
     /// The endpoint to talk to; Anthropic's own unless told otherwise.
     ///
-    /// note: OpenRouter answers this dialect too, at `https://openrouter.ai/api/v1`, and that is
-    /// how a model there is asked in its own dialect rather than through the OpenAI one.
+    /// note: OpenRouter also serves this dialect at `https://openrouter.ai/api/v1`; a model there
+    /// is asked in its own dialect, not through the OpenAI one.
     pub fn base_url() -> String {
         address_in("KAMCHATKA_BASE_URL").unwrap_or_else(|| ANTHROPIC_BASE_URL.to_owned())
     }
@@ -936,8 +928,8 @@ mod tests {
             assert_eq!(keyed(url, own).ok().as_deref(), Some("sk-own"), "{url}");
         }
 
-        // and one set to nothing is not set: it neither stands in front of the one that is, nor
-        // passes for a key where one is needed
+        // an empty string is not set: it does not take precedence over a real key, nor count as a
+        // key where one is needed
         let emptied = |name: &str| match name {
             "KAMCHATKA_API_KEY" => Some(String::new()),
             "OPENROUTER_API_KEY" => Some("sk-or".to_owned()),
@@ -1001,8 +993,8 @@ mod tests {
         }
     }
 
-    /// Only Anthropic's own address is Anthropic's: the one `ANTHROPIC_API_KEY` is read for, and
-    /// nowhere else, whatever the port and whoever is named before the `@`.
+    /// Only Anthropic's own address is Anthropic's: `ANTHROPIC_API_KEY` is read for it, and nowhere
+    /// else, whatever the port or user before the `@`.
     #[test]
     fn only_anthropics_own_address_is_anthropics() {
         for anthropic in [

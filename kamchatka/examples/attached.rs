@@ -60,14 +60,14 @@ async fn main() -> Result<(), String> {
     let stream = TcpStream::connect(host)
         .await
         .map_err(|e| format!("could not reach {host}: {e}"))?;
-    // the option a port wants and a socket file does not: send small frames when they are written
-    // rather than when the last one is acknowledged
+    // Send small frames when written, not after the last one is acknowledged. A port wants this; a
+    // socket file does not
     let _ = stream.set_nodelay(true);
     let (read, mut write) = tokio::io::split(stream);
     let mut lines = protocol::Frames::new(BufReader::new(read));
 
-    // a connection says where it stands before it is told anything. `since: None` is "I have
-    // nothing", which is answered with the projection and then every record after it
+    // a connection says where it stands before it is told anything. `since: None` means "I have
+    // nothing", answered with the projection and then every record after it
     protocol::write(
         &mut write,
         &Command::Attach {
@@ -117,9 +117,9 @@ async fn main() -> Result<(), String> {
         return Ok(());
     }
 
-    // note: the questions already open are refused here, because they are never coming as records:
-    // the stream starts after `seq`, and theirs were written before it. Left standing, the line
-    // below would wait behind them for the whole of `PATIENCE`
+    // note: open questions are refused here because they never come as records: the stream starts
+    // after `seq`, and theirs were written before it. Otherwise the line below would wait behind
+    // them for the whole of `PATIENCE`
     for request in &attached.asking {
         println!("? {} wanted {}; refusing", request.tool, request.args);
         protocol::write(
@@ -133,20 +133,18 @@ async fn main() -> Result<(), String> {
         .await?;
     }
 
-    // and the running commands waiting to hear whether they may reach the network, which are not
-    // the kernel's questions and are never records at all: the session sends the list whenever it
-    // changes. Each is refused once, since the list comes again with it still in it until the
-    // answer lands
+    // Running commands waiting to hear whether they may reach the network are not the kernel's
+    // questions and are never records. The session sends the list whenever it changes. Each is
+    // refused once because the list comes again with it still in it until the answer lands
     let mut refused = std::collections::BTreeSet::new();
     refuse_reaching(&mut write, &attached.reaching, &mut refused).await?;
 
     println!("ask: {question}");
     protocol::write(&mut write, &Command::Submit { line: question }).await?;
 
-    // note: what says the turn is over is `busy`, and it has to be: a turn is a loop over
-    // transitions, so `state.changed` reaches `Idle` between two requests of one turn. Every
-    // command is answered exactly once, and the answer to a `submit` carries `busy`, which is how
-    // this knows a turn started at all
+    // note: `busy` says the turn is over, and it has to be: a turn is a loop over transitions, so
+    // `state.changed` reaches `Idle` between two requests of one turn. Every command is answered
+    // exactly once; the answer to a `submit` carries `busy`, which is how this knows a turn started
     let mut busy = true;
     let mut records = 0;
     let mut answer = None;
@@ -168,9 +166,8 @@ async fn main() -> Result<(), String> {
                     },
                 ..
             } => {
-                // flushed, because a model's sentence arriving as it is written is what this is
-                // showing. stdout is line-buffered, so without this the streaming shows up a line
-                // at a time, which is what not streaming looks like
+                // flushed because a model's sentence arriving as written is what this is showing.
+                // stdout is line-buffered, so without this the streaming shows up a line at a time
                 print!("{text}");
                 let _ = std::io::Write::flush(&mut std::io::stdout());
             }
@@ -179,9 +176,9 @@ async fn main() -> Result<(), String> {
                 match &record.event {
                     Event::ToolRequested { tool, args, .. } => println!("\n⟩ {tool}({args})"),
                     Event::ModelFinished { item, .. } => answer = Some(*item),
-                    // refused, and said out loud. An unattended client that allowed things would be
-                    // deciding on somebody's behalf the one thing this whole program exists not to
-                    // decide on their behalf
+                    // refused, and said out loud. An unattended client that allowed things would
+                    // decide on somebody's behalf the one thing this program exists not to decide
+                    // on their behalf
                     Event::PermissionRequested { request } => {
                         println!("\n? {} wanted {}; refusing", request.tool, request.args);
                         protocol::write(
@@ -206,8 +203,8 @@ async fn main() -> Result<(), String> {
         }
     }
 
-    // and the whole of what any one item holds is one command away, which is the other half of the
-    // records naming things rather than carrying them
+    // The whole of what any one item holds is one command away: the other half of records naming
+    // things rather than carrying them
     if let Some(item) = answer {
         // the reading of it rather than its text: this prints an item for somebody to look at,
         // which is what `raw` is false for
@@ -222,9 +219,8 @@ async fn main() -> Result<(), String> {
         .await?;
         if let Some(Message::Item { body, .. }) = next(&mut lines).await? {
             // note: the same words twice, on purpose. Above they were fragments of a model still
-            // writing, which are in no log and are gone once they have gone past; this is the item
-            // they were recorded as, which is what a client that was not here for them would ask
-            // for
+            // writing, in no log and gone once past. This is the item they were recorded as, which
+            // is what a client that missed them would ask for
             println!(
                 "\n--- the turn ended; {records} records arrived, and item {item} is where those \
                  fragments ended up ---"
@@ -234,16 +230,16 @@ async fn main() -> Result<(), String> {
     }
 
     // note: nothing ends the session here. Dropping the connection detaches; the session is the
-    // serving program's and carries on without this one, which is the invariant the protocol is
+    // serving program's and carries on without this one. That is the invariant the protocol is
     // arranged around. `/quit` as a `submit` is how a client says it meant to end one
     Ok(())
 }
 
 /// The one character a line of the conversation is printed under.
 ///
-/// note: a client decides this for itself, which is the reason `Speaker` is on the wire at all.
-/// What the session hands over is who was talking; how that looks is nobody's business but the
-/// screen's, and this one has seven characters where a browser would have seven colours.
+/// note: a client decides this for itself, which is the reason `Speaker` is on the wire at all. The
+/// session hands over who was talking; how it looks is the client's business. This one uses seven
+/// characters.
 fn mark(speaker: kamchatka::app::Speaker) -> &'static str {
     use kamchatka::app::Speaker::*;
 

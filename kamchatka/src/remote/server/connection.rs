@@ -1,6 +1,5 @@
-//! One client's conversation with a served session, start to finish: the handshake, the records
-//! it is caught up on, the questions it is asked, and the commands it sends - none of which holds
-//! the session itself.
+//! One client's conversation with a served session: the handshake, the records it catches up on,
+//! the questions it is asked, and the commands it sends. None of these holds the session itself.
 
 use std::sync::Arc;
 
@@ -28,16 +27,17 @@ pub(super) async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let (read, mut write) = tokio::io::split(stream);
     let mut frames = protocol::Frames::new(BufReader::new(read));
     if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks, &replaced).await {
-        // the connection is going either way; this is the last thing it is told, and it is written
-        // on a best-effort basis because the usual way to be here is that it stopped listening
+        // the connection is closing either way. This is the last message the client receives, and
+        // the write is best-effort because the usual reason for reaching this code is that the
+        // client stopped listening.
         //
-        // note: and there is a second way, which is the one the cap exists for. A peer that is
-        // still sending when this closes leaves data in the receive buffer nobody read, and TCP
-        // answers a close like that with a reset - which on some platforms discards what the peer
-        // had already been sent, this sentence among it. Draining first would deliver it and is
-        // exactly what `MAX_LINE` refuses to do: not reading a peer that floods is the point, so
-        // the sentence is the thing that gives. What a client can rely on is that the connection
-        // ends, not that it is told why
+        // note: there is a second way to get here, the one `MAX_LINE` exists for. A peer that is
+        // still sending when the connection closes leaves unread data in the receive buffer, and
+        // TCP answers such a close with a reset. On some platforms the reset discards data already
+        // sent to the peer, including this message. Draining the buffer first would deliver the
+        // message, but `MAX_LINE` refuses to do that: not reading a flooding peer is the point, so
+        // this message is what is lost. A client can rely on the connection ending, not on being
+        // told why
         let _ = protocol::write(
             &mut write,
             &Message::Failed {
@@ -50,14 +50,14 @@ pub(super) async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let _ = asks.send(FromClient::Left { client });
 }
 
-/// The connection proper, up to whatever ends it.
+/// Handles the connection until something ends it.
 ///
-/// note: the two streams a client reads are both taken from a [`Kernel`] handle of this
-/// connection's own, and neither is handed to it by the session loop. The numbered one is the log,
-/// read with `history_since` from wherever this client says it had got to, which is why a client
-/// that falls behind, lags its subscription or loses its socket cannot lose a record: the log is
-/// not a queue and nothing drains it. The unnumbered one is the subscription, which carries the
-/// fragments - and doubles as the thing that says it is worth looking at the log again.
+/// note: both streams a client reads come from a [`Kernel`] handle owned by this connection, not
+/// from the session loop. The numbered stream is the log, read with `history_since` from the
+/// position this client reports. A client that falls behind, lags its subscription, or loses its
+/// socket cannot lose a record, because the log is not a queue and nothing drains it. The
+/// unnumbered stream is the subscription. It carries fragments and signals that the log is worth
+/// reading again.
 async fn attend<R, W>(
     client: u64,
     frames: &mut protocol::Frames<BufReader<R>>,
@@ -70,8 +70,8 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    // note: subscribed *before* the first look at the log rather than after, so that an event
-    // landing between the two is a duplicate wakeup rather than a record nobody went back for
+    // note: subscribe before the first log read, not after, so an event that arrives between
+    // subscribing and reading is a duplicate wakeup rather than a missed record
     let mut events = kernel.subscribe();
     // note: whether the fragments are in the log as well. With `record_progress` on they are
     // records, so sending them from here too would put every fragment on the wire twice - once
@@ -93,10 +93,10 @@ where
             ));
         }
     };
-    // note: reported as the attach's failure rather than the connection's, because a client that
-    // can tell a refused watermark from a broken socket has something to do about it - come back
-    // with none. Told only that the connection failed, it would read the close as a drop and retry
-    // the same impossible resume until it gave up
+    // note: report a refused watermark as the attach's failure, not the connection's. A client that
+    // can tell a refused watermark from a broken socket can come back with no watermark. If it were
+    // told only that the connection failed, it would read the close as a drop and retry the same
+    // impossible resume until it gave up
     let (mut last, mut voice) = match settled {
         Ok(settled) => settled,
         Err(refused) => return refuse(write, refused.about, refused.error).await,
@@ -141,10 +141,10 @@ where
                         }
                     };
                     last = at;
-                    // note: the subscription is swapped exactly where a projection is handed over,
-                    // because that is what they have to be taken together for. A resume on a live
-                    // connection is answered with no projection, so the one it already has is
-                    // holding lines nothing else would bring back
+                    // note: the subscription is swapped exactly where the projection is handed
+                    // over, because the two must be taken together. A resume on a live connection
+                    // is answered with no projection, so the existing subscription is still holding
+                    // lines that nothing else would bring back
                     if since {
                         voice = fresh;
                     }
@@ -217,19 +217,18 @@ where
             },
             event = events.recv() => match event {
                 Ok(event) => {
-                    // the numbered half first, always. A fragment names the last record the client
-                    // was sent, so one written before that record had gone out would be naming a
-                    // number nobody had seen
+                    // Write the numbered half first, always. A fragment names the last record the
+                    // client was sent; written before that record went out, it names a number
+                    // nobody had seen.
                     //
-                    // note: the cost is that a connection behind the broadcast can be handed a
-                    // fragment *after* the record that ends the thing it was part of, because the
-                    // flush reads wherever the log has got to rather than wherever it had got to
-                    // when the fragment was emitted. Reconstructing the true interleaving would
-                    // mean flushing one record per non-progress event - exact, and a linear scan
-                    // of the log per event, per client. It is not worth it: a fragment whose item
-                    // has already arrived is a fragment the item supersedes. The terminal drops
-                    // one on those grounds, under the name `Entry::transient`; `--connect` prints
-                    // the answer from fragments alone, so a late one is printed late there
+                    // note: a connection behind the broadcast can receive a fragment after the
+                    // record that ends its item, because flush reads the log as it is now, not as
+                    // it was when the fragment was emitted. Exact interleaving would mean flushing
+                    // one record per non-progress event per client - a linear scan of the log per
+                    // event - so it is not worth it: a fragment whose item has already arrived is
+                    // superseded by that item. The terminal drops it as `Entry::transient`;
+                    // `--connect` prints answers from fragments alone, so a late one is printed
+                    // late
                     flush(kernel, &mut last, write).await?;
                     if protocol::is_progress(&event) && !progress_recorded {
                         progress(write, last, event).await?;
@@ -248,21 +247,20 @@ where
                 Err(broadcast::error::RecvError::Closed) => return Ok(()),
             },
             said = voice.recv() => match said {
-                // note: the numbered half first, for the reason the event branch above gives and
-                // for a sharper one. `Message::Busy` is how a client learns a turn is over, and a
-                // client whose input has closed takes that at its word and leaves - so a
-                // `busy: false` written *before* the records of the turn it is about says the turn
-                // is done while the last of it is still in the log, and `kamchatka --connect` with
-                // a question piped into it detaches without the answer
+                // note: write the numbered half first, for the reason the event branch gives and a
+                // sharper one. `Message::Busy` tells a client the turn is over, and a client whose
+                // input has closed leaves on that word. So `busy: false` written before the records
+                // of the turn says the turn is done while the last of it is still in the log;
+                // `kamchatka --connect` with a question piped in detaches without the answer
                 Ok(message) => {
                     caught_up(&mut events, kernel, &mut last, write, progress_recorded).await?;
                     protocol::write(write, &*message).await?;
                 }
-                // the program's own lines are in no log either, and the same rule applies to them
+                // the program's own lines are in no log either, and the same rule applies to them.
                 //
-                // note: and among them is the state that is said only when it changes - whether
-                // the session is busy, the model, a network question - so what it stands at is
-                // asked for and said again, after the records, as `busy` always is
+                // note: among them is state said only when it changes - whether the session is
+                // busy, the model, a network question - so its current value is asked for and said
+                // again after the records, as `busy` always is
                 Err(broadcast::error::RecvError::Lagged(frames)) => {
                     flush(kernel, &mut last, write).await?;
                     protocol::write(write, &Message::Missed { frames }).await?;
@@ -279,13 +277,13 @@ where
                 }
                 // note: the session has ended, and this is the last thing this connection does:
                 // write out whatever the log grew while it was being written to. Which branch sees
-                // the end first is a coin toss - `session.finished` is emitted before this channel
-                // is dropped, so both are ready at once and `select!` picks either - and what the
-                // toss costs is a client left short of the last records of a session it has no
-                // socket left to go back for them on.
+                // the end first is a coin toss - `session.finished` is emitted before the channel
+                // is dropped, so both are ready at once and `select!` picks either - and the cost
+                // is a client left short of the last records of a session with no socket to go back
+                // for them on.
                 //
                 // note: no test fails without this, because in practice the event branch is ready
-                // first. The race is real and rare, and the flush is kept on those terms
+                // first. The race is real and rare, so the flush stays
                 Err(broadcast::error::RecvError::Closed) => {
                     flush(kernel, &mut last, write).await?;
 
@@ -296,16 +294,14 @@ where
     }
 }
 
-/// A refusal, and which of the client's commands to name it as.
+/// A refusal, and the client command it names: `attach`, `version`, or `projection`.
 ///
-/// note: three names for what one function refuses, because the three are not the same news. An
-/// `attach` refusal is mended by attaching afresh, which is what a client does with it; a `version`
-/// refusal is not mended by anything, and a client that treats it the same way reattaches, is
-/// refused identically, and gives up a minute later saying the session has not answered, when it
-/// answered at once. A `projection` refusal is a third kind: the session is answering perfectly
-/// well and it is this attach that cannot be served, because the projection is larger than a
-/// client reads - so attaching again gets the identical answer, and the only thing a client can do
-/// is read the records without one. See [`crate::remote::Client`].
+/// note: `attach` is mended by attaching afresh. `version` is not mended by anything; a client that
+/// reattaches is refused identically and gives up a minute later saying the session has not
+/// answered, when it answered at once. `projection` means the session answers but this attach
+/// cannot be served, because the projection is larger than the client reads; attaching again gets
+/// the identical answer, and the client can only read the records without one. See
+/// [`crate::remote::Client`].
 struct Refused {
     /// The command to name it as: `attach`, `version`, or `projection`.
     about: &'static str,
@@ -326,7 +322,7 @@ impl From<String> for Refused {
 /// Settles where this client's numbered stream starts, and sends the projection if it needs one.
 ///
 /// note: the subscription to the program's own voice comes back with the watermark, because the
-/// session loop is where both are taken and it takes them together. See [`Answered`].
+/// session loop takes both together. See [`Answered`].
 async fn watermark<W: AsyncWrite + Unpin>(
     attach: Command,
     kernel: &Kernel,
@@ -343,8 +339,8 @@ async fn watermark<W: AsyncWrite + Unpin>(
         return Err("that is not an attach".to_owned().into());
     };
     // note: a version this session does not know is refused before anything else is read off the
-    // message, because what the rest of it means is the thing in question. An older one it does
-    // know is served - see `protocol::VERSION`
+    // message, because the meaning of the rest depends on it. An older one it knows is served - see
+    // `protocol::VERSION`
     let spoken = version.unwrap_or(1);
     if spoken > protocol::VERSION {
         return Err(Refused {
@@ -374,20 +370,20 @@ async fn watermark<W: AsyncWrite + Unpin>(
                 .into());
         };
         let seq = attached.seq;
-        // note: the size check `flush` and `answer` both apply, and it is here because a projection
-        // is a frame like any other and this was the one write that did not ask. A message larger
-        // than `MAX_LINE` in the context makes the projection itself that long - unlike a record,
-        // which can be named and moved past, a projection cannot be skipped, so a client that
-        // cannot read it is a client with no session at all. Sent unchecked it is a frame the
-        // other end refuses, which closes the connection and reads as a drop, and the client
-        // spends a minute reattaching to a session that answered every time.
+        // note: the size check `flush` and `answer` both apply. It is here because a projection is
+        // a frame like any other, and this was the one write that did not ask. A message larger
+        // than `MAX_LINE` in the context makes the projection that long. Unlike a record, which can
+        // be named and moved past, a projection cannot be skipped, so a client that cannot read it
+        // has no session. Sent unchecked, the other end refuses the frame, which closes the
+        // connection and reads as a drop; the client spends a minute reattaching to a session that
+        // answered every time.
         //
-        // note: and it is now the rare case rather than the ordinary one. A conversation too long
-        // for a frame has been cut down to fit already - see `Attached::abridge` - so what reaches
-        // this is a projection too long for reasons that are not its lines: the parts of it nothing
-        // cuts, or lines so many that even cut to nothing they do not fit. Refused by name rather
-        // than written and hoped for, and what a client can do about it is read the records
-        // without a projection, so that is what the sentence says.
+        // note: it is now the rare case rather than the ordinary one. A conversation too long for a
+        // frame has been cut down to fit already - see `Attached::abridge` - so what reaches this
+        // is a projection too long for reasons that are not its lines: parts nothing cuts, or so
+        // many lines that even cut to nothing they do not fit. It is refused by name rather than
+        // written and hoped for, and the refusal says that the client can read the records without
+        // a projection.
         let projection = Message::Attached(attached);
         let line = protocol::framed(&projection)?;
         if let Some(bytes) = protocol::overlong(&line) {
@@ -407,11 +403,11 @@ async fn watermark<W: AsyncWrite + Unpin>(
         return Ok((seq, voice));
     };
 
-    // note: the loud half of the same check, and it is first because it is the one that catches
-    // the quiet case. A session restarted at this address has a log of its own, and a watermark
-    // from the one before it can be perfectly plausible against it - at which point the client
-    // draws one session's records under another's conversation with nothing anywhere saying so.
-    // A client that does not name a session is not made to; see `Command::Attach`
+    // note: this is the half that returns an error, and it is first because it catches the silent
+    // case. A session restarted at this address has a log of its own, and a watermark from the
+    // session before it can be plausible against it - at which point the client reads one session's
+    // records under another's conversation with nothing anywhere saying so. A client is not
+    // required to name a session; see `Command::Attach`
     let named = kernel.session_name();
     if session.is_some_and(|session| session != named) {
         return Err(format!(
@@ -421,8 +417,8 @@ async fn watermark<W: AsyncWrite + Unpin>(
         .into());
     }
     // note: a client claiming to have seen more than has happened is refused rather than clamped.
-    // It is either a client that has confused two sessions or one that made the number up, and
-    // quietly starting it from the end would leave it convinced it held a history it never had
+    // It has either confused two sessions or made the number up, and quietly starting it from the
+    // end would leave it convinced it held a history it never had
     let last = kernel.last_seq();
     if since > last {
         return Err(format!(
@@ -431,8 +427,8 @@ async fn watermark<W: AsyncWrite + Unpin>(
         )
         .into());
     }
-    // note: refused above without troubling the session, and answered here by the session itself,
-    // because the answer carries `busy` and nothing but the loop driving the kernel knows it
+    // note: refused above without involving the session, and answered here by the session itself,
+    // because the answer carries `busy` and only the loop driving the kernel knows it
     let mut last = since;
     let answered = match ask(
         asks,
@@ -474,9 +470,9 @@ async fn watermark<W: AsyncWrite + Unpin>(
 
 /// Says a command could not be done, and ends the connection on it.
 ///
-/// note: named rather than reported as the connection's, so that a failure a client can do
-/// something about reads as itself - and named one of two ways, because what there is to do about
-/// the two differs. See [`Refused`] and the first attach in [`attend`].
+/// note: named rather than reported as the connection's, so a failure a client can do something
+/// about reads as itself. Named one of two ways because what there is to do about the two differs.
+/// See [`Refused`] and the first attach in [`attend`].
 async fn refuse<W: AsyncWrite + Unpin>(
     write: &mut W,
     about: &str,
@@ -513,16 +509,16 @@ async fn ask(
 
 /// Writes out everything the session has already emitted, numbered and not.
 ///
-/// note: what this is for is `Message::Busy`. A client with its input closed leaves when the
-/// session goes quiet, and `busy: false` is how it finds out - so that message overtaking the
-/// fragments of the turn it is about is a client detaching without the answer. The records cannot
-/// stand in for them: the log names what happened and does not copy it, so `context.added` says an
-/// assistant turn exists and not one word of what it said. What the model actually *said* reaches a
-/// client only as `Message::Progress`, and only if it is written first.
+/// note: this is for `Message::Busy`. A client with its input closed leaves when the session goes
+/// quiet, and `busy: false` is how it finds out. If that message overtakes the fragments of the
+/// turn it is about, the client detaches without the answer. The records cannot stand in for them:
+/// the log names what happened and does not copy it, so `context.added` says an assistant turn
+/// exists but not what it said. What the model said reaches a client only as `Message::Progress`,
+/// and only if it is written first.
 ///
 /// note: neither end is wrong without this. The session records the answer and stops the turn, and
-/// the client leaves when it is told the session has nothing left to do; the fault is only in the
-/// order they are written in.
+/// the client leaves when told the session has nothing left to do; the fault is only in the order
+/// they are written in.
 async fn caught_up<W: AsyncWrite + Unpin>(
     events: &mut broadcast::Receiver<Event>,
     kernel: &Kernel,
@@ -550,11 +546,11 @@ async fn caught_up<W: AsyncWrite + Unpin>(
 
 /// Writes a fragment, or counts it as missed where it is too long for a frame.
 ///
-/// note: the rule [`flush`] holds records to, for the half of the stream no record holds. A line
-/// of a command's output goes out as one fragment and is held only to what a tool keeps, which is
-/// far past `MAX_LINE` once JSON has escaped it - and a frame the client refuses closes its
-/// connection, so one long line threw every client off the session. A fragment is best-effort and
-/// the item it is part of arrives whole, so what is said is what a client that fell behind is told.
+/// note: the rule [`flush`] holds records to, for the half of the stream no record holds. A line of
+/// a command's output goes out as one fragment, held only to what a tool keeps - far past
+/// `MAX_LINE` once JSON has escaped it. A frame the client refuses closes its connection, so one
+/// long line threw every client off the session. A fragment is best-effort and the item it is part
+/// of arrives whole, so what is said is what a client that fell behind is told.
 async fn progress<W: AsyncWrite + Unpin>(
     write: &mut W,
     after: u64,
@@ -600,18 +596,17 @@ async fn answer<W: AsyncWrite + Unpin>(
 /// Writes out every record the session has grown since this client last saw one.
 ///
 /// note: the log rather than the subscription, which is why a client cannot lose one. A broadcast
-/// has a capacity and drops for whoever falls behind it; the log has neither, so this is a read
-/// from wherever this connection had got to and it is correct however long the connection was
-/// asleep, however far behind its subscription fell, and whether or not it was here at all when
-/// the record was written.
+/// has a capacity and drops for whoever falls behind it; the log has neither. This reads from
+/// wherever this connection got to, and is correct however long the connection was asleep, however
+/// far behind its subscription fell, and whether or not it was here when the record was written.
 async fn flush<W: AsyncWrite + Unpin>(
     kernel: &Kernel,
     last: &mut u64,
     write: &mut W,
 ) -> Result<(), String> {
-    // note: asked first because it is a read of one number, where `history_since` searches the log
-    // and copies what follows it under the lock every emit waits on. This runs for every event,
-    // `model.delta` included, for every connection - and most of those events add no record this
+    // note: checked first because `kernel.last_seq()` reads one number, while `history_since`
+    // searches the log and copies what follows it under the lock every emit waits on. This runs for
+    // every event, including `model.delta`, on every connection, and most add no record this
     // connection has not already been sent
     if kernel.last_seq() <= *last {
         return Ok(());
@@ -619,12 +614,11 @@ async fn flush<W: AsyncWrite + Unpin>(
     for record in kernel.history_since(*last) {
         let seq = record.seq;
         let line = protocol::framed(&Message::Record(record))?;
-        // note: a record the other end would refuse to read is named rather than sent, and the
-        // naming carries its sequence - so the client takes it as seen and resumes after it. Sent,
-        // it is a frame over `MAX_LINE`, which closes the connection; and because a client resumes
-        // by sequence it would come straight back to the same record on every attempt, and one
-        // `context.replaced` over the limit would lock everybody out for the rest of the session.
-        // See `Message::Oversized`
+        // note: a record the other end would refuse to read is named with `Message::Oversized`,
+        // which carries its sequence, rather than sent, so the client takes it as seen and resumes
+        // after it. A frame over `MAX_LINE` closes the connection, and because the client resumes
+        // by sequence it would return to the same record on every attempt; one `context.replaced`
+        // over the limit would lock everybody out for the rest of the session
         match protocol::overlong(&line) {
             Some(bytes) => protocol::write(write, &Message::Oversized { seq, bytes }).await?,
             None => protocol::write_frame(write, &line).await?,

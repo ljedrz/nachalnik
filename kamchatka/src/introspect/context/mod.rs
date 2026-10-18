@@ -1,20 +1,17 @@
-//! `context`: what this session is carrying, what it costs, and what is carried into the next
-//! request.
+//! `context`: what this session carries, what it costs, and what goes into the next request.
 //!
-//! note: named for what it is about rather than for what it does to it. `introspect` is the name
-//! of the whole family, and anything else that reads a session from the inside is introspection
-//! too. The id is the noun, which leaves the family its word and gives each tool the thing it is
-//! about.
+//! note: named for what it is about, not what it does to it. `introspect` names the family;
+//! anything that reads a session from the inside is introspection. The id is the noun, leaving the
+//! family its word and giving each tool the thing it is about.
 //!
-//! note: one tool for reading the context and changing it, because separate permissions do not
-//! need separate tools: [`Tool::needs`] lets a call declare its subject, so `context:look` and
-//! `context:revise` are separate questions with separate rows whether they arrive under one tool's
-//! name or two. Two tools would cost two descriptions in every request, most of each spent saying
-//! which of the two the other one was.
+//! note: one tool reads and changes the context because separate permissions do not need separate
+//! tools: [`Tool::needs`] lets a call declare its subject, so `context:look` and `context:revise`
+//! are separate questions with separate rows whether they arrive under one tool's name or two. Two
+//! tools would cost two descriptions in every request.
 //!
-//! note: a directory, with the changing half in `changes.rs`: the journal `undo` walks, the
-//! refusals, and the accounting that says what a change cost. Everything that only reads is in
-//! `reads.rs`, and what is here is what a model sees of both - the schema and the dispatch.
+//! note: a directory. `changes.rs` holds the journal `undo` walks, the refusals, and the accounting
+//! of what a change cost. `reads.rs` holds what only reads. This file holds the schema and the
+//! dispatch.
 
 use std::sync::Arc;
 
@@ -43,12 +40,11 @@ use reads::{budget, look, matched, request, search, taken};
 /// reports them.
 type Pinned = Arc<Mutex<super::Mine>>;
 
-/// The eight that change, each named for what it leaves behind.
+/// The eight operations that change something, each named for what it leaves behind.
 ///
-/// note: the word for the move is the word the result is reported in - an item you `elide` reads
-/// back as `elided` everywhere it is listed. One level, and the same vocabulary at both ends of
-/// it, rather than a `prune` action with a `state` argument, which would put the word for one of
-/// the moves over all of them.
+/// note: the result uses the same word as the move - an item you `elide` reads back as `elided`
+/// everywhere. One vocabulary at both ends, rather than a `prune` action with a `state` argument,
+/// which would put one move's word over all of them.
 const CHANGES: [&str; 8] = [
     "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
 ];
@@ -68,14 +64,14 @@ const SELECT: &str = "a class of items instead of `ids`, never both in one call,
 
 /// The twelve operations, what each is for, and what each reads.
 ///
-/// note: `reason` is `needed()` wherever a call changes something, which the schema can say
-/// because it is a branch per operation: in one flat property bag, `required` is all or nothing.
-/// Eight operations require it and four do not offer it at all.
+/// note: `reason` is `needed()` wherever a call changes something. The schema can say so because it
+/// branches per operation: in one flat property bag, `required` is all or nothing. Eight operations
+/// require it; four do not offer it.
 ///
-/// note: twelve operations, eight shapes. The four that move an item read one argument list,
-/// because they are one function, and so do `undo` and `redo`; each group is therefore one branch
-/// under an `action` of several words. Written out per operation they would repeat `reason` and
-/// `select` in branch after branch, on every request, to say a thing that is true once.
+/// note: twelve operations, eight shapes. The four that move an item read one argument list because
+/// they are one function, as do `undo` and `redo`; each group is one branch under an `action` of
+/// several words. Written per operation they would repeat `reason` and `select` on every request to
+/// say something true once.
 fn ops() -> Vec<Op> {
     let mut ops = vec![
         Op::new(
@@ -165,11 +161,11 @@ fn ops() -> Vec<Op> {
                  other way of saying which",
             ),
             Arg::text("select", SELECT),
-            // note: read but not offered, because it is neither a way to move anything nor an
-            // argument to refuse. A model reaches for `label` to say *which item*, and
-            // `Changes::moved` answers that with the spelling it meant - which it cannot do if
-            // `unread` has already refused the call, and should not have to do if the schema had
-            // advertised `label` as the way to name one
+            // note: `label` is read but not offered because it is neither a way to move anything
+            // nor an argument to refuse. A model reaches for `label` to say which item, and
+            // `Changes::moved` answers with the spelling it meant - which it cannot do if `unread`
+            // has already refused the call, and should not have to do if the schema advertised
+            // `label` as the way to name one
             Arg::tolerated("label"),
             Arg::text("reason", WHY).needed(),
         ],
@@ -295,11 +291,11 @@ impl Tool for Context {
         )
     }
 
-    /// note: `action` and nothing else, so a rule about `context:look` is about looking whichever
-    /// way a call asked for it - and so that the reading half and the changing half are still
-    /// separately grantable now that they are one tool. A call naming no operation this tool has
-    /// declares all twelve, which is the strictest reading of a call nobody can place, and
-    /// `invoke` then refuses it by name.
+    /// note: decided by `action` and nothing else, so a rule about `context:look` covers looking
+    /// however a call asked for it, and the reading half and changing half stay separately
+    /// grantable although they are one tool. A call naming no operation this tool has declares all
+    /// twelve, which is the strictest reading of a call nobody can place, and `invoke` then refuses
+    /// it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
             Some(op) => vec![domains::context(op)],
@@ -320,9 +316,9 @@ impl Tool for Context {
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
-        // an operation this tool does not have falls through to the arm that names the ones it
-        // does, so there is nothing to hold its arguments to yet; a word it knows is held to them
-        // before anything is done with it
+        // an operation this tool does not have falls through to the arm naming the ones it does, so
+        // nothing holds its arguments yet; a word it knows is held to them before anything is done
+        // with it
         let args = match inner(&call.args) {
             Ok(args) => args,
             Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
@@ -432,12 +428,11 @@ mod tests {
         assert_eq!(offered.len(), 12, "four that read and eight that change");
     }
 
-    /// Everything that changes something requires a `reason`, and nothing that only reads offers
+    /// The eight changing branches require a `reason`; the four read-only branches do not mention
     /// one.
     ///
-    /// note: the assertion is against the schema a model is actually shown - the branches that
-    /// demand a `reason`, and the four that do not mention one - rather than a table held to
-    /// `CHANGES`, which could only check that the *tool* would ask.
+    /// note: the test checks the schema shown to the model, not a table bound to `CHANGES`, which
+    /// could only check that the tool would ask.
     #[test]
     fn the_eight_that_change_require_a_reason_and_the_four_that_read_do_not() {
         let spec = tool().spec();

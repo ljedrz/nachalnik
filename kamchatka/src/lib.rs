@@ -91,10 +91,10 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
-// note: Linux only, on the two architectures the network gate has a filter for. What makes the
-// `shell` tool something a model may be handed is Landlock, `openat2` beneath a directory and the
-// gate, and every one of them is Linux's; elsewhere the shell ran unconfined behind a question
-// read off the command's name. 0.15.1 is the last version that builds anywhere else.
+// note: Linux only, on the two architectures the network gate has a filter for. The `shell` tool is
+// safe to hand to a model only because of Landlock, `openat2` beneath a directory, and the network
+// gate; all are Linux-only. Elsewhere the shell ran unconfined, with only a question read off the
+// command's name. 0.15.1 is the last version that builds anywhere else.
 #[cfg(not(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")

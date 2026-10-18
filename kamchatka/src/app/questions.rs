@@ -9,14 +9,13 @@ use super::{App, Focus, Speaker};
 use crate::tools::Subject;
 
 impl App {
-    /// Drops the calls a turn resting in [`State::Ready`] has decided and not run, and tells the
-    /// model so.
+    /// Drops the calls a turn in [`State::Ready`] has decided but not run, and tells the model so.
     ///
-    /// note: what stopping means where nothing is running. The calls run at the next step whatever
-    /// is done first: excluding the turn that asked for them, or taking their tool out of the
-    /// registry, changes the next request and not a call already decided. Dropped, each becomes a
-    /// refusal the model reads, as `d` at a question does. Nothing carries the turn on: stopping
-    /// is the opposite of asking for the rest, and `/continue` or a message is how it goes on.
+    /// note: what stopping means where nothing is running. The calls run at the next step no matter
+    /// what is done first: excluding the turn that asked for them, or taking their tool out of the
+    /// registry, changes the next request and not a call already decided. Each dropped call becomes
+    /// a refusal the model reads, as `d` at a question does. Stopping does not continue the turn;
+    /// `/continue` or a message does.
     pub fn drop_decided(&mut self) {
         let dropped = self.kernel.cancel_pending_calls("dropped before it ran");
         self.say(
@@ -62,9 +61,9 @@ impl App {
         rememberable(grant, remember)?;
 
         if remember {
-            // everything the policy actually consulted, not just what the tool declared - and
-            // each one recorded against the question it answered, so that the calls it lets through
-            // later say where their permission came from
+            // everything the policy actually consulted, not just what the tool declared. Each is
+            // recorded against the question it answered, so later calls show where their permission
+            // came from
             let judged = self.policy.judges(&request);
             self.policy.always(&judged);
             for subject in &judged {
@@ -79,11 +78,10 @@ impl App {
         if remember {
             for waiting in self.kernel.pending_permissions() {
                 // note: `App::answer` rather than `Kernel::decide`, because a swept question is
-                // answered rather than merely decided. A model that asks for `ls` and `curl` in one
-                // breath produces two questions, and `a` on the first is what lets the second
-                // through - so the second has to be let through the same door, network grant and
-                // all. Decided straight into the kernel, it would run with the network cut and
-                // nothing anywhere saying why
+                // answered, not merely decided. A model that asks for `ls` and `curl` in one breath
+                // produces two questions, and `a` on the first lets the second through, so the
+                // second must go through the same door, network grant and all. Decided straight
+                // into the kernel, it would run with the network cut and nothing saying why
                 if self.policy.verdict(&waiting) == Verdict::Allow
                     && let Err(e) = self.answer(&waiting, Grant::Allow)
                 {
@@ -148,8 +146,8 @@ impl App {
     /// The question a tool is waiting on, if one is.
     ///
     /// note: asked of the kernel every time rather than held here. What stands in the prompt's
-    /// place is a *rendering* of the kernel's state, so it cannot be open when there is nothing to
-    /// answer, or shut when there is - and [`App::prompted`] reads it for the same reason.
+    /// place is a rendering of the kernel's state, so it cannot be open when there is nothing to
+    /// answer, or shut when there is. [`App::prompted`] reads it for the same reason.
     pub fn asked(&self) -> Option<PermissionRequest> {
         self.kernel.pending_permissions().into_iter().next()
     }
@@ -166,10 +164,9 @@ impl App {
 
     /// Whether anything is standing in the prompt's place, waiting to be answered.
     ///
-    /// note: the two kinds are a tool waiting on a decision and a compaction waiting on one, and
-    /// everything about the screen that cares - what has the keys, what `tab` reaches, whether
-    /// there is a prompt at all - cares only that there is one. Which it is, is a question for
-    /// the panel that draws it and the key that answers it.
+    /// note: the two kinds are a tool waiting on a decision and a compaction waiting on one. Screen
+    /// code that cares - keys, `tab`, whether there is a prompt - cares only that there is one. The
+    /// panel that draws it and the key that answers it decide which it is.
     pub fn asking(&self) -> bool {
         self.asked().is_some() || self.reached().is_some() || self.proposed.is_some()
     }
@@ -178,13 +175,12 @@ impl App {
     ///
     /// note: `take` works the pass out again rather than applying what was listed. The list is a
     /// snapshot of a context somebody has just been invited to change, so applying it would take
-    /// exactly what they had protected while reading it. The kernel refuses a pinned item and
-    /// says so, which would catch it - afterwards, in a report, which is what this question
-    /// exists to avoid.
+    /// what they had protected while reading it. The kernel refuses a pinned item and says so,
+    /// catching it afterwards in a report; this question exists to avoid that.
     ///
     /// note: public because the screen is not the only thing entitled to answer. `--headless` has
-    /// no keys and answers this itself; see the note there for why it takes it rather than
-    /// refusing it the way it refuses a tool's question.
+    /// no keys and answers this itself; see the note there for why it takes it rather than refusing
+    /// it as it refuses a tool's question.
     pub fn take_proposal(&mut self, take: bool) {
         self.proposed = None;
         self.focus = Focus::Input;

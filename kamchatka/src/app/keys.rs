@@ -1,9 +1,7 @@
 //! What the keys do.
 //!
-//! note: one handler per tab rather than one `match` over every key, because the same key means
-//! different things on different tabs and a single table of them would argue with itself.
-//! [`super::App::on_key`] is the dispatcher, and it is next door with the rest of the public
-//! surface.
+//! note: one handler per tab because the same key means different things on different tabs.
+//! [`super::App::on_key`] is the dispatcher.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nachalnik::{ContextId, ContextItem, ContextState, Grant, Verdict};
@@ -80,9 +78,8 @@ impl App {
             {
                 self.put_back()
             }
-            // and `down` undoes it, while the prompt still holds exactly what `up` put there.
-            // Typed over, it is a message somebody is writing and not a recall any more, so the
-            // key goes back to being the one that moves the cursor
+            // `down` undoes `up` while the prompt still holds what `up` put there. Typed over, it
+            // is a new message, not a recall, so `down` moves the cursor
             KeyCode::Down if self.recalled.as_deref() == Some(self.draft().as_str()) => {
                 self.clear_input()
             }
@@ -138,25 +135,19 @@ impl App {
         self.input.move_cursor(moved);
     }
 
-    /// Puts the last line back in the prompt: the message still waiting, if one is, and otherwise
-    /// a copy of the last line that was sent.
+    /// Puts the last line back in the prompt: the message still waiting, or a copy of the last line
+    /// sent.
     ///
-    /// note: two things reachable by one key, because to somebody pressing it they are one thing -
-    /// *the last message* - and which of the two it is is not something to have to know. The
-    /// difference is what happens to it: a message that is still waiting is **taken** out of the
-    /// queue, since leaving it there would mean editing a copy of something that is still going to
-    /// be sent as it was; one that has already gone is **copied**, since it is in the context and
-    /// this is a way to read it back or send it again.
+    /// note: one key reaches two things because they are one thing to the person pressing it. A
+    /// waiting message is taken out of the queue; a message already sent is copied. Leaving a
+    /// waiting message in the queue would mean editing a copy of something still to be sent. A copy
+    /// is a way to read it back or send it again.
     ///
-    /// note: one deep, deliberately. A prompt that walked back through a session is a second
-    /// history beside the context tab, which already holds every message with more said about each
-    /// of them than a prompt could show - and the thing that is actually wanted often enough to
-    /// need a key is the last one.
+    /// note: the context tab already holds every message, so the prompt recalls only the last one.
     ///
-    /// note: nothing is said out loud for the copy and a line is said for the take, because only
-    /// one of them changes what the session is about to do. A message that stops waiting stops
-    /// being drawn at the end of the conversation, and a row vanishing with no account of why is
-    /// the thing this program does not do.
+    /// note: a copy is silent; a take is announced. Only a take changes what the session is about
+    /// to do. A taken message stops being drawn at the end of the conversation, and a row never
+    /// vanishes without an account of why.
     pub(super) fn put_back(&mut self) {
         let waiting = self.typed_ahead.pop_back();
         let Some(line) = waiting.clone().or_else(|| self.last_sent.clone()) else {
@@ -247,8 +238,8 @@ impl App {
         count: &str,
         drawn: Option<Vec<ContextId>>,
     ) {
-        // what is on the screen, not what is in the context: with `f` on, the rows between two
-        // items are gone and moving by one row has to mean the next row somebody can see
+        // what is on the screen, not what is in the context. With `f` on, rows between items are
+        // gone, so moving by one row means the next visible row
         let items = drawn.unwrap_or_else(|| self.listed().iter().map(|item| item.id).collect());
         if items.is_empty() {
             // there is nothing to pick, and the keys that are not about a row still have to work.
@@ -265,8 +256,8 @@ impl App {
             return;
         }
         self.selected = self.selected.min(items.len() - 1);
-        // the item as it is now rather than as it was drawn, which a running turn may have
-        // changed since. One the context no longer holds is not on the next frame either
+        // the item is fetched as it is now, because a running turn may have changed it since it was
+        // drawn. If the context no longer holds it, it is not on the next frame
         let Some(picked) = self.kernel.item(items[self.selected]) else {
             return;
         };
@@ -284,9 +275,9 @@ impl App {
                 self.selected = (self.selected + self.viewport.max(2) / 2).min(items.len() - 1)
             }
             KeyCode::Home | KeyCode::Char('g') => self.selected = 0,
-            // `23G` goes to the item *numbered* 23 rather than the twenty-third row, because the
-            // number in the first column is the one `/exclude` takes and the one every note names.
-            // Bare `G` is the last item, as everywhere else
+            // `23G` goes to the item numbered 23, not the twenty-third row, because the first
+            // column number is the one `/exclude` takes and every note names. Bare `G` goes to the
+            // last item
             KeyCode::End | KeyCode::Char('G') => {
                 self.selected = match count.parse::<u64>() {
                     Ok(id) => match items.iter().position(|item| item.0 == id) {
@@ -321,12 +312,11 @@ impl App {
             // call it had not touched. `beyond_a_prompt` decides; `enter` is still the way to read
             // every face of an item this cannot rewrite
             KeyCode::Char('e') => match beyond_a_prompt(&picked) {
-                // note: a panel over this tab rather than a line on the chat. Every other note
-                // the pane raises goes to the conversation, which is right for something worth
-                // finding later and wrong for the answer to a key just pressed: the tab it
-                // appears on is not the tab somebody is looking at, so an `e` that refused would
-                // read as an `e` that did nothing at all. This one is about the row under it and
-                // is gone on the next key
+                // note: a panel over this tab rather than a line on the chat. Other notes from the
+                // pane go to the conversation, which suits something worth finding later but not
+                // the answer to a key just pressed: the tab is not the one being looked at, so a
+                // refused `e` would read as an `e` that did nothing. This one is about the row
+                // under it and is gone on the next key
                 Some(why) => self.preview(
                     format!("[{}] cannot be edited", picked.id),
                     format!(
@@ -433,9 +423,9 @@ impl App {
             .get(&item.id)
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        // note: asked rather than worked out again. An undo puts an old content back and the
-        // version it restored is then the current one too, so the last is dropped - and a browser
-        // drawing a button that counts these has to reach the same number as the strip up here
+        // note: asked rather than worked out again. An undo puts an old content back, and the
+        // restored version becomes current too, so the last is dropped. A browser button counting
+        // these must match the number in the strip
         let keep = self.versions(item.id);
         for (n, was) in history.iter().enumerate().take(keep).rev() {
             pages.push(Page {
@@ -497,17 +487,16 @@ impl App {
         self.ruled(&subject, decided);
     }
 
-    /// Keys the search box wants while it is open; `false` to let the pane underneath have it.
+    /// Keys the search box wants while open; `false` lets the pane underneath have it.
     ///
-    /// note: `up`, `down` and the paging are deliberately *not* taken. The point of filtering eight
-    /// hundred events down to nine is to then read the nine, and a box that swallowed the scroll
-    /// keys would mean closing the search - and so losing the filter - to look at what it found.
+    /// note: `up`, `down` and paging are deliberately *not* taken. Filtering eight hundred events
+    /// to nine is to read the nine; swallowing scroll keys would close the search, losing the
+    /// filter, just to look at what it found.
     ///
-    /// note: `left`, `right`, `home` and `end` *are* taken, because in a box being typed into they
-    /// are the box's, as they are in the prompt. What it costs is the ends of the list while the
-    /// box is open: `g` and `G` are letters there too, so the rows are reached by `up`, `down` and
-    /// the paging until it is closed. With a modifier, `home` and `end` are the keys that work
-    /// everywhere, and go past it.
+    /// note: `left`, `right`, `home` and `end` *are* taken because, in a box being typed into, they
+    /// are the box's, as in the prompt. The cost is the ends of the list while the box is open: `g`
+    /// and `G` are letters there too, so rows are reached by `up`, `down` and paging until it is
+    /// closed. With a modifier, `home` and `end` work everywhere and go past it.
     pub(super) fn search_key(&mut self, key: KeyEvent) -> bool {
         let Some(search) = &mut self.search else {
             return false;
@@ -545,10 +534,10 @@ impl App {
                 }
                 true
             }
-            // a modifier means it is somebody reaching past the box for one of the keys that work
-            // everywhere, not a character - `alt` as well as `ctrl`, because `/help` promises
-            // `alt+1` to `alt+4` everywhere, and without it `alt+2` would type a `2` into the
-            // query instead of going to the context tab
+            // a modifier means reaching past the box for a key that works everywhere, not typing a
+            // character. `alt` counts as well as `ctrl`: `/help` promises `alt+1` to `alt+4`
+            // everywhere, and without it `alt+2` would type a `2` into the query instead of opening
+            // the context tab
             KeyCode::Char(c)
                 if !key
                     .modifiers
@@ -563,9 +552,9 @@ impl App {
 
     /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
     pub(super) fn trace_key(&mut self, key: KeyEvent) {
-        // the pane draws the tail, so scrolling counts upwards from the newest line; the frame
-        // clamps it to what there is. Saturating going up too, because `g` parks it at the top of
-        // the range and a key read before the next frame would otherwise go past it
+        // the pane draws the tail, so scrolling counts up from the newest line and the frame clamps
+        // it to what exists. Saturating up too, because `g` parks it at the top of the range and a
+        // key read before the next frame would otherwise go past it
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.trace_scroll = self.trace_scroll.saturating_add(1)
@@ -603,8 +592,8 @@ impl App {
                 KeyCode::Down => *scroll += 1,
                 KeyCode::PageUp => *scroll = scroll.saturating_sub(PAGE),
                 KeyCode::PageDown => *scroll += PAGE,
-                // reading another face of the same thing is not leaving it. Round rather than
-                // stop, so that two pages are one key apart in either direction
+                // reading another face of the same item is not leaving it. Wrap around rather than
+                // stop, so two pages are one key apart in either direction
                 KeyCode::Left | KeyCode::Right if pages.len() > 1 => {
                     let step = match key.code {
                         KeyCode::Left => pages.len() - 1,
@@ -622,19 +611,17 @@ impl App {
 
     /// The keys while a question is on the screen and has not been given them.
     ///
-    /// note: this is the guard, and it is a guard rather than a consequence of the layout. The
-    /// question has the prompt's place, so there is nothing to type into and nothing for `enter`
-    /// to send - and both of those matter. The answers are bare letters, and a question that took
-    /// the keys on arrival would read the `a` of a word being typed as `always`, and keep that for
-    /// the rest of the session; an `enter` that still reached the prompt would send the
-    /// half-written message the question interrupted, starting a turn nobody asked for on the way
-    /// to answering.
-    /// `tab` is the one gesture that gets past this, and the panel's title says so.
+    /// note: this is the guard, rather than a consequence of the layout. The question has the
+    /// prompt's place, so there is nothing to type into and nothing for `enter` to send, and both
+    /// matter. The answers are bare letters. A question that took the keys on arrival would read
+    /// the `a` of a word being typed as `always` and keep it for the rest of the session; an
+    /// `enter` that reached the prompt would send the half-written message the question
+    /// interrupted, starting a turn nobody asked for. `tab` gets past this, and the panel's title
+    /// says so.
     ///
-    /// note: what is left working is what moves the conversation, because reading is not
-    /// answering. The question is pinned rather than modal so that somebody can go and look at
-    /// what it is about before deciding, and a guard that also froze the transcript would be
-    /// taking back the thing the pinning bought.
+    /// note: what stays working moves the conversation, because reading is not answering. The
+    /// question is pinned rather than modal so somebody can look at what it is about before
+    /// deciding; a guard that also froze the transcript would undo what the pinning bought.
     pub(super) fn locked_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Up => self.scroll_by(-1),
@@ -647,13 +634,13 @@ impl App {
 
     /// Answers the question a tool is waiting on.
     ///
-    /// note: reached only with the keys deliberately moved to it, rather than after a settling
-    /// timer, which only moves the moment a stray letter lands. See the note on
-    /// [`App::locked_key`] for what that is protecting against.
+    /// note: reached only with keys deliberately moved to it, not after a settling timer, which
+    /// moves only when a stray letter lands. See the note on [`App::locked_key`] for what that is
+    /// protecting against.
     pub(super) async fn question_key(&mut self, key: KeyEvent) {
-        // a running command that reached for the network. Three answers and no more: `esc` is
-        // already what stops the running turn, which takes the command and its question with it,
-        // and there is nothing to drop or look closer at - the command is on the panel whole
+        // a running command that reached for the network. Three answers and no more: `esc` stops
+        // the running turn, taking the command and its question with it. There is nothing to drop
+        // or look closer at; the command is on the panel whole
         if self.asked().is_none()
             && let Some(reached) = self.reached()
         {
@@ -673,8 +660,8 @@ impl App {
 
             return;
         }
-        // the compaction's own answers, where that is what is standing there. It scrolls with the
-        // same keys, because it is the same panel showing a longer list than it has room for
+        // the compaction's own answers. It scrolls with the same keys, because it is the same panel
+        // showing a longer list than it has room for
         if self.asked().is_none() && self.proposed.is_some() {
             match key.code {
                 KeyCode::PageUp => self.question_scroll = self.question_scroll.saturating_sub(PAGE),
@@ -683,8 +670,8 @@ impl App {
                 KeyCode::Down => self.question_scroll += 1,
                 KeyCode::Char('y') => self.take_proposal(true),
                 // `esc` as well as `n`, because a panel somebody opened and thought better of is
-                // the one thing everybody tries `esc` on. There is no turn to interrupt here for
-                // it to mean anything else: `esc` stops a run, and a question is the loop resting
+                // what they try `esc` on. There is no turn to interrupt here: `esc` stops a run,
+                // and a question is the loop resting
                 KeyCode::Char('n') | KeyCode::Esc => self.take_proposal(false),
                 _ => {}
             }
@@ -701,9 +688,9 @@ impl App {
             return;
         };
 
-        // the arguments can be longer than the panel has room for - a `revise` carrying a
-        // rewritten tool result is as long as the result - so the keys that scroll everything else
-        // scroll them here too
+        // the arguments can be longer than the panel has room for - a `revise` carrying a rewritten
+        // tool result is as long as the result - so the keys that scroll everything else scroll
+        // them here too
         match key.code {
             KeyCode::PageUp => {
                 self.question_scroll = self.question_scroll.saturating_sub(PAGE);
@@ -750,9 +737,8 @@ impl App {
                 self.drop_pending();
                 return;
             }
-            // a key that is not one of the answers does nothing. The keys are here because
-            // somebody put them here, and letting a stray one type into a message would put the
-            // answers back into the middle of a sentence
+            // a key that is not one of the answers does nothing. Letting a stray one type into a
+            // message would put the answers back into the middle of a sentence
             _ => return,
         };
 
@@ -764,8 +750,8 @@ impl App {
         if let Err(e) = self.decide(request.id, grant, remembered) {
             self.say(Speaker::Error, e);
         }
-        // what is left is the screen's own half of it: the keys stay on the panel while there are
-        // more questions, so three answers are three keystrokes rather than three rounds of `tab`
+        // the keys stay on the panel while there are more questions, so three answers are three
+        // keystrokes rather than three rounds of `tab`
         if self.kernel.pending_permissions().is_empty() {
             self.focus = Focus::Input;
             self.question_scroll = 0;
@@ -785,10 +771,9 @@ impl App {
             format!("{dropped} call(s) dropped; the model is told, and can try something else"),
         );
 
-        // and then the model gets to say something about it. Answering `n` to every request ends
-        // up at `start_turn`; dropping them all leaves the kernel idle with the refusals recorded
-        // and nobody driving, and without this the session would stop until somebody typed
-        // `/continue`
+        // the model then says something about it. Answering `n` to every request ends at
+        // `start_turn`; dropping them all leaves the kernel idle with the refusals recorded and
+        // nobody driving, and without this the session would stop until somebody typed `/continue`
         match self.stepping {
             true => self.say(Speaker::Note, "/step or /continue when you are ready"),
             false => self.start_turn(),

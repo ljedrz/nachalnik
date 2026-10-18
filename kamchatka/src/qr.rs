@@ -1,15 +1,13 @@
 //! A QR code of a short text, drawn with the terminal's own characters.
 //!
-//! note: for one thing, the page's address, so that a phone on the same network can open it by
-//! pointing a camera at the terminal rather than typing a key it was never meant to remember. Byte
-//! mode, error correction level `M`, versions 1 to 6: 106 bytes at most, which holds any address
-//! `--web` can listen on with room to spare, and stops short of the versions that need a block of
-//! version information - the one part of the format this would otherwise have to carry for nothing.
+//! note: shows a page's address so a phone on the same network can open it by camera instead of
+//! typing a key. Byte mode, error correction level `M`, versions 1 to 6, at most 106 bytes: enough
+//! for any address `--web` listens on, and below the versions that need a version-information
+//! block.
 //!
-//! note: hand-rolled rather than a dependency, because what is needed is a few hundred lines of
-//! arithmetic that does not change, and the format is fixed by ISO/IEC 18004. The tests hold it to
-//! the standard's worked example and to a whole code as a reference encoder draws it, so a mistake
-//! here is a test failing rather than a phone that shrugs.
+//! note: hand-rolled, not a dependency: the format is fixed by ISO/IEC 18004 and the arithmetic is
+//! a few hundred unchanging lines. Tests check the standard's worked example and a whole code as a
+//! reference encoder draws it, so a mistake fails a test.
 
 /// The data codewords in each block and the error correction codewords per block, by version, at
 /// level `M`.
@@ -469,12 +467,11 @@ mod tests {
         );
     }
 
-    /// The worked example in ISO/IEC 18004 Annex I: `01234567` at level `M` is version 1, and
-    /// its ten error correction codewords are fixed.
+    /// The worked example in ISO/IEC 18004 Annex I: `01234567` at level `M` is version 1, and its
+    /// ten error correction codewords are fixed.
     ///
-    /// note: that example is numeric mode, and this draws byte mode only, so what it checks is
-    /// the arithmetic underneath - the field, the generator and the division - on the standard's
-    /// own data codewords.
+    /// note: the example is numeric mode; this draws byte mode only. It checks the field, generator
+    /// and division on the standard's data codewords.
     #[test]
     fn the_error_correction_is_the_standards() {
         let data = [
@@ -563,8 +560,8 @@ mod tests {
         grid
     }
 
-    /// A checkerboard scores nothing, and a run of five or more modules of one colour in a line
-    /// scores three, and one more for each module past five: at the start of a line and at its end.
+    /// A checkerboard scores nothing. A run of five or more modules of one colour in a line scores
+    /// three, plus one more for each module past five, at the start or end of a line.
     #[test]
     fn a_run_of_five_or_more_scores_three_and_one_for_each_past_five() {
         assert_eq!(checkerboard(16, None).penalty(), 0);
@@ -612,8 +609,8 @@ mod tests {
     /// Ten for each whole step of five percent the share of dark modules is from half.
     #[test]
     fn each_step_of_five_percent_from_half_dark_scores_ten() {
-        // 24 of 64 dark is 37.5 percent: two whole steps from half. The eight made light are two
-        // modules apart at least, so no run or block of light comes of it.
+        // 24 of 64 dark is 37.5 percent, two whole steps from half. The eight made light are at
+        // least two modules apart, so no run or block of light results.
         let mut grid = checkerboard(8, None);
         for (x, y) in [
             (0, 0),

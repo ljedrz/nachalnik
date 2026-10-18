@@ -24,20 +24,17 @@ use crate::tools::{
 /// been asked to stop.
 const HEARTBEAT: Duration = Duration::from_millis(120);
 
-/// What the first line of a shell result says happened, for a reader who has not got time to
-/// read it.
+/// What the first line of a shell result says happened.
 ///
-/// note: here rather than where it is drawn, because the line is written here - see the `status`
-/// match in [`Shell::invoke`], which is the only thing that produces one. A colour worked out at
-/// the other end from a string it does not own is a second opinion about what a result means,
-/// and the two drift the first time the wording changes.
+/// note: the line is written here, not where it is drawn; [`Shell::invoke`] is the only thing that
+/// produces one. A colour worked out elsewhere from a string it does not own drifts when the
+/// wording changes.
 ///
-/// note: three, and not one per shape, because the question a colour answers is coarse: did the
-/// command say it worked, did it say it failed, or did it never get to say. The fourth thing
-/// somebody might want - a `1` from `grep` meaning *no match* rather than a fault - is not in
-/// here, because telling those apart means knowing what the command was and this program would
-/// be guessing. A guess that colours a working pipeline red, or a real failure yellow, is worse
-/// than the number itself.
+/// note: three variants, not one per shape, because a colour answers a coarse question: did the
+/// command say it worked, say it failed, or never get to say. `1` from `grep` meaning no match is
+/// not included, because telling that from a fault means knowing the command, and this program
+/// would be guessing. A guess that colours a working pipeline red, or a real failure yellow, is
+/// worse than the number itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
     /// The command finished and reported success.
@@ -52,10 +49,10 @@ pub enum Exit {
 impl Exit {
     /// Reads one back off a line, if that line is a shell result's first one.
     ///
-    /// note: the number decides it, rather than the words after it. `exit: ` is followed by a
-    /// code or by a reason no command reported - `stopped`, `signal: 9 (SIGKILL)`, `unknown` -
-    /// so a token that parses is an exit code and one that does not is a command that never got
-    /// to report. The prose can be rewritten without this having to be.
+    /// note: the number decides it, not the words after it. `exit: ` is followed by an exit code or
+    /// by a reason no command reported - `stopped`, `signal: 9 (SIGKILL)`, `unknown` - so a token
+    /// that parses is an exit code and one that does not is a command that never got to report.
+    /// The prose can be rewritten without this having to be.
     pub fn of(line: &str) -> Option<Self> {
         let said = line.strip_prefix("exit: ")?;
         let code = said.split_whitespace().next()?;
@@ -68,35 +65,33 @@ impl Exit {
     }
 }
 
-/// Where a command line's own top-level joints are - `|`, `||`, `&&`, `;` - as byte ranges into
-/// it; empty when there are none, or when the scan could not be trusted.
+/// Top-level joints of a command line - `|`, `||`, `&&`, `;` - as byte ranges; empty when there are
+/// none or the scan cannot be trusted.
 ///
-/// note: here rather than beside the panel that colours them. Where one stage of a command ends
-/// and the next begins is a fact about the command rather than about drawing it, and `ui` is
-/// behind feature `tui` - so anything wanting it without a screen could not ask, which is every
-/// headless session and everything in `tools` that reads a command before it runs.
+/// note: here rather than beside the panel that colours them, because a joint is a fact about the
+/// command, not about drawing it, and `ui` is behind feature `tui`, so headless sessions and
+/// `tools` that read a command before it runs could not ask.
 ///
-/// note: ranges rather than a rewritten command. Breaking the line at each joint, one stage to a
-/// row, costs a row per stage on a panel whose rows are its scarcest thing - and a broken command
-/// is not something `sh` would take back, so the panel would show a spelling nobody could act on.
-/// Colouring the joints in place says the same thing: where one stage ends and the next begins,
-/// at a glance, in a command still written the way the model wrote it.
+/// note: ranges rather than a rewritten command. Breaking the line at each joint costs a row per
+/// stage on a panel whose rows are scarce, and `sh` would not take back a broken command, so the
+/// panel would show a spelling nobody could act on. Colouring the joints in place says the same
+/// thing at a glance, in a command still written the way the model wrote it.
 ///
-/// note: worked out here rather than taken from the highlighter. `synoptic`'s `sh` mode calls
-/// every flag's hyphen an operator - `-n`, `-u`, `-5` - and does not tokenise `|` or `;` at all,
-/// so painting its operators would colour the noise and miss the joints.
+/// note: worked out here rather than from the highlighter. `synoptic`'s `sh` mode calls every
+/// flag's hyphen an operator - `-n`, `-u`, `-5` - and does not tokenise `|` or `;`, so painting its
+/// operators would colour noise and miss the joints.
 ///
 /// note: quote-aware, and it gives up rather than guessing.
-/// [`reaches_the_network`](crate::tools::reaches_the_network) splits a command on these same
-/// characters without caring where in it they are, because a policy that over-reads a command asks
-/// a question it need not have, and that is the right way for a policy to be wrong. A panel that
-/// over-reads one *tells somebody a quoted `|` is a pipe* on the screen where they decide whether
-/// to run it. So an unterminated quote, an unclosed `$(` or a trailing backslash comes back empty
-/// and the command is drawn with nothing picked out.
+/// [`reaches_the_network`](crate::tools::reaches_the_network) splits on these same characters
+/// without caring where they are, because a policy that over-reads a command asks a question it
+/// need not have, and that is the right way for a policy to be wrong. A panel that over-reads tells
+/// somebody a quoted `|` is a pipe on the screen where they decide whether to run it. So an
+/// unterminated quote, an unclosed `$(` or a trailing backslash comes back empty and the command is
+/// drawn with nothing picked out.
 ///
-/// note: a command that already has newlines in it is left alone without being scanned at all.
-/// What is inside a heredoc is arbitrary text - the `|` in the middle of a Python string is not a
-/// joint, and nothing readable from one line says so.
+/// note: a command that already has newlines is left alone without being scanned. What is inside a
+/// heredoc is arbitrary text - the `|` in the middle of a Python string is not a joint, and nothing
+/// readable from one line says so.
 pub fn joints(cmd: &str) -> Vec<(usize, usize)> {
     if cmd.contains('\n') {
         return Vec::new();
@@ -104,9 +99,9 @@ pub fn joints(cmd: &str) -> Vec<(usize, usize)> {
 
     let mut found: Vec<(usize, usize)> = Vec::new();
 
-    // note: bytes rather than characters, which is safe because everything looked at here is
-    // ASCII: every byte of a multi-byte character is `0x80` or above, so it can match none of
-    // them, and every index taken is one of theirs
+    // note: bytes rather than characters, which is safe because everything looked at here is ASCII:
+    // every byte of a multi-byte character is `0x80` or above, so it matches none of them, and
+    // every index taken is one of theirs
     let bytes = cmd.as_bytes();
     let mut quote: Option<u8> = None;
     let mut escaped = false;
@@ -200,17 +195,16 @@ pub fn joints(cmd: &str) -> Vec<(usize, usize)> {
     }
 }
 
-/// Runs a command, reporting its output as it arrives and stopping when asked to, under whatever
-/// confinement the policy's stances add up to.
+/// Runs a command, reporting its output as it arrives and stopping when asked to, under the
+/// policy's confinement.
 ///
-/// note: this is the tool that shows what an [`OutputSink`] is for. Every line goes to the sink
-/// the moment it is read, so a command that takes a minute is visible for that minute rather
-/// than appearing all at once at the end; and between lines it asks whether somebody has pressed
-/// escape, in which case the child is killed and the call still answers - with what it got.
+/// note: every line goes to [`OutputSink`] as it is read, so a command that takes a minute is
+/// visible for that minute instead of appearing all at once at the end. Between lines it checks
+/// whether escape was pressed; if so, the child is killed and the call answers with what it got.
 ///
-/// note: it holds the policy rather than being handed a verdict, because the kernel's answer is
-/// only whether the call may run at all. What it may *reach* is a second question, and the policy
-/// is the thing that knows: see [`Sandbox::of`](crate::sandbox::Sandbox::of).
+/// note: it holds the policy rather than being handed a verdict, because the kernel only answers
+/// whether the call may run at all. What it may reach is a separate question that the policy
+/// answers: [`Sandbox::of`](crate::sandbox::Sandbox::of).
 pub struct Shell {
     /// The stances the confinement is built from.
     pub policy: Arc<Careful>,
@@ -237,9 +231,9 @@ pub struct Shell {
     /// How much of a command's output the model is shown.
     ///
     /// note: on the struct rather than assigned by [`super::builtin`], because this is a public
-    /// type somebody constructs and registers directly (`builtin` is a convenience, not the only
-    /// door), and a limit handed out by one of two routes is a limit `/limit` silently fails to
-    /// change on the other.
+    /// type that somebody constructs and registers directly (`builtin` is a convenience, not the
+    /// only route); a limit set by one route is a limit `/limit` silently fails to change on the
+    /// other.
     pub limits: Limits,
     /// What a command left running when its call ended, for whoever ends the session to stop;
     /// see [`Stragglers`].
@@ -298,7 +292,7 @@ impl Default for Stragglers {
     }
 }
 
-/// The variable a command's processes carry, naming the session and the call they came from.
+/// The variable a command's processes carry, naming the session and call.
 ///
 /// note: a list, `;` between its entries, and a command adds to it rather than writing over it: a
 /// session run inside another one's command is that command's, and so is everything it starts.
@@ -365,14 +359,14 @@ impl Stragglers {
         self.named(self.found().into_keys())
     }
 
-    /// Stops everything a command left running - `SIGTERM`, and `SIGKILL` for what is still there
-    /// after two seconds - and hands back the commands whose processes were stopped.
+    /// Stops everything a command left running - `SIGTERM`, then `SIGKILL` after two seconds for
+    /// what is still there - and hands back the commands whose processes were stopped.
     ///
-    /// note: blocking, and short: it is called as a session ends, where there is nothing left to
-    /// be responsive for, and a runtime may already be on its way out.
+    /// note: blocking and short: it is called as a session ends, where nothing is left to be
+    /// responsive for and a runtime may already be on its way out.
     ///
-    /// note: looked for again before the `SIGKILL`, rather than the first list kept: a job that
-    /// forks as it is being stopped forks something that carries the mark too.
+    /// note: looked for again before the `SIGKILL`, not from the first list: a job that forks as it
+    /// is being stopped forks something that carries the mark too.
     pub fn stop(&self) -> Vec<String> {
         let found = self.found();
         for pid in found.values().flatten() {
@@ -391,10 +385,10 @@ impl Stragglers {
         self.named(found.into_keys())
     }
 
-    /// Sends `signal` to process `pid`, if it is still one carrying this session's mark.
+    /// Sends `signal` to process `pid`, if it still carries this session's mark.
     ///
-    /// note: through a `pidfd`, opened first and the mark read after, so that a process that went
-    /// and had its number handed on between the look and the signal is not the one signalled.
+    /// note: through a `pidfd`, opened first and the mark read after, so a process that exited and
+    /// had its number reused between the look and the signal is not the one signalled.
     fn signal(&self, pid: u32, signal: rustix::process::Signal) {
         let Some(opened) = self::pid(pid).and_then(|pid| {
             rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
@@ -430,10 +424,10 @@ fn ops() -> Vec<Op> {
 #[async_trait]
 impl Tool for Shell {
     fn spec(&self) -> ToolSpec {
-        // note: the confinement is said out loud only when there is one. A command stopped by
-        // Landlock comes back with an ordinary permission error and nothing to distinguish it
-        // from a file that really is protected, and a model that cannot tell those apart spends
-        // its turns trying `sudo`
+        // note: the confinement is reported only when there is one. A command stopped by Landlock
+        // comes back with an ordinary permission error and nothing to distinguish it from a file
+        // that really is protected, and a model that cannot tell those apart spends its turns
+        // trying `sudo`
 
         // note: the figure rather than "long output", because what a model does about a limit it
         // cannot see is find out by spending it - and read off the table rather than written into
@@ -463,11 +457,11 @@ impl Tool for Shell {
             )
         });
         let read_only = confined.as_ref().is_some_and(|sandbox| !sandbox.writable);
-        // note: and the paths that were opened up are named, because a model told only about
-        // "the working directory and the system paths" has no reason to try `~/.rustup` even
-        // when somebody opened it for exactly that. Read off the confinement the command will run
-        // under rather than off the flags, because a refusal of `fs:write` makes the paths
-        // `--sandbox-write` opened read-only there, and this is the sentence that says so
+        // note: the paths that were opened are named, because a model told only about "the working
+        // directory and the system paths" has no reason to try `~/.rustup` even when somebody
+        // opened it for exactly that. Read the confinement the command runs under rather than the
+        // flags, because a refusal of `fs:write` makes the paths `--sandbox-write` opened read-only
+        // there
         let (extra, readable) = match &confined {
             Some(sandbox) => (&sandbox.extra, &sandbox.readable),
             None => (&self.extra, &self.readable),
@@ -482,9 +476,9 @@ impl Tool for Shell {
             )
             .collect();
         // note: what the stance makes of the network, said as exactly as it is known. Where the
-        // gate does not hold a call can still be granted the network on its own, so the sentence
-        // there hedges; where it does, a command that reaches out waits on a person, and a model
-        // that does not know that reads a long silence as a hang
+        // gate does not hold, a call can still be granted the network on its own, so the sentence
+        // there hedges; where it does, a command that reaches out waits on a person; a model that
+        // does not know that reads a long silence as a hang
         let network = match confined.as_ref().map(|sandbox| sandbox.network) {
             Some(Network::NoTcp) => ", and TCP may be closed",
             Some(Network::Shut) => ", and it has no network",
@@ -495,13 +489,13 @@ impl Tool for Shell {
             _ => "",
         };
 
-        // note: `$TMPDIR` said, because it is writable even where the working directory is not,
-        // and a model in a read-only session that is not told so has nowhere it knows it may write
+        // note: `$TMPDIR` is named because it is writable even where the working directory is not;
+        // a model in a read-only session that is not told so has nowhere it knows it may write.
         //
-        // note: the directory named, and said to be where every call starts. A model that cannot
-        // see where it is, or has been trained where a shell's directory drifts between calls,
-        // opens each command with `cd` to a path it guessed - a stage the advisor asks about, and
-        // a relative path `Sandbox::note_for` then judges from the wrong place
+        // note: the directory is named as where every call starts. A model that cannot see where it
+        // is, or has been trained where a shell's directory drifts between calls, opens each
+        // command with `cd` to a guessed path - a stage the advisor asks about, and a relative path
+        // `Sandbox::note_for` then judges from the wrong place
         ToolSpec::new(
             "shell",
             format!(
@@ -532,10 +526,10 @@ impl Tool for Shell {
                 }
             ),
         )
-        // note: one operation, and asked for by name anyway, because every tool this program
-        // offers takes an `action` and a model should not have to remember which of them is the
-        // exception. It costs a word in the call and buys a rule with no holes in it - the same
-        // reasoning `log` is written to
+        // note: one operation, asked for by name, because every tool this program offers takes an
+        // `action` and a model should not have to remember which of them is the exception. It costs
+        // one word in the call and buys a rule with no holes, the same reasoning `log` is written
+        // to
         .with_schema(schema(&ops(), self.layout))
         .with_capabilities([Capability::exec("run")])
     }
@@ -549,10 +543,10 @@ impl Tool for Shell {
     }
 
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
-        // note: named rather than assumed, for the reason `fs` refuses one it does not have: a
-        // call that meant something else and was answered as `run` is a command nobody asked for.
-        // The tool is `shell` and the operation is `run` - the domain it declares is `exec`,
-        // which is what a permission rule is written against
+        // note: named rather than assumed, for the reason `fs` refuses one it does not have: a call
+        // that meant something else and was answered as `run` is a command nobody asked for. The
+        // tool is `shell` and the operation is `run`; the domain it declares is `exec`, which is
+        // what a permission rule is written against
         let args = match inner(&call.args) {
             Ok(args) => args,
             Err(misread) => return Ok(ToolOutput::error(misread.said(self.layout))),
@@ -567,10 +561,9 @@ impl Tool for Shell {
                 "`{named}` is not something `shell` does; it does run"
             )));
         }
-        // the rule the other tools hold to, and there is no reason for the one with a single
-        // operation to be the exception: an ignored argument comes back as a real answer - the
-        // answer to the call without it - and `cmd` beside a stray `path` is a command somebody
-        // meant to point somewhere
+        // the rule the other tools hold to: an ignored argument comes back as a real answer - the
+        // answer to the call without it. `cmd` beside a stray `path` is a command meant to point
+        // somewhere
         if let Some(refusal) = ops::unread("run", args, &ops()) {
             return Ok(ToolOutput::error(refusal));
         }
@@ -579,8 +572,8 @@ impl Tool for Shell {
         // what the command may reach, which is a different question from whether it may run: the
         // kernel answered that one before this was called
         //
-        // note: kept rather than built and dropped, because it is also what can tell afterwards
-        // whether a permission error in the output was this boundary; see `Sandbox::note_for`
+        // note: kept rather than built and dropped, because it can tell afterwards whether a
+        // permission error came from this boundary; see `Sandbox::note_for`
         let sandbox = self.confiner.is_some().then(|| Sandbox {
             devices: self.devices.clone(),
             ..Sandbox::of(
@@ -614,16 +607,16 @@ impl Tool for Shell {
 
         // the program's keys stay with the program; see `endpoint::KEYS` and `endpoint::ADDRESSES`
         scrub(&mut command, |name| std::env::var_os(name));
-        // and the mark everything it starts carries, which is how the end of the session finds what
-        // it left running; see `Stragglers`
+        // the mark everything it starts carries lets the end of the session find what it left
+        // running; see `Stragglers`
         command.env(CALL_VAR, self.stragglers.mark(cmd));
 
         // killed if this call is dropped before it is over; see `Running`
         command.kill_on_drop(true);
 
         // note: where the network is held, the child's standard input is the socket the gate's
-        // listener comes back up, and the command itself is given `/dev/null` there by the child -
-        // see `gate::hold`. Everywhere else it is `/dev/null` from the start
+        // listener comes back up, and the child gives the command `/dev/null`; see `gate::hold`.
+        // Everywhere else it is `/dev/null` from the start
         let network = sandbox.as_ref().map(|sandbox| sandbox.network);
         let arriving = match network {
             Some(Network::Shut | Network::Asked) => match crate::gate::pair() {
@@ -659,10 +652,10 @@ impl Tool for Shell {
             }
             Err(e) => return Ok(ToolOutput::error(format!("could not run the command: {e}"))),
         };
-        // the child holds its end of the pair now; this one's copy goes with the command, or a
-        // child that ends without sending a listener would never be seen to have ended
+        // the child holds its end of the pair now; this copy goes with the command, or a child
+        // that ends without sending a listener would never be seen to have ended
         drop(command);
-        // a confined child's session is its own and named by its pid, and a served session refuses
+        // a confined child's session is its own and named by its pid. A served session refuses
         // anything in it; see `sandbox::from_a_command`
         if let (Some(_), Some(pid)) = (&sandbox, child.id()) {
             crate::sandbox::began(pid);
@@ -677,8 +670,8 @@ impl Tool for Shell {
             )
         });
         // the confined child cannot remove its own temporary directory, so this is where that
-        // happens; the identifier has to be read now, because a child that has been waited on no
-        // longer has one. See `sandbox::scratch_for`
+        // happens. Read the identifier now: a waited-on child no longer has one. See
+        // `sandbox::scratch_for`
         let running = Running {
             group: child.id(),
             scratch: self
@@ -691,10 +684,10 @@ impl Tool for Shell {
         // taken out of the child, so that it can still be killed while these are being read
         let stdout = child.stdout.take().expect("stdout was piped");
         let mut stderr = child.stderr.take().expect("stderr was piped");
-        // note: into a buffer this end keeps, rather than one the task hands back when it is done,
-        // because it may never be done - see below - and what had arrived by then is still worth
-        // telling the model. Up to `KEPT`, and past that read and counted, so that a command that
-        // writes without end fills neither this process nor the pipe it writes to
+        // note: this end keeps a buffer rather than one the task hands back when done, because the
+        // task may never be done; see below. What arrived by then is still worth telling the model.
+        // Kept up to `KEPT`, and past that read and counted, so a command that writes without end
+        // fills neither this process nor the pipe it writes to
         let heard = Arc::new(std::sync::Mutex::new((Vec::new(), 0)));
         let mut collecting_stderr = tokio::spawn({
             let heard = heard.clone();
@@ -710,15 +703,15 @@ impl Tool for Shell {
             }
         });
 
-        // note: bytes rather than `lines()`, which refuses a line that is not UTF-8 - and stopping
-        // there would leave the pipe full and nobody reading it, so `cat` of a picture would block
-        // writing and the call would wait for it for ever. A command's output is whatever it
-        // wrote; what is not text is shown the way `from_utf8_lossy` shows it
+        // note: bytes rather than `lines()`, which refuses a line that is not UTF-8. Stopping there
+        // would leave the pipe full and unread, so `cat` of a picture would block writing and the
+        // call would wait for it for ever. A command's output is whatever it wrote; what is not
+        // text is shown with `from_utf8_lossy`
         let mut stdout = BufReader::new(stdout);
         let mut line = Vec::new();
         let mut collected = String::new();
-        // what was read past `KEPT` and let go; once one line does not fit, none after it is kept
-        // either, so that what is kept is the start of the output with no hole in it
+        // bytes read past `KEPT` and let go. Once one line does not fit, nothing after it is kept,
+        // so the kept output is the start with no hole
         let (mut dropped, mut full) = (0, false);
         let mut interrupted = false;
         // the signal the command stopped itself with, where it did; see `stopped_itself`
@@ -755,10 +748,10 @@ impl Tool for Shell {
                     keep(&line, &mut collected, &output, &mut full, &mut dropped);
                     line.clear();
                 }
-                // note: the end of the command is not the end of its standard output either, and
-                // here there is no draining it: `sleep 60 & echo started` leaves the pipe open for
-                // a minute, and a server started with `&` for ever. So a quiet moment after the
-                // command has gone is the end of what it said
+                // note: the end of the command is not the end of its standard output, and there is
+                // no draining it here: `sleep 60 & echo started` leaves the pipe open for a minute,
+                // and a server started with `&` for ever. A quiet moment after the command has gone
+                // is the end of what it said
                 Err(_) => {
                     if let Ok(Some(status)) = child.try_wait() {
                         keep(&line, &mut collected, &output, &mut full, &mut dropped);
@@ -778,9 +771,9 @@ impl Tool for Shell {
                 }
             }
 
-            // a line a timed-out read left unfinished is part of what the command had said by
-            // then, which is what the answer to a stopped command says it holds: `printf
-            // 'downloading 45%'` never ends its line, and it is the line worth having
+            // an unfinished line from a timed-out read is part of what the command said by then, so
+            // the answer to a stopped command holds it. `printf 'downloading 45%'` never ends its
+            // line, and it is the line worth having
             if output.is_interrupted() {
                 stop(&mut child).await;
                 keep(&line, &mut collected, &output, &mut full, &mut dropped);
@@ -788,8 +781,8 @@ impl Tool for Shell {
                 break;
             }
         }
-        // whatever stopped the reading, nobody reads this pipe again: closing it is what tells a
-        // command still writing to it, rather than leaving it blocked on a full one
+        // whatever stopped the reading, nobody reads this pipe again. Closing it tells a command
+        // still writing to it, rather than leaving it blocked on a full pipe
         drop(stdout);
 
         // note: the end of standard output is not the end of the command. `sleep 5 >&-` has closed
@@ -814,11 +807,11 @@ impl Tool for Shell {
             }
         }
 
-        // note: and the end of the command is not the end of its standard error. A killed shell
-        // can leave children of its own behind - `sleep 60; echo done` is two processes - and so
-        // can one that finished: `python3 -m http.server > log &` holds the pipe for as long as the
-        // server runs. Waiting for the end of it would be a call that never answers, so it gets a
-        // moment to drain once the command is gone and no longer
+        // note: the end of the command is not the end of its standard error. A killed shell can
+        // leave children behind - `sleep 60; echo done` is two processes - and so can one that
+        // finished: `python3 -m http.server > log &` holds the pipe while the server runs. Waiting
+        // for the end would be a call that never answers, so it gets a moment to drain once the
+        // command is gone
         let held = tokio::time::timeout(HEARTBEAT, &mut collecting_stderr)
             .await
             .is_err();
@@ -845,15 +838,13 @@ impl Tool for Shell {
         if held && !interrupted {
             errors.push_str("\n[standard error is still open: something this command started is still running]\n");
         }
-        // note: not `ExitStatus`'s own `Display`, which renders `exit status: 0` and would make
-        // the first line of every result read `exit: exit status: 0`. What a reader wants from
-        // this line is the number, and whether it means the command worked
+        // note: not `ExitStatus`'s `Display`, which renders `exit status: 0` and would make the
+        // line `exit: exit status: 0`. It gives the number and whether the command worked.
         //
-        // note: and whether it was stopped, which is said here rather than in a line after the
-        // standard error. An output limit cuts from the end, so a stopped command that had said
-        // more than the limit would lose the one line explaining why its output stops
-        // mid-sentence - the truncation marker takes its place, and the model is told the wrong
-        // thing about what it is reading. The first line survives anything
+        // note: stopped is reported here, not after the standard error, because an output limit
+        // cuts from the end. A stopped command that said more than the limit would lose the line
+        // explaining why output stops mid-sentence; the truncation marker replaces it, and the
+        // model is misled. The first line survives anything
         let waited = match waited {
             Some(waited) => waited,
             None => child.wait().await,
@@ -861,9 +852,9 @@ impl Tool for Shell {
         let reached = gatekeeper.and_then(Gatekeeper::over);
         let scratch = running.over();
         let (meant, status) = match (interrupted, waited) {
-            // note: said for what it was, not as the kill that ended it. A stopped command waits
-            // for a `SIGCONT` nothing here will send, and the model that wrote `kill -STOP $$` is
-            // told why its command came back, so it does not try the same thing again
+            // note: said as stopped, not as the kill that ended it. A stopped command waits for a
+            // `SIGCONT` nothing here will send, so the model that wrote `kill -STOP $$` is told why
+            // the command came back and does not try the same thing again
             (false, _) if let Some(signal) = halted => (
                 Exit::Stopped,
                 format!(
@@ -874,9 +865,8 @@ impl Tool for Shell {
             ),
             (true, _) => (
                 Exit::Stopped,
-                // note: not "at the person's request": a deadline interrupts the same way, and
-                // the interrupt carries no word of who asked, so the model is told only what
-                // happened
+                // note: not "at the person's request": a deadline interrupts the same way and
+                // carries no word of who asked, so the model is told only what happened
                 "exit: stopped before it finished, when the turn was interrupted; what is below \
                  is what it had said by then"
                     .to_owned(),
@@ -894,11 +884,10 @@ impl Tool for Shell {
             },
             (false, Err(e)) => (Exit::Stopped, format!("exit: unknown ({e})")),
         };
-        // note: the one place the writing and the reading of this line can be held together, and
-        // it costs nothing in a release build. Every test that runs a real command is then also a
-        // test that the line it wrote says what the run meant - which a table of strings
-        // somewhere else could never be, since it would go on agreeing with itself after the
-        // wording here changed
+        // note: this is the one place the line and its meaning are checked together, and it costs
+        // nothing in a release build. A test that runs a real command then also tests that the line
+        // says what the run meant; a separate table of strings could not, since it would keep
+        // agreeing with itself after the wording changed
         debug_assert_eq!(
             Exit::of(&status),
             Some(meant),
@@ -920,19 +909,18 @@ impl Tool for Shell {
         if let Some(scratch) = scratch {
             let _ = tokio::fs::remove_dir_all(scratch).await;
         }
-        // note: what came of it, where this command reached for the network. Up here with the
-        // rest, for the reason they all are, and said because the output alone cannot say it: a
-        // refused socket is `Permission denied` from the kernel, the same words a file's own
-        // permissions produce, and a refused name lookup is `Temporary failure in name
-        // resolution`, which reads as a network having trouble. A model that does not know it was
-        // refused goes looking for another way out rather than asking
+        // note: what came of it, where the command reached for the network. Up here with the rest,
+        // for the reason they all are, and said because the output alone cannot say it: a refused
+        // socket is `Permission denied` from the kernel, the same words a file's own permissions
+        // produce, and a refused name lookup is `Temporary failure in name resolution`, which reads
+        // as a network having trouble. A model that does not know it was refused looks for another
+        // way out rather than asking
         let refused = "so every network socket it asked for was refused with `Permission \
                        denied`, and a name it tried to look up failed with `Temporary failure in \
                        name resolution`";
-        //
-        // note: "when it was asked about" and not "the person said", in the kernel's words for its
-        // own questions, because what answered may be `--on-ask` in a run nobody is watching, and
-        // the model repeats whatever this claims about who decided
+        // note: "when it was asked about", not "the person said": the kernel's words for its own
+        // questions, because what answered may be `--on-ask` in a run nobody is watching, and the
+        // model repeats whatever this claims about who decided
         let reached = match reached {
             Some(Reached::Let) => {
                 "[this command reached for the network, and was let through when it was asked \
@@ -964,12 +952,11 @@ impl Tool for Shell {
                  {KEPT} bytes]\n"
             ),
         };
-        // note: standard error before standard output, for the reason everything above is up
-        // here: an output limit cuts from the end, and a command that failed after printing a lot
-        // would lose the line saying why. Errors are usually the shorter stream. A build whose
-        // warnings fill the limit pushes its output off the end instead, into the excluded whole;
-        // cutting standard output here to make room would lose it outright, since the whole
-        // holds only what the tool returned
+        // note: standard error before standard output because an output limit cuts from the end,
+        // and a command that failed after printing a lot would lose the line saying why. Errors are
+        // usually the shorter stream. A build whose warnings fill the limit pushes its output off
+        // the end into the excluded whole; cutting standard output to make room would lose it
+        // outright, since the whole holds only what the tool returned
         let text = format!(
             "{status}\n{reached}{note}{unkept}--- stderr ---\n{errors}\n--- stdout ---\n{collected}"
         );
@@ -991,21 +978,19 @@ enum Reached {
     Ungated,
 }
 
-/// What answers a gated command's attempts to reach the network, for as long as anything the
-/// command started is still making them.
+/// Answers a gated command's attempts to reach the network for as long as anything it started is
+/// still making them.
 ///
-/// note: a task of its own rather than a branch of the call's loop, because the attempts can
-/// outlast the call: `python3 -m http.server &` leaves a process behind under the same filter, and
-/// once the call is over nothing else would be answering it - and a held call nobody answers is a
-/// process stuck in `socket()` until the listener closes. So the task runs until the kernel says
-/// no process under the filter is left.
+/// note: a task of its own rather than a branch of the call's loop, because attempts can outlast
+/// the call. `python3 -m http.server &` leaves a process behind under the same filter, and once the
+/// call is over nothing else answers it. A held call nobody answers is stuck in `socket()` until
+/// the listener closes, so the task runs until the kernel says no process under the filter is left.
 ///
-/// note: a command started under a refusal is refused throughout, because Landlock is refusing its
-/// TCP as well and cannot be told otherwise. A command started under a question consults the
-/// stance at its first attempt - an answer of `always` to some other command's question counts -
-/// and asks the person where it is still `ask`, once. Whatever was decided holds for the rest of
-/// the command. Once the call is over there is nobody to ask on its behalf - the panel would be
-/// asking about a command that has ended - so an attempt made after that with nothing decided is
+/// note: a command started under a refusal is refused throughout, because Landlock refuses its TCP
+/// and cannot be told otherwise. A command started under a question consults the stance at its
+/// first attempt - an answer of `always` to another command's question counts - and asks the person
+/// once where it is still `ask`. Whatever was decided holds for the rest of the command. Once the
+/// call is over nobody can ask on its behalf, so an attempt after that with nothing decided is
 /// refused.
 struct Gatekeeper {
     /// What came of the first attempt, where there was one.
@@ -1108,8 +1093,8 @@ struct Running {
 }
 
 impl Running {
-    /// The command has been waited for, so its identifier may already be somebody else's; hands
-    /// back the temporary directory for the caller to remove without blocking.
+    /// The command has been waited for, so its identifier may already be somebody else's. Returns
+    /// the temporary directory for the caller to remove without blocking.
     fn over(mut self) -> Option<PathBuf> {
         self.group = None;
         self.scratch.take()
@@ -1119,8 +1104,8 @@ impl Running {
 impl Drop for Running {
     fn drop(&mut self) {
         if let Some(pid) = self.group {
-            // waited for here rather than through tokio, because a drop cannot wait on a future
-            // and this may be the last thing the runtime does
+            // waited for here rather than through tokio because a drop cannot wait on a future, and
+            // this may be the last thing the runtime does
             let _ = killing(pid).status();
         }
         if let Some(scratch) = &self.scratch {
@@ -1129,11 +1114,11 @@ impl Drop for Running {
     }
 }
 
-/// The signal the command stopped itself with, where it has: `kill -STOP $$`, or a `SIGTSTP` to
-/// its group, which stops the shell as well as what it runs.
+/// The signal the command stopped itself with: `kill -STOP $$`, or a `SIGTSTP` to its group, which
+/// stops the shell as well as what it runs.
 ///
 /// note: asked without reaping and without taking the stop away (`WNOWAIT`), so it is asked again
-/// each heartbeat and leaves the end of the command to tokio, which waits on it. A stopped command
+/// each heartbeat and the end of the command is left to tokio, which waits on it. A stopped command
 /// is waited on for ever otherwise: nothing here sends a `SIGCONT`, and a confined one cannot be
 /// continued by anybody else.
 ///
@@ -1204,12 +1189,11 @@ fn killing(pid: u32) -> std::process::Command {
 /// Keeps one line of standard output, or as much of its start as fits under [`KEPT`], unless the
 /// output is already there.
 ///
-/// note: measured as it is kept rather than as it arrived. A byte that is not UTF-8 is kept as the
-/// three of `�`, so a line held to the ceiling as it arrived could be kept at three times it.
+/// note: measured as it is kept rather than as it arrived. A non-UTF-8 byte is kept as `�`, three
+/// bytes, so a line held to the ceiling as it arrived could be kept at three times its size.
 ///
-/// note: the start of a line that does not fit, rather than none of it, so that one line past the
-/// ceiling - `tr` over a large file, a minified bundle - comes back as the start of what it said
-/// rather than as nothing under a count of bytes "more" than nothing.
+/// note: keeps the start of a line that does not fit, rather than none of it, so a line past the
+/// ceiling comes back as the start of what it said rather than as nothing.
 fn keep(
     line: &[u8],
     collected: &mut String,
@@ -1246,12 +1230,12 @@ fn keep(
     collected.push('\n');
 }
 
-/// Takes the program's keys out of what `command` is given, and an address with a password in it,
+/// Removes the program's keys from `command`'s environment, and an address with a password in it,
 /// as `value` reads each variable.
 ///
 /// note: an address is read as `endpoint::address_in` reads it, with what is not text replaced,
-/// since one that is not text is still in the environment the command inherits. Read with
-/// `env::var`, which answers such a value as no value, its password went along with it.
+/// since non-text is still in the environment the command inherits. Read with `env::var`, which
+/// answers such a value as no value, so its password went along with it.
 fn scrub(
     command: &mut tokio::process::Command,
     value: impl Fn(&str) -> Option<std::ffi::OsString>,
@@ -1357,10 +1341,10 @@ mod tests {
 
     /// An argument `run` does not take is refused by name, and nothing is run.
     ///
-    /// note: `path` beside a command is the mistake this rule was written for - a call that
-    /// ignored it would answer with the command's whole output as though the narrowing it asked
-    /// for had happened. The refusal reads off the same table the schema is built from, so the
-    /// two cannot disagree about what `shell` takes.
+    /// note: `path` beside a command is the mistake this rule prevents - a call that ignored it
+    /// would answer with the command's whole output as though the narrowing it asked for had
+    /// happened. The refusal reads off the same table the schema is built from, so the two cannot
+    /// disagree about what `shell` takes.
     #[tokio::test]
     async fn an_argument_run_does_not_take_is_refused_and_runs_nothing() {
         let call = ToolCall::new(
@@ -1384,8 +1368,8 @@ mod tests {
         assert!(!said.contains("ran"), "no command output: {said}");
     }
 
-    /// The description names the directory every call starts in, and a `cd` in one call is gone
-    /// by the next - which is the claim that lets a model stop opening each command with one.
+    /// The description names the directory every call starts in, and a `cd` in one call is gone by
+    /// the next - which is the claim that lets a model stop opening each command with one.
     #[tokio::test]
     async fn every_call_starts_where_the_description_says() {
         let here = std::env::temp_dir();
@@ -1431,7 +1415,7 @@ mod tests {
     /// A command that stops itself after closing its standard output is ended too, and says so.
     ///
     /// note: with the output closed the reading is over, so the stop is found by the wait that is
-    /// left, which is a different place from the one the stop above is found in.
+    /// left, a different place from the one above.
     #[tokio::test]
     async fn a_command_that_stops_itself_with_its_output_closed_is_ended_and_says_so() {
         let said = ran("exec 1>&-; echo before >&2; kill -STOP $$; echo after >&2").await;
@@ -1442,10 +1426,10 @@ mod tests {
         assert!(said.contains("before") && !said.contains("after"), "{said}");
     }
 
-    /// What a call whose arguments never parsed is answered with is the advice `ops` gives for the
-    /// fault, and nothing at all where there is none.
+    /// A call whose arguments never parsed is answered with the advice `ops` gives for the fault,
+    /// and with nothing where `ops` has none.
     ///
-    /// note: the kernel puts this straight into the answer the model reads, so an empty string, a
+    /// note: the kernel puts this into the answer the model reads, so an empty string, a
     /// placeholder or a fixed word would be told to the model as the fault.
     #[test]
     fn an_unparsed_command_is_answered_with_the_advice_for_its_fault() {
@@ -1490,12 +1474,12 @@ mod tests {
         .into_owned()
     }
 
-    /// Runs one command under a session that stops it after `wait`, and gives back what the
-    /// command had to say by then.
+    /// Runs one command under a session that stops it after `wait`, and gives back what the command
+    /// had to say by then.
     ///
-    /// note: a session rather than a dropped call, because this is the one thing a
-    /// disconnected sink cannot say: an interrupt reaches a tool only through the sink it was
-    /// given, and `OutputSink::disconnected` discards the question as well as the answer.
+    /// note: a session rather than a dropped call, because an interrupt reaches a tool only through
+    /// the sink it was given, and `OutputSink::disconnected` discards the question as well as the
+    /// answer.
     async fn interrupted(command: &str, wait: Duration) -> String {
         use nachalnik::{
             Config, ContextItem, ContextKind, Kernel, ModelResponse,
@@ -1551,8 +1535,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("kamchatka-dropped-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("a directory");
         let late = dir.join("late.txt");
-        // in the background, so that the process that would write it is not the one `kill_on_drop`
-        // reaches: killing `sh` alone leaves this running
+        // in the background, so `kill_on_drop` does not reach the process that would write it;
+        // killing `sh` alone leaves this running
         let command = format!("(sleep 1; touch {}) & wait", late.display());
         let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
 
@@ -1574,9 +1558,9 @@ mod tests {
 
     /// Output that is not text is shown rather than stopped at, and what follows it arrives.
     ///
-    /// note: more than a pipe holds follows the byte that is not UTF-8, because that is what makes
-    /// this a hang rather than a loss: a reader that stops at the first such line leaves the
-    /// command behind it blocked writing into a full pipe that nobody is reading.
+    /// note: data larger than the pipe holds follows the non-UTF-8 byte, which makes this a hang
+    /// rather than a loss: a reader that stops at the first such line leaves the command blocked
+    /// writing into a full pipe nobody is reading.
     #[tokio::test]
     async fn output_that_is_not_text_is_read_to_the_end() {
         let said = ran(
@@ -1600,12 +1584,11 @@ mod tests {
         );
     }
 
-    /// Output past the ceiling is read to the end and let go, on either stream and in a line that
-    /// never ends, and the answer keeps the start of it and says how much went at the top.
+    /// Output past the ceiling is read to the end and let go, on either stream, even in a line that
+    /// never ends. The answer keeps the start and says how much went at the top.
     ///
     /// note: read to the end rather than stopped at, which the exit status shows: `head` finishes
-    /// and the command succeeds, where a reader that stopped reading would leave it blocked on a
-    /// full pipe.
+    /// and the command succeeds, where a reader that stopped would leave it blocked on a full pipe.
     #[tokio::test]
     async fn output_past_the_ceiling_is_read_and_not_kept() {
         let past = KEPT + 1_000_000;
@@ -1636,10 +1619,10 @@ mod tests {
         }
     }
 
-    /// Empty lines are held to the ceiling as well: each one is a byte of what is kept.
+    /// Empty lines count toward the ceiling too; each one is one byte kept.
     ///
-    /// note: the ceiling was measured against a line without its newline, so a line that was
-    /// only one never reached it, and `yes ''` grew what was kept without end.
+    /// note: the ceiling was measured against a line without its newline, so a line that was only a
+    /// newline never reached it, and `yes ''` grew what was kept without end.
     #[tokio::test]
     async fn empty_lines_past_the_ceiling_are_not_kept() {
         let past = KEPT + 1_000_000;
@@ -1688,9 +1671,9 @@ mod tests {
 
     /// A command stopped in the middle of a line answers with that line too.
     ///
-    /// note: the answer says that what is below is what the command had said by then, and a
-    /// progress line that never ends - `printf 'downloading 45%'` - is what a command stopped
-    /// for being slow has said. It was dropped, and the answer under that sentence was empty.
+    /// note: the answer marks what follows as what the command said by then. An endless progress
+    /// line such as `printf 'downloading 45%'` is what a command stopped for being slow said. It
+    /// was dropped, and the answer under that sentence was empty.
     #[tokio::test]
     async fn a_stopped_command_keeps_the_line_it_was_in_the_middle_of() {
         let said = interrupted(
@@ -1703,19 +1686,18 @@ mod tests {
         assert!(said.contains("downloading 45%"), "{said}");
     }
 
-    /// What the stance makes of the network is said in the description, for each of the answers it
-    /// can have.
+    /// The description says what the stance means for the network, for each answer it can have.
     ///
-    /// note: said there rather than at the point of failure, and the point of failure cannot say
-    /// it. A refused socket is `Permission denied` and a refused name lookup is `Temporary failure
-    /// in name resolution`, which reads as a network having trouble; a model that does not know it
-    /// was refused goes looking for another way out. The three sentences are not
-    /// interchangeable - one refuses outright, one holds for a person to be asked, one refuses TCP
-    /// and promises nothing about a datagram - so each is checked against the stance that earns it.
+    /// note: it is said in the description, not at the point of failure, because the point of
+    /// failure cannot say it. A refused socket is `Permission denied`; a refused name lookup is
+    /// `Temporary failure in name resolution`, which reads as network trouble. A model that does
+    /// not know it was refused looks for another way out. The three sentences are not
+    /// interchangeable: one refuses outright, one waits for a person to be asked, one refuses TCP
+    /// and promises nothing about a datagram. Each is checked against the stance that earns it.
     ///
     /// note: a gated session with nothing said about the network stands at `ask`, which is what
-    /// `Careful` answers for anything nobody has decided; the gate turns that into a question
-    /// rather than a refusal. See `Careful::gate_the_network`.
+    /// `Careful` answers for anything undecided; the gate turns that into a question rather than a
+    /// refusal. See `Careful::gate_the_network`.
     #[test]
     fn the_description_says_what_the_stance_makes_of_the_network() {
         let said = |gated: bool, stance: Verdict| {
@@ -1749,17 +1731,17 @@ mod tests {
                 Verdict::Ask,
                 "it waits while the person you are working with is asked",
             ),
-            // and where there is no gate only Landlock stands in the way, which refuses TCP and
-            // promises nothing about a datagram - the word for that case is `no TCP`, not `no
-            // network`, and it is the sentence that has to keep the two apart
+            // without a gate, only Landlock stands in the way; it refuses TCP and promises nothing
+            // about a datagram. The word for that case is `no TCP`, not `no network`, and the
+            // sentence must keep the two apart
             (false, Verdict::Ask, "TCP may be closed"),
         ] {
             let said = said(gated, stance);
             assert!(said.contains(said_of_it), "{gated}/{stance:?}: {said}");
         }
 
-        // and the two hold-outs are told apart from each other, which is the whole of what the
-        // wording is for: a session that refuses outright does not wait for anybody
+        // the two hold-outs are told apart; that is the point of the wording. A session that
+        // refuses outright does not wait for anybody
         let shut = said(true, Verdict::Deny);
         assert!(!shut.contains("waits while the person"), "{shut}");
         assert!(!shut.contains("TCP may be closed"), "{shut}");
@@ -1772,15 +1754,13 @@ mod tests {
         );
     }
 
-    /// A line that exactly fills the room a read is given arrives whole, newline and all.
+    /// A line that exactly fills the window a read is given arrives whole, newline and all.
     ///
-    /// note: the window a read is given is one byte past the ceiling rather than the ceiling, so
-    /// that a line filling it exactly - the newline it is kept with included - is read in one go
-    /// and kept as one line. A window a byte short splits that line at its last byte: the read
-    /// returns what it had, `keep` writes the line and a newline of its own, and the newline the
-    /// command wrote is read again as a line of its own and kept as a second one. A caller sees a
-    /// line of output where there was one line, and the ceiling's worth of bytes has become a
-    /// ceiling's worth plus one.
+    /// note: the window is one byte past the ceiling, so a line filling it exactly - newline
+    /// included - is read in one go and kept as one line. A window a byte short splits the line at
+    /// its last byte: the read returns what it had, `keep` writes the line and a newline, and the
+    /// command's newline is read again as a second line. A caller sees two lines where there was
+    /// one, and the ceiling's bytes become ceiling plus one.
     ///
     /// note: `tr` rather than one `write`, because that is what makes the two differ. A command
     /// that writes its whole line at once has it in the pipe before the first read is made, so the
@@ -1861,8 +1841,8 @@ mod tests {
 
     /// A line past the ceiling keeps its start, and what went is counted to the byte.
     ///
-    /// note: ending in characters of three bytes, the first of which the ceiling falls inside, so
-    /// that the start kept ends where a character does rather than at the ceiling itself.
+    /// note: the line ends in three-byte characters, and the ceiling falls inside the first one, so
+    /// the kept start ends where a character does rather than at the ceiling.
     #[test]
     fn a_line_past_the_ceiling_keeps_its_start() {
         let line = [vec![b'x'; KEPT - 2], "€€€".as_bytes().to_vec()].concat();
@@ -1897,13 +1877,12 @@ mod tests {
         assert_eq!((collected.len(), full, dropped), (KEPT, false, 0));
     }
 
-    /// A line whose own bytes fill the ceiling leaves no room for the newline it is kept with, so
-    /// its last byte goes and the newline takes its place.
+    /// A line whose bytes fill the ceiling leaves no room for the newline it is kept with, so its
+    /// last byte goes and the newline takes its place.
     ///
-    /// note: the ceiling is against the newline too, which is what an empty line is all of. A line
-    /// of `KEPT` bytes with no newline of its own fills the ceiling as it arrived but not as it is
-    /// kept, and keeping it whole puts `KEPT + 1` bytes under a budget of `KEPT` - one byte more
-    /// than every other path through this file holds a caller to.
+    /// note: the ceiling counts the newline too. A line of `KEPT` bytes with no newline of its own
+    /// fills the ceiling as it arrived but not as it is kept; keeping it whole would be `KEPT + 1`
+    /// bytes under a budget of `KEPT`. Every other path through this file holds a caller to `KEPT`.
     #[test]
     fn a_line_that_fills_the_ceiling_without_its_newline_is_cut() {
         let line = vec![b'x'; KEPT];
@@ -1919,13 +1898,12 @@ mod tests {
         assert_eq!((collected.len(), full, dropped), (KEPT, true, 1));
     }
 
-    /// A command stopped while it is being waited for, having closed its output, answers at
-    /// once and says it was stopped.
+    /// A command stopped while being waited for, after closing its output, answers at once and says
+    /// it was stopped.
     ///
-    /// note: the wait is watched on a heartbeat precisely so that this can be answered, and the
-    /// heartbeat is where the interrupt is read. A wait that acted on nothing would go on
-    /// watching a command that had already been stopped, for as long as that command said it
-    /// would run.
+    /// note: the wait is watched on a heartbeat so that this can be answered, and the heartbeat is
+    /// where the interrupt is read. A wait that acted on nothing would keep watching a stopped
+    /// command for as long as that command said it would run.
     #[tokio::test]
     async fn a_command_stopped_while_being_waited_for_answers_at_once() {
         let said = interrupted("exec 1>&-; sleep 30", Duration::from_millis(500)).await;
@@ -1936,12 +1914,12 @@ mod tests {
         );
     }
 
-    /// A command nobody asked to stop is not stopped, however long it is quiet for.
+    /// A command nobody asked to stop is not stopped, however long it is quiet.
     ///
-    /// note: the wait is watched on a heartbeat rather than left to block, and the heartbeat is
-    /// what reads whether the turn was interrupted - a wait that acted on anything else would
-    /// stop a command that was only quiet. `exec 1>&-` is here because it is what puts the wait
-    /// where the heartbeat is: the reading is over, and what is left is the command itself.
+    /// note: the wait is watched on a heartbeat rather than left to block, and the heartbeat reads
+    /// whether the turn was interrupted. A wait that acted on anything else would stop a command
+    /// that was only quiet. `exec 1>&-` puts the wait where the heartbeat is: the reading is over,
+    /// and what is left is the command itself.
     #[tokio::test]
     async fn a_quiet_command_nobody_asked_to_stop_is_not_stopped() {
         let said = ran("exec 1>&-; sleep 2; echo late >&2").await;
@@ -1950,14 +1928,14 @@ mod tests {
         assert!(said.contains("late"), "{said}");
     }
 
-    /// The end of a command's standard output is not the end of its standard error, and a command
-    /// that closed its output and kept running has the rest of its error kept.
+    /// The end of a command's standard output is not the end of its standard error. A command that
+    /// closed its output and kept running has the rest of its error kept.
     ///
-    /// note: `exec 1>&-` is the note beside the loop this is about - the end of the output is not
+    /// note: `exec 1>&-` is the note beside the loop this is about: the end of the output is not
     /// the end of the command, so the command is waited for on its own rather than while reading
-    /// it. A wait that is skipped the moment reading stops is the same wait held to no heartbeat
-    /// at all, and standard error is drained after it and cut by one: the error a command says
-    /// after it closed its output is exactly the error this would lose.
+    /// it. A wait skipped the moment reading stops is the same wait held to no heartbeat at all;
+    /// standard error is drained after it and cut by one, so the error a command says after it
+    /// closed its output is exactly the error this would lose.
     #[tokio::test]
     async fn what_a_command_says_after_closing_its_output_is_kept() {
         let said = ran("exec 1>&-; sleep 1; echo first >&2; sleep 1; echo second >&2").await;
@@ -2013,13 +1991,13 @@ mod tests {
 
     /// What a command reported is what its first line says, for every shape the tool writes.
     ///
-    /// note: real commands rather than a table of the strings this file writes. A table would go
-    /// on agreeing with itself after somebody reworded the status line, which is the one failure
-    /// worth catching here - and the `debug_assert` in `invoke` is the same check from the other
-    /// side, run by every test in this crate that runs a command.
+    /// note: real commands rather than a table of the strings this file writes. A table would keep
+    /// agreeing with itself after somebody reworded the status line, which is the one failure worth
+    /// catching here. The `debug_assert` in `invoke` is the same check from the other side, run by
+    /// every test in this crate that runs a command.
     ///
-    /// note: `kill -9 $$` for the third, because a signal is the only way to leave a status with
-    /// no code in it, and SIGKILL is the one a shell cannot decline.
+    /// note: `kill -9 $$` for the third, because a signal is the only way to leave a status with no
+    /// code in it, and SIGKILL is the one a shell cannot decline.
     #[tokio::test]
     async fn what_a_command_reported_is_what_its_first_line_says() {
         let shell = unconfined();
@@ -2082,11 +2060,11 @@ mod tests {
 
     /// A quote ends where it began, whatever it held in between.
     ///
-    /// note: this is what the closing of one is for. A `\"` in a double-quoted string is the
-    /// character it is - the string does not end there - so a separator beside it is still inside
-    /// one; and a string read as ending at its first letter is not a string the scan understood,
-    /// so a separator after it is not inside one either. Which of the two was believed decides
-    /// whether the panel colours a `|` that is really a character of an argument.
+    /// note: a `\"` in a double-quoted string is an ordinary character, not the end of the string,
+    /// so a separator beside it is still inside one. A string read as ending at its first letter is
+    /// not a string the scan understood, so a separator after it is not inside one either. Which of
+    /// the two was believed decides whether the panel colours a `|` that is really a character of
+    /// an argument.
     #[test]
     fn a_quote_ends_where_it_began() {
         assert_eq!(picked("echo \"a | b\" | wc -l"), ["|"]);
@@ -2111,16 +2089,16 @@ mod tests {
         assert!(joints("sleep 60 &").is_empty());
         // a `case` arm's `;;` ends an arm rather than separating two commands
         assert!(joints("case $x in a) echo one;; esac").is_empty());
-        // and a command with newlines of its own is not scanned at all: what is inside a heredoc
-        // is arbitrary text, and the `|` in a Python expression is not a pipe
+        // a command with newlines of its own is not scanned: what is inside a heredoc is arbitrary
+        // text, and the `|` in a Python expression is not a pipe
         assert!(joints("python3 - <<'PY'\nprint(1 | 2)\nPY").is_empty());
     }
 
     /// A separator that is part of an argument is not a joint, whichever way it was quoted.
     ///
-    /// note: the case this function is for. Coloured as a joint, the `|` in `echo 'a | b'` would
-    /// be the panel telling somebody a quoted character is a pipe, on the screen where they decide
-    /// whether to run it - so a quoted separator has to be invisible to the scan.
+    /// note: a quoted separator must be invisible to the scan. Otherwise the panel would show the
+    /// `|` in `echo 'a | b'` as a pipe on the screen where the user decides whether to run the
+    /// command.
     #[test]
     fn a_separator_inside_a_quote_is_not_a_joint() {
         assert!(joints("echo 'a | b'").is_empty());

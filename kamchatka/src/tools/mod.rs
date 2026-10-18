@@ -1,16 +1,15 @@
-//! The two tools, the permission policy and the compactor - all of it ordinary user code.
+//! The two tools, the permission policy and the compactor are ordinary user code.
 //!
-//! note: the runtime ships none of this. It has no idea what a file is, it spawns no processes,
-//! and it never decides that something may run. What it provides is the shape: a [`Tool`] that
-//! declares what it needs, a [`nachalnik::PermissionPolicy`] that is asked before anything
-//! happens, and a [`nachalnik::Compactor`] whose plan is applied in the open and can be undone.
+//! note: the runtime ships none of this. It knows nothing of files, spawns no processes, and never
+//! decides that something may run. It provides the shape: a [`Tool`] that declares what it needs, a
+//! [`nachalnik::PermissionPolicy`] asked before anything happens, and a [`nachalnik::Compactor`]
+//! whose plan is applied in the open and can be undone.
 //!
-//! note: a file each, because they answer to three different traits and are read at three
-//! different moments. `fs` and `shell` are the tools themselves - `fs` dispatching to `files` and
-//! `search` for the operations that open one file and the ones that walk many - `policy` is what
-//! decides whether one of them runs, and `shedder` is what happens to results the conversation is
-//! done with, and to whole exchanges once there is no room left. `ops` is under all of them: what a tool that does several things declares, and the
-//! schema a model is shown for it.
+//! note: one file each, because they answer to three traits and are read at three moments. `fs` and
+//! `shell` are the tools; `fs` dispatches to `files` and `search` for opening one file and walking
+//! many. `policy` decides whether one runs. `shedder` handles results the conversation is done
+//! with, and whole exchanges when there is no room left. `ops` underlies them all: what a tool that
+//! does several things declares, and the schema shown to a model.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -84,12 +83,12 @@ use crate::tools::search::Looking;
 
 /// Reads the named argument, or explains which one is missing or what arrived instead.
 ///
-/// note: a value that is not text is refused as what it is rather than as missing. Told the
-/// argument is required, a model that wrote one goes looking for an argument it did not leave out.
+/// note: a value that is not text is refused as what it is, not as missing. Told the argument is
+/// required, a model that wrote one looks for an argument it did not leave out.
 ///
 /// note: an object is named by what it holds, because the usual one is the rest of the call nested
-/// a level down - `{"new": {"old": …, "new": …}}` - and "an object" alone does not say that the
-/// arguments it is looking for are inside it.
+/// a level down: `{"new": {"old": …, "new": …}}`. "An object" alone does not say the arguments are
+/// inside it.
 fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
     match &args[name] {
         Value::String(text) => Ok(text),
@@ -125,16 +124,16 @@ pub(crate) fn what(value: &Value) -> &'static str {
 
 /// A whole number argument, what was left out, or what was passed where one belonged.
 ///
-/// note: a numeric string is taken as the number, which costs nothing and saves a turn - models
-/// quote a number often enough that refusing one is refusing a spelling rather than a mistake. A
-/// word is not, because the answer a bare `as_u64().unwrap_or(..)` gives is the *default*, which
-/// reads as a tool that did what it was asked.
+/// note: a numeric string is taken as the number: it costs nothing and saves a turn, and models
+/// quote numbers often enough that refusing one refuses a spelling, not a mistake. A word is not,
+/// because `as_u64().unwrap_or(..)` returns the default, which reads as a tool that did what it was
+/// asked.
 ///
-/// note: the same rule `introspect::log` holds `take` and `since` to, where `take: "3"` read as
-/// `None` would be what leaving `take` out does - a summary where three lines were asked for, and
-/// nothing saying the argument had not been read. The message is this side's rather than shared,
-/// because what a swallowed argument costs is different here: not an empty answer that reads as
-/// an empty log, but an expensive one that reads as the only one available.
+/// note: the same rule `introspect::log` applies to `take` and `since`: `take: "3"` read as `None`
+/// is what leaving `take` out does - a summary where three lines were asked for, with nothing
+/// saying the argument was not read. The message is this side's rather than shared, because a
+/// swallowed argument costs something different here: not an empty answer that reads as an empty
+/// log, but an expensive one that reads as the only one available.
 fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
     number(args, name)
         .map(|n| n.unwrap_or(default))
@@ -223,55 +222,54 @@ pub(crate) const CEILING: usize = 32_000;
 /// cuts it; a file is refused an edit with a sentence saying how else to make one.
 pub const KEPT: usize = 8 * 1024 * 1024;
 
-/// And what one is cut at whose answer is a report of a fixed shape rather than a piece of the
-/// session, in bytes.
+/// The limit for one call's output when the answer is a fixed-shape report rather than a piece of
+/// the session, in bytes.
 ///
-/// note: the distinction is measured rather than guessed. Seven answers do not move between a
-/// small session and a large one with many more tools registered: `fs:write` and `fs:edit` are a
-/// line each, `context:revise` says what it replaced without quoting it, `context:note` and
-/// `setup:model` and `setup:policy` are a short paragraph, and `context:budget` is a fixed report
-/// with the ten most expensive rows under it. Everything else grows with what the session holds,
-/// `context:look` and `log`'s records most of all.
+/// note: the distinction is measured, not guessed. Seven answers do not change between a small
+/// session and a large one with many more tools registered: `fs:write` and `fs:edit` are one line
+/// each; `context:revise` says what it replaced without quoting it; `context:note`, `setup:model`,
+/// and `setup:policy` are a short paragraph; and `context:budget` is a fixed report with the ten
+/// most expensive rows under it. Every other answer grows with what the session holds, especially
+/// `context:look` and `log`'s records.
 ///
-/// note: what a lower number buys where a limit never fires anyway. It is a tripwire: the seven
-/// are bounded because of how each answer is built, so one of them arriving here cut is that
-/// having quietly stopped being true - a `budget` that listed every item, a `revise` that echoed
-/// what it wrote. `tests/introspect/shared.rs` holds the seven to it at the size, which is where
-/// such a change should be caught; this is what happens if it is not.
+/// note: a lower number buys a tripwire where the limit never fires anyway. The seven answers are
+/// bounded because of how each is built, so if one arrives cut, that has quietly stopped being
+/// true: a `budget` that listed every item, or a `revise` that echoed what it wrote.
+/// `tests/introspect/shared.rs` holds the seven to this size, so such a change should be caught
+/// there; this is what happens if it is not.
 pub(crate) const REPORT: usize = 8_000;
 
-/// How much of a call's output the model is shown, by subject, which a person can change
+/// How much of a call's output the model is shown, by subject. A person can change the rows
 /// mid-session.
 ///
-/// note: **one row per subject**, the same `<domain>:<operation>` string the permissions table is
-/// keyed on. A call's limit is looked up by the very subject its permission was decided by, so
-/// there is one vocabulary in this program and not two: `--auto-allow fs:grep` and `/limit fs:grep`
-/// name the same thing, and a person who has read either table can read the other.
+/// note: each row is keyed by subject, the same `<domain>:<operation>` string the permissions table
+/// uses. A call's limit is looked up by the subject its permission was decided by, so permissions
+/// and limits use one set of names: `--auto-allow fs:grep` and `/limit fs:grep` name the same
+/// thing, and anyone who has read either table can read the other.
 ///
-/// note: not keyed by tool id, because a tool can do several things. `fs` is one tool over five
-/// operations whose answers are nothing like the same size - a whole file and a repo-wide search -
-/// and `context` is one over twelve, from a listing of forty items to a line confirming a pin. A
-/// number per tool is a number for whichever of those somebody thought of first.
+/// note: rows are not keyed by tool id, because a tool can do several things. `fs` covers five
+/// operations whose answers range from a whole file to a repo-wide search, and `context` covers
+/// twelve, from a listing of items to a line confirming a pin. A number per tool would fit
+/// whichever operation somebody thought of first.
 ///
-/// note: a shared handle rather than a number beside each `spec`, because the thing that changes
-/// them (`/limit`) is in another file from the tools that declare them - and because `/limit`
-/// lists the table, and a person raising one wants to see the others. It is read afresh for every
-/// call, so a change here lands on the next one rather than needing a restart: the same property
-/// `/tools toggle` leans on.
+/// note: this is a shared handle rather than a number beside each `spec`, because `/limit`, which
+/// changes the rows, is in another file from the tools that declare specs, and because `/limit`
+/// lists the table and a person raising one row wants to see the others. It is read afresh for
+/// every call, so a change lands on the next call rather than needing a restart. `/tools toggle`
+/// leans on the same property.
 ///
-/// note: raising a limit does not recover a result that has already been shortened, and does not
-/// need to. The whole of that one is excluded beside the copy the model was shown, and one
-/// keystroke on the context tab sends it instead - the projector pairs a call to one result, so
-/// the whole claims the call and the short copy is dropped. This is for the next call. `fs:read`
-/// is the exception to the excluded whole, because it stops itself at a line under this limit
-/// and says where to read on from: the file is the whole, and nothing was cut to keep.
+/// note: raising a limit does not recover a result that was already shortened, and it does not need
+/// to: the whole result is excluded alongside the shortened copy the model was shown, and one
+/// keystroke on the context tab sends the whole instead. The projector pairs a call with one
+/// result, so the whole result is used for that call and the shortened copy is dropped. The new
+/// limit applies to the next call. `fs:read` is an exception: it stops at a line under the limit
+/// and says where to read on from, so the file is the whole result and nothing was cut.
 ///
-/// note: every row is held to the context window as well, until somebody sets it: a tenth of the
-/// window at about four bytes a token, and never more than the row. On a small window one answer at
-/// 32,000 bytes - a read, a build's output, a search, a look at the context - is most of the
-/// context, and two in a turn left no room for the model's next call, so the request was refused.
-/// The rows of reports are at 8,000 bytes, which a window under twenty thousand tokens is the only
-/// one to bring down. A row somebody set is theirs, and is what it says.
+/// note: every row is also held to the context window until somebody sets it: one tenth of the
+/// window's size, at about four bytes per token, and never more than the row. On a small window, a
+/// 32,000-byte answer can be most of the context, and two in a turn can leave no room for the
+/// model's next call, so the request is refused. Report rows are 8,000 bytes, so only a window
+/// under twenty thousand tokens caps them. A row somebody set is used exactly as set.
 #[derive(Debug, Clone)]
 pub struct Limits(Arc<Mutex<Table>>);
 
@@ -315,28 +313,26 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// The limits this program's tools start with: every subject they declare, at 32,000 bytes -
-    /// or 8,000, where the answer is a report rather than a piece of the session.
+    /// The default limits for this program's tools: every subject they declare starts at 32,000
+    /// bytes, or 8,000 where the answer is a report rather than a piece of the session.
     ///
     /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and it
-    /// is what an answer made of what the session holds is worth being cut at. Two numbers rather
-    /// than one per row: a number per row would be a set of opinions nobody asked for, and one
-    /// number for every row says that a line confirming a write and the whole of a log are the
-    /// same kind of answer. Which tier a subject is in is a measured fact about its answer rather
-    /// than a view about its importance: seven of them do not grow with the session, and every
-    /// other one does. The table is there so that somebody can hold the one that matters to them
-    /// to something else.
+    /// is the cut-off for an answer made from what the session holds. There are two tiers rather
+    /// than a number per row: a number per row would be a set of opinions nobody asked for, and one
+    /// number for every row would treat a line confirming a write and a whole log as the same kind
+    /// of answer. The tier is decided by whether the answer grows with the session, not by
+    /// importance: seven subjects have answers that do not grow with the session, and every other
+    /// one does. The table exists so a person can change the row that matters to them.
     ///
-    /// note: `fs:grep` and `fs:glob` are in here for `/limit` to list and to raise, and neither is
-    /// normally what shapes their answer: both cut themselves at a number of *matches* or *paths*
-    /// and say so, which a byte limit cannot do - it takes the tail of the last file searched and
-    /// leaves nothing saying there was more. These are the backstop for the one line that is a
+    /// note: `fs:grep` and `fs:glob` are in the default table for `/limit` to list and raise.
+    /// Neither row normally shapes its own answer: both cut at a number of matches or paths and say
+    /// so, which a byte limit cannot do. A byte limit takes the tail of the last file searched and
+    /// leaves nothing saying there was more. These rows are the fallback for the one line that is a
     /// megabyte wide.
     ///
-    /// note: `exec:run` rather than `shell`, which is the tool's name. A limit row is a subject,
-    /// and the subject a `shell` call is judged by is `exec:run` - so that is the row. The tool
-    /// being named for the thing it runs and the domain for what running is are the one place
-    /// those two words come apart in this program.
+    /// note: the row is `exec:run`, not `shell`, the tool's name, because a limit row is a subject
+    /// and a `shell` call is judged by `exec:run`. It is the one place in this program where a
+    /// tool's name and its domain come apart.
     pub fn new() -> Self {
         let rows = ["read", "glob", "grep", "write", "edit"]
             .map(Capability::fs)

@@ -1,52 +1,47 @@
 //! What a tool that does several things declares: one table of operations, and the schema, the
 //! refusal and the vocabulary all made out of it.
 //!
-//! note: one table rather than three declarations held together by a test - the `action` enum a
-//! model chooses from, what each of those reads, and a flat schema of every argument any of them
-//! takes. A test can keep three lists from drifting; what it cannot fix is that the *model* is
-//! shown only the flat one: `{"action": "read", "old": "x"}` is valid against it, gets as far as
-//! `invoke`, and is refused there - a round trip spent telling a model what the schema could have
-//! told it for nothing.
+//! note: one table instead of three declarations held together by a test: the `action` enum a model
+//! chooses from, what each reads, and a flat schema of every argument any of them takes. A test
+//! cannot stop the model seeing only the flat one: `{"action": "read", "old": "x"}` is valid
+//! against it, reaches `invoke`, and is refused there - a round trip the schema could have avoided.
 //!
 //! note: so the table is the declaration and the schema is made from it. An operation is a branch
-//! of an `anyOf`, carrying its own arguments and its own `required`, which is what makes the call
-//! above unrepresentable rather than merely refused. [`unread`] stays as the backstop, reading the
-//! same table: nothing is sent `strict`, so the schema guides rather than binds, and a model that
-//! ignores it is still answered by name.
+//! of an `anyOf` with its own arguments and `required`, which makes the call above unrepresentable
+//! rather than merely refused. [`unread`] is the backstop, reading the same table: nothing is sent
+//! `strict`, so the schema guides rather than binds, and a model that ignores it is still answered
+//! by name.
 
 use std::borrow::Cow;
 
 use nachalnik::{PermissionRequest, ToolCall, ToolSpec};
 use serde_json::{Map, Value, json};
 
-/// The one property every one of these tools takes, with the operation inside it.
+/// Every one of these tools takes one property, `call`, with the operation inside it.
 ///
-/// note: a wrapper because the root of a schema may not itself be an `anyOf` - OpenAI says so
-/// outright ("the root level object of a schema must be an object, and not use `anyOf`") and it is
-/// the one rule that decides the shape here. A union has to live under a property, so there is a
-/// property. Everything else about the call is as it would be without one: `action` names the
-/// operation, inside.
+/// note: a wrapper because the root of a schema may not itself be an `anyOf`. OpenAI says so
+/// outright ("the root level object of a schema must be an object, and not use `anyOf`"), and it is
+/// the one rule that decides the shape here. A union must live under a property, so there is a
+/// property. `action` names the operation inside.
 ///
-/// note: read forgivingly. A model that passes the arguments flat is understood rather than
-/// refused - the call is unambiguous and refusing it costs a
-/// turn. What is refused is arguments in both places at once, which is the only reading that could
-/// silently do something nobody asked for; see [`inner`].
+/// note: a model that passes the arguments flat is understood rather than refused - the call is
+/// unambiguous and refusing it costs a turn. Arguments in both places at once are refused; that is
+/// the only reading that could silently do something nobody asked for. See [`inner`].
 ///
-/// note: a session can be offered no wrapper at all, with [`Layout::Flat`]. A model whose own call
-/// format is a flat list of keys and values can slip back into it inside a nested object: it starts
-/// `call` as a JSON object and finishes it in its own markup, and the call is lost. The same
-/// tools offered flat give it nothing nested to slip inside. What that costs is the per-operation
-/// `required` and the branch that keeps one operation's arguments away from another's, so it is a
-/// setting for the models that need it rather than the default.
+/// note: a session can be offered no wrapper at all, with [`Layout::Flat`]. A model whose call
+/// format is a flat list of keys and values can start `call` as a JSON object and finish it in its
+/// own markup, losing the call. Flat tools give it nothing nested to slip inside. That loses the
+/// per-operation `required` and the branch that keeps one operation's arguments away from
+/// another's, so it is a setting for the models that need it, not the default.
 pub(crate) const WRAPPER: &str = "call";
 
-/// How this program's own tools lay out their arguments for a model: inside one `call` object, or
-/// at the top level. `fs`, `shell` and the four that read the session are built either way; a
-/// tool from an MCP server is offered as its server wrote it.
+/// How this program's own tools lay out arguments for a model: inside one `call` object, or at the
+/// top level. `fs`, `shell` and the four session-reading tools are built either way; an MCP tool is
+/// offered as its server wrote it.
 ///
-/// note: carried by the schema once it is built - a tool's schema has a `call` property in one
-/// layout and not in the other - so a tool that holds its schema knows its layout, and so does
-/// the policy, which is handed every tool's schema.
+/// note: the schema carries it once built - a tool's schema has a `call` property in one layout and
+/// not the other - so a tool holding its schema knows its layout, and so does the policy, which is
+/// handed every tool's schema.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Layout {
@@ -120,12 +115,11 @@ impl Arg {
 
     /// An argument the operation reads but does not offer.
     ///
-    /// note: for the one case that is neither. `context`'s four moves read `label` so that a call
-    /// giving one instead of `ids` can be answered with the spelling it meant - a model may reach
-    /// for it that way, and `Changes::moved` says `select: "label:<text>"` back. It is not a way to
-    /// name the items to move, so advertising it would teach exactly the mistake the answer exists
-    /// to correct; and leaving it out of the table altogether would have [`unread`] refuse the call
-    /// before that answer could be given.
+    /// note: `context`'s four moves read `label` so a call giving `label` instead of `ids` can be
+    /// answered with the spelling it meant - a model may reach for it that way, and
+    /// `Changes::moved` says `select: "label:<text>"` back. It is not a way to name the items to
+    /// move, so advertising it would teach the mistake the answer corrects; leaving it out of the
+    /// table would have [`unread`] refuse the call before that answer could be given.
     pub(crate) fn tolerated(name: &'static str) -> Self {
         Self {
             name,
@@ -136,9 +130,9 @@ impl Arg {
 
     /// Says this operation refuses a call that leaves the argument out.
     ///
-    /// note: optional by default, because most of these are. The ones that are not say so in
-    /// their branch's `required`, rather than `edit` with no `old` being a well-formed call right
-    /// up until it runs.
+    /// note: optional by default, because most of these are. The ones that are not say so in their
+    /// branch's `required`, rather than letting `edit` with no `old` be well-formed right up until
+    /// it runs.
     pub(crate) fn needed(mut self) -> Self {
         self.required = true;
         self
@@ -153,12 +147,12 @@ impl Arg {
     }
 }
 
-/// One *shape* a call may take: the operations that share it, and what they read.
+/// One shape a call may take: the operations that share it, and what they read.
 ///
 /// note: several operations rather than one, because a branch per operation is only worth its
-/// scaffolding where the operations differ. `context`'s four moves take one argument list,
-/// because they are one function - so they are one branch under an `action` of four words, and
-/// the arguments are written once rather than paid for four times on every request.
+/// scaffolding where the operations differ. `context`'s four moves take one argument list because
+/// they are one function, so they are one branch under an `action` of four words, and the arguments
+/// are written once rather than four times on every request.
 pub(crate) struct Op {
     actions: Vec<&'static str>,
     does: String,
@@ -185,12 +179,11 @@ impl Op {
     }
 }
 
-/// The `action` of every operation, in the order they were declared.
+/// The `action` of every operation, in declaration order.
 ///
-/// note: derived from the table rather than written down beside it. It is the `enum` a model
-/// chooses from, the operation half of `<domain>:<operation>`, and the row `/limit` is keyed on -
-/// three uses of one list, and a second copy of it would be a standing invitation for one to be
-/// renamed.
+/// note: derived from the table rather than written beside it. It is the `enum` a model chooses
+/// from, the operation half of `<domain>:<operation>`, and the row `/limit` is keyed on - three
+/// uses of one list; a second copy risks one being renamed.
 pub(crate) fn actions(ops: &[Op]) -> Vec<&'static str> {
     ops.iter()
         .flat_map(|op| op.actions.iter().copied())
@@ -198,17 +191,16 @@ pub(crate) fn actions(ops: &[Op]) -> Vec<&'static str> {
 }
 
 /// The schema a model is given: one property, and a branch of an `anyOf` per operation - or, in
-/// the [`Layout::Flat`] layout, every argument at the top level; see [`flat`].
+/// [`Layout::Flat`], every argument at the top level; see [`flat`].
 ///
 /// note: `enum` with one value rather than `const` for the discriminator. Both say the same thing,
-/// and `enum` is also what an endpoint reading a schema as Google's own `Schema` - a closed set of
-/// fields with no `const` in it - takes. One schema goes to every dialect, so the discriminator is
-/// spelled the way the narrowest of them spells it.
+/// and Google's `Schema` - a closed set of fields with no `const` - takes `enum`. One schema goes
+/// to every dialect, so the discriminator is spelled the way the narrowest spells it.
 ///
-/// note: nothing here is sent `strict`. What that would take, the day an endpoint is worth asking
-/// for it: `additionalProperties: false` on the root and on every branch, and every argument in
-/// its branch's `required` with the optional ones typed `["string", "null"]`. The shape is already
-/// what strict wants; it is the two keywords that are not done.
+/// note: nothing here is sent `strict`. To do so: `additionalProperties: false` on the root and
+/// every branch, and every argument in its branch's `required` with optional ones typed
+/// `["string", "null"]`. The shape is already what strict wants; it is the two keywords that are
+/// not done.
 pub(crate) fn schema(ops: &[Op], layout: Layout) -> Value {
     if layout == Layout::Flat {
         return flat(ops);
@@ -217,14 +209,14 @@ pub(crate) fn schema(ops: &[Op], layout: Layout) -> Value {
     // note: no `anyOf` where there is nothing to choose between. A tool whose operations all read
     // the same arguments - `setup`, `log`, `shell` - has nothing for a union to gate, and wrapping
     // one branch in a one-element `anyOf` is scaffolding charged for on every request. The wrapper
-    // itself stays either way, because a model should not have to remember which of these tools is
-    // the exception: `call` is where the arguments go, for all of them
+    // stays either way because a model should not have to remember which tool is the exception:
+    // `call` is where the arguments go, for all of them
     let inside = match ops {
         [only] => {
             let mut one = branch(only);
-            // note: the branch's own words where it has any, and the wrapper's where it has not,
-            // so that a tool with one shape is never silent about what `call` is. Writing ABOUT
-            // over the top unconditionally would throw away the description a lone branch carries
+            // note: the branch's own words where it has any, and the wrapper's where it has not, so
+            // a tool with one shape is never silent about what `call` is. Unconditionally writing
+            // ABOUT over the top would throw away the description a lone branch carries
             if one["description"].is_null() {
                 one["description"] = json!(ABOUT);
             }
@@ -232,9 +224,9 @@ pub(crate) fn schema(ops: &[Op], layout: Layout) -> Value {
         }
         // note: no `type` beside `anyOf`; every branch says `object` already. With one there,
         // `nex-agi/nex-n2.5-mini` and `nvidia/nemotron-3-super-120b-a12b` write the operation's
-        // name into the wrapper - `{"call": "read", "path": ...}` - which names no operation and is
-        // judged against all of them. Without it, `xiaomi/mimo-v2.6-flash` writes the call as a
-        // string of JSON, and `inner` reads that
+        // name into the wrapper - `{"call": "read", "path": ...}` - naming no operation and judged
+        // against all of them. Without it, `xiaomi/mimo-v2.6-flash` writes the call as a string of
+        // JSON, and `inner` reads that
         several => json!({
             "description": ABOUT,
             "anyOf": several.iter().map(branch).collect::<Vec<_>>(),
@@ -281,22 +273,21 @@ fn branch(op: &Op) -> Value {
     branch
 }
 
-/// The table as one object: `action` naming the operation, and every argument any operation takes
+/// The table as one object: `action` names the operation, and every argument any operation takes
 /// beside it, once.
 ///
-/// note: `action`'s description says what each operation does, so nothing a branch would have
-/// said is lost. An argument taken by only some operations says which, and an argument that
-/// several take with different descriptions keeps each one, named by the operations it belongs
-/// to. Without that, `path` would be "the file to read" for `glob` as well, and an argument that
-/// is `revise`'s alone would read as one `look` takes too.
+/// note: `action`'s description says what each operation does. An argument taken by only some
+/// operations says which. An argument several take with different descriptions keeps each one,
+/// named by the operations it belongs to. Otherwise `path` reads as "the file to read" for `glob`
+/// too, and a `revise`-only argument reads as one `look` takes.
 ///
-/// note: only an argument every operation requires goes in `required`. One that some require says
-/// so in its description, since the schema has nowhere else to say it; [`unread`] and the tool's
-/// own check of what is missing hold the call to the table either way.
+/// note: only an argument every operation requires goes in `required`. One some require says so in
+/// its description; the schema has nowhere else to say it. [`unread`] and the tool's own
+/// missing-argument check hold the call either way.
 ///
-/// note: where several operations give one argument different schemas, it keeps the keywords they
+/// note: when several operations give one argument different schemas, it keeps the keywords they
 /// all agree on. `revise`'s `ids` is a list of exactly one, and the others' are lists of any
-/// length: in one property that is a list, and `revise`'s description says it takes one.
+/// length: merged into one property, that is a list, and `revise`'s description says it takes one.
 fn flat(ops: &[Op]) -> Value {
     let every = actions(ops);
     let mut action = json!({ "type": "string", "enum": every });
@@ -401,14 +392,14 @@ fn sentences(parts: &[String]) -> String {
         .join(". ")
 }
 
-/// The key providers once put a call's arguments under when they would not parse as JSON.
+/// Providers once put a call's arguments under this key when they would not parse as JSON.
 ///
 /// note: they keep that text on [`nachalnik::ToolCall::unparsed`] now, and the kernel answers the
 /// call, and a call recorded the old way is read back that way - so this key reaches a tool only
-/// where a model wrote it. One does: a session whose history showed it calls in that shape copies
-/// the shape, and goes on copying its own calls once one was read. Unread, the tool goes looking
-/// for `action`, does not find one, and answers `the \`action\` argument is required` - about a
-/// call whose text holds an `action`.
+/// where a model wrote it. A session whose history shows calls in that shape copies the shape, and
+/// goes on copying its own calls once one was read. If unread, the tool looks for `action`, does
+/// not find one, and answers `the \`action\` argument is required` - about a call whose text holds
+/// an `action`.
 const UNPARSED: &str = "_unparsed";
 
 /// The text of arguments that never parsed, where that is what is under [`UNPARSED`].
@@ -462,15 +453,15 @@ fn unreadable(written: &str, layout: Layout) -> String {
     )
 }
 
-/// What to write instead, where the fault is one a model makes without seeing it: a regex's `\(`
-/// put into a string as it stands, a line break typed into one, or the action written bare where
-/// the wrapper's object goes.
+/// What to write instead, where a model makes a fault without seeing it: a regex's `\(` put into a
+/// string as it stands, a line break typed into one, or the action written bare where the wrapper's
+/// object goes.
 ///
-/// note: the line and column already say where, and that was not enough. A model that writes
-/// `\(` in a pattern reads it as the pattern it meant, sends it again the same way, and is told
-/// the same thing; what it lacks is the rule, which is one clause. The bare action is the
-/// commonest of the three: `{"call": glob, ...}`, often with the model's own markup for the rest
-/// of the call after it, and the clause shows the shape with the word it wrote.
+/// note: the line and column say where, but that was not enough. A model that writes `\(` in a
+/// pattern reads it as the pattern it meant, sends it again unchanged and is told the same thing;
+/// it lacks the rule, which is one clause. The bare action is the commonest of the three:
+/// `{"call": glob, ...}`, often with the model's own markup after it, and the clause shows the
+/// shape with the word it wrote.
 fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
     let said = why.to_string();
     if said.starts_with("invalid escape") {
@@ -571,26 +562,23 @@ fn around(written: &str, at: usize, width: usize) -> String {
 
 /// The object a call's arguments are really in, or what is wrong with where they are.
 ///
-/// note: arguments under [`WRAPPER`] are what the schema asks for. Arguments flat are
-/// unambiguous, so they are taken - a model that has learnt a flat shape loses nothing. Arguments
-/// in both places are the one reading that cannot be charitable: picking either would drop the
-/// other half, and a call that ignored an argument answers as though it had never been given one,
-/// which is the failure [`unread`] exists for one step further in. And arguments that never parsed
-/// are not arguments; see [`UNPARSED`].
+/// note: arguments under [`WRAPPER`] are what the schema asks for. Flat arguments are unambiguous,
+/// so they are taken; a model that has learnt a flat shape loses nothing. Arguments in both places
+/// cannot be read charitably: picking either drops the other half, and a call that ignored an
+/// argument answers as though it had never been given one. That is the failure [`unread`] exists
+/// for, one step further in. Arguments that never parsed are not arguments; see [`UNPARSED`].
 ///
-/// note: a [`WRAPPER`] holding a *string* of JSON rather than an object is what some models
-/// produce for every call they make - the whole session's worth, not the occasional one. What
-/// invites it is a property that says `anyOf` and not what type it is, which [`schema`] fixes;
-/// this is the backstop for a model that does it anyway, since nothing here can make a schema
-/// binding. One that parses to an object is as unambiguous as the flat shape and is taken for the
-/// same reason. One that does not is refused here, saying so, rather than falling through to
-/// `the \`action\` argument is required` - which is the [`UNPARSED`] failure again: a model sent
-/// to fix an argument it did write.
+/// note: a [`WRAPPER`] holding a string of JSON rather than an object is what some models produce
+/// for every call. It is invited by a property that says `anyOf` and not what type it is, which
+/// [`schema`] fixes; this is the backstop for a model that does it anyway, since nothing here can
+/// make a schema binding. One that parses to an object is as unambiguous as the flat shape and is
+/// taken for the same reason. One that does not is refused here, saying so, rather than falling
+/// through to `the \`action\` argument is required`, which is the [`UNPARSED`] failure: a model
+/// sent to fix an argument it did write.
 ///
-/// note: what is wrong comes back as a [`Misread`] rather than a sentence, because the sentence
-/// depends on the [`Layout`] the tool offered and this does not know it. Most of the callers only
-/// want the arguments, and drop the error; the tool that answers the call says it with
-/// [`Misread::said`].
+/// note: what is wrong comes back as a [`Misread`] rather than a sentence because the sentence
+/// depends on the [`Layout`] the tool offered and this does not know it. Most callers only want the
+/// arguments and drop the error; the tool that answers the call says it with [`Misread::said`].
 pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, Misread> {
     if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
         return match serde_json::from_str::<Value>(written) {
@@ -671,12 +659,12 @@ impl Misread {
     }
 }
 
-/// The call inside a wrapper whose one entry is the call, and otherwise the wrapper as it is.
+/// The call inside a wrapper whose one entry is the call; otherwise the wrapper as it is.
 ///
 /// note: a model has written every call of a session a level too deep, `{"call": {"item": {...}}}`,
-/// under a key nothing asked for. One entry holding an object that names an `action` can be
-/// nothing but the call; anything else - an `action` beside it, a second entry, no `action`
-/// inside - is left as written and answered as a call whose operation cannot be read.
+/// under a key nothing asked for. One entry holding an object that names an `action` can only be
+/// the call. Anything else - an `action` beside it, a second entry, or no `action` inside - is left
+/// as written and answered as a call whose operation cannot be read.
 fn deeper(inside: Cow<'_, Value>) -> Cow<'_, Value> {
     let one = inside
         .as_object()
@@ -696,23 +684,22 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
     actions(ops).contains(&named.as_str()).then_some(named)
 }
 
-/// Why a question is about everything a tool does, where the reason is that the call did not say
-/// which operation it wanted.
+/// Why a question is about everything a tool does: the call did not say which operation it wanted.
 ///
-/// note: [`action_of`] answering `None` is not a quiet fallback - it widens what the call declares
+/// note: [`action_of`] answering `None` is not a quiet fallback. It widens what the call declares
 /// to every capability the tool has, which is the strictest reading of a call nobody can place and
 /// the right one. What this adds is somebody saying so. A session started with
 /// `--auto-allow fs:read` is then asked about `fs:write` as well, the rule it was given matches
-/// nothing, and in a run with nobody at the prompt the refusal reads
-/// `this call was refused when it was asked about` - which sends a model looking for a different
+/// nothing, and with nobody at the prompt the refusal reads
+/// `this call was refused when it was asked about`. That sends a model looking for a different
 /// *approach* when what is wrong is the shape of the call it just made.
 ///
-/// note: only for a tool whose schema is laid out the way this module lays one out - its
-/// arguments under [`WRAPPER`], or an `action` with an `enum` of the operations at the top level -
-/// because that is the convention the sentence is about. Read off the tool's own schema rather
-/// than off a list of names kept here: a tool that takes no `action` may declare several
-/// capabilities for reasons of its own, and telling its caller that such a call named no operation
-/// would be inventing a vocabulary it never claimed.
+/// note: only for a tool whose schema is laid out the way this module lays one out - arguments
+/// under [`WRAPPER`], or an `action` with an `enum` of the operations at the top level - because
+/// that is the convention the sentence is about. Read the tool's own schema rather than a list of
+/// names kept here: a tool that takes no `action` may declare several capabilities for reasons of
+/// its own, and telling its caller that such a call named no operation would invent a vocabulary it
+/// never claimed.
 pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) -> Option<String> {
     let offered = &spec.schema["properties"];
     let layout = match offered.get(WRAPPER) {
@@ -730,11 +717,11 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         return None;
     }
 
-    // note: arguments a model wrote under `_unparsed` that never parsed are said to be that, with
-    // what arrived; ones a provider could not parse never reach a policy. A policy that refuses
-    // the widened call is answered before the tool is handed it, so the tool's own sentence
-    // about them is never read, and "names no operation" beside `{"call":` - which does not look
-    // like a call naming nothing to whoever wrote it - was sent again unchanged, over and over
+    // note: arguments a model wrote under `_unparsed` that never parsed are reported as unparsed,
+    // with what arrived; ones a provider could not parse never reach a policy. A policy that
+    // refuses the widened call is answered before the tool is handed it, so the tool's own sentence
+    // about them is never read. "names no operation" beside `{"call":` does not look like a call
+    // naming nothing to whoever wrote it, and it was sent again unchanged, over and over
     if let Some(written) = unparsed(&request.args) {
         // note: with what is wrong and the part of it to look at, as `unreadable` gives them. Told
         // only that it was not JSON and shown the end of the payload, a model whose fault is in the
@@ -1194,12 +1181,11 @@ mod tests {
 
     /// Every keyword the generated schema uses is one both dialects accept.
     ///
-    /// note: the narrower of the two is Google's, whose `Schema` is a closed set of fields rather
-    /// than a JSON Schema document - the list below is that set, from the `generativelanguage`
-    /// protobuf, intersected with what OpenAI documents as supported. One schema goes to both, so
-    /// a keyword outside it is a 400 from one endpoint and silence from the other. `const`,
-    /// `additionalProperties`, `$ref`, `$defs`, `oneOf` and `allOf` are the ones worth knowing are
-    /// absent: the first two are what `strict` would need, and neither is a field Google has.
+    /// note: the narrower is Google's: a closed set of fields, not a JSON Schema document. The list
+    /// is that set, from the `generativelanguage` protobuf, intersected with what OpenAI supports.
+    /// One schema goes to both, so a keyword outside it gets a 400 from one endpoint and silence
+    /// from the other. `const`, `additionalProperties`, `$ref`, `$defs`, `oneOf` and `allOf` are
+    /// absent; the first two are what `strict` would need, and Google has neither.
     #[test]
     fn the_schema_is_written_in_the_words_both_dialects_know() {
         const BOTH: [&str; 22] = [
@@ -1476,8 +1462,8 @@ mod tests {
         assert_eq!(unnamed_operation(&flat, &asking(json!({}))), None);
     }
 
-    /// A flat tool, which has no `call` to put arguments in, is told so when its call names no
-    /// operation, and when a `call` it was never given arrives anyway.
+    /// A flat tool has no `call` to put arguments in. It is told so when its call names no
+    /// operation, and when a `call` it was never given arrives.
     #[test]
     fn a_flat_tool_says_a_call_named_no_operation() {
         let ops = ops();
@@ -1529,12 +1515,12 @@ mod tests {
         assert!(refusal.contains("nothing was done"), "{refusal}");
     }
 
-    /// A wrapper holding a string of JSON is read, and one holding anything else is refused as
-    /// that rather than as an argument nobody gave.
+    /// A wrapper holding a string of JSON is read. One holding anything else is refused as that
+    /// rather than as an argument nobody gave.
     ///
-    /// note: some models write a nested object as a string, and do it on every call. Unread,
-    /// `action` is not found, the call declares every operation the tool has, and a session
-    /// granted `fs:read` cannot read a file.
+    /// note: some models write a nested object as a string on every call. If it is not read,
+    /// `action` is not found, the call declares every operation the tool has, and a session granted
+    /// `fs:read` cannot read a file.
     #[test]
     fn a_wrapper_written_as_text_is_still_a_call() {
         let written = json!({ WRAPPER: "{\"action\": \"read\", \"path\": \"x\"}" });
@@ -1559,14 +1545,12 @@ mod tests {
         }
     }
 
-    /// A wrapper whose one entry is the call, a level too deep, is read as the call.
+    /// A wrapper whose one entry is the call, one level too deep, is read as the call.
     ///
-    /// note: a model once wrote every call of a session as `{"call": {"item": {...}}}`, and read
-    /// as written each named no operation - judged against everything the tool does, and refused
-    /// or answered with `the \`action\` argument is required`, which it did not understand. One
-    /// entry holding an object that names an `action` is as unambiguous as the flat shape. Two
-    /// entries, or one with no `action` in it, are not read through: that is a call whose
-    /// arguments are somewhere else, and it is answered as one.
+    /// note: read as written, each such call named no operation and was judged against everything
+    /// the tool does. One entry holding an object that names an `action` is as unambiguous as the
+    /// flat shape. Two entries, or one with no `action` in it, are not read through: that is a call
+    /// whose arguments are somewhere else, and it is answered as one.
     #[test]
     fn a_call_one_level_too_deep_is_still_a_call() {
         let deep = json!({ WRAPPER: { "item": { "action": "read", "path": "x" } } });
@@ -1589,9 +1573,10 @@ mod tests {
 
     /// Arguments that never parsed are answered as that, not as an argument nobody gave.
     ///
-    /// note: the text is a JSON string closed with an XML tag, the way a model can end one, under
-    /// `_unparsed` as a model copying the old shape writes it. Read as missing arguments the report would be `the \`action\` argument is required`, about a call
-    /// whose text says `"action": "note"` near its start.
+    /// note: the text is a JSON string closed with an XML tag, the way a model can end one, written
+    /// under `_unparsed` by a model copying the old shape. Read as missing arguments, the report
+    /// would be `the \`action\` argument is required`, about a call whose text says
+    /// `"action": "note"` near its start.
     #[test]
     fn arguments_that_never_parsed_are_not_a_missing_argument() {
         let broken = json!({
@@ -1609,8 +1594,8 @@ mod tests {
         );
     }
 
-    /// What a tool adds to the kernel's answer: how to write a line break and where the action goes,
-    /// and nothing about backslashes.
+    /// A tool adds to the kernel's answer: how to write a line break and where the action goes, and
+    /// nothing about backslashes.
     #[test]
     fn advice_is_given_where_it_was_measured_to_help() {
         assert_eq!(
@@ -1804,9 +1789,9 @@ mod tests {
 
     /// The window around a fault takes in the text before it as well as after.
     ///
-    /// note: a fault is usually a missing `}` or an unescaped `"`, and either is recognisable
-    /// from the text in front of it. A window that opened at the fault quotes the rest of the
-    /// command and none of the reason it is wrong.
+    /// note: a fault is usually a missing `}` or an unescaped `"`, recognisable from the text in
+    /// front of it. A window that opened at the fault quotes the rest of the command and none of
+    /// the reason it is wrong.
     #[test]
     fn the_window_says_what_is_around_the_fault() {
         let payload = format!(

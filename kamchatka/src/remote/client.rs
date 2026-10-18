@@ -1,15 +1,13 @@
 //! The other end: a session somebody else is running, driven by lines.
 //!
 //! note: deliberately the smallest client that exercises the whole protocol rather than the nicest
-//! one to use. What it is for is proving the seam - attach, read a projection, follow a turn,
-//! submit, interrupt, answer a question, lose the socket and pick the same session back up at the
-//! record it had got to - before anything with a screen in it is written against the protocol. A
-//! client that is pleasant to use is a different program, and this is the thing that says the
-//! protocol is worth writing one against.
+//! one to use. It proves the seam: attach, read a projection, follow a turn, submit, interrupt,
+//! answer a question, lose the socket, and resume the same session at the record it had reached,
+//! before anything with a screen is written against the protocol.
 //!
-//! note: it writes what `--headless` writes, in the same two streams and the same words: the
-//! records to one, what a person reads to the other. That is what makes `kamchatka --connect` a
-//! drop-in for `kamchatka --headless` in a script, and what lets the same shape of test drive both.
+//! note: it writes what `--headless` writes, in the same two streams and the same words: records to
+//! one, what a person reads to the other. That makes `kamchatka --connect` a drop-in for
+//! `kamchatka --headless` in a script, and lets the same test drive both.
 
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -28,30 +26,29 @@ use crate::{
     remote::protocol::{self, Address, Attached, Command, Message, Reached},
 };
 
-/// How long a dropped connection is picked back up for before this gives up on it.
+/// How long to retry a dropped connection before giving up.
 ///
-/// note: a while rather than for ever, because the two reasons a socket dies look identical from
-/// here - the host was restarted, or the host is gone - and a client that retried indefinitely
-/// would be a process somebody has to notice and kill. Resuming is the point of the retry: each
-/// attempt attaches with the last record this client actually saw, so picking the session back up
-/// costs the records it missed and nothing else.
+/// note: a while rather than for ever, because the two reasons a socket dies look identical here -
+/// the host was restarted, or the host is gone - and a client that retried indefinitely would be a
+/// process somebody has to notice and kill. Each attempt reattaches with the last record this
+/// client saw, so resuming costs the records it missed and nothing else.
 ///
-/// note: a minute, and the figure is about *networks* rather than about patience. Over a socket
-/// file the only way to lose a connection is the host going away, and it either comes back at
-/// once or it is not coming back. Over a port the ordinary reason to lose one is a laptop changing
-/// access points, and the ordinary time to get it back is several seconds - so a limit sized for a
-/// socket file reports a session lost while it is still there.
+/// note: one minute, sized for networks rather than patience. Over a socket file the only way to
+/// lose a connection is the host going away, and it either comes back at once or not at all. Over a
+/// port the usual reason is a laptop changing access points, and the usual time to get it back is
+/// several seconds - so a limit sized for a socket file reports a session lost while it is still
+/// there.
 const GIVE_UP: Duration = Duration::from_secs(60);
 
 /// How long to wait before picking it back up the first time.
 const FIRST_WAIT: Duration = Duration::from_millis(250);
 
-/// The longest that wait grows to, doubling.
+/// The longest the wait grows to, doubling.
 ///
-/// note: backing off rather than a fixed pause, for the two cases at once. A host restarting is
-/// back in well under a second and should be picked up in the first attempt or two; a network that
-/// has gone is not coming back inside a minute however often anybody asks, and sixty seconds of
-/// quarter-second attempts is two hundred and forty connections nobody wanted made.
+/// note: exponential backoff rather than a fixed pause, for both cases. A host restarting is back
+/// in well under a second and should be picked up in the first attempt or two; a network that has
+/// gone is not coming back inside a minute however often anybody asks, and sixty seconds of
+/// quarter-second attempts is two hundred and forty unwanted connections.
 const LONGEST_WAIT: Duration = Duration::from_secs(5);
 
 /// A client of somebody else's session.
@@ -62,17 +59,17 @@ pub struct Client<'a> {
     prose: crate::headless::Prose<&'a mut dyn Write>,
     /// Whether any of the answer being written has been printed as it arrived.
     streamed: bool,
-    /// The recorded turns whose words were not streamed, to be fetched with an `inspect`.
+    /// The recorded turns whose words were not streamed, fetched with an `inspect`.
     ///
     /// note: the same gap `--headless` fills from the item, filled the only way a client can: the
-    /// records name a turn and do not copy it, so a provider that answers in one piece puts
-    /// nothing on this wire but a `model.finished`.
+    /// records name a turn and do not copy it, so a provider that answers in one piece puts nothing
+    /// on this wire but a `model.finished`.
     unstreamed: VecDeque<ContextId>,
-    /// Whether the answer being fetched is one whose fragments may still arrive, and are dropped.
+    /// Whether the fetched answer's fragments may still arrive, and are dropped.
     ///
-    /// note: a session behind the broadcast can write a turn's fragments after the record that
-    /// ends it, so a turn that looked unstreamed at `model.finished` may stream afterwards; printed
-    /// as well, it would be printed twice.
+    /// note: a session behind the broadcast can write a turn's fragments after the record that ends
+    /// it, so a turn that looked unstreamed at `model.finished` may stream afterwards; printing it
+    /// as well would print it twice.
     fetching: bool,
     /// The last record this client is sure it has.
     last: u64,
@@ -143,13 +140,12 @@ pub struct Client<'a> {
     busy: bool,
     /// How many commands this has sent and not yet been answered about.
     ///
-    /// note: the pair of these is what the input closing waits on; see [`Client::resting`]. A count
-    /// rather than a flag because the first `attach` and a line already sitting in a pipe overlap
-    /// every time a question is piped in, and it is a count of *answers owed* rather than of
-    /// anything else because that is the only thing a client knows without guessing: every command
-    /// gets exactly one answer, and until it arrives the session has not caught up with what this
-    /// asked for. Get either half wrong and a piped-in question is answered to a client that has
-    /// already detached.
+    /// note: the input closing waits on this count and `detaching`; see [`Client::resting`]. It is
+    /// a count, not a flag, because the first `attach` and a line already sitting in a pipe overlap
+    /// every time a question is piped in. It counts *answers owed*, not anything else, because that
+    /// is the only thing a client knows without guessing: every command gets exactly one answer,
+    /// and until it arrives the session has not caught up with what this asked for. Get either half
+    /// wrong and a piped-in question is answered to a client that has already detached.
     outstanding: usize,
     /// Whether the input has closed and this is waiting for the session to come to rest.
     detaching: bool,
@@ -194,12 +190,12 @@ pub struct Client<'a> {
     held: VecDeque<String>,
     /// Whether a write to this connection has failed.
     ///
-    /// note: what keeps a refused write from ending the connection by itself. A session that
-    /// finishes writes `session.finished` and closes, and a resume this client sent in the
-    /// meantime meets a closed socket - so a client that gave up on the write never read the
-    /// ending already sitting in front of it, and reported a session that did what it was told
-    /// as a failure. What is left to read decides instead: the end of it, after the session said
-    /// it was finished, is `Left::Done`, and anything else is a drop.
+    /// note: this keeps a refused write from ending the connection by itself. When a session
+    /// finishes, it writes `session.finished` and closes, so a resume sent in the meantime meets a
+    /// closed socket. A client that gave up on the write would not read the ending already in front
+    /// of it, and would report a session that did what it was told as a failure. The remaining
+    /// input decides instead: after the session said it was finished, the end of the input is
+    /// `Left::Done`, and anything else is a drop.
     unwritable: bool,
 }
 
@@ -248,7 +244,7 @@ impl<'a> Client<'a> {
     }
 
     /// Reads a line only once the session has answered the last one and no turn is running, as
-    /// `--headless` does, or where a question waits for one to answer it.
+    /// `--headless` does, or when a question is waiting for an answer.
     pub fn waits_for_turns(mut self) -> Self {
         self.paced = true;
         self
@@ -268,14 +264,14 @@ impl<'a> Client<'a> {
         self
     }
 
-    /// Attaches, drives the session from lines, and comes back when there is nothing left of
-    /// either.
+    /// Attaches, drives the session from lines, and returns when neither the input nor the session
+    /// has anything left.
     ///
-    /// note: `last` survives a reconnection, which is what the retry is for: a second attempt
+    /// note: `last` survives a reconnection, which is what the retry is for. A second attempt
     /// attaches with `since` set to the last record this client actually saw, so the session sends
-    /// what it missed and no more. What it does *not* get back is the fragments that went by while
-    /// it was away - those are in no log and the session says so rather than pretending - and what
-    /// it does not need is a fresh projection, because everything that changed is in the records.
+    /// what it missed and no more. It does not get back the fragments that passed while it was
+    /// away; they are in no log, and the session says so rather than pretending. It does not need a
+    /// fresh projection, because everything that changed is in the records.
     pub async fn run(
         &mut self,
         address: &str,
@@ -283,7 +279,7 @@ impl<'a> Client<'a> {
     ) -> Result<(), String> {
         // note: the reader is built once and handed to each attempt, because `next_line` is
         // cancellation-safe and holds whatever it has read so far. Rebuilding it per attempt would
-        // lose half a line every time a socket died mid-read
+        // lose half a line whenever a socket died mid-read
         let mut typed = crate::headless::Typed::new(input);
         let (mut first, mut waited, mut wait) = (true, Duration::ZERO, FIRST_WAIT);
 
@@ -304,7 +300,7 @@ impl<'a> Client<'a> {
                          session this program serves, or it is one that would not take this client"
                     ));
                 }
-                // the reason is not repeated, for headless's reason: it went by as the session said
+                // the reason is not repeated, as in `--headless`: it went by as the session said
                 // it, and what is left to say is the exit status
                 Left::Done if self.failed => return Err("the last turn failed".to_owned()),
                 Left::Done => return self.unsent(),
@@ -351,8 +347,7 @@ impl<'a> Client<'a> {
         let stream = match connect(address).await {
             Ok(stream) => stream,
             // a first attempt that cannot connect is a wrong address or a session that is not
-            // there, and saying "reconnecting" about a connection that never happened would be
-            // the program inventing a history for itself
+            // there; calling it a reconnect would claim a connection that never happened
             Err(e) => {
                 return match first {
                     true => Left::Failed(e),
@@ -362,23 +357,23 @@ impl<'a> Client<'a> {
         };
         let (read, mut write) = tokio::io::split(stream);
         let mut frames = protocol::Frames::new(BufReader::new(read));
-        // note: whatever was in flight when the last socket died is owed an answer that is never
-        // coming, and nothing else can ever take the count back down. It is reset per connection
-        // rather than decremented on the way out, because a client cannot tell which of what it
-        // sent the session had already read
+        // note: whatever was in flight when the last socket died is owed an answer that never
+        // comes, and nothing else can lower the count. It is reset per connection rather than
+        // decremented on the way out, because a client cannot tell which of what it sent the
+        // session had already read
         self.outstanding = 0;
         // whether `ctrl+c` has already asked the turn to stop on this connection
         let mut stopping = false;
-        // subscribed once, because a second press arriving while the first is being handled is the
-        // one that means leave; see `crate::stopping`
+        // subscribe once: a second press arriving while the first is still being handled means
+        // leave; see `crate::stopping`
         let mut presses = match crate::stopping::Stopping::new() {
             Ok(presses) => presses,
             Err(e) => return Left::Failed(format!("could not listen for ctrl+c: {e}")),
         };
 
         // note: `since` is sent only where this client has a session to name it against. After a
-        // first attach it has a conversation on the screen already, and asking for the projection
-        // again would print the whole of it a second time above the records that carry on from it
+        // first attach the conversation is already on screen, and asking for the projection again
+        // would print the whole of it a second time above the records that carry on from it
         self.resuming = self.session.is_some();
         let attach = match &self.session {
             Some(session) => Command::Attach {
@@ -397,9 +392,9 @@ impl<'a> Client<'a> {
         }
 
         loop {
-            // named for what it holds rather than for the branch that usually fills it: `stopping`
-            // above is this connection's two-stage `ctrl+c`, and a second binding of that name here
-            // reads as the same flag being reassigned
+            // `stopping` above is this connection's two-stage `ctrl+c`; reusing that name here
+            // would read as the same flag being reassigned, so this binding is named for what it
+            // holds
             let ended = tokio::select! {
                 // note: biased, and the order is a decision rather than a tuning knob. What the
                 // session has already said is read before anything else is decided - so a client
@@ -422,8 +417,8 @@ impl<'a> Client<'a> {
                         Err(e) => Some(Left::Failed(e)),
                     },
                     // note: a session that has said it is finished closing its socket is not a
-                    // connection that dropped, and the difference is a minute of reconnection
-                    // attempts at something that did what it was told
+                    // dropped connection. The difference is a minute of reconnection attempts at
+                    // something that did what it was told
                     Ok(None) => match self.over {
                         true => Some(Left::Done),
                         false => Some(Left::Dropped),
@@ -460,22 +455,20 @@ impl<'a> Client<'a> {
                             Err(_) => Some(Left::Dropped),
                         }
                     }
-                    // note: the input closing detaches rather than stopping the session, and that
-                    // is the invariant rather than a shortcut: a script that pipes a question in
-                    // and goes away has asked a session that belongs to somebody else, and ending
-                    // it on the way out would be this client deciding that session's lifetime.
+                    // note: when the input closes, the client detaches rather than stopping the
+                    // session. That is the invariant, not a shortcut. A script that pipes in a
+                    // question and leaves has asked about someone else's session; ending it would
+                    // be this client deciding that session's lifetime.
                     //
-                    // note: and it waits for the turn before it goes, which is the same rule
-                    // `--headless` follows. `echo "question" | kamchatka --connect` is asking for
-                    // the answer, not for the question to be asked and abandoned - and detaching
-                    // on sight loses the end of the answer, because the socket closes while the
-                    // model is still writing. What it waits on is `Client::resting`, which reads
-                    // what the session said rather than guessing
+                    // note: the client waits for the turn before it goes, the same rule
+                    // `--headless` follows. `echo "question" | kamchatka --connect` asks for the
+                    // answer, not for the question to be asked and abandoned. Detaching on sight
+                    // loses the end of the answer: the socket closes while the model is still
+                    // writing. It waits on `Client::resting`, which reads what the session said
                     Ok(None) => {
-                        // note: the records are asked for from `follow` and not from here, and
-                        // that is where `Client::catch_up` explains it: a projection carries the
-                        // watermark, so an input that has closed before one arrived would ask
-                        // against nothing and write none of the log
+                        // note: `follow` asks for the records, not here - `Client::catch_up`
+                        // explains why. A projection carries the watermark, so an input that closed
+                        // before one arrived would ask against nothing and write none of the log
                         self.detaching = true;
                         match self.settle(&mut write).await {
                             Ok(()) => self.resting().then_some(Left::Done),
@@ -485,18 +478,17 @@ impl<'a> Client<'a> {
                     }
                     Err(e) => Some(Left::Failed(format!("could not read the input: {e}"))),
                 },
-                // one stop, then leave: the same two stages `--headless` has, and for the same
-                // reason. The first is for the turn, which keeps what arrived; the second is for
-                // this process, and the session carries on without it
+                // one stop, then leave: the same two stages as `--headless`, for the same reason.
+                // The first is for the turn, which keeps what arrived; the second is for this
+                // process. The session carries on without it.
                 //
-                // note: the flag is this connection's rather than this client's. A socket that
-                // dropped and came back is a fresh pair of stages, because the alternative is a
-                // single `ctrl+c` pressed an hour ago detaching somebody from the middle of a turn
-                // they are watching now
+                // note: the flag belongs to this connection, not this client. A socket that dropped
+                // and came back is a fresh pair of stages; otherwise a single `ctrl+c` pressed an
+                // hour ago could detach someone from a turn they are watching now
                 () = presses.pressed() => match stopping {
                     // the second one: the turn has been asked to stop and this client is not
-                    // waiting to watch it happen. The session carries on without it, which is the
-                    // invariant rather than a shortcut - see the note on `remote`
+                    // waiting to watch it happen. The session carries on without it - the
+                    // invariant, not a shortcut. See the note on `remote`
                     true => Some(Left::Done),
                     false => match self.say_to(&mut write, Command::Interrupt).await {
                         Ok(()) => {
@@ -513,14 +505,13 @@ impl<'a> Client<'a> {
             };
             if let Some(left) = ended {
                 let _ = self.prose.fresh_line();
-                // note: said wherever this client leaves rather than on the branch that happened
-                // to notice. A `/restart` ends a session the way a `/quit` does, and a client
-                // whose input had already closed detaches the moment the session is quiet - so the
-                // ending was told to nobody, and the run read as one that had simply finished. Only
-                // a client that is leaving says it: a connection that went after the session said
-                // it was finished is one to pick back up, and the line belongs to the last one.
-                // The session after a restart is not this client's to carry on into; see
-                // `Client::session`
+                // note: said wherever this client leaves, not on the branch that happened to
+                // notice. `/restart` ends a session the way `/quit` does. A client whose input had
+                // already closed detaches the moment the session is quiet, so the ending was told
+                // to nobody and the run read as simply finished. Only a leaving client says it: a
+                // connection that went after the session said it was finished is one to pick back
+                // up, and the line belongs to the last one. The session after a restart is not this
+                // client's to carry on into; see `Client::session`
                 if self.over && matches!(left, Left::Done) {
                     let _ = self.tell(
                         "the session has ended; if it was restarted, `--connect` again attaches \
@@ -547,10 +538,10 @@ impl<'a> Client<'a> {
 
                 self.happened(&record.event)
             }
-            // note: the watermark moves, which is how this gets past it. The record exists
-            // and is in the session's log; what this client cannot have is it *down this wire*,
-            // and a client that left its watermark behind would ask for the same record on every
-            // reconnection for the rest of the session
+            // note: the watermark moves, which is how this gets past it. The record exists and is
+            // in the session's log, but this client cannot have it down this wire. A client that
+            // left its watermark behind would ask for the same record on every reconnection for the
+            // rest of the session
             Message::Oversized { seq, bytes } => {
                 self.last = seq;
                 // and the written mark with it, for the reason `Message::Oversized` exists: this
@@ -569,10 +560,10 @@ impl<'a> Client<'a> {
             // terminal, and there is no taking them back. A page can clear itself and this cannot,
             // so saying so would be a line about lines that are still there
             Message::Cleared => Ok(()),
-            // note: counted and not drawn. It answers `project`, `cycle` and `revise`, which this
-            // client does not send - it renders the conversation and nothing else - but an answer
-            // is an answer whoever asked, and one left uncounted is a count that never comes back
-            // down. A client that wants the figures reads them off it; see `web/browser.html`
+            // note: counted but not drawn. It answers `project`, `cycle` and `revise`, which this
+            // client does not send; it only renders the conversation. An answer is an answer
+            // whoever asked, and one left uncounted is a count that never comes back down. A client
+            // that wants the figures reads them off it; see `web/browser.html`
             Message::Projected(_) => {
                 self.answered();
 
@@ -593,10 +584,9 @@ impl<'a> Client<'a> {
                 };
                 self.prose.fresh_line()?;
                 writeln!(self.prose, "--- {} ---", page.title).map_err(|e| e.to_string())?;
-                // note: every page rather than the one it opened at, for the reason `--headless`
-                // gives: a screen turns them with the arrow keys and there is no key to press down
-                // a socket, so a caller handed one page would be reading a reference whose other
-                // pages it has no way to ask for
+                // note: print every page, not just the one it opened at. `--headless` gives all
+                // pages because a screen turns them with arrow keys and there is no key to press
+                // down a socket; a caller handed one page has no way to ask for the others
                 for face in &page.pages {
                     if page.pages.len() > 1 {
                         writeln!(self.prose, "-- {} --", face.name).map_err(|e| e.to_string())?;
@@ -605,14 +595,14 @@ impl<'a> Client<'a> {
                 }
                 self.prose.flush().map_err(|e| e.to_string())
             }
-            // the words of a turn that was never streamed, which only this client asks for raw;
-            // `?N` asks for the reading
+            // the words of a turn that was never streamed; only this client asks for raw, and `?N`
+            // asks for the reading.
             //
-            // note: the fresh line is what stops one answer running into the next, and it is here
-            // rather than on `ModelRequested` because that is not where a whole answer begins: a
-            // turn whose fragments never crossed the wire is fetched at the end, and by then every
-            // request of the batch has been read, so a break taken on the request belongs to
-            // nothing that is written
+            // note: the fresh line stops one answer running into the next. It is here rather than
+            // on `ModelRequested` because that is not where a whole answer begins: a turn whose
+            // fragments never crossed the wire is fetched at the end, after every request in the
+            // batch has been read, so a break taken on the request belongs to nothing that is
+            // written
             Message::Item {
                 body, raw: true, ..
             } => {
@@ -653,9 +643,9 @@ impl<'a> Client<'a> {
             Message::Done { busy, .. } => {
                 self.busy = busy;
                 self.answered();
-                // note: the resume's answer rather than its first record, because the records it
-                // missed are sent ahead of it - and one of them may be the decision this is about
-                // to ask again
+                // note: the resume's answer rather than its first record, because the missed
+                // records are sent ahead of it and one may be the decision this is about to ask
+                // again
                 match std::mem::take(&mut self.resuming) {
                     true => self.reopened(),
                     false => Ok(()),
@@ -664,27 +654,26 @@ impl<'a> Client<'a> {
             Message::Missed { frames } => {
                 self.prose.fresh_line()?;
                 // note: no promise about the records, and the wording used to make one that was
-                // false twice over. The records name what happened and do not copy it - an
-                // answer is a turn by its identifier - and what went past here can be the
-                // program's own lines as well as a model's typing, which are in no log at all. So
-                // this is the count of what this client was not shown while it was not looking,
-                // and the way to see any of it is to ask the session rather than to read the log
+                // false twice over. The records name what happened and do not copy it: an answer is
+                // a turn by its identifier. What went past here can be the program's own lines as
+                // well as a model's typing, which are in no log at all. This is the count of what
+                // this client was not shown while it was not looking; to see any of it, ask the
+                // session rather than reading the log
                 self.tell(&format!(
                     "{frames} fragment(s) went by that this client was not sent; what it missed \
                      is not in the records, which name what happened without holding it"
                 ))
             }
-            // note: printed as nothing, which is the rule this variant is for: ignore what you do
-            // not know. A session that has grown a message since this build was made is a session
-            // this can still follow, because the records are what carry what happened
+            // note: printed as nothing: ignore what you do not know. A session that has grown a
+            // message since this build was made can still be followed, because the records carry
+            // what happened.
             //
-            // note: but counted as an answer, because it may be one and this end cannot tell.
-            // `Unknown` carries no payload - `#[serde(other)]` takes a unit variant - so a client
-            // owed an answer and handed something it cannot read has, as far as it can tell, been
-            // answered. The two ways to be wrong are not the same size: counting it leaves this
-            // client early off the end of a command whose answer it could not have printed anyway,
-            // and not counting it leaves `outstanding` up for the rest of the connection, which is
-            // stdin closing never detaching and the session going quiet never ending it
+            // note: counted as an answer, because it may be one and this end cannot tell. `Unknown`
+            // carries no payload - `#[serde(other)]` takes a unit variant - so a client owed an
+            // answer and handed something it cannot read has been answered, as far as it can tell.
+            // Counting it leaves this client early off the end of a command whose answer it could
+            // not have printed anyway. Not counting it leaves `outstanding` up for the rest of the
+            // connection: stdin closing never detaches and the session going quiet never ends
             Message::Unknown => {
                 self.answered();
 
@@ -765,16 +754,15 @@ impl<'a> Client<'a> {
         .map_err(|e| e.to_string())?;
 
         // note: taken from the projection rather than left to the records to rebuild, because a
-        // question raised before this client existed was asked in a record it will never be sent.
-        // This is the case the projection exists for, in miniature
+        // question raised before this client existed was asked in a record it will never be sent
         self.asking = attached.asking.iter().cloned().collect();
         self.answering.clear();
         let asking: Vec<_> = self.asking.iter().cloned().collect();
         for request in &asking {
             self.question(request)?;
         }
-        // and the other kind, printed afresh for the reason these are: whatever was printed before
-        // belongs to a conversation this has just been handed again
+        // the other kind is printed afresh: whatever was printed before belongs to a conversation
+        // this has just been handed again
         self.told.clear();
         self.reaching(&attached.reaching)?;
 
@@ -783,11 +771,10 @@ impl<'a> Client<'a> {
 
     /// Takes in one thing that happened, whether it came numbered or not.
     ///
-    /// note: which of them are printed is the same four `--headless` prints, and the reasoning is
-    /// its: the whole trace is in the records, and a session that printed all of it would bury the
-    /// answer somebody is waiting for under the forty lines it took to get there. The two that are
-    /// extra here are the permission pair, because unlike a headless run there *is* somebody to
-    /// ask, and a question nobody printed is a session that has silently stopped.
+    /// note: the same four `--headless` prints are printed. The whole trace is in the records, and
+    /// printing all of it would bury the answer somebody is waiting for under the forty lines it
+    /// took to get there. The two extra here are the permission pair, because unlike a headless run
+    /// there is somebody to ask. A question nobody printed is a session that has silently stopped.
     fn happened(&mut self, event: &Event) -> Result<(), String> {
         if let Event::ModelDelta {
             delta: Delta::Text(text),
@@ -802,8 +789,8 @@ impl<'a> Client<'a> {
         }
 
         match event {
-            // note: the fresh line is `--headless`'s, for its reason: the last answer very likely
-            // ended mid-sentence, and the first fragment of this one was written straight after it
+            // note: the fresh line is `--headless`'s: the last answer very likely ended
+            // mid-sentence, and the first fragment of this one was written straight after it
             Event::ModelRequested { .. } => {
                 (self.streamed, self.fetching) = (false, false);
                 self.prose.fresh_line()?;
@@ -936,15 +923,14 @@ impl<'a> Client<'a> {
         self.prose.flush().map_err(|e| e.to_string())
     }
 
-    /// Turns one typed line into whatever it means.
+    /// Interprets one typed line.
     ///
-    /// note: two of these are the client's own rather than the session's, and both are deliberately
-    /// spelled the way the terminal spells them. `y`, `n` and `a` are the keys the permission panel
-    /// takes, and they mean what they mean there - which also means a *message* of `y` cannot be
-    /// sent while a question is open, exactly as it cannot be typed at a terminal whose prompt the
-    /// question has taken the place of. Everything else goes to the session verbatim, because every
-    /// verb this program has is a line handed to `App::submit` and a protocol with a message per
-    /// verb would be a second vocabulary.
+    /// note: two of these are the client's own rather than the session's, and both are spelled the
+    /// way the terminal spells them. `y`, `n` and `a` are the keys the permission panel takes, with
+    /// the meanings they have there, so a *message* of `y` cannot be sent while a question is open,
+    /// just as it cannot be typed while the question holds the prompt. Everything else goes to the
+    /// session verbatim, because every verb this program has is a line handed to `App::submit`, and
+    /// a protocol with a message per verb would be a second vocabulary.
     async fn typed<W: AsyncWrite + Unpin>(
         &mut self,
         write: &mut W,
@@ -974,7 +960,7 @@ impl<'a> Client<'a> {
                 )
                 .await;
         }
-        // note: the kernel's question first where both are somehow waiting, which is the order the
+        // note: the kernel's question first if both are somehow waiting, which is the order the
         // panel at a terminal takes them in
         if let Some((grant, remember)) = answer
             && let Some(reached) = self.reaching.pop_front()
@@ -994,8 +980,8 @@ impl<'a> Client<'a> {
         }
         if let Some(id) = line.strip_prefix('?').and_then(|n| n.trim().parse().ok()) {
             return self
-                // the reading rather than the text: `?N` at this client prints an item for
-                // somebody to look at, and there is nothing here that edits one
+                // `?N` at this client prints the reading rather than the text: an item for somebody
+                // to look at, and nothing here edits one
                 .say_to(
                     write,
                     Command::Inspect {
@@ -1031,30 +1017,29 @@ impl<'a> Client<'a> {
 
     /// Takes one of the answers this was owed.
     ///
-    /// note: saturating, because a [`Message::Failed`] is the one answer that also arrives without
-    /// anybody having asked - a connection that broke says so through it - and a count that wrapped
-    /// there would leave this client convinced it was owed more answers than will ever come.
+    /// note: saturating, because a [`Message::Failed`] is the one answer that arrives without a
+    /// request, when a connection breaks, and a count that wrapped there would leave this client
+    /// owed answers that will never come.
     fn answered(&mut self) {
         self.outstanding = self.outstanding.saturating_sub(1);
     }
 
-    /// Whether the session has caught up with everything this client asked of it, and is idle.
+    /// Whether the session has caught up with everything this client asked, and is idle.
     ///
-    /// note: what the input closing waits for. `echo "question" | kamchatka --connect` is asking
-    /// for the answer, not for the question to be asked and abandoned - the same rule
-    /// `--headless` follows.
+    /// note: what the input closing waits for. `echo "question" | kamchatka --connect` asks for the
+    /// answer, not for the question to be asked and abandoned; `--headless` follows the same rule.
     ///
-    /// note: **a question is not rest**, and reading `busy` alone for it leaves a session wedged. A
-    /// turn paused on a permission question is not running, so `busy` is false while the kernel
-    /// sits in `Deciding` - and a client that took that for the end of the turn would print the
-    /// question, detach, and exit `0`, leaving a served session waiting on an answer that could no
-    /// longer come from anywhere. What ends the wait is [`Client::settle`]; this is only
-    /// the half that stops it being called rest.
+    /// note: a question is not rest, and a client that reads `busy` alone leaves a session wedged.
+    /// A turn paused on a permission question is not running, so `busy` is false while the kernel
+    /// sits in `Deciding`; a client that took that for the end of the turn would print the
+    /// question, detach, and exit `0`, leaving a served session waiting on an answer that can no
+    /// longer come. [`Client::settle`] ends the wait; this only keeps the state from counting as
+    /// rest.
     ///
-    /// note: except for a client that leaves its questions, for whom a session waiting on nothing
-    /// but a question is at rest: the turn will not move until somebody else answers, and waiting
-    /// here for that would be a client that never exits. A line held behind that question is
-    /// waiting on the same somebody, so it does not keep the client either: it goes unsent, and
+    /// note: a client that leaves its questions is the exception: a session waiting on nothing but
+    /// a question is at rest, because the turn will not move until somebody else answers, and
+    /// waiting here would be a client that never exits. A line held behind that question waits on
+    /// the same somebody, so it does not keep the client either: it goes unsent, and
     /// [`Client::unsent`] says so.
     fn resting(&self) -> bool {
         let asked = !self.asking.is_empty() || !self.reaching.is_empty();
@@ -1151,11 +1136,11 @@ impl<'a> Client<'a> {
             .await?;
         }
 
-        // note: on every message rather than where the input closes, because of what a projection
-        // is. It carries where the log has got to, so it is the first thing to say how many records
-        // this client has not been written - and an input that closed before it arrived would
-        // otherwise detach against a watermark of nothing and write none of them. A client with
-        // somebody at it asks for nothing, so this costs a comparison a turn
+        // note: on every message rather than when the input closes. A projection carries where the
+        // log has got to, so it is the first thing to say how many records this client has not
+        // written. If the input closed before it arrived, the client would detach against a
+        // watermark of nothing and write none of them. A client with somebody at it asks for
+        // nothing, so this costs one comparison per turn
         if self.detaching {
             self.catch_up(write).await?;
         }
@@ -1188,16 +1173,16 @@ impl<'a> Client<'a> {
     /// which is every turn of a session this client is watching, and the whole cost is one attach
     /// on a client that is leaving.
     async fn catch_up<W: AsyncWrite + Unpin>(&mut self, write: &mut W) -> Result<(), String> {
-        // note: the `outstanding` as well as the watermark. A resume asked for is a resume owed an
+        // note: the `outstanding` as well as the watermark. A resume that is asked for is owed an
         // answer, and until that answer arrives `written` has not moved - so a second message in
-        // between would ask again, and the client would owe itself one more answer than the
-        // session will ever send
+        // between would ask again, and the client would owe itself one more answer than the session
+        // will ever send
         if self.written >= self.last || self.outstanding > 0 {
             return Ok(());
         }
         // note: a resume rather than a fresh attach, so the session sends the records and not a
-        // projection: the projection is the thing a client is leaving, and asking for it again
-        // would print the whole conversation a second time
+        // projection. The projection is what a client is leaving, and asking for it again would
+        // print the whole conversation a second time
         self.say_to(
             write,
             Command::Attach {
@@ -1211,14 +1196,14 @@ impl<'a> Client<'a> {
 
     /// Answers whatever is still being asked, once there is nobody here to ask.
     ///
-    /// note: nothing at all until the input has closed, which is what makes this safe to call on
-    /// every message: a client with somebody at it answers with `y`, `n` and `a`, and a question
-    /// settled from under them would be this deciding what they were about to.
+    /// note: nothing at all until the input has closed, which makes it safe to call on every
+    /// message. A client with somebody at it answers with `y`, `n` and `a`; a question settled from
+    /// under them would decide what they were about to.
     ///
-    /// note: taken off the queue as it is answered rather than when the session says so. The
-    /// answer comes back as a `permission.decided` record and clears it there too, but that record
-    /// arrives after the next pass through this - which would send a second `Decide` for a
-    /// question already answered, and a third, for as long as the session took to reply.
+    /// note: taken off the queue as it is answered rather than when the session says so. The answer
+    /// comes back as a `permission.decided` record and clears it there too, but that record arrives
+    /// after the next pass through this, which would send a second `Decide` for a question already
+    /// answered, and a third, for as long as the session took to reply.
     async fn settle<W: AsyncWrite + Unpin>(&mut self, write: &mut W) -> Result<(), String> {
         if !self.detaching {
             return Ok(());
@@ -1259,7 +1244,7 @@ impl<'a> Client<'a> {
                     grant: self.on_ask,
                     // note: never. A standing rule outlives this client and this turn, and a rule
                     // nobody typed is the one kind the policy should not learn from - least of all
-                    // from a run whose whole distinguishing feature is that nobody was watching it
+                    // from a run where nobody was watching
                     remember: false,
                 },
             )
@@ -1303,10 +1288,10 @@ impl<'a> Client<'a> {
 pub(crate) async fn connect(address: &str) -> Result<super::Connection, String> {
     match protocol::address(address)? {
         Address::Unix(path) => match protocol::overlong_path(path) {
-            // note: the same refusal the bind gives, and said before the connect, because a path
-            // this long is refused by the kernel with a sentence naming neither the limit nor a
-            // shorter place - and a client that cannot reach the socket is the one person who
-            // cannot tell a wrong path from a path nothing is listening at
+            // note: the same refusal the bind gives, said before the connect. The kernel refuses a
+            // path this long without naming the limit or a shorter place, and a client that cannot
+            // reach the socket is the one person who cannot tell a wrong path from a path nothing
+            // is listening at
             Some(bytes) => Err(format!(
                 "a socket file cannot be named by {bytes} bytes, and this one is; a `unix:` path \
                  can be at most {} bytes - ask for the socket under `$XDG_RUNTIME_DIR` or \
@@ -1360,9 +1345,9 @@ fn clipped(line: &protocol::Line) -> String {
 
 /// The mark a line of the conversation is printed under.
 ///
-/// note: the same characters the headless run uses where it uses any, and one of its own where it
-/// has none, because this prints a whole conversation at once and a column of identical marks down
-/// the left of it says nothing about who was talking.
+/// note: uses the same characters as the headless run where it uses any, and its own where it has
+/// none, because it prints a whole conversation at once and identical marks down the left say
+/// nothing about who was talking.
 fn speaks(speaker: Speaker) -> &'static str {
     match speaker {
         Speaker::User => ">",

@@ -1,27 +1,25 @@
-//! `Advised`: [`Careful`], with each shell command it is going to ask about placed on a rubric
-//! for the person about to answer.
+//! `Advised`: [`Careful`], with each shell command it asks about placed on a rubric for the person
+//! answering.
 //!
-//! note: it **decides nothing**. The verdict is the standing rules' and only theirs: a call they
-//! allow runs, a call they refuse is refused, and a call they ask about is asked about. An `allow`
-//! is somebody's decision, and a second model does not get to reopen it. What this adds is a line
-//! in the question, in green, yellow or red, for somebody deciding whether to press `y` - the same
-//! reasoning as the exit colours in [`Exit`](crate::tools::Exit), one flight up: a coarse
-//! question, answered at a glance, beside the exact thing it is about.
+//! note: it decides nothing. The standing rules decide: an allowed call runs, a refused call is
+//! refused, and an asked-about call is asked about. An `allow` is somebody's decision, and a second
+//! model does not get to reopen it. This adds a line in the question, in green, yellow or red, for
+//! somebody deciding whether to press `y` - a coarse question answered at a glance beside the exact
+//! thing it is about, like the exit colours in [`Exit`](crate::tools::Exit).
 //!
-//! note: and where it cannot rate a command it says so, in the rating's place - see
+//! note: where it cannot rate a command it says so, in the rating's place - see
 //! [`Advised::why_unrated`] for why a missing line is not a neutral one.
 //!
-//! note: **what leaves the machine.** For each shell command the rules are going to ask about,
-//! which in a default session is every command the model writes: the tool's id, the capabilities
-//! it declared, and its arguments - the command line. That is a real disclosure and much larger
-//! than the app name `KAMCHATKA_NO_ATTRIBUTION` exists to suppress, which is why this is off
-//! unless somebody asks for it by name and why [`ROOM`] caps what one call can send. Nothing else
-//! goes: not the conversation, not the system instruction, not the model's prose about why it
-//! wants the call.
+//! note: what leaves the machine. For each shell command the rules ask about - in a default
+//! session, every command the model writes - it sends the tool's id, the capabilities it declared,
+//! and its arguments: the command line. That is a real disclosure, much larger than the app name
+//! `KAMCHATKA_NO_ATTRIBUTION` exists to suppress, so this is off unless somebody asks for it by
+//! name, and [`ROOM`] caps what one call can send. Nothing else goes: not the conversation, not the
+//! system instruction, not the model's prose about why it wants the call.
 //!
-//! note: the invariant *nothing in a model's output reaches the policy* holds twice over. Nothing
-//! here reaches a verdict at all, and what reaches the advisor is the tool name and the arguments,
-//! both as data: a tool call that *says* it has been approved is a string in `args` like any
+//! note: the invariant that nothing in a model's output reaches the policy holds twice over.
+//! Nothing here reaches a verdict at all, and what reaches the advisor is the tool name and
+//! arguments as data: a tool call that says it has been approved is a string in `args` like any
 //! other.
 
 use std::{
@@ -50,17 +48,16 @@ const REMEMBERED: usize = 32;
 /// How long one argument may be before it is cut, in bytes.
 ///
 /// note: a cap rather than a choice of which fields to send, because the fields are every tool's
-/// own and a list here would go stale the first time one grew an argument. Two kilobytes is more
-/// than every shell command line and every path in this program's vocabulary, and less than the
-/// contents of a file being written - which is the payload this is actually about. What is cut is
-/// replaced by a marker rather than dropped silently, so the model is not told a truncated
-/// command is the whole of it.
+/// own and a list would go stale. Two kilobytes is more than every shell command line and path in
+/// this program's vocabulary, and less than a file's contents - the payload this is about. What is
+/// cut is replaced by a marker, not dropped silently, so the model is not told a truncated command
+/// is the whole of it.
 ///
-/// note: **per argument, and not over the serialised whole**. `serde_json` renders an object's
-/// keys in sorted order, so `contents` comes before `path` - and cutting the rendered JSON at a
-/// byte count takes the path away and leaves two kilobytes of file, so the one field the decision
-/// turns on is the first thing to go. Capping each value keeps every key, so a write of a large
-/// file arrives as the path it is writing to and a marker saying how much text came with it.
+/// note: per argument, not over the serialised whole. `serde_json` sorts an object's keys, so
+/// `contents` comes before `path`. Cutting the rendered JSON at a byte count takes the path away
+/// and leaves two kilobytes of file, so the field the decision turns on goes first. Capping each
+/// value keeps every key, so a large file write arrives as the path it is writing to and a marker
+/// saying how much text came with it.
 const ROOM: usize = 2_048;
 
 /// Why there is no rating, where the advisor answered and nothing in the answer could be read.
@@ -68,15 +65,15 @@ const UNREAD: &str = "it answered nothing this program could read";
 
 /// How long a reason for having no rating may be, in characters.
 ///
-/// note: it goes in the question's pinned header, beside the command somebody is deciding about,
-/// and a firewall's refusal page runs on for a paragraph after the sentence that says what it is.
+/// note: it goes in the question's pinned header beside the command somebody is deciding about; a
+/// firewall's refusal page runs on after the sentence that says what it is.
 const SAID: usize = 120;
 
 /// A reason cut to [`SAID`], saying where it was cut.
 ///
 /// note: a reason that is a chain of causes - what `nachalnik-providers` makes of a transport's
-/// failure, each cause after a `: ` - keeps its last one, which is the part somebody can act on:
-/// `Connection refused` is under a head that is mostly the address. Anything else keeps its start.
+/// failure, each cause after a `: ` - keeps its last one, the part somebody can act on. `Connection
+/// refused` sits under a head that is mostly the address. Anything else keeps its start.
 fn cut(reason: &str) -> String {
     let head = |room: usize| {
         reason
@@ -98,11 +95,11 @@ fn cut(reason: &str) -> String {
     }
 }
 
-/// How sure the model has to be before a rating is taken at its word.
+/// The confidence the model must have before a rating is accepted.
 ///
-/// note: below this a reading is drawn as the middle band whatever it scored - see
-/// [`Rated::shown`]. A distribution spread across the rubric is the advisor saying it could not
-/// tell, and drawing it green would report that as the opposite.
+/// note: below this, a reading is drawn as the middle band whatever it scored - see
+/// [`Rated::shown`]. A distribution spread across the rubric means the advisor could not tell, and
+/// drawing it green would report that as the opposite.
 const SURE: f64 = 0.7;
 
 /// The rubric a command is placed on for the person about to answer for it.
@@ -158,44 +155,43 @@ pub enum Rating {
     Grave,
 }
 
-/// The levels as the model is given them, lowest first - so a higher score is a command somebody
-/// should look harder at.
+/// The levels given to the model, lowest first. A higher score is a command somebody should look
+/// harder at.
 ///
-/// note: written as what a command *does* rather than as `safe`/`unsafe`, because the model is
-/// being asked to place a command and not to agree with a label. A rubric whose levels are
-/// adjectives is answered from how the command feels; one whose levels are outcomes is answered
-/// from what the command says.
+/// note: written as what a command does, not as `safe`/`unsafe`, because the model is asked to
+/// place a command, not to agree with a label. Adjective levels are answered from how the command
+/// feels; outcome levels are answered from what the command says.
 ///
-/// note: the line between the first two levels is what a command **leaves behind**, and not
-/// whether anything changed while it ran. `cd src` changes the working directory, and asked the
-/// second way it lands on the middle level - which makes a yellow line mean nothing, since moving
-/// about is among the commonest things an agent writes. In this program it does not even change
-/// anything durable: every call is its own `sh -c`, so the next one starts in the working
-/// directory again. So the bottom level names moving about among the things that qualify, and
-/// the middle one asks for something *still* changed once the command has finished.
+/// note: the line between the first two levels is what a command leaves behind, not whether
+/// anything changed while it ran. `cd src` changes the working directory, and asked the second way
+/// it lands on the middle level, which makes a yellow line mean nothing, since moving about is
+/// among the commonest things an agent writes. Here it changes nothing durable either: every call
+/// is its own `sh -c`, so the next starts in the working directory again. The bottom level names
+/// moving about among the things that qualify; the middle asks for something still changed once the
+/// command has finished.
 ///
-/// note: and the bottom level says what moving about is - reading, listing, searching, changing
-/// directory. Said only as "moves about", a `cd` stage was placed there at barely the confidence
-/// a green needs, so a `cd` drawn yellow was one answer away.
+/// note: the bottom level says what moving about is: reading, listing, searching, changing
+/// directory. Said only as "moves about", a `cd` stage was placed there at barely the confidence a
+/// green needs.
 ///
-/// note: the line between the top two levels is **where** a change lands, and not whether it
-/// could be put back. Nearly everything could be, given the effort - `chmod -R 777 /` can be
-/// undone, and so can a global install - so a middle level of "reversible" puts both beside
-/// `cargo build`. The working directory is where an agent is sent to work and is the line the
-/// sandbox draws for writes; git or a rebuild undoes what happens inside it, and anything outside
-/// it - system files, permissions, the home directory, the machine, another account, a remote
-/// service - is what a person should stop on. Destroying what cannot be got back and sending
-/// something off the machine stay at the top wherever they happen.
+/// note: the line between the top two levels is where a change lands, not whether it could be put
+/// back. Nearly everything can be undone given the effort - `chmod -R 777 /` and a global install
+/// can be undone - so a middle level of "reversible" puts both beside `cargo build`. The working
+/// directory is where an agent works and is the line the sandbox draws for writes; git or a rebuild
+/// undoes what happens inside it. Anything outside it - system files, permissions, the home
+/// directory, the machine, another account, a remote service - is what a person should stop on.
+/// Destroying what cannot be got back and sending something off the machine stay at the top
+/// wherever they happen.
 ///
-/// note: and a command is placed stage by stage, so a `cd` is put on the rubric on its own rather
-/// than read as a clause of a longer command line. A level that misplaces it does so visibly.
+/// note: a command is placed stage by stage, so `cd` is put on the rubric on its own, not as a
+/// clause of a longer command line. A level that misplaces it does so visibly.
 ///
-/// note: **short, because what a model pays for every request is a toll**, and the levels are the
-/// part of it a small model has to hold in mind while reading a command. Nothing is claimed for
-/// the length beyond that: what a rubric scores moves with the *state* as much as with the words,
+/// note: the levels are short because they are paid for on every request and are the part a small
+/// model has to hold in mind while reading a command. Nothing more is claimed for the length: what
+/// a rubric scores moves with the state as much as with the words,
 /// and a bare command is an easier question than the call the program sends. Anything added here
-/// should be measured against what the program sends: [`state`] and these words, not a bare
-/// command line.
+/// should be measured against what the program sends: [`state`] and these words, not a bare command
+/// line.
 pub(crate) const LEVELS: [&str; 3] = [
     "it only looks, or moves about - reads, lists, searches or changes directory - and leaves nothing changed",
     "it changes files inside the working directory - writing, building, formatting, committing - in a way git or a rebuild could undo",
@@ -215,41 +211,41 @@ impl Rating {
 
 /// A rating, and how sure the advisor was of it.
 ///
-/// note: both, and kept apart, because the number is not decoration. A rubric's confidence says
-/// how concentrated the distribution over the levels was, and a command the advisor could not
-/// place is a different thing from one it placed low - `Rated::shown` is where that difference is
-/// turned into a colour, and it is the only place, so the words and the colour cannot disagree.
+/// note: both are kept apart because the number is not decoration. Confidence says how concentrated
+/// the distribution over the levels was. A command the advisor could not place is different from
+/// one it placed low. [`Rated::shown`] turns that difference into a colour, and it is the only
+/// place, so the words and the colour cannot disagree.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct Rated {
-    /// Where the advisor put it, before [`Rated::shown`] has had its say - or, for a command
-    /// taken apart at its joints, the worst of what its stages were shown as.
+    /// Where the advisor put it, before [`Rated::shown`] has had its say - or, for a command taken
+    /// apart at its joints, the worst of what its stages were shown as.
     ///
-    /// note: one field for both, which works because [`Rated::shown`] is idempotent. It only ever
-    /// raises a `Reads` nobody was sure of, so running it again over a band that is already a fold
-    /// of `shown` answers with that band.
+    /// note: one field for both, because [`Rated::shown`] is idempotent. It only ever raises a
+    /// `Reads` nobody was sure of, so running it again over a band that is already a fold of
+    /// `shown` answers with that band.
     pub scored: Rating,
     /// How sure it was, from 0 to 1 - about the stage that earned the band, where a stage did.
     pub confidence: f64,
-    /// Which stage of the command earned it, as a byte range into the command line.
+    /// The byte range in the command line of the stage that earned the band.
     ///
-    /// note: a range rather than the text, so that a client points at the stage in the command
-    /// it is already drawing instead of printing it a second time underneath. A panel's rows are
-    /// its scarcest thing - the same argument [`joints`](crate::tools::joints) is ranges for -
-    /// and on a phone a second copy of a long stage is the whole screen.
+    /// note: a range rather than the text, so a client points at the stage in the command it is
+    /// already drawing instead of printing it a second time. Panel rows are scarce, the same reason
+    /// [`joints`](crate::tools::joints) uses ranges; on a phone a second copy of a long stage fills
+    /// the screen.
     ///
-    /// note: `None` where the whole command earned a band no stage reaches, and for every call
-    /// that was rated in one piece: a heredoc, a command with no joints in it, one too long to be
-    /// sent whole, and one with more stages than are worth reporting on separately.
+    /// note: `None` when the whole command earned a band no stage reaches, and for every call rated
+    /// in one piece: a heredoc, a command with no joints, one too long to be sent whole, and one
+    /// with more stages than are worth reporting separately.
     pub worst: Option<(usize, usize)>,
 }
 
 impl Rated {
     /// Reads a position on [`LEVELS`] back as a band.
     ///
-    /// note: the nearest level rather than a floor, because the score is a weighted position and
-    /// `1.8` is a command the advisor mostly put on the top level. Flooring would draw that one
-    /// yellow, which is the direction this must never round in.
+    /// note: the nearest level rather than a floor, because the score is a weighted position: `1.8`
+    /// is a command the advisor mostly put on the top level. Flooring would draw it yellow, and
+    /// this must never round down.
     fn of(score: f64, confidence: f64) -> Self {
         let scored = match score {
             it if it < 0.5 => Rating::Reads,
@@ -264,17 +260,17 @@ impl Rated {
         }
     }
 
-    /// And reads the same reading back off the claim, where it was asked as one.
+    /// Reads the band off a claim, where the question was asked as one.
     ///
-    /// note: a claim answers the top band and nothing else, so the bottom one is what is left when
-    /// it is confidently false rather than something the question said. What that costs is the
-    /// difference between `ls` and `mkdir`, which no colour here was ever drawing - the middle band
-    /// is what a reading nobody is sure of lands on either way.
+    /// note: a claim answers the top band and nothing else, so the bottom band is what is left when
+    /// the claim is confidently false, not something the question said. This costs the difference
+    /// between `ls` and `mkdir`, which no colour here draws; the middle band is where a reading
+    /// nobody is sure of lands.
     ///
-    /// note: a `noul`'s number *is* its confidence, which is why this takes one argument where
-    /// [`Rated::of`] takes two. How sure the model is of a claim it puts at 0.9 is 0.9, and of one
-    /// it puts at 0.1 is also 0.9 - of the claim being false. Between the two it is sure of
-    /// nothing, and the band says so rather than picking the nearer side of a coin toss.
+    /// note: a `noul`'s number is its confidence, so this takes one argument where [`Rated::of`]
+    /// takes two. A claim at 0.9 means the model is 0.9 sure of it; a claim at 0.1 means it is 0.9
+    /// sure the claim is false. Between the two it is sure of nothing, and the band says so instead
+    /// of picking the nearer side of a coin toss.
     fn claimed(danger: f64) -> Self {
         let scored = match danger {
             it if it >= SURE => Rating::Grave,
@@ -289,33 +285,32 @@ impl Rated {
         }
     }
 
-    /// The worst of what a call is made of, which is what the call is drawn as.
+    /// The worst band among the parts a call is made of; the call is drawn as that band.
     ///
-    /// note: the fold is over [`Rated::shown`] rather than over the scores, and the order matters.
-    /// `shown` is what lifts a reading nobody was sure of off green: a stage scored `0.4` at 95%
-    /// and one scored `0.1` at 30% are `Reads` and `Changes` once it has run, and `Changes` is the
-    /// honest answer for the pair. Folding the scores first picks the higher one, `0.4`, and draws
-    /// the whole command green on the strength of the other stage's coin toss.
-    /// `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to this, and the
-    /// fold is the same property for a command made of several.
+    /// note: the fold runs over [`Rated::shown`], not over the scores, and the order matters.
+    /// `shown` lifts a reading nobody was sure of off green: a stage scored `0.4` at 95% and one
+    /// scored `0.1` at 30% become `Reads` and `Changes`, and `Changes` is the honest answer for the
+    /// pair. Folding the scores first would pick `0.4` and draw the whole command green on the
+    /// strength of the other stage's coin toss.
+    /// `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to this; the fold is
+    /// the same property for a command made of several.
     ///
-    /// note: the whole command is one of the parts folded, always, and it is the only one that
-    /// can see what the stages cannot - a pipeline whose every link is ordinary and whose
-    /// composition is not. It is also what makes a stage whose answer never arrived cost a band
-    /// that might have been raised rather than a wrong one: the fold can only ever come back at or
-    /// above the band the whole command was given.
+    /// note: the whole command is always one of the folded parts, and the only one that can see
+    /// what the stages cannot: a pipeline whose every link is ordinary and whose composition is
+    /// not. It also makes a stage whose answer never arrived cost a band that might have been
+    /// raised rather than a wrong one, because the fold can only come back at or above the band the
+    /// whole command was given.
     ///
-    /// note: the first *stage* to reach the worst band, where more than one part does, so what is
-    /// pointed at is where the command first gets as bad as it gets. The whole command is kept
-    /// only where no stage reaches its band: a destructive link usually makes the whole command
-    /// read as destructive too, and keeping the whole on that tie would point at nothing in
-    /// exactly the chain the pointing is for.
+    /// note: the first stage to reach the worst band, when more than one part does, so the pointer
+    /// marks where the command first gets as bad as it gets. The whole command is kept only where
+    /// no stage reaches its band: a destructive link usually makes the whole command read as
+    /// destructive too, and keeping the whole on that tie would point at nothing in the chain the
+    /// pointer is for.
     ///
-    /// note: and nothing is pointed at where every stage reaches the band. A stage is worth
-    /// pointing at for being worse than the rest, and where none is, the first of equals says
-    /// nothing: `cargo fmt && cargo test` drawn yellow with `cargo fmt` underlined reads as `fmt`
-    /// being the part to worry about, and a green chain had its first stage underlined for no
-    /// reason at all.
+    /// note: nothing is pointed at where every stage reaches the band. A stage is worth pointing at
+    /// only for being worse than the rest; where none is, the first of equals says nothing.
+    /// `cargo fmt && cargo test` drawn yellow with `cargo fmt` underlined reads as `fmt` being the
+    /// part to worry about, and a green chain would have its first stage underlined for no reason.
     fn worst_of(parts: impl IntoIterator<Item = Self>) -> Option<Self> {
         let parts: Vec<Self> = parts.into_iter().collect();
         let folded =
@@ -345,21 +340,19 @@ impl Rated {
         })
     }
 
-    /// The band this is actually drawn as.
+    /// The band this is drawn as.
     ///
-    /// note: never a safer one than it scored, and never [`Rating::Reads`] where the advisor was
-    /// not sure, which is `SURE`'s job: an uncertain answer is worth having and is not worth
-    /// acting on as though it were a certain one. A spread distribution over a safety rubric is
-    /// not evidence that a command is safe, and green is the one colour that would say it was.
+    /// note: never safer than scored. Never [`Rating::Reads`] when the advisor is not sure
+    /// (`SURE`); an uncertain answer is worth having but not worth acting on as a certain one. A
+    /// spread distribution over a safety rubric is not evidence a command is safe; green is the
+    /// only colour that says a command is safe.
     ///
-    /// note: the confidence is drawn beside this rather than folded away into it, so that a person
-    /// reading a yellow line can see whether it is yellow because the command changes something or
-    /// yellow because nobody could tell.
+    /// note: confidence is shown beside the rating, not folded into it, so a reader can see whether
+    /// a yellow line means the command changes something or nobody could tell.
     ///
     /// note: idempotent, and the fold behind [`Rated::worst`] leans on it. It only ever raises a
-    /// `Reads`, so asking it about a band it has already answered with gives that band back -
-    /// which is what lets `scored` hold either a raw reading or a fold of several without a caller
-    /// having to know which it has.
+    /// `Reads`, so asking about a band already answered returns that band. That lets `scored` hold
+    /// a raw reading or a fold of several without the caller knowing which.
     pub fn shown(self) -> Rating {
         match self.confidence >= SURE {
             true => self.scored,
@@ -375,8 +368,8 @@ const NOT_WAITED: &str = "the turn was stopped, so the advisor was not waited fo
 pub struct Advised {
     /// The standing rules, which decide every call.
     careful: Arc<Careful>,
-    /// The engine asked for the rating: a service over HTTP, or a process on this machine.
-    /// Nothing in here finds out which - see [`SystemOne`].
+    /// The engine asked for the rating: an HTTP service or a process on this machine. This code
+    /// does not find out which; see [`SystemOne`].
     engine: Arc<dyn SystemOne>,
     /// Where it put each command it was asked to rate, or why it could not, for the question to
     /// draw.
@@ -401,16 +394,16 @@ impl Advised {
 
     /// Gives up on any rating in flight, and on any asked for until [`Advised::resume`].
     ///
-    /// note: what makes a stop immediate. The advisor is asked inside the permission policy, which
-    /// the kernel awaits while preparing the calls and which does not read the interrupt, and an
-    /// ask is up to four attempts with a wait between - so a `ctrl+c` did nothing visible for as
+    /// note: this is what makes a stop immediate. The advisor is asked inside the permission
+    /// policy, which the kernel awaits while preparing calls and which does not read the interrupt.
+    /// An ask is up to four attempts with a wait between, so `ctrl+c` did nothing visible for as
     /// long as the service took, two minutes at worst. A rating decides nothing, so giving up on
-    /// one cannot change a verdict: the question still comes, saying the advice was not waited
-    /// for, and the kernel honours the stop before any call runs.
+    /// one cannot change a verdict: the question still comes, saying the advice was not waited for,
+    /// and the kernel honours the stop before any call runs.
     ///
-    /// note: a flag rather than a pulse, because the stop can land before the rating starts - the
-    /// policy is asked after the interrupt, on the way to the kernel noticing it - and a pulse
-    /// nobody was waiting on is a stop that did nothing.
+    /// note: a flag rather than a pulse, because the stop can land before the rating starts: the
+    /// policy is asked after the interrupt, on the way to the kernel noticing it. A pulse nobody
+    /// was waiting on is a stop that did nothing.
     pub fn stop(&self) {
         self.stopped.send_replace(true);
     }
@@ -423,11 +416,10 @@ impl Advised {
     /// The tokens the engine has reported its answers cost, over the life of this policy.
     ///
     /// note: kept here because nothing else sees them. The advisor is asked from inside the
-    /// permission policy, which writes no event, so a `--max-spend-tokens` that added up
-    /// `model.finished` alone was a ceiling on the model and none on the advisor - and one
-    /// borrowing the session's key spends out of the same account. `App` charges what this has
-    /// grown by since it last looked. A local engine that reports nothing adds nothing, which is
-    /// what it costs.
+    /// permission policy, which writes no event, so `--max-spend-tokens` adding only
+    /// `model.finished` was a ceiling on the model and none on the advisor, and one borrowing the
+    /// session's key spends out of the same account. `App` charges what this has grown by since it
+    /// last looked. A local engine that reports nothing adds nothing.
     pub fn spent(&self) -> u64 {
         self.spent.load(Ordering::Relaxed)
     }
@@ -452,8 +444,8 @@ impl Advised {
     ///
     /// note: said rather than left as a missing line, because the failure is not random. The
     /// endpoints this program knows sit behind a firewall that refuses a request by what is in it,
-    /// and what it refuses - `/etc/shadow`, a secret piped to `curl` - is the command the colour
-    /// is most for. A question with no line looks like one nobody had anything to say about, and a
+    /// and what it refuses - `/etc/shadow`, a secret piped to `curl` - is the command the colour is
+    /// most for. A question with no line looks like one nobody had anything to say about, and a
     /// person reading it that way has been told the command was not worth a colour.
     pub fn why_unrated(&self, call: &ToolCallId) -> Option<String> {
         self.read(call)?.err()
@@ -468,11 +460,11 @@ impl Advised {
             .map(|(_, reading)| reading.clone())
     }
 
-    /// Asks where a command lands, and writes down the answer - or why there is none - for the
+    /// Asks where a command lands, and writes down the answer or why there is none, for the
     /// question to draw.
     ///
-    /// note: it returns nothing. There is no branch from here to a verdict, so the worst an outage
-    /// can do is take the colour off the panel and put the reason there instead.
+    /// note: it returns nothing. There is no branch to a verdict, so an outage can only take the
+    /// colour off the panel and put the reason there instead.
     async fn rate(&self, request: &PermissionRequest) {
         let reading = self.placed(request).await;
 
@@ -493,19 +485,18 @@ impl Advised {
 
     /// Where a command lands, or why the advisor could not say.
     async fn placed(&self, request: &PermissionRequest) -> Result<Rated, String> {
-        // note: through `inner`, because some models put every argument inside a wrapper object
-        // and the panel unwraps one before drawing it. Reading the command from the other place
-        // than the screen does would take spans into a string nobody is looking at, and the
-        // stage underlined would be the wrong run of the right command
+        // note: through `inner`, because some models wrap every argument in an object and the panel
+        // unwraps one before drawing it. Reading the command from a different place than the screen
+        // does would take spans into a string nobody is looking at, so the underlined stage would
+        // be the wrong run of the right command
         let args = crate::tools::ops::inner(&request.args)
             .unwrap_or(std::borrow::Cow::Borrowed(&request.args));
         let cmd = args.get("cmd").and_then(Value::as_str).unwrap_or_default();
         let stages = stages(cmd);
 
-        // note: all of them in one request, which is what makes taking a command apart affordable.
-        // Each is evaluated on its own against the same state, so no stage's answer can be moved
-        // by another's, and a command of `STAGES` stages costs the round trip a one-stage command
-        // costs
+        // note: all in one request, which makes taking a command apart affordable. Each is
+        // evaluated on its own against the same state, so no stage's answer can be moved by
+        // another's, and `STAGES` stages cost the same round trip as one stage
         let mut questions = vec![
             (RATING.to_owned(), Question::score(PLACE, LEVELS)),
             (
@@ -534,12 +525,12 @@ impl Advised {
         }
 
         // note: the score and the confidence together or not at all. A score with no confidence
-        // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
-        // answer is that nothing was said.
+        // cannot be drawn by `Rated::shown`'s rule; the safe reading of half an answer is that
+        // nothing was said.
         //
-        // note: and a score that is no position on `LEVELS` is not an answer either. Everything
-        // below half a level is drawn green, so one under the bottom - an engine's `-3` - was a
-        // clean bill for a command nothing had read
+        // note: a score that is no position on `LEVELS` is not an answer either. Everything below
+        // half a level is drawn green, so an engine's `-3`, under the bottom, was a clean bill for
+        // a command nothing had read
         let on_the_rubric = |score: &f64| (0.0..=(LEVELS.len() - 1) as f64).contains(score);
         let read = |name: &str| {
             let score = answers.score(name).filter(on_the_rubric)?;
@@ -547,16 +538,15 @@ impl Advised {
         };
 
         // note: a `noul`'s number is its own confidence, so there is no second field to pair it
-        // with and no half-answer to guard against - see `Rated::claimed`. But a number that is
-        // no probability is no claim, for the score's reason: `-3` read as one is no danger at
-        // "400% sure", and drawn green
+        // with and no half-answer to guard against - see `Rated::claimed`. But a number that is not
+        // a probability is no claim: `-3` read as one is no danger at "400% sure", and is drawn
+        // green
         let on_the_line = |danger: &f64| (0.0..=1.0).contains(danger);
         let claim = |name: &str| Some(Rated::claimed(answers.noul(name).filter(on_the_line)?));
 
-        // note: the whole command is what decides whether anything was said at all, and it has
-        // two ways of saying it. Either will do; neither is half an answer, because each is a
-        // reading of the whole command on its own. Nothing at all is still nothing, and the safe
-        // reading of that is the same here as it is above
+        // note: the whole command decides whether anything was said, and it has two ways of saying
+        // it. Either will do; neither is half an answer, because each reads the whole command on
+        // its own. Nothing at all is still nothing, and the safe reading is the same as above
         let whole: Vec<Rated> = [read(RATING), claim(DANGER)]
             .into_iter()
             .flatten()
@@ -588,12 +578,12 @@ pub(crate) const PLACE: &str = "A command is about to be run on the user's machi
                      be asked whether to let it. Place the command in `cmd` on this rubric by \
                      what it would do.";
 
-/// And for one stage of one, which is placed with the whole command in the state beside it.
+/// And for one stage of one, placed with the whole command in the state beside it.
 ///
-/// note: it says to place the stage and not the command, because the state carries the whole
-/// command and has to: `cd /tmp && rm -rf *` is two stages whose second means nothing read on its
-/// own, and a rubric answered about a fragment with no context is answered about a different
-/// command. What the question asks for is a reading of the part, taken in view of the whole.
+/// note: it says to place the stage, not the command, because the state carries the whole command
+/// and has to: `cd /tmp && rm -rf *` is two stages whose second means nothing on its own, and a
+/// rubric answered about a fragment with no context is answered about a different command. The
+/// question asks for a reading of the part in view of the whole.
 pub(crate) const PLACE_STAGE: &str = "A command is about to be run on the user's machine, and a person is \
                            about to be asked whether to let it. The whole command is in `cmd`. \
                            Place only the stage in `stage` on this rubric, by what that stage \
@@ -608,9 +598,8 @@ pub(crate) const RUIN_STAGE: &str = "A command is about to be run on the user's 
 /// What each side of that claim means, in the words the rubric's own bands use.
 pub(crate) const RUINED: &str = "it changes something outside the working directory, destroys something that cannot be got back, or sends something off this machine";
 
-/// note: it names both of the lower bands, because a claim has one false side and the rubric has
-/// two - and a `false` described as only the bottom one would be read as denying that a command
-/// changes anything, which is not what is being asked.
+/// note: it names both lower bands because a claim has one false side and the rubric has two. A
+/// `false` described as only the bottom band reads as denying that a command changes anything.
 pub(crate) const INTACT: &str = "it only looks, moves about, or changes files inside the working directory in a way git or a rebuild could undo";
 
 /// The claim put to one stage, carrying the stage the way [`placing`] does.
@@ -622,27 +611,25 @@ fn claiming(stage: &str) -> Question {
 
 /// One stage of a command line, put on [`LEVELS`].
 ///
-/// note: the stage travels as a *value* in an instructions object rather than interpolated into a
-/// sentence, for the reason [`state`] is an object rather than a sentence built out of one - a
-/// fragment carrying a newline or a quote cannot rearrange the question it is inside of, and a
-/// stage of a command line is arbitrary text written by the model. `Question::structured`
-/// replaces the sentence `score` was handed, so the sentence goes into the object with it.
+/// note: the stage travels as a value in an instructions object, not interpolated into a sentence,
+/// for the reason [`state`] is an object rather than a sentence: a fragment with a newline or quote
+/// cannot rearrange the question it is inside of, and a stage is arbitrary text from the model.
+/// `Question::structured` replaces the sentence `score` was handed, so the sentence goes into the
+/// object with it.
 fn placing(stage: &str) -> Question {
     Question::score(PLACE_STAGE, LEVELS).structured(json!({ "asked": PLACE_STAGE, "stage": stage }))
 }
 
-/// The byte ranges of a command line's own stages, or nothing where this is not a call it can
-/// take apart.
+/// The byte ranges of a command line's stages, or nothing if this is not a call it can take apart.
 ///
-/// note: four ways of answering nothing, and each of them leaves the whole-command rating to stand
-/// on its own. A call whose `cmd` is not a string is not one this program knows to hold a command
-/// line - the rating is asked for on [`Capability::exec`], which somebody else's tool may declare
-/// while taking its command under another name, and guessing which field that is would be placing
-/// a rubric on an argument nobody said was a command. A command with no joints in it is one
-/// stage, and one stage folded with the whole is the whole. Past [`STAGES`] there are too many to
-/// report on honestly - see the note there. And past [`ROOM`] the state the advisor is shown is a
-/// *cut* of this command, so a stage taken from beyond the cut would be placed against a command
-/// the model was never shown the end of.
+/// note: four ways of answering nothing, and each leaves the whole-command rating to stand on its
+/// own. A call whose `cmd` is not a string is not a command line this program knows. The rating is
+/// asked for on [`Capability::exec`], which another tool may declare while taking its command under
+/// another name, and guessing that field would place a rubric on an argument nobody said was a
+/// command. A command with no joints is one stage, and one stage folded with the whole is the
+/// whole. Past [`STAGES`] there are too many to report on honestly - see the note there. Past
+/// [`ROOM`] the state shown to the advisor is a cut of this command, so a stage from beyond the cut
+/// would be placed against a command the model was never shown the end of.
 fn stages(cmd: &str) -> Vec<(usize, usize)> {
     if cmd.len() > ROOM {
         return Vec::new();
@@ -666,12 +653,11 @@ fn stages(cmd: &str) -> Vec<(usize, usize)> {
         .collect()
 }
 
-/// The range with the whitespace around it left off, or nothing where there is nothing in it.
+/// The range with surrounding whitespace removed, or nothing if it is empty.
 ///
-/// note: the spaces either side of a `|` belong to neither stage, and a range carrying them is
-/// underlined on a screen as a stage with a gap hanging off it. Trimming here rather than where
-/// it is drawn is what keeps the range the advisor was asked about and the range a client points
-/// at the same range.
+/// note: spaces either side of a `|` belong to neither stage, and a range carrying them is
+/// underlined as a stage with a gap. Trimming here rather than where it is drawn keeps the range
+/// the advisor was asked about and the range a client points at the same range.
 fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
     let piece = cmd.get(from..to)?;
     let from = from + (piece.len() - piece.trim_start().len());
@@ -682,14 +668,14 @@ fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
 
 /// The state the model is shown: what is about to run, and nothing about who asked for it.
 ///
-/// note: an object rather than a sentence built out of these. The endpoint takes one, the shape
-/// says which part is the tool and which part is its arguments without a phrasing having to carry
-/// that, and a path with a newline in it cannot rearrange the question it is inside of.
+/// note: an object rather than a sentence. The endpoint takes one, and the shape says which part is
+/// the tool and which part is its arguments without a phrasing having to carry that. A path with a
+/// newline in it cannot rearrange the question it is inside of.
 ///
-/// note: the arguments inside the `call` wrapper, read through `inner` as `Advised::placed`
-/// reads the command. Every question here says the command is in `cmd`, and what the rubric was
-/// measured against put it at `arguments.cmd`; sent wrapped, it was at `arguments.call.cmd`, a
-/// different question from the one measured.
+/// note: the arguments inside the `call` wrapper are read through `inner`, as `Advised::placed`
+/// reads the command. Every question here says the command is in `cmd`; the rubric was measured
+/// against `arguments.cmd`. Sent wrapped, it was at `arguments.call.cmd`, a different question from
+/// the one measured.
 pub(crate) fn state(request: &PermissionRequest) -> Value {
     let args = crate::tools::ops::inner(&request.args)
         .unwrap_or(std::borrow::Cow::Borrowed(&request.args));
@@ -705,12 +691,11 @@ pub(crate) fn state(request: &PermissionRequest) -> Value {
     })
 }
 
-/// The arguments with every long string cut to [`ROOM`], and the shape they arrived in kept.
+/// The arguments with every long string cut to [`ROOM`], keeping the shape they arrived in.
 ///
-/// note: recursive, because a tool's arguments are whatever its schema says and this program
-/// already has ones holding arrays of strings. What is never touched is a key, a number or the
-/// nesting - so whatever the model is shown, it is shown the same *structure* the tool was asked
-/// to act on.
+/// note: recursive, because a tool's arguments are whatever its schema says, and this program
+/// already has arguments holding arrays of strings. Keys, numbers and nesting are never touched, so
+/// the model is shown the same structure the tool was asked to act on.
 fn capped(value: &Value) -> Value {
     match value {
         Value::String(text) if text.len() > ROOM => {
@@ -771,11 +756,11 @@ mod tests {
     use super::*;
     use crate::tools::Subject;
 
-    /// An address nothing is listening on, so the advisor fails the way an outage makes it fail.
+    /// An address nothing is listening on, so the advisor fails like an outage.
     ///
-    /// note: port 1, which is refused rather than filtered - the same distinction
-    /// `waiting::tests::nobody_home` is careful about. A refused connection is not a timeout, so
-    /// this also pins that the failure is not retried four times on the way to being ignored.
+    /// note: port 1, refused rather than filtered, as `waiting::tests::nobody_home` checks. A
+    /// refused connection is not a timeout, so this also pins that the failure is not retried four
+    /// times before being ignored.
     fn unreachable() -> Arc<nachalnik_providers::system1::Client> {
         Arc::new(nachalnik_providers::system1::Client::new(
             "vendor/decider",
@@ -803,10 +788,10 @@ mod tests {
         request
     }
 
-    /// An engine that answers off the command it was shown, so two calls get two answers.
+    /// An engine that answers by the command it was shown, so two calls get two answers.
     ///
-    /// note: two bands rather than one, because a test that cannot tell them apart cannot say
-    /// whose reading it is holding.
+    /// note: two bands rather than one, because a test that cannot tell them apart cannot say whose
+    /// reading it holds.
     struct ByCommand;
 
     #[async_trait]
@@ -950,8 +935,8 @@ mod tests {
             assert_eq!(band(unsure), Rating::Changes, "{unsure}");
         }
 
-        // the confidence is the claim's own distance from a half, which is what makes the band
-        // above and `shown`'s rule agree rather than fight
+        // the confidence is the claim's own distance from a half, so the band and `shown`'s rule
+        // agree
         assert_eq!(Rated::claimed(0.9).confidence, 0.9);
         assert_eq!(Rated::claimed(0.1).confidence, 0.9);
         assert!(Rated::claimed(0.5).confidence < SURE);
@@ -1016,8 +1001,8 @@ mod tests {
         assert_eq!(engine.attempts(), 0, "nothing should have left the machine");
         assert!(advised.rating(&request.call).is_none());
 
-        // and the reason the rules wrote down is the one handed out, since a wrapper that decides
-        // nothing must not lose the sentence the model is told a refusal by
+        // the reason handed out is the one the rules wrote down, since a wrapper that decides
+        // nothing must not lose the refusal sentence told to the model
         let why = advised
             .why(&request)
             .expect("the rule that refused it is still accounted for");
@@ -1038,8 +1023,8 @@ mod tests {
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
         assert_eq!(engine.attempts(), 1, "the rating was asked for");
-        // and an advisor that could not be reached leaves no rating rather than a reassuring one,
-        // and a reason where the rating would have been
+        // an advisor that could not be reached leaves no rating rather than a reassuring one, and a
+        // reason where the rating would have been
         assert!(
             advised.rating(&request.call).is_none(),
             "an outage draws no band, rather than a green one"
@@ -1050,12 +1035,11 @@ mod tests {
         );
     }
 
-    /// A score that came with no confidence is half an answer, and half an answer is none.
+    /// A score with no confidence is not a rating.
     ///
-    /// note: it was read with a confidence of `0.0`, which is a rating "0% sure" drawn in the
-    /// panel - or, while the engine handed out `NaN` for the missing figure, "NaN% sure" and a
-    /// message a remote client could not read. Refused, it is a question with a reason beside it
-    /// rather than a rating.
+    /// note: it was read with confidence `0.0`, drawn as "0% sure"; or the engine handed out `NaN`,
+    /// drawn as "NaN% sure" with a message a remote client could not read. Refused, it is a
+    /// question with a reason beside it rather than a rating.
     #[tokio::test]
     async fn a_score_with_no_confidence_is_not_a_rating() {
         struct Half;
@@ -1164,10 +1148,10 @@ mod tests {
         assert!(advised.why_unrated(&request.call).is_some());
     }
 
-    /// What an answer reports it cost is added up, for the ceiling to charge.
+    /// The cost an answer reports is added up for the ceiling to charge.
     ///
-    /// note: an answer that could not be read as a rating still cost what it cost, so the half
-    /// answer is the case here: the figure is counted whether or not a colour came of it.
+    /// note: an answer that could not be read as a rating still costs what it cost, so the case
+    /// here is a half answer: the figure is counted whether or not a colour came of it.
     #[tokio::test]
     async fn what_an_answer_cost_is_added_up() {
         struct Billed;
@@ -1270,11 +1254,10 @@ mod tests {
         );
     }
 
-    /// A call is rated once, however many times the question comes round.
+    /// A call is rated once, no matter how many times the question is asked.
     ///
-    /// note: the memory is keyed by the call, and what that key is for is that the second
-    /// question about a call must read the second reading rather than the first. A lookup that
-    /// answered "any call but this one" leaves the first answer where it is and puts a second
+    /// note: the memory is keyed by the call so a second question about a call reads the second
+    /// reading, not the first. A lookup for any other call would leave the first answer and add an
     /// entry under a call nobody asked about.
     #[tokio::test]
     async fn a_call_rated_again_is_the_one_that_is_read_back() {
@@ -1310,9 +1293,9 @@ mod tests {
 
     /// A call rated before the latest one is still rated.
     ///
-    /// note: the memory is bounded, so that a session that never reads the panel grows no queue
-    /// behind it, and it lets go of the oldest - not of everything but the newest, which is a
-    /// rating gone before the person it was for is shown it.
+    /// note: the memory is bounded, so a session that never reads the panel grows no queue, and it
+    /// evicts the oldest entry - not everything but the newest, which would be a rating gone before
+    /// the person it was for is shown it.
     #[tokio::test]
     async fn a_reading_before_the_latest_is_still_there() {
         let advised = Advised::new(Arc::new(Careful::new()), Arc::new(ByCommand));
@@ -1325,13 +1308,13 @@ mod tests {
         assert!(advised.rating(&latest.call).is_some());
     }
 
-    /// A command of eight stages costs the round trip a command of one costs.
+    /// A command of eight stages costs one round trip, the same as a command of one stage.
     ///
-    /// note: the property that makes taking a command apart worth doing here at all, and the
-    /// reason this model rather than a chat one. Every stage is a question in the *same* request,
-    /// evaluated on its own against the same state, so none of them can be moved by another's
-    /// answer and the whole fold is paid for once. A question per request would be eight round
-    /// trips in front of somebody waiting to press `y`, and nobody would keep the feature.
+    /// note: this is what makes taking a command apart worth doing, and why the advisor is this
+    /// kind of model rather than a chat one. Every stage is a question in the same request,
+    /// evaluated on its own against the same state, so no stage can be moved by another's answer
+    /// and the fold is paid for once. A question per request would be eight round trips in front of
+    /// somebody waiting to press `y`.
     #[tokio::test]
     async fn every_stage_of_a_command_is_asked_about_in_one_request() {
         let engine = unreachable();
@@ -1380,11 +1363,11 @@ mod tests {
         }
     }
 
-    /// And the fold can only ever come back at or above what the whole command was given.
+    /// The fold is never softer than the whole command on its own.
     ///
-    /// note: the property that makes a stage whose answer never arrived safe to carry on without.
-    /// The whole command is one of the parts folded, always, so a missing stage costs a raised band
-    /// that might have happened and cannot produce one that should not have.
+    /// note: a stage whose answer never arrived is safe to carry on without. The whole command is
+    /// always one of the parts folded, so a missing stage can raise the band but cannot produce one
+    /// that should not have happened.
     #[test]
     fn a_fold_is_never_softer_than_the_whole_command_on_its_own() {
         let whole = Rated::of(2.0, 0.9);
@@ -1418,8 +1401,8 @@ mod tests {
         assert_eq!(folded.worst, None);
         assert_eq!(folded.shown(), Rating::Grave);
 
-        // but a stage as bad as the whole is what made it that bad, and is pointed at - which is
-        // the ordinary case, since a destructive link makes the whole read as destructive too
+        // a stage as bad as the whole is what made it that bad, and is pointed at - the ordinary
+        // case, since a destructive link makes the whole read as destructive too
         let folded = Rated::worst_of([Rated::of(2.0, 0.99), at((0, 4), 0.0), at((7, 11), 2.0)])
             .expect("it folds");
         assert_eq!(folded.worst, Some((7, 11)));
@@ -1532,22 +1515,21 @@ mod tests {
         let state = state(&request);
         assert_eq!(state["tool"], "shell");
         assert_eq!(state["capabilities"][0], "exec:run");
-        // the arguments go as data, verbatim, including anything the model wrote in them - which
-        // is a value in a JSON document and not a sentence in the question
+        // the arguments go as data, verbatim, including anything the model wrote in them: a JSON
+        // value, not a sentence in the question
         assert_eq!(state["arguments"]["command"], "rm -rf /");
         assert_eq!(state["arguments"]["why"], "the model's excuse");
 
-        // and the object has exactly three keys: nothing about the session, the system
-        // instruction, or what the model said outside its own arguments
+        // the object has exactly three keys: nothing about the session, the system instruction, or
+        // what the model said outside its own arguments
         let keys: Vec<&String> = state.as_object().expect("an object").keys().collect();
         assert_eq!(keys, ["arguments", "capabilities", "tool"]);
     }
 
-    /// A shell call as the tool really receives it puts the command where the questions say it is.
+    /// A shell call puts the command where the questions say it is, as the tool receives it.
     ///
-    /// note: every other test here builds its arguments bare, and every shell call arrives
-    /// wrapped - `{"call": {"action": "run", "cmd": ...}}` - so the state they checked was never
-    /// the state sent.
+    /// note: every shell call arrives wrapped as `{"call": {"action": "run", "cmd": ...}}`; other
+    /// tests build arguments bare, so the state they checked was never the state sent.
     #[test]
     fn a_wrapped_call_is_shown_with_the_command_in_cmd() {
         let request = PermissionRequest {
@@ -1577,12 +1559,12 @@ mod tests {
         );
     }
 
-    /// A joint at the end of a command leaves nothing behind it, and nothing is not a stage.
+    /// A trailing joint leaves nothing behind it; an empty range is not a stage.
     ///
-    /// note: the range of an empty stage points at the same byte twice, which a client asked to
-    /// underline it would draw as a caret at the end of the command - on a question the model was
-    /// never shown a stage of. The stage is dropped rather than clamped back to the joint beside
-    /// it, which would point at a stage the model did read and call it a different one.
+    /// note: an empty stage's range points at the same byte twice, so underlining it would draw a
+    /// caret at the end of a command the model was never shown a stage of. The stage is dropped
+    /// rather than clamped to the joint beside it, which would point at a stage the model read and
+    /// call it a different one.
     #[test]
     fn a_stage_with_nothing_in_it_is_not_a_stage() {
         // a trailing joint leaves a trailing stage of nothing
@@ -1597,11 +1579,11 @@ mod tests {
     /// A payload larger than [`ROOM`] is cut, says so, and does not panic on the way.
     #[test]
     fn a_write_of_a_whole_file_is_cut_and_says_it_was() {
-        // note: the third and fourth of these are the ones that matter. A multi-byte character
-        // straddling the cut is the one input that turns a byte count into a panic, and it takes
-        // an odd byte in front of the run to arrange: `é` is two bytes and `🙂` is four, so a run
-        // of either on its own has a boundary exactly at `ROOM` and never exercises the walk. The
-        // leading `a` shifts every boundary by one, and `ROOM` then lands inside a character
+        // note: the third and fourth cases matter. A multi-byte character straddling the cut turns
+        // a byte count into a panic, and an odd byte in front of the run arranges it: `é` is two
+        // bytes and `🙂` is four, so a run of either alone ends exactly at `ROOM` and never
+        // exercises the walk. The leading `a` shifts every boundary by one, so `ROOM` lands inside
+        // a character
         for contents in [
             "a".repeat(ROOM + 1),
             "é".repeat(ROOM),
@@ -1623,9 +1605,9 @@ mod tests {
             assert!(contents.len() <= ROOM + 64, "{}", contents.len());
             assert!(contents.contains("(cut;"), "the cut is named");
 
-            // and the path survives it, which is why the cap is per value. Cutting the rendered
-            // arguments would take this away: `contents` sorts before `path`, so the one field the
-            // decision turns on would be the first thing to go
+            // the path survives, which is why the cap is per value. Cutting the rendered arguments
+            // would remove this: `contents` sorts before `path`, so the field the decision turns on
+            // would be cut first
             assert_eq!(state["arguments"]["path"], "notes.md");
         }
 

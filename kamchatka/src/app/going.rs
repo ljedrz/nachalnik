@@ -79,9 +79,8 @@ impl Going {
         let paired = projection.included.len() == projection.messages.len();
 
         Going {
-            // what the model reads where an elided item's content was, which only a paired
-            // projection can answer: it is the message that came out, not anything the item
-            // holds
+            // what the model reads where an elided item's content was. Only a paired projection can
+            // answer it: the message that came out, not anything the item holds
             marker: match paired {
                 false => BTreeMap::new(),
                 true => projection
@@ -115,9 +114,8 @@ impl Going {
                     (*id, cost)
                 })
                 .collect(),
-            // the projector's own words, rather than a second copy of them assembled out here
-            // from the state and the note, which would have no answer for an item the projector
-            // repaired away
+            // the projector's own words, not a second copy assembled here from the state and the
+            // note, which would have no answer for an item the projector repaired away
             left_out: projection
                 .skipped
                 .into_iter()

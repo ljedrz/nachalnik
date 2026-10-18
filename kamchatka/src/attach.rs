@@ -88,9 +88,9 @@ pub fn attached(path: &str) -> Result<ContextItem> {
         return Ok(ContextItem::file(path, content));
     };
 
-    // note: `name` rather than the whole path, because the one thing reading it is the attachment
-    // part of the conventional dialect, whose `filename` is a label on a file and not a location
-    // on this machine. See `Blob::meta`: nothing in the runtime knows this key
+    // note: use `name`, not the whole path, because the attachment part of the conventional dialect
+    // treats `filename` as a label, not a location on this machine. See `Blob::meta`: nothing in
+    // the runtime knows this key
     let name = Path::new(path)
         .file_name()
         .and_then(|name| name.to_str())
@@ -106,15 +106,15 @@ pub fn attached(path: &str) -> Result<ContextItem> {
     ))
 }
 
-/// The whole of a file, if it is a file and no larger than [`MOST`].
+/// Returns the whole contents of a file no larger than [`MOST`].
 ///
-/// note: a regular file and nothing else, a link followed to one included. A pipe, a device or a
-/// file under `/proc` reports a length of nothing and is read until it ends - which for a pipe
-/// with no writer is never, and for `/dev/zero` is all of memory - and the read happens on the
-/// thread that runs the session, so no deadline and no signal is seen while it waits.
+/// note: accept only a regular file, including a symlink to one. A pipe, a device, or a file under
+/// `/proc` reports a length of zero, so reading it would continue until it ends: a pipe with no
+/// writer never ends, and `/dev/zero` would read all of memory. The read runs on the session
+/// thread, so no deadline or signal is seen while it waits.
 ///
-/// note: and read through [`MOST`] rather than trusting the length it reported, because a file
-/// being written to while this reads it is longer by the end than it was at the start.
+/// note: read only up to [`MOST`] rather than trusting the reported length, because a file being
+/// written to while this reads it is longer by the end than it was at the start.
 fn contents(path: &str) -> Result<Vec<u8>> {
     use std::io::Read as _;
 

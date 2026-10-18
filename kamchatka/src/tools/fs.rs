@@ -1,18 +1,16 @@
-//! `fs`: one tool for the filesystem, and the five things it does to one.
+//! `fs`: one tool for the filesystem, with five operations.
 //!
-//! note: one tool per *object* rather than per verb. Reading a file, listing files, searching
-//! them, writing one and changing part of one are five operations on one thing, and a model
-//! choosing between five tools has to know which of them is the filesystem before it can choose
-//! at all.
-//! The permission subjects come out of the same decision - `fs:read`, `fs:write` and the rest are
-//! what this declares, so a rule is about the filesystem and an operation on it rather than about
-//! whichever happened to serve it.
+//! note: one tool per object rather than per verb. Reading, listing, searching, writing and
+//! changing part of a file are five operations on one thing, and a model choosing between five
+//! tools must know which is the filesystem before it can choose. The permission subjects come from
+//! the same decision: `fs:read`, `fs:write` and the rest. A rule is about the filesystem and an
+//! operation on it, not about whatever served it.
 //!
-//! note: it dispatches to the five implementations rather than reimplementing them. Each of them
-//! already knows how to ask [`Reach`](crate::sandbox::Reach) for a path, how to walk a directory
-//! and what to say when it will not fit, and rewriting any of that here could change behaviour
-//! without meaning to. What lives here is the schema, the dispatch and the two things only this
-//! level can answer: which subject a call needs, and how much of its answer the model is shown.
+//! note: it dispatches to the five implementations rather than reimplementing them. Each already
+//! knows how to ask [`Reach`](crate::sandbox::Reach) for a path, how to walk a directory and what
+//! to say when it will not fit, and rewriting that here could change behaviour without meaning to.
+//! What lives here is the schema, the dispatch and the two things only this level can answer:
+//! which subject a call needs, and how much of its answer the model is shown.
 
 use std::sync::Arc;
 
@@ -31,16 +29,16 @@ use crate::{
     },
 };
 
-/// The five things this tool does, what each is for, and what each reads.
+/// The five operations, what each is for, and what each reads.
 ///
-/// note: one table rather than three - the `action` enum, the list [`unread`] holds a call to,
-/// and a flat schema listing every argument any operation takes. Four things have to agree about
-/// this vocabulary: the enum a model chooses from, the subject each call declares, the row
-/// `/limit` keys on, and what the model is actually allowed to pass. All four come off this.
+/// note: one table rather than three: the `action` enum, the list [`unread`] holds a call to, and a
+/// flat schema listing every argument any operation takes. Four things must agree about this
+/// vocabulary: the enum a model chooses from, the subject each call declares, the row `/limit` keys
+/// on, and what the model is allowed to pass. All four come off this.
 ///
 /// note: an argument's description does not say which operation it belongs to. In a flat schema
-/// that could only be advice, not a rule; inside a branch there is nobody else to be confused
-/// with, so each one says what it is and stops.
+/// that would be advice, not a rule; inside a branch there is nobody else to be confused with, so
+/// each one says what it is and stops.
 fn ops() -> Vec<Op> {
     vec![
         Op::new(
@@ -144,8 +142,8 @@ pub(super) struct Fs {
     edit: Edit,
     limits: Limits,
     ops: Vec<Op>,
-    /// note: built once rather than per `spec`, which is called afresh for every request, and a
-    /// branch per operation is enough work to be worth not repeating on every one.
+    /// note: built once rather than per `spec`, which is called afresh for every request; a branch
+    /// per operation is worth not repeating on every request.
     schema: Arc<Value>,
 }
 
@@ -195,9 +193,9 @@ impl Tool for Fs {
         )
     }
 
-    /// note: `action` and nothing else, so a rule about `fs:read` is about reading whichever way
-    /// a call asked for it. A call naming no operation it has declares all five, which is the
-    /// strictest reading of a call nobody can place - and `invoke` then refuses it by name.
+    /// note: `action` and nothing else, so a rule about `fs:read` is about reading whichever way a
+    /// call asked for it. A call naming no operation it has declares all five, the strictest
+    /// reading of a call nobody can place, and `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match self.op(call) {
             Some(action) => vec![Capability::fs(action)],
@@ -285,9 +283,8 @@ mod tests {
     /// The schema and the permission subjects are one vocabulary.
     ///
     /// note: the operations and their arguments are one `Vec<Op>`, and the branch an argument
-    /// appears in *is* the operation that reads it. What can still drift is this: a subject with
-    /// no branch to reach it by, or a branch the policy was never told about, which is a call
-    /// that cannot be refused by name.
+    /// appears in is the operation that reads it. What can drift: a subject with no branch to reach
+    /// it by, or a branch the policy was never told about - a call that cannot be refused by name.
     #[test]
     fn the_schema_and_the_subjects_are_one_vocabulary() {
         let tool = tool();
@@ -308,9 +305,9 @@ mod tests {
 
     /// An argument belongs to the operations that read it, and to no others.
     ///
-    /// note: this is about what the model is offered rather than about the code. Under a flat
-    /// schema `old` would be a well-formed argument to `fs: read`, with only its description
-    /// saying otherwise; the branch says it, so this asserts on the branch.
+    /// note: this concerns what the model is offered, not the code. Under a flat schema `old` would
+    /// be a well-formed argument to `fs: read`, with only its description saying otherwise; the
+    /// branch says it, so this asserts on the branch.
     #[test]
     fn an_argument_is_offered_by_the_operations_that_read_it() {
         let wanted = [
@@ -354,12 +351,12 @@ mod tests {
         }
     }
 
-    /// What `fs` adds to an answer about arguments that did not parse is the advice its own layout
-    /// gives for the fault, and nothing where the layout gives none.
+    /// `fs` adds its layout's advice for a parse fault to the answer, and nothing where the layout
+    /// gives none.
     ///
     /// note: the kernel puts this text straight into the answer, so both halves are what a model
     /// reads. A raw line break inside a string is a fault `ops` has advice for; an invalid escape
-    /// is one it measured as not helped by advice, and must get none.
+    /// is one measured as not helped by advice, and must get none.
     #[test]
     fn unparsed_arguments_get_the_advice_the_layout_gives_and_no_more() {
         let tool = tool();
@@ -378,10 +375,10 @@ mod tests {
         );
     }
 
-    /// A call with no `action` says so, rather than naming a word nobody sent.
+    /// A call with no `action` reports that it has none.
     ///
-    /// note: from a session driven by a model, which sent `{"glob": "**/Cargo.toml"}` and was told
-    /// that "`nothing` is not something `fs` does".
+    /// note: a model sent `{"glob": "**/Cargo.toml"}` and was told that "`nothing` is not
+    /// something `fs` does".
     #[tokio::test]
     async fn a_call_with_no_action_is_told_it_has_none() {
         let tool = tool();

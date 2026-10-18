@@ -16,10 +16,9 @@ const BUSY_UNDOING: &str =
 impl App {
     /// One operation taken back, or with `redo` put back, and a line saying which.
     ///
-    /// note: `u` and `U` on the context tab reach this, and a line typed at the prompt reaches it
-    /// too - two doors onto one function rather than two of it, as `/cleanup` and <kbd>ctrl+l</kbd>
-    /// are, and for the same reason: a session driven down a pipe or from a browser has no keys of
-    /// this program's to press.
+    /// note: `u` and `U` on the context tab and a line typed at the prompt all reach this function,
+    /// as with `/cleanup` and <kbd>ctrl+l</kbd>, and for the same reason: a session driven down a
+    /// pipe or from a browser has no keys of this program's to press.
     pub(in crate::app) fn undo(&mut self, redo: bool) {
         let done = match redo {
             true => self.kernel.redo(),
@@ -35,25 +34,20 @@ impl App {
         self.say(Speaker::Note, note);
     }
 
-    /// Reads a file into the context, as text or as bytes depending on what it is - and asks
-    /// whatever was typed after the path.
+    /// Reads a file into the context as text or bytes, depending on the file, and asks whatever was
+    /// typed after the path.
     ///
-    /// note: refused while a turn is running, for the reason [`App::submit`] gives at length about
-    /// a message. An item pushed now lands between an assistant's call and that call's result,
-    /// which is a shape most of these APIs reject outright - and unlike a message there is nothing
-    /// to be gained by queueing it, because a file attached to steer a turn that has already
-    /// decided what to read is a file that arrives too late to be what it was for.
+    /// note: refused while a turn is running, for the reason [`App::submit`] gives about a message.
+    /// An item pushed now lands between an assistant's call and its result, a shape most of these
+    /// APIs reject. Unlike a message, queueing it gains nothing: a file attached to steer a turn
+    /// that has already decided what to read arrives too late.
     ///
-    /// note: **not** pinned, where `-f` is, and the two differ because the acts differ. A file
-    /// named on the command line is part of how the session was set up - it is meant to still be
-    /// there at the end. One attached at the prompt is a thing brought into a conversation, as
-    /// ordinary as a message, and it should get old and be compacted like one. `p` pins it if
-    /// this one is meant to last.
+    /// note: not pinned, unlike `-f`. A file named on the command line is session setup and should
+    /// last to the end. One attached at the prompt is as ordinary as a message: it should age and
+    /// be compacted like one. `p` pins it if it is meant to last.
     ///
-    /// note: and `Shedder` treats it as one: a picture goes to a marker once the model has been
-    /// shown it, and a file of text goes with the exchange it was brought in for. Silently making
-    /// it the one thing in the context that cannot be compacted is the decision least likely to
-    /// be what somebody attaching a 200-page PDF wanted.
+    /// note: `Shedder` treats it as compactable: a picture goes to a marker once the model has seen
+    /// it, and a text file goes with the exchange it was brought in for.
     pub(super) fn attach(&mut self, rest: &str) {
         if rest.is_empty() {
             self.say(
@@ -69,15 +63,10 @@ impl App {
             return;
         }
 
-        // note: the whole of it is tried as a path first, because a path with a space in it is an
-        // ordinary path and splitting on the first space would turn `/attach my report.pdf` into
-        // a complaint about a file called `my`. Only when that is not a file is the path the
-        // longest part of it, up to a space, that is one, and the rest the question - which is
-        // the usual way to want this, and the reason it is one command rather than two things to
-        // type. Where no part of it is a path, the first word is the one the refusal names
-        //
-        // note: the longest such part rather than the first word, because a question after a
-        // path with a space in it looked for a file called `my` all the same
+        // note: the whole input is tried as a path first, because a path with a space is an
+        // ordinary path and splitting on the first space would turn `/attach my report.pdf` into a
+        // complaint about `my`. If that is not a file, the path is the longest part up to a space
+        // and the rest is the question. If no part is a path, the refusal names the first word
         let (path, asked) = match std::fs::metadata(rest).is_ok() {
             true => (rest, ""),
             false => (rest.match_indices(' ').rev())
@@ -94,11 +83,11 @@ impl App {
                 return;
             }
         };
-        // note: nothing is said about what went in. The chat derives a line for a reference off
-        // the item itself - which file, what it is, what it costs, and whether anything here
-        // could price it - so a sentence here would be a second account of one item, written
-        // somewhere it can go out of date. See `App::as_conversation`. What is said is what the
-        // item is about to cost the session, which that line cannot show
+        // note: nothing is said about what went in. The chat derives a line for a reference from
+        // the item itself - which file, what it is, what it costs, and whether anything could price
+        // it - so a sentence here would be a second account that can go out of date. See
+        // `App::as_conversation`. What is said is what the item costs the session, which that line
+        // cannot show
         let id = self.kernel.push(item);
         if let Some(caution) = self
             .kernel
@@ -108,33 +97,31 @@ impl App {
             self.say(Speaker::Error, caution);
         }
 
-        // and the question, if there was one, exactly as typing it would have: one item, then
-        // the loop. The file is already in the context, so it goes out with it rather than after
+        // The question, if any, is asked exactly as typed: one item, then the loop. The file is
+        // already in the context, so it goes out with it rather than after
         if !asked.is_empty() {
             self.ask(asked);
             self.start_turn();
         }
     }
 
-    /// Puts something into the context that the model should have and does not have to answer.
+    /// Puts something into the context that the model should have, without asking it to answer.
     ///
-    /// note: the gap this fills is a shape rather than a feature. A message starts a turn, so
-    /// telling a model as a message a fact it will need in four turns' time costs a request, an
-    /// answer, and an "understood" nobody wanted. Saying it *with* the next question buries it,
-    /// and saying it afterwards is too late.
+    /// note: a message starts a turn, so telling the model a fact it will need later costs a
+    /// request and an answer. Saying it with the next question buries it; saying it afterwards is
+    /// too late.
     ///
     /// note: a [`ContextItem::memory`] - a `Reference` whose source is `memory` - rather than a
-    /// user message. The difference is *not* the wire: a reference projects as a user-role message
-    /// exactly as an attached file does, so a note and then a question is two user messages either
-    /// way, and every endpoint here takes that. The difference is what the item is to everything
-    /// that reads it. The model gets `note:` in front of the words, so it can tell a fact it was
-    /// handed from a thing it was asked; `/exclude memories` names every one of them and nothing
-    /// else; the chat draws it as what went in rather than as something said; and the runtime's
-    /// own taxonomy already had the word, with `context`'s `note` writing the same kind of item
-    /// from the model's hand.
+    /// user message. The difference is not the wire: a reference projects as a user-role message,
+    /// so a note and then a question is two user messages either way, and every endpoint here takes
+    /// that. The difference is what the item is to everything that reads it. The model gets `note:`
+    /// in front of the words, so it can tell a fact it was handed from a thing it was asked.
+    /// `/exclude memories` names every one of them and nothing else. The chat draws it as what went
+    /// in rather than as something said. And `context`'s `note` already writes the same kind of
+    /// item from the model's hand.
     ///
-    /// note: not pinned, exactly as `/attach` is not. What is worth keeping from compaction is a
-    /// judgement about the note rather than about notes, and `p` is one key on the row.
+    /// note: not pinned, exactly as `/attach` is not. Whether to keep a note from compaction is a
+    /// judgement about the note; `p` pins one.
     pub(super) fn note(&mut self, rest: &str) {
         if rest.is_empty() {
             self.say(
@@ -151,16 +138,16 @@ impl App {
             );
             return;
         }
-        // the same refusal `/attach` gives, for the same reason: an item pushed mid-turn changes
-        // the request the model is already answering
+        // the same refusal as `/attach`, for the same reason: an item pushed mid-turn changes the
+        // request the model is already answering
         if self.mid_turn() {
             self.say(Speaker::Error, MID_TURN);
             return;
         }
 
-        // note: nothing is said about what went in, for the reason `/attach` says nothing: the
-        // chat derives a line from the item itself, and a sentence here would be a second account
-        // of one item written where it can go out of date. See `App::as_conversation`
+        // note: nothing is said about what went in, for the reason `/attach` says nothing: the chat
+        // derives a line from the item itself, and a sentence here would be a second account that
+        // can go out of date. See `App::as_conversation`
         self.kernel
             .push(ContextItem::memory("note", rest.to_owned()).because("written at the prompt"));
     }
@@ -168,8 +155,7 @@ impl App {
     /// Excludes, pins or restores whatever a selector names.
     ///
     /// note: with nothing to act on, this shows the language rather than reporting that the empty
-    /// string is not a selector. Otherwise the only place to find the grammar is the crate
-    /// documentation.
+    /// string is not a selector. Otherwise the grammar is only in the crate documentation.
     pub(super) fn by_selector(&mut self, command: &str, input: &str) {
         if input.is_empty() {
             self.preview(
@@ -206,8 +192,8 @@ impl App {
             ),
             "pin" => (ContextState::Pinned, None),
             // note: a note, where a restore used to clear one, because the compactor reads it: an
-            // item somebody brought back is one it leaves alone until the context is full, rather
-            // than eliding it again before the next request - see `tools::Shedder`
+            // item somebody brought back is left alone until the context is full, rather than
+            // elided again before the next request. See `tools::Shedder`
             _ => (
                 ContextState::Active,
                 Some(format!("restored at the terminal, by `{input}`")),
@@ -220,12 +206,12 @@ impl App {
         );
     }
 
-    /// What is plugged into each of the runtime's six seams, right now.
+    /// Shows what is plugged into each of the runtime's six seams.
     ///
     /// note: the crate's headline claim is six replaceable parts. `Kernel::policy`, `projector`,
-    /// `counter` and `compactor` hand back trait objects, and a trait object you cannot name is not
-    /// worth asking for, so each of those traits names itself. This is the claim, checked against
-    /// the kernel rather than restated from what this program set up at startup.
+    /// `counter` and `compactor` hand back trait objects, so each of those traits names itself; an
+    /// unnamed trait object is not worth asking for. This checks the claim against the kernel
+    /// rather than restating what this program set up at startup.
     pub(super) fn seams(&mut self) {
         let kernel = &self.kernel;
         let tools = kernel.tool_specs();
@@ -263,8 +249,7 @@ impl App {
             kernel.counter().name(),
             match kernel.compactor() {
                 Some(compactor) => compactor.name().to_owned(),
-                // `--compact-context-at 1` leaves none installed, and "nothing will be dropped" is
-                // a fact worth being able to check rather than infer from a flag
+                // `--compact-context-at 1` leaves none installed
                 None => "none: nothing is ever dropped to make room".to_owned(),
             },
         );
@@ -274,26 +259,23 @@ impl App {
 
     /// Lists what a compaction pass would take, and asks whether to take it.
     ///
-    /// note: the compactor the kernel runs before a request is the same object, asked by hand.
-    /// What this adds is the half an automatic pass cannot have: the list, before anything
-    /// happens, with the identifiers to pin from. A pass that announces itself afterwards leaves
-    /// somebody reading what they have lost; this is the same information one step earlier, where
-    /// it is still a decision.
+    /// note: the compactor the kernel runs before a request is the same object, asked by hand. This
+    /// adds what an automatic pass cannot have: the list, before anything happens, with the
+    /// identifiers to pin from. A pass that tells somebody afterwards what they have lost is too
+    /// late; the information must come while it is still a decision.
     ///
-    /// note: it exists for the session that cannot ask the model to tidy up, which is the one
-    /// most likely to need tidying. `context` is the model's tool for this, and reaching it costs
-    /// a request - the request that is failing. Without this, a context too big to send has only
-    /// one way out, and it is through the thing that no longer works.
+    /// note: it exists for the session that cannot ask the model to tidy up, which is the one most
+    /// likely to need tidying. `context` is the model's tool for this, and reaching it costs a
+    /// request - the request that is failing. Without this, a context too big to send has only one
+    /// way out: through the thing that no longer works.
     ///
-    /// note: the question stands in the prompt's place like a tool's, and for the same reason it
-    /// is pinned rather than modal: the context tab is a keystroke away while it waits, `p` there
-    /// is the answer to "not that one", and `y` afterwards works the pass out again. What it
-    /// costs is that the prompt is not available while it waits, so keeping an item is `p` rather
-    /// than `/pin` - which is the gesture the question names.
+    /// note: the question stands in the prompt's place like a tool's, and for the same reason it is
+    /// pinned rather than modal: the context tab is a keystroke away while it waits, `p` means "not
+    /// that one", and `y` afterwards runs the pass again. The prompt is not available while it
+    /// waits, so keeping an item is `p` rather than `/pin`.
     pub(super) async fn compact(&mut self) {
-        // one question at a time, because there is one place to put one. A turn is also a poor
-        // moment to be reading a list of what the context holds, since it is being added to while
-        // the list is read
+        // one question at a time, because there is one place to put one. A turn is a poor moment to
+        // read the context list, because it is being added to while the list is read
         if self.busy || self.asking() {
             self.say(
                 Speaker::Error,
@@ -328,9 +310,8 @@ impl App {
     /// Asks about the pass `/compact` worked out, or takes it for somebody who cannot be asked.
     ///
     /// note: taken where whoever asked has no keys of this program's to answer with - down a pipe,
-    /// or from a client. Their line is somebody's own, and one answered with a question nobody can
-    /// reach has been refused the thing it asked for. The list is said first, so what was taken
-    /// was said.
+    /// or from a client. A line answered with a question nobody can reach has been refused the
+    /// thing it asked for. The list is said first, so what was taken was said.
     pub(super) fn planned(
         &mut self,
         plan: Option<nachalnik::CompactionPlan>,
@@ -341,10 +322,11 @@ impl App {
     ) {
         let Some(plan) = plan else {
             // note: `under` rather than `nothing it may take`, because finding no plan while the
-            // context is under the point the compactor makes room at is a different thing from
-            // finding no item eligible, and saying the second told somebody the wrong item was in
-            // the way. The threshold where it is known and the target where only that is: the
-            // first is where `Shedder` starts, and a context between the two is one it leaves
+            // context is under the point the compactor makes room at is different from finding no
+            // item eligible; saying the second tells somebody the wrong item was in the way. It
+            // names the threshold where that is known, and the target where only the target is.
+            // The threshold is where `Shedder` starts, and a context between the two is one it
+            // leaves
             let marks = |fraction: Option<f64>| {
                 budget
                     .limit
@@ -407,10 +389,10 @@ impl App {
             rows.push(format!("and {} goes in, in their place", summary.label));
         }
 
-        // note: what the items are *holding*, not what the request would fall by. An elided item
-        // leaves a marker behind and the marker costs what it costs, so the two figures differ by
-        // that much per item - which is worth stating rather than rounding away, since this whole
-        // question is somebody deciding whether the trade is worth it
+        // note: what the items are holding, not what the request would fall by. An elided item
+        // leaves a marker behind, and the marker costs what it costs, so the two figures differ by
+        // that much per item. It is worth stating rather than rounding away, because this question
+        // is somebody deciding whether the trade is worth it
         let holding: usize = plan
             .remove
             .iter()
@@ -419,9 +401,9 @@ impl App {
             .map(|item| item.tokens)
             .sum();
 
-        // said as well as asked, so the scrollback keeps the fact that it was proposed at all:
-        // the panel goes the moment it is answered, and a session read back afterwards would
-        // otherwise show a compaction with nothing in front of it
+        // said as well as asked, so the scrollback keeps the fact that it was proposed. The panel
+        // goes the moment it is answered; otherwise a session read back afterwards would show a
+        // compaction with nothing in front of it
         self.say(
             Speaker::Note,
             format!(
@@ -447,11 +429,10 @@ impl App {
 
     /// `/copy` hands the last thing the model said to the terminal; `/copy N` hands item N.
     ///
-    /// note: the last answer with nothing after it, because that is what somebody is reaching for
-    /// when they have just read one and want it somewhere else. Anything else on this screen is a
-    /// row on the context tab with `y` on it, and a command that took a selector would be a second
-    /// way to say what that tab already says better - it shows what each item *is* before you
-    /// copy it.
+    /// note: the last answer with nothing after it, because that is what somebody reaches for after
+    /// reading one and wanting it elsewhere. Anything else on this screen is a row on the context
+    /// tab with `y` on it, and the tab shows what each item is before you copy it. A command that
+    /// took a selector would be a second way to say what the tab already says better.
     pub(super) fn copy_command(&mut self, rest: &str) {
         let named = rest.trim().trim_start_matches('[').trim_end_matches(']');
         let id = match named {
@@ -490,15 +471,15 @@ impl App {
 
     /// What the next request is estimated to cost, beside what the last one actually did.
     ///
-    /// note: the status line can only afford one number, and it shows the estimate - which is
-    /// produced by a counter that does not have the model's tokenizer and is therefore wrong.
-    /// This is where the two numbers sit side by side, along with the correction the counter has
-    /// worked out for itself from the difference. A budget nobody can check is a decoration.
+    /// note: the status line can only afford one number, and it shows the estimate. The estimate is
+    /// produced by a counter without the model's tokenizer, so it is wrong. This is where the two
+    /// numbers sit side by side, with the correction the counter worked out from the difference. A
+    /// budget nobody can check is decoration.
     pub(super) fn budget(&mut self) {
         let budget = self.kernel.budget();
-        // note: both figures from `Going`, and both from the same one, because they are the two
+        // note: both figures come from `Going`, and from the same one, because they are the two
         // halves of one sentence. `App::withheld` says why that is not `tokens_withheld`, and the
-        // context tab is drawing from the same answer
+        // context tab draws from the same answer
         let going = self.going();
         let (withheld, out) = self.withheld(&going);
 
@@ -509,12 +490,12 @@ impl App {
             thousands(budget.context_tokens),
             thousands(budget.tool_tokens),
         )];
-        // note: the two figures are answers to the same question by different methods, and
-        // which one somebody is reading matters more than either. The line above is the counter
-        // estimating the whole request from scratch; this one starts from what the provider
-        // charged for the last one and estimates only what has changed since, so its error is a
-        // few percent of the change rather than of the context. It is what the status line
-        // shows, and saying so here is the only place the difference is explained
+        // note: the two figures answer the same question by different methods, and which one
+        // somebody is reading matters more than either. The line above estimates the whole request
+        // from scratch; this one starts from what the provider charged for the last one and
+        // estimates only what has changed since, so its error is a few percent of the change rather
+        // than of the context. This is what the status line shows, and this is the only place the
+        // difference is explained
         match anchored {
             Some(anchored) => lines.push(format!(
                 "anchored on the last response: ~{} tokens - the provider's own {} for the \
@@ -550,15 +531,13 @@ impl App {
             ),
             None => "the limit: unknown, so there is nothing to measure against".to_owned(),
         });
-        // note: the corner says the short version of this; here there is room for why. A pass
-        // runs when a request is *built* rather than when a turn ends, so a tool loop leaves the
-        // context over the limit and the next request is the thing that brings it back under -
-        // which makes every figure above true of the context and not of what goes out
+        // note: a pass runs when a request is built rather than when a turn ends, so a tool loop
+        // leaves the context over the limit and the next request brings it back under. Every figure
+        // above is true of the context, not of what goes out.
         //
-        // note: the compactor is not named here, though it could be. `name()` defaults to the
-        // type path, so this would read `kamchatka::tools::shedder::Shedder` in the middle of a
-        // sentence - and `/seams` is the place that answers "which one", in a table where a
-        // full path is the useful form
+        // note: the compactor is not named here. `name()` defaults to the type path, so it would
+        // read `kamchatka::tools::shedder::Shedder` in the middle of a sentence. `/seams` answers
+        // which compactor, in a table where a full path is the useful form
         if budget.fraction_used().is_some_and(|used| used >= 1.0)
             && self.kernel.compactor().is_some()
         {
@@ -568,23 +547,22 @@ impl App {
                     .to_owned(),
             );
         }
-        // note: printed straight after the two figures it qualifies, because it decides how to
-        // read them. Every number above is a floor when this is not zero, and the person has no
-        // way to tell that from a context that is genuinely small - both look like a low
-        // percentage.
+        // note: printed after the two figures it qualifies because it decides how to read them.
+        // Every number above is a floor when this is not zero, and a genuinely small context looks
+        // like a low percentage too, so the person cannot tell from the context alone.
         //
-        // note: which figure it is a floor *for* is said rather than left to the person, because
-        // the answer changes once a request has gone out. The estimate is the counter guessing
-        // at the whole request from text, and it has no number for a picture; the anchored figure
-        // starts from what the provider charged for a request that carried the pieces already in
-        // the context, so from that response on it has them inside it. What it still estimates is
-        // what has changed since, which is text until the next response anchors it again - so a
-        // picture added after the last one is not in the figure being called whole
+        // note: it says which figure is a floor because the answer changes once a request has gone
+        // out. The estimate is the counter guessing at the whole request from text, and it has no
+        // number for a picture. The anchored figure starts from what the provider charged for a
+        // request that carried the pieces already in the context, so from that response on it has
+        // them inside it. It still estimates what has changed since, which is text until the next
+        // response anchors it again, so a picture added after the last one is not in the figure
+        // being called whole.
         //
         // note: the counter is not named either. `TokenCounter::name` defaults to the type path,
         // which would put `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` in
-        // the middle of a line meant to be read. `/seams` answers which counter, in a table where
-        // a full path is the useful form
+        // the middle of a line. `/seams` answers which counter, in a table where a full path is
+        // the useful form
         if !budget.fully_counted() {
             lines.push(match anchored {
                 Some(_) => format!(
@@ -601,13 +579,12 @@ impl App {
             });
         }
         if withheld != 0 {
-            // note: "tokens the next request does not carry", rather than "tokens in N items the
-            // model is not being shown". Two of the four ways of being held back leave the item in
-            // the request: an elided one is there as a line saying it used to be something else,
-            // and an assistant turn whose thinking this endpoint will not take back is there in
-            // full apart from the thinking. The second wording, about a turn that is mostly what
-            // it thought, would tell somebody they are not being shown a turn they can read on the
-            // chat tab
+            // note: "tokens the next request does not carry", not "tokens in N items the model is
+            // not being shown". Two of the four ways of being held back leave the item in the
+            // request: an elided item is there as a line saying it used to be something else, and
+            // an assistant turn whose thinking this endpoint will not take back is there in full
+            // apart from the thinking. The other wording would say a turn is not being shown when
+            // it can be read on the chat tab
             lines.push(format!(
                 "held back: {} tokens the next request does not carry, in {out} item(s) - \
                  excluded, elided to a marker, or thinking the endpoint will not take \
@@ -622,12 +599,11 @@ impl App {
                     "the last request really cost {}, as the provider counted it",
                     thousands(reported as usize)
                 );
-                // note: the one figure here that says what a *change* costs rather than what the
-                // request cost. Both dialects report it - `prompt_tokens_details` and
-                // `cachedContentTokenCount`. It belongs beside the real cost because it is the
-                // same sentence: the front of a request is the tool definitions and the oldest
-                // messages, so anything that rewrites them is paid for in full on the next
-                // request, and this is the number saying how much that would be
+                // note: this figure says what a change costs, not what the request cost. Both
+                // dialects report it: `prompt_tokens_details` and `cachedContentTokenCount`. It
+                // belongs beside the real cost because the front of a request is the tool
+                // definitions and the oldest messages, so anything that rewrites them is paid for
+                // in full on the next request, and this is the number saying how much that would be
                 if let Some(cached) = budget.reported.and_then(|usage| usage.cached_input_tokens) {
                     line.push_str(&match (cached, reported) {
                         (0, _) => ", none of it from the provider's cache".to_owned(),
@@ -656,12 +632,12 @@ impl App {
             None => lines.push("nothing has been sent yet, so there is no real figure".to_owned()),
         }
 
-        // note: whichever counter is installed is asked what it has learned, rather than one this
-        // program kept a typed handle to; a counter that learns nothing says so by having nothing
-        // to report, and is a sentence rather than a missing line
+        // note: the installed counter is asked what it has learned, not a counter the program keeps
+        // a typed handle to. A counter that learns nothing has nothing to report, so it produces a
+        // sentence rather than a missing line.
         //
-        // note: small requests teach it nothing and are not counted here, which is why this can
-        // be lower than the number of requests a session has sent
+        // note: small requests teach it nothing and are not counted here, so this can be lower than
+        // the number of requests a session has sent
         lines.push(match self.kernel.counter().calibration() {
             None => "the counter installed here does not correct itself, so every figure above \
                      is whatever it estimates and nothing has told it otherwise"

@@ -1,31 +1,29 @@
-//! The tools an agent inspects and manages its own session with: one for its context, one for the
-//! record kept beside it, one for what the session is running with, and one for asking a copy of
-//! itself.
+//! Tools an agent uses to inspect and manage its session: one for its context, one for the record
+//! beside it, one for what the session runs with, and one for asking a copy of itself.
 //!
-//! note: Everything here is ordinary user code, like the rest of `tools/`, and none of it
-//! needed a line added to the runtime. What the runtime has is a context that is a list of public
-//! values, a request that can be built without being sent, and a session that can be snapshotted
-//! and resumed - and a tool is allowed to call all of it. Introspection is not a feature of the
-//! kernel, it is what a tool can already do with the kernel's ordinary surface. What these tools
-//! add is the part the kernel has no opinion about: which of it a *model* may do.
+//! note: Everything here is ordinary user code, like the rest of `tools/`; none of it needed a line
+//! added to the runtime. The runtime has a context that is a list of public values, a request that
+//! can be built without being sent, and a session that can be snapshotted and resumed. A tool may
+//! call all of it. Introspection is what a tool can already do with the kernel's ordinary surface,
+//! not a kernel feature. What these tools add is which of it a model may do.
 //!
-//! note: a tool per noun, and the noun is what the tool is *about* rather than what it does to
-//! it. [`Context`] is the context - reading it and changing it, twelve operations over one object.
-//! [`Log`] is the record beside it, [`Setup`] is what the session is running with, and [`Fork`]
-//! is a copy of this session standing up to answer something.
+//! note: one tool per noun, and the noun is what the tool is about rather than what it does to it.
+//! [`Context`] is the context: reading and changing it, twelve operations over one object. [`Log`]
+//! is the record beside it. [`Setup`] is what the session runs with. [`Fork`] is a copy of this
+//! session.
 //!
 //! note: reading and changing are one tool because [`nachalnik::Tool::needs`] lets a call declare
 //! its subject, so `context:look` and `context:revise` are separate rows on the permissions tab
-//! either way. [`Fork`] is a tool of its own: it is neither a reading nor a change, it is a second
-//! session and a bill.
+//! either way. [`Fork`] is its own tool: neither a reading nor a change, but a second session and a
+//! cost.
 //!
-//! note: each of them is also separately *revocable*, which is not a side effect to design away.
-//! A session can take back the agent's ability to check the record half way through, and that is
-//! a thing worth watching a model in.
+//! note: each is also separately revocable, which is deliberate, not a side effect to design away.
+//! A session can take back the agent's ability to check the record halfway through, and that is
+//! worth watching a model in.
 //!
-//! note: What [`Context`] will not do is undo a person's decisions. A pinned item, a system
-//! instruction, and the assistant turn carrying the call being executed are all refused, with the
-//! reason handed back to the model. The agent is not the boss.
+//! note: [`Context`] will not undo a person's decisions. A pinned item, a system instruction, and
+//! the assistant turn carrying the call being executed are all refused, with the reason handed back
+//! to the model.
 
 use std::{
     collections::BTreeMap,
@@ -54,22 +52,21 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 
 /// Registers the tools, and returns the handle that keeps their reach into the kernel alive.
 ///
-/// note: the policy is handed in rather than read off the kernel, and it is the concrete one this
-/// program ships rather than the trait. [`Setup`] reports what the policy will say *before*
-/// anything is asked, and through [`nachalnik::PermissionPolicy`] that means running a call
-/// through `evaluate`, which [`Careful`] answers by recording a refusal. So it reads [`Careful`]'s
-/// own tables instead; its `permissions` says what that costs a real refusal, and how the answer
-/// names the policy the kernel is actually consulting.
+/// note: the policy is handed in rather than read off the kernel, and is the concrete one this
+/// program ships rather than the trait. [`Setup`] reports what the policy will say before anything
+/// is asked; through [`nachalnik::PermissionPolicy`] that means running a call through `evaluate`,
+/// which [`Careful`] answers by recording a refusal. So it reads [`Careful`]'s own tables instead.
+/// Its `permissions` says what that costs against a real refusal, and how the answer names the
+/// policy the kernel is actually consulting.
 ///
-/// note: dropping the return value is how the tools are switched off: they hold a [`Weak`] to the
-/// kernel it keeps, and a tool that cannot upgrade its weak handle refuses the call and says why.
-/// The indirection is there because a `Kernel` stored inside a `Tool` the same kernel holds is a
-/// reference cycle that keeps the whole session alive after the last handle to it is gone, which
-/// the runtime's own documentation warns about; an [`Arc`] somebody *else* owns, pointed at weakly
-/// from in here, is the shape that has an end.
+/// note: dropping the return value switches the tools off: they hold a [`Weak`] to the kernel, and
+/// a tool that cannot upgrade its weak handle refuses the call and says why. The indirection avoids
+/// a reference cycle: a `Kernel` stored inside a `Tool` the same kernel holds keeps the whole
+/// session alive after the last handle is gone, which the runtime's documentation warns about. An
+/// [`Arc`] owned by something else, pointed at weakly from here, ends the cycle.
 ///
-/// note: `layout` is how all four lay out their arguments, which is the layout `fs` and `shell`
-/// were given: a model offered two layouts in one request writes one of them wrong.
+/// note: `layout` is how all four lay out their arguments, the layout `fs` and `shell` were given.
+/// A model offered two layouts in one request writes one of them wrong.
 pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: Layout) -> Installed {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor), policy.clone());
@@ -137,13 +134,13 @@ impl Installed {
     }
 }
 
-/// The changes the `context` tool made and can walk back with its own `undo`, which a snapshot
-/// carries so that a resumed session's model still can.
+/// The changes the `context` tool made and can undo with its own `undo`. A snapshot carries them so
+/// a resumed session's model can still undo them.
 ///
-/// note: the runtime's snapshot has no place for one tool's memory, and should not: what goes in it
-/// is the session. So it is written into the snapshot's file beside the runtime's fields, under
-/// [`HISTORY`], which the runtime does not read and a resume here reads back. An entry read back
-/// follows the rule a live one does: an item changed since it was recorded is left alone.
+/// note: the runtime's snapshot has no place for one tool's memory and should not; it stores the
+/// session. The history is written to the snapshot file beside the runtime's fields under
+/// [`HISTORY`]. The runtime does not read [`HISTORY`]; resuming here reads it back. An entry read
+/// back follows the same rule as a live one: an item changed since it was recorded is left alone.
 #[derive(Clone, Default)]
 pub struct History(Arc<parking_lot::Mutex<context::Journal>>);
 
@@ -218,10 +215,10 @@ impl Reach {
 /// A sentence pointing at a sibling tool, or nothing if that tool is not on offer.
 ///
 /// note: everything named in an answer is read as something to try, so an answer names only what
-/// the session can actually reach - the same rule a refusal follows. Without this, a session that
-/// took `log` away with `/tools toggle log` would still have `setup tools` pointing at `log`, a
-/// tool the model has just been told it does not have. These are registered tools rather than a
-/// fixed set, so the check is the registry and the sentence goes when its subject does.
+/// the session can reach; a refusal follows the same rule. Otherwise, a session that removed `log`
+/// with `/tools toggle log` would still have `setup tools` point at `log`, a tool the model has
+/// just been told it does not have. Tools are registered, not a fixed set, so the check reads the
+/// registry and the sentence disappears when its subject does.
 pub(crate) fn if_offered(kernel: &Kernel, tool: &str, said: impl FnOnce() -> String) -> String {
     match kernel.tool(tool).is_some() {
         true => said(),
@@ -370,17 +367,17 @@ pub(crate) struct Named<'a> {
 
 /// Reads the two arguments that say which items, and refuses a call that gives both.
 ///
-/// note: refused rather than letting one of the two win. That is the failure
-/// [`crate::tools::ops::inner`] refuses one level out, where a call puts arguments inside the
-/// wrapper and beside it, and it is the same failure for the same reason: whichever of the two is
-/// read, the answer comes back as an ordinary one, and nothing in it says the other half was never
-/// looked at. `elide` with `ids: [4]` and `select: "all:tool_results"` would move whatever the
-/// selector matched, report exactly that, and read as a call that did what it was told.
+/// note: refused rather than letting one of the two win. [`crate::tools::ops::inner`] refuses the
+/// same failure one level out, where a call puts arguments inside the wrapper and beside it, for
+/// the same reason: whichever of the two is read, the answer comes back as an ordinary one, and
+/// nothing in it says the other half was never looked at. `elide` with `ids: [4]` and
+/// `select: "all:tool_results"` would move whatever the selector matched, report exactly that, and
+/// read as a call that did what it was told.
 ///
 /// note: refused here rather than said in the schema, because the schema cannot say it. Mutual
-/// exclusion is `oneOf` or `not`, and neither is a keyword both dialects take - Google's `Schema`
-/// is a closed set of fields and has neither. `anyOf` does not say it either: a branch per argument
-/// still matches a call carrying both, since nothing in it is exclusive.
+/// exclusion is `oneOf` or `not`, and neither is a keyword both dialects take: Google's `Schema` is
+/// a closed set of fields and has neither. `anyOf` does not say it either, since a branch per
+/// argument still matches a call carrying both.
 pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<Named<'a>, String> {
     let numbers = ids(args, "ids")?;
     // note: refused rather than read as no selector. A `select` that is not a string would
@@ -409,11 +406,11 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
         });
     };
 
-    // note: whether `ids` named anything, rather than whether it was given. `ids: []` names no
-    // items, so reading the selector alone answers exactly the call that was made - and a model
-    // that fills every optional list with `[]` sends one beside every selector it writes, and was
+    // note: checks whether `ids` named anything, not whether it was given. `ids: []` names no
+    // items, so reading the selector alone answers exactly the call that was made. A model that
+    // fills every optional list with `[]` sends one beside every selector it writes, and was
     // refused for it again and again. What `ids()` cannot read is refused above, so a list that
-    // comes to nothing here is one that was empty
+    // comes to nothing here was empty
     if let Some(first) = numbers.first() {
         return Err(format!(
             "`ids` and `select` in one call, and nothing was done. They are two ways of saying \
@@ -501,7 +498,7 @@ pub(crate) const TAKE: usize = 64;
 ///
 /// note: the note as well as the identifier, because an identifier alone goes stale. The list is
 /// only written by the model's own moves, so an item the model pinned and the person then unpinned
-/// and pinned again would still be on it - and the model could take the person's pin off. The
+/// and pinned again would still be on it, and the model could take the person's pin off. The
 /// person's pins carry no note and the model's carry its reason, so a pin is the model's while the
 /// item still says what the model wrote.
 type Mine = BTreeMap<ContextId, Option<String>>;

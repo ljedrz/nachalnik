@@ -116,12 +116,11 @@ impl Recorder {
         Self::start_under(app, &private_dir()?)
     }
 
-    /// Claims a record under `dir`, which has to be a directory of this user's that only it can
-    /// enter, and writes what the session holds so far.
+    /// Claims a record under `dir`, which must be a directory of this user's that only this user
+    /// can enter, and writes what the session holds so far.
     ///
-    /// note: the check is the one [`record`] makes of the temporary directory, and it is made of
-    /// any directory rather than only that one because what goes into the record is the same
-    /// wherever it is put.
+    /// note: the check is the one [`record`] makes of the temporary directory, applied to any
+    /// directory because what goes into the record is the same wherever it is put.
     pub fn start_under(app: &App, dir: &Path) -> Result<Self, String> {
         private(dir)?;
         let (log, state, file) = unclaimed(&dir.join(app.kernel.session_name()))?;
@@ -136,8 +135,8 @@ impl Recorder {
                 snapshotted: None,
             }),
         };
-        // what came before a resume first, so that this record is the whole session rather than
-        // the part of it this process saw; see `Earlier`
+        // writes earlier records first, so the record is the whole session rather than only the
+        // part this process saw. See `Earlier`
         {
             let mut kept = recorder.kept.lock();
             Self::write_all(&mut kept, app.earlier.records().iter())?;
@@ -166,7 +165,7 @@ impl Recorder {
     /// Appends what the log has grown and rewrites the snapshot.
     ///
     /// note: the snapshot is taken first and the log written up to date after it, so the log is
-    /// never behind the snapshot it sits beside - see the note on the type.
+    /// never behind the snapshot. See the note on the type.
     pub fn checkpoint(&self, kernel: &Kernel) -> Result<(), String> {
         let mut kept = self.kept.lock();
         // asked before the snapshot is taken as well as after, since taking one copies every item:
@@ -178,9 +177,9 @@ impl Recorder {
         let snapshot = kernel.snapshot();
         Self::append_into(&mut kept, kernel)?;
         // note: every change to a session is a record in its log, so a snapshot naming the record
-        // the last one named is that file again. Skipping it is what keeps a person's one command
-        // one write: an exclusion or a compaction announces every item, and the kernel has made all
-        // of the changes before the first announcement arrives here
+        // the last one named is the same file. Skipping it keeps one command to one write: an
+        // exclusion or a compaction announces every item, and the kernel has made all the changes
+        // before the first announcement arrives here
         let reflects = snapshot.last_seq;
         if kept.snapshotted == Some(reflects) {
             return Ok(());
@@ -351,8 +350,7 @@ fn private(dir: &Path) -> Result<(), String> {
             if !ours {
                 return false;
             }
-            // it may already exist from an earlier run, made before this did it; either way,
-            // this is the run that is about to write a transcript into it
+            // it may already exist from an earlier run; this run writes a transcript into it
             let _ = opened.set_permissions(std::fs::Permissions::from_mode(0o700));
             opened
                 .metadata()
@@ -369,34 +367,30 @@ fn private(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// A `.jsonl` and `.json` pair under `stem` that no other session has written, and the log's
-/// open file, which is the claim itself.
+/// A `.jsonl` and `.json` pair under `stem` that no other session has written, and the log's open
+/// file, which is the claim itself.
 ///
-/// note: the name is a session's own, and a session's own name is not unique enough to be a
-/// filename. Two of them collide in two ways, both silently. Two runs started inside one second
-/// share a stamp, so the second to finish would write over the first. And **a resumed session
-/// keeps the name of the session it resumed**, which is right for what a name is for and means
-/// `-r` would write over the very file it had just read: the log of what happened replaced by that
-/// of a sitting that did nothing. The snapshot would come through nearly intact, because a resumed
-/// context renders to nearly the same bytes; the log would not, and the log is the half that says
-/// what happened rather than where things ended up.
+/// note: a session name is not unique enough for a filename. Two runs started within one second
+/// share a stamp, so the second to finish overwrites the first. A resumed session keeps the name of
+/// the session it resumed, so `-r` would write over the log it just read, replacing the log of
+/// what happened with that of a sitting that did nothing. The snapshot would come through nearly
+/// intact, because a resumed context renders to nearly the same bytes; the log would not, and the
+/// log is the half that says what happened rather than where things ended up.
 ///
-/// note: so the name stays what it is and the *file* moves - `…Z-2.jsonl` beside `…Z.jsonl`,
-/// which sorts next to its sibling and reads as the second sitting of one session. Renaming the
-/// session instead would put a process identifier in every filename to fix something rare, and
-/// the name is what `#fork` derives from and what the trace shows.
+/// note: the name stays and the file moves: `…Z-2.jsonl` beside `…Z.jsonl`, which sorts next to its
+/// sibling and reads as the second sitting of one session. Renaming the session would add a process
+/// identifier to every filename to fix something rare; the name is what `#fork` derives from and
+/// what the trace shows.
 ///
-/// note: `create_new` rather than asking whether the file is there, because between asking and
-/// writing is exactly where the first of those two collisions lives. The `.json` is checked
-/// before the `.jsonl` is claimed, so a suffix this passes over leaves nothing of its own behind.
+/// note: `create_new` is used rather than checking first, because the first of those collisions
+/// happens between asking and writing. The `.json` is checked before the `.jsonl` is claimed, so a
+/// passed-over suffix leaves nothing behind.
 ///
-/// note: a name that is taken is passed over and nothing else is: a directory that cannot be
-/// written in, or a full disk, is the reason the record is not there, and saying "no unused name"
-/// a thousand tries later would be the wrong one.
+/// note: a taken name is passed over and nothing else is. An unwritable directory or a full disk is
+/// why the record is not there; saying "no unused name" after many tries would be the wrong one.
 ///
-/// note: the suffixes are added to the stem's bytes, not to how it displays. A directory whose
-/// name is not UTF-8 displays with a replacement character, and a name built from that is a
-/// directory that is not there.
+/// note: suffixes are added to the stem's bytes, not to how it displays. A non-UTF-8 directory name
+/// displays with a replacement character; a name built from that is a directory that is not there.
 pub(crate) fn unclaimed(stem: &Path) -> Result<(PathBuf, PathBuf, std::fs::File), String> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
@@ -444,14 +438,13 @@ mod tests {
 
     /// A session writes beside a record rather than over it, however it came by the same name.
     ///
-    /// note: the second half is the case that matters, and it is not the exotic one: `-r` is the
-    /// line this program prints at the end of every run, and a resumed session keeps the name of
-    /// the session it resumed, so every resume would otherwise write over the log it had just read.
+    /// note: `-r` is printed at the end of every run, and a resumed session keeps the name of the
+    /// session it resumed, so every resume would otherwise write over the log it had just read.
     #[test]
     fn a_record_never_writes_over_one_that_is_already_there() {
-        // note: not `tests/common`'s `scratch`, which builds under `CARGO_TARGET_TMPDIR` -
-        // cargo hands that to integration tests and not to a unit test. One fixed name, emptied
-        // on the way in, so nothing accumulates either
+        // note: not `tests/common`'s `scratch`, which builds under `CARGO_TARGET_TMPDIR`; cargo
+        // hands that to integration tests, not unit tests. One fixed name, emptied on entry, so
+        // nothing accumulates
         let dir = std::env::temp_dir().join("kamchatka-unclaimed");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("a directory to work in");
@@ -482,8 +475,8 @@ mod tests {
 
     /// A log with no snapshot beside it has still been claimed, and the next name is the next one.
     ///
-    /// note: the `.json` is looked for first, so it is the only way to reach the `.jsonl` check -
-    /// a log on its own is what a process that died between claiming it and writing the first
+    /// note: the `.json` is looked for first, so it is the only way to reach the `.jsonl` check. A
+    /// log on its own is what a process that died between claiming it and writing the first
     /// snapshot leaves, and one that had never been written at all must not get its name back.
     #[test]
     fn a_log_left_without_its_snapshot_is_a_name_that_is_taken() {
@@ -503,12 +496,11 @@ mod tests {
         );
     }
 
-    /// A stem that cannot be written at all says which path and why, rather than looking for
-    /// another name a thousand times.
+    /// A stem that cannot be written at all says which path and why instead of looking for another
+    /// name.
     ///
-    /// note: the note on `unclaimed` is the promise - only a name that is taken is passed over,
-    /// because a directory that cannot be written in or a full disk is the reason there is no
-    /// record, and "no unused name" is a thousand wrong answers to it.
+    /// note: `unclaimed` passes over only a name that is taken. A directory that cannot be written
+    /// in or a full disk is the reason there is no record.
     #[test]
     fn a_name_that_cannot_be_written_at_all_is_said_as_it_is() {
         let dir = std::env::temp_dir().join("kamchatka-unclaimed-nowhere");
@@ -571,8 +563,8 @@ mod tests {
     /// user's.
     ///
     /// note: the name is fixed and the temporary directory is everybody's, so a link somebody left
-    /// there would send the transcript wherever it pointed. What refuses it is the open not
-    /// following a link, before anything is looked at through it.
+    /// there would send the transcript wherever it pointed. The open refuses it by not following
+    /// the link, before anything is looked at through it.
     #[test]
     fn a_link_at_the_record_directorys_name_is_refused() {
         use std::os::unix::fs::PermissionsExt as _;

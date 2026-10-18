@@ -16,16 +16,15 @@ const GLIMPSE: usize = 48;
 
 /// How many matching lines a `search` was asked for, or what is wrong with the way it asked.
 ///
-/// note: a `take` that cannot be read is refused, as `log` refuses its own, so the same word does
-/// not mean two things a tool apart. Read with a bare `as_u64`, `take: 0` would print a heading
-/// with a colon and nothing under it, which is a malformed answer rather than a wrong one; and
-/// `take: -3` and `take: "3"` would be `None`, which is the summary that leaving `take` out gives:
-/// the model asked for lines, was given a count, and nothing said its argument had not been read.
+/// note: a `take` that cannot be read is refused, as `log` refuses its own, so `take` does not mean
+/// one thing in `search` and another in `log`. With a bare `as_u64`, `take: 0` would print a
+/// heading with a colon and no lines under it, a malformed answer rather than a wrong one.
+/// `take: -3` and `take: "3"` would be `None`, the same result as leaving `take` out: the model
+/// asked for lines, was given a count, and nothing said its argument had not been read.
 pub(super) fn taken(args: &Value) -> Result<Option<usize>, String> {
     match crate::tools::number(args, "take") {
-        // `0` is not an error, because it is a coherent thing to have asked for and the tool has
-        // an answer to it already: the count and the price, which is what a call with no `take`
-        // gets. Refusing it would spend a turn on a call that meant something
+        // `take: 0` is not an error: it asks for the same answer as a call with no `take`, the
+        // count and the price. Refusing it would spend a turn on a meaningful call
         Ok(take) => Ok(take.filter(|&take| take != 0).map(|take| take as usize)),
         Err(_) => Err(format!(
             "`take` is a whole number of lines and this one is `{}`. Nothing was read, rather \
@@ -38,15 +37,15 @@ pub(super) fn taken(args: &Value) -> Result<Option<usize>, String> {
 
 /// The context, item by item, or the whole of the named ones.
 ///
-/// note: two columns of figures rather than one headed `tokens`, and they are the two the person's
-/// own pane shows: what an item puts into the next request, and what it is keeping out of one.
-/// One column could only be one of those, and whichever it was would be wrong about the rows that
-/// matter - an elided item, which sends a marker and holds its content, and any turn whose
-/// thinking the endpoint will not take back, which is every turn under an OpenAI-compatible one.
-/// Read as a budget, the held figure invites giving up what the request was not carrying; read as
-/// an inventory, the sending figure hides tens of thousands of tokens the agent really is
-/// carrying. Both, named, is the only honest answer, and it is what `held` in the next line and
-/// the expensive list under `budget` are counted from.
+/// note: the table has two named columns instead of one headed `tokens`, matching the two figures
+/// in the person's own pane: what an item puts into the next request, and what it keeps out of the
+/// request. One column could show only one of those, so it would be wrong about the rows that
+/// matter: an elided item sends a marker and holds its content, and any turn whose thinking the
+/// endpoint will not take back, which is every turn under an OpenAI-compatible one. Read as a
+/// budget, the held figure invites giving up what the request was not carrying; read as an
+/// inventory, the sending figure hides tens of thousands of tokens the agent is carrying. Both
+/// columns are what `held` in the next line and the expensive list under `budget` are counted
+/// from.
 pub(super) fn look(
     kernel: &Kernel,
     ids: &[ContextId],
@@ -66,11 +65,11 @@ pub(super) fn look(
     }
 
     let budget = kernel.budget();
-    // note: the undo depth is reported and named as somebody else's on purpose. It is the stack
-    // behind the `u` key in the terminal, it holds the latest changes to this context by
-    // anybody, as many as `Config::context_undo_depth` keeps, and this tool's own `undo` does not
-    // touch it - that figure, sitting unlabelled beside an operation called `undo`, would be an
-    // invitation to try to walk back the person's work
+    // note: the undo depth is reported and named as someone else's on purpose. It is the stack
+    // behind the terminal's `u` key, holds everybody's latest changes to this context, and keeps as
+    // many as `Config::context_undo_depth`. This tool's `undo` does not touch it. Left unlabelled
+    // beside an operation called `undo`, the figure would invite someone to try to walk back the
+    // person's work
     let theirs = kernel.with_context(|context| context.undo_len());
     let withheld: usize = items.iter().map(|item| going.held_back(item)).sum();
 
@@ -108,11 +107,11 @@ pub(super) fn look(
     out.push_str(floor(&items));
     out.push_str(gaps(&items));
 
-    // note: the second sentence is there because the columns are easy to read wrong. Asked what
+    // note: the second sentence is there because the columns are easy to misread. When asked what
     // it could free, a model names the turn holding the most of its own thinking and offers to
-    // elide it - which frees what that turn is *sending* and not one token of what it holds,
-    // because the endpoint is never sent those. `budget` says this under its own table, and
-    // `look` is where an agent actually reads the figure
+    // elide it. That frees what the turn is *sending* and none of what it holds, because the
+    // endpoint is never sent those tokens. `budget` says this under its own table, and `look` is
+    // where an agent actually reads the figure
     out.push_str(
         "\n`look` with `ids` reads any of these back, including the reasoning recorded on an \
          assistant turn; a long one arrives as its start and its end unless you ask for the \
@@ -143,9 +142,9 @@ fn line(item: &ContextItem, going: &Going, said: &str) -> String {
 
 /// What one row says an item is sending: its figure, with a `+` where part of it is unpriced.
 ///
-/// note: marked as the context tab marks it, so that the two things `0` can mean are not one
-/// figure. One function for both tables, because a `look` narrowed by a selector is the same
-/// listing and a picture in it is no cheaper there.
+/// note: the `+` matches the context tab's mark, so the two things `0` can mean are not shown as
+/// one figure. One function serves both tables: a `look` narrowed by a selector is the same
+/// listing, and a picture in it is no cheaper there.
 fn figure(item: &ContextItem, going: &Going) -> String {
     let figure = thousands(going.costs.get(&item.id).copied().unwrap_or(0));
     match item.uncounted {
@@ -154,13 +153,13 @@ fn figure(item: &ContextItem, going: &Going) -> String {
     }
 }
 
-/// The line under a full listing that accounts for the numbers it skips, where it skips any.
+/// The line under a full listing that accounts for the numbers it skips.
 ///
-/// note: this listing is every item, and an identifier is never given twice, so a number missing
-/// from it belongs to an item that is no longer in the context - taken away by an `undo` of its
-/// addition, or left out of the snapshot this session was resumed from - and never to one the
-/// list left off. Without the line a model reading `24, 26` cannot tell which. Said only where
-/// there is a gap, so an unbroken listing costs nothing.
+/// note: the listing contains every item and no identifier appears twice, so a missing number
+/// belongs to an item no longer in the context: removed by an `undo` of its addition, or absent
+/// from the snapshot this session resumed from. It never belongs to an item the listing left off.
+/// Without the line, a model reading `24, 26` cannot tell which. The line appears only when there
+/// is a gap, so an unbroken listing costs nothing.
 fn gaps(items: &[Arc<ContextItem>]) -> &'static str {
     let ids: Vec<u64> = items.iter().map(|item| item.id.0).collect();
     let gapped = match (ids.iter().min(), ids.iter().max()) {
@@ -282,23 +281,23 @@ pub(super) fn matched(
     out
 }
 
-/// Which of these items this session did not produce, said before the listing rather than after.
+/// Which of these items this session did not produce, shown before the listing rather than after.
 ///
-/// note: a session resumed under a *second* model, asked whether it wrote an inherited turn,
-/// reaches for `look` - and without this line `look` has nothing to say, because an item restored
-/// from a snapshot is a perfectly ordinary item with no field that marks it. The model reads the
-/// turn, recognises its own voice in it, and confabulates a first-person account of writing a
-/// sentence another model wrote.
+/// note: a session resumed under a second model can be asked whether it wrote an inherited turn,
+/// and the model reaches for `look`. Without this line `look` has nothing to say: an item restored
+/// from a snapshot is an ordinary item with no field marking it as inherited. The model can read
+/// the turn, recognise its own voice, and confabulate a first-person account of writing another
+/// model's sentence.
 ///
-/// note: `setup` with `model` says this too, and a model asking the question does not call it. A
-/// fact that is only reachable by a tool nobody reaches for is a fact the program does not really
-/// have, so it goes where the question is actually asked. It is a count of items in a listing that
-/// already counts items - not a warning, and it says nothing about what the turns are worth.
+/// note: `setup` with `model` reports this too, but a model asking the question does not call
+/// `setup`. A fact reachable only through a tool nobody calls is not really available, so it
+/// belongs where the question is asked. It is a count in a listing that already counts items, not a
+/// warning, and says nothing about the turns' worth.
 ///
-/// note: conditioned on `session.resumed` being in the log rather than on the absence of a
-/// `context.added` alone, because `Kernel::drain_history` also takes those away. Absent that
-/// record, an item with no beginning here means the log was shortened, which is a different fact
-/// and would be a false one to report as this.
+/// note: this depends on `session.resumed` appearing in the log, not on the absence of
+/// `context.added` alone, because `Kernel::drain_history` also removes those records. Without that
+/// record, an item with no beginning here means the log was shortened; reporting that as this would
+/// be false.
 fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>], policy: &Careful) -> String {
     // the common case, a session never resumed, answered without gathering anything
     if !resumed(kernel) {
@@ -352,9 +351,9 @@ fn row(item: &ContextItem, going: &Going) -> String {
         false => format!("{}: {glimpsed}", item.label),
     };
     if matches!(item.kind, ContextKind::AssistantMessage { .. }) {
-        // `calls()` and `thinking()` rather than the kind's own slots: a turn a provider recorded
-        // in the order it was produced keeps both inside its content, and a row that read the
-        // slots would report a reasoning model as having thought nothing and asked for nothing
+        // `calls()` and `thinking()` are used rather than the kind's own slots. A provider can
+        // record a turn in production order with both inside its content; reading the slots would
+        // report a reasoning model as having thought nothing and asked for nothing
         let calls = item.calls().count();
         if calls != 0 {
             said.push_str(&format!(" [{calls} call(s)]"));
@@ -371,10 +370,9 @@ fn row(item: &ContextItem, going: &Going) -> String {
     }
     // and why it is not in the request, where the state column cannot say. An item the projector
     // dropped is `active` and not going, so the row reads `0` under `sending` with nothing to
-    // account for it - which is how a model sees its own latest turn: the turn carrying the call
-    // being answered has no result yet, so it is out of the projection for as long as the tool
-    // runs. The pane says this on the row, in the projector's own words, and this is the same
-    // sentence out of the same place
+    // account for it. The turn carrying the call being answered has no result yet, so it is out of
+    // the projection for as long as the tool runs. The pane says this on the row in the projector's
+    // own words, and this is the same sentence from the same place
     if let Some(why) = going.left_out.get(&item.id) {
         said.push_str(&format!(" · not going: {why}"));
     }
@@ -385,11 +383,10 @@ fn row(item: &ContextItem, going: &Going) -> String {
 /// How much of an item's content `look` shows either side of the gap before it is asked for the
 /// whole thing.
 ///
-/// note: reading an item copies that item into the context. So asking to see a 9,000-token tool
-/// result in order to decide whether to keep it costs very nearly what keeping it costs, and a
-/// clean-up done that way can finish heavier than it started. A head and a tail is enough to tell
-/// build noise from something worth keeping, and the whole thing is still one argument away for
-/// the times it is really wanted.
+/// note: reading an item copies it into the context. Asking to see a 9,000-token tool result to
+/// decide whether to keep it costs nearly what keeping it costs, and cleaning up that way can
+/// finish heavier than it started. A head and tail are enough to tell build noise from something
+/// worth keeping; the whole thing is one argument away.
 const SAMPLE: usize = 1_500;
 
 /// An item's content: whole if it is small or if it was asked for, a head and a tail otherwise.
@@ -430,13 +427,13 @@ fn full(
         return format!("[{id}] there is no such item\n");
     };
 
-    // note: what it holds, and then how much of that the request does not carry - because this is
-    // the view that reads a turn's *thinking* back, and under most endpoints the thinking is the
-    // part that is not carried. A line reporting one figure would be telling the agent that the
-    // page it is reading costs what it weighs, in the one place it is most likely to be wrong.
+    // note: what it holds, and then how much of that the request does not carry, because this view
+    // reads a turn's thinking back and under most endpoints the thinking is the part that is not
+    // carried. One figure would tell the agent that the page it is reading costs what it weighs, in
+    // the one place that is most likely to be wrong.
     //
-    // note: `Going::holds` rather than `ContextItem::tokens`, so that the two figures in this one
-    // sentence are counted on one scale - `Going::holds` has why that is not the same figure
+    // note: `Going::holds` rather than `ContextItem::tokens`, so both figures are counted on one
+    // scale; `Going::holds` says why it is not the same figure as `tokens`
     let mut out = format!(
         "[{}] {} · {} · from {} · {} · {} tokens{}{}\n",
         item.id,
@@ -467,12 +464,11 @@ fn full(
         out.push_str(&format!("  attached: {}\n", item.meta));
     }
     // note: what the moves will say about it, beside whatever its own metadata says. The metadata
-    // is a record of what was written when it was written - a pin this tool made, still reading
-    // `by: context` on an item the person has since pinned again - and a model reading it that
-    // way keeps believing the pin is its own and keeps being refused. The refusal itself is what
-    // says whose it is, and this is the same [`protected`] the move consults, so the two cannot
-    // come apart; the alternative was to leave the metadata out, which would hide a record
-    // somebody may be asking for
+    // records what was written when it was written - a pin this tool made, still reading
+    // `by: context` on an item the person has since pinned again. A model reading it that way keeps
+    // believing the pin is its own and keeps being refused. The refusal says whose it is, and this
+    // is the same [`protected`] the move consults, so the two cannot come apart. Leaving the
+    // metadata out would hide a record somebody may be asking for
     if let Some(why) = protected(item, mine, own) {
         out.push_str(&format!("  not yours to move: {why}\n"));
     }
@@ -500,8 +496,8 @@ fn full(
         return out;
     }
 
-    // the reasoning first, because on the turn that carries it it is the part that explains the
-    // rest, and because it is the one thing here the model cannot see in the request itself
+    // the reasoning goes first, because on the turn that carries it, it explains the rest, and
+    // because it is the one thing here the model cannot see in the request itself
     if let Some(reasoning) = item.reasoning() {
         out.push_str(&format!("  --- reasoning ---\n{}\n", reasoning.to_text()));
     }
@@ -513,11 +509,11 @@ fn full(
     out
 }
 
-/// The tools whose answers are about this session rather than about anything outside it.
+/// The tools whose answers are about this session rather than anything outside it.
 ///
-/// note: the four this program installs to let a model look at itself. An answer from one of
-/// them is a reading of the context, the record or the setup, so in the turn that asked for it
-/// it can say back what the turn said - which is why a search leaves it out of that turn.
+/// note: the four this program installs to let a model look at itself. An answer from one of them
+/// is a reading of the context, the record, or the setup, so in the turn that asked for it, it can
+/// say back what the turn said, which is why a search leaves it out of that turn.
 const ABOUT_THE_SESSION: [&str; 4] = ["context", "fork", "log", "setup"];
 
 /// Whether this is what a tool said about something other than the session.
@@ -525,22 +521,19 @@ fn told_by_the_world(item: &ContextItem) -> bool {
     matches!(&item.kind, ContextKind::ToolResult { tool, .. } if !ABOUT_THE_SESSION.contains(&tool.as_str()))
 }
 
-/// Where a piece of text is in the context, and what reading it would cost - the count first.
+/// Where a piece of text is in the context, and what reading it costs - the count first.
 ///
-/// note: the thing `look` cannot do. An excluded item is kept in full and never sent, and the only
-/// other way to see inside one is to read it back, which copies it into the context - so a session
-/// could not look at anything it had put away without undoing the saving. That would make what is
-/// excluded write-only from the model's side, which is not what "nothing is destroyed" is supposed
-/// to mean.
+/// note: excluded items are kept in full and never sent. The only other way to see inside one is to
+/// read it back, which copies it into the context and undoes the saving. That would make excluded
+/// items write-only from the model's side, which is not what "nothing is destroyed" means.
 ///
-/// note: so the rule is `log`'s rule, for the same reason: the count and its price first, the
-/// lines on request, and never the item. A search that answered with what it found would be a
-/// second way to pay for an item without meaning to, which is the thing this action exists to
-/// undo.
+/// note: the rule is `log`'s rule: the count and its price first, the lines on request, and never
+/// the item. A search that answered with what it found would be a second way to pay for an item
+/// without meaning to, which this action exists to undo.
 ///
-/// note: case is ignored. A model that searched for `landlock` and was told there are no matches
-/// in a context full of `Landlock` has been told something false about itself, and the failure is
-/// silent - which is the one shape of wrong answer a search must not have.
+/// note: case is ignored. Searching for `landlock` in a context full of `Landlock` would silently
+/// report no matches, which is false. Silent failure is the one wrong answer a search must not
+/// have.
 pub(super) fn search(
     kernel: &Kernel,
     text: &str,
@@ -553,32 +546,32 @@ pub(super) fn search(
 
     // (item, matching lines), in context order
     let mut found: Vec<(&Arc<ContextItem>, Vec<String>)> = Vec::new();
-    // counted rather than assumed from `only`, because the two differ exactly where it matters:
-    // an id naming nothing is looked at zero times, and reporting it as one looked at is this
-    // tool saying an item exists and does not contain the text. `look` answers `[99] there is no
-    // such item`; a search that quietly counted it would be the less honest of two siblings
+    // counted rather than assumed from `only`, because they differ where it matters: an id naming
+    // nothing is looked at zero times. Reporting it as one looked at says an item exists and lacks
+    // the text. `look` answers `[99] there is no such item`; a search that quietly counted it would
+    // be less honest
     let mut read = 0;
-    // and the items of the turn asking, which are passed over rather than read, so a nil result
-    // can say so: the message that started the turn is one of them, and a word only it holds is
-    // otherwise "no line of your context" with every item counted as looked at
+    // The items of the turn asking are passed over rather than read, so a nil result can say so.
+    // The message that started the turn is one of them; a word only it holds would otherwise read
+    // "no line of your context" while every item counts as looked at
     let mut passed = 0;
     for item in &items {
         if !only.is_empty() && !only.contains(&item.id) {
             continue;
         }
-        // but not the turn asking. Its calls carry the text being searched for, and so does
-        // whatever it said and thought on the way to making them - and so does the message that
-        // started the turn, which is a context item of its own. So a search that read the rest of
-        // the turn would find the needle in the question the model is in the middle of asking,
-        // and report a match it made itself
+        // The turn asking is not read. Its calls carry the text being searched for, and so does
+        // whatever it said and thought on the way to making them, and so does the message that
+        // started the turn, which is a context item of its own. A search that read the rest of the
+        // turn would find the text in the question the model is asking and report a match it made
+        // itself.
         //
         // note: except what a tool answered in it, which nobody in the turn wrote. A model that
-        // read a file and then searched it for a function the file defines was told no line of
-        // its context said the name - the false "nothing" the note above calls the one wrong
-        // answer - because the read was in the turn asking. What still goes unread is a report on
-        // the session itself, which quotes the turn back: a search's own answer names the text it
-        // looked for, `log` reads out the calls, a fork's answer may repeat what it was asked,
-        // and none of those is the context holding the text
+        // read a file and then searched it for a function the file defines was told no line of its
+        // context said the name, because the read was in the turn asking - the false "nothing" the
+        // doc comment above calls the one wrong answer. What still goes unread is a report on the
+        // session itself, which quotes the turn back: a search's own answer names the text it
+        // looked for, `log` reads out the calls, a fork's answer may repeat what it was asked, and
+        // none of those is the context holding the text
         if own.contains(&item.id) && !told_by_the_world(item) {
             passed += 1;
             continue;
@@ -613,9 +606,9 @@ pub(super) fn search(
                 .join(", ")
         ),
     };
-    // the ids that name nothing, said out loud rather than passed over. A search narrowed to an
-    // item that is not there has not searched anything, and "nothing matched" is the one reading
-    // of that which leaves the model believing the item exists
+    // Ids that name nothing are reported rather than passed over. A search narrowed to a missing
+    // item has not searched anything, and "nothing matched" leaves the model believing the item
+    // exists
     let missing: Vec<String> = only
         .iter()
         .filter(|id| !items.iter().any(|item| item.id == **id))
@@ -656,8 +649,9 @@ pub(super) fn search(
     let counter = kernel.counter();
     let cost = counter.count(&nachalnik::Content::text(rendered.concat()));
 
-    // and on an answer that did find something, for the same reason: an id that named nothing is
-    // a fact about the call, and a result that only reports what it found lets it pass unnoticed
+    // and said on an answer that found something too, for the same reason: an id that named
+    // nothing is a fact about the call, and a result that only reports what it found lets it pass
+    // unnoticed
     let mut out = format!(
         "{} line(s) say `{text}`{where_}, ~{} tokens if you take them all, in {} item(s):{}\n",
         thousands(matches),
@@ -871,15 +865,15 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
     for item in &costly {
         let cost = going.costs.get(&item.id).copied().unwrap_or(0);
         running += cost;
-        // saying so here saves a call that would only be refused, and the reason is the same one
-        // a move would give: it is not the model's to move
+        // saying `not yours` saves a call that would only be refused: the item is not the model's
+        // to move, the same reason a move gives
         let whose = match protected(item, mine, own) {
             Some(_) => " · not yours",
             None => "",
         };
-        // what it is holding on top of that, where it holds anything, because this row is where
-        // an agent decides what to give up and the difference is the thing giving it up will not
-        // free. A turn's thinking is gone from the request already
+        // what is held back beyond the request, when anything is. This row is where an agent
+        // decides what to give up; the difference is what giving it up will not free. A turn's
+        // thinking is already gone from the request
         let holding = match going.held_back(item) {
             0 => String::new(),
             held => format!(" · holding {} the request does not carry", thousands(held)),
@@ -937,9 +931,9 @@ pub(super) fn request(kernel: &Kernel) -> String {
             .as_ref()
             .map(|c| c.to_text())
             .unwrap_or_default();
-        // note: what goes out rather than what was said, which is what `to_text` answers: a turn
-        // that only calls a tool says nothing and sends its arguments, and a picture's text is
-        // its name. A turn carried as blocks holds its calls and its thinking in its content
+        // note: this counts what goes out, not what was said, which is what `to_text` answers. A
+        // turn that only calls a tool says nothing and sends its arguments. A picture's text is its
+        // name. A turn carried as blocks holds its calls and thinking in its content
         let bytes = message.content.as_ref().map_or(0, Content::byte_len)
             + message
                 .tool_calls

@@ -60,7 +60,7 @@ pub struct Setup {
     ///
     /// note: a [`Snapshot`] rather than a path, because reading one is where the error messages
     /// worth writing are - which file, and whether it was a session at all - and those belong to
-    /// the program that was handed the path.
+    /// the program handed the path.
     pub resume: Option<Snapshot>,
     /// What to call the session, which is also what its files are named after.
     ///
@@ -85,13 +85,10 @@ pub struct Setup {
     pub keep_truncated: bool,
     /// Whether a request the counter puts over the model's context is refused rather than sent.
     ///
-    /// note: reachable because the figure it acts on is an estimate and the limit it is checked
-    /// against is whatever the endpoint chose to advertise, and either can be wrong. An
-    /// aggregator that quotes one model's window while routing to a provider with another is not
-    /// hypothetical - it is what `liquid/lfm-2.5-2.6b` does - and a session held to a limit
-    /// smaller than the real one refuses requests that would have been answered. Turning this off
-    /// costs a round trip and gets the endpoint's own count of the request, which is worth more
-    /// than any guess made here.
+    /// note: the figure is an estimate and the advertised limit can be wrong. An aggregator quoting
+    /// one model's window while routing to another, as `liquid/lfm-2.5-2.6b` does, holds a session
+    /// to a smaller limit than the real one and refuses requests that would have been answered.
+    /// Turning this off costs a round trip and gets the endpoint's own count of the request.
     pub refuse_oversized: bool,
     /// How full the context may get before its oldest exchanges are excluded; `None` never
     /// compacts.
@@ -99,13 +96,13 @@ pub struct Setup {
     /// How far down a full context is taken once they are; `None` is what `Shedder::under`
     /// derives from `compact`.
     pub compact_target: Option<f64>,
-    /// How many tokens the provider may charge for the whole session before it stops; `None`
-    /// never stops.
+    /// How many tokens the provider may charge for the whole session before it stops; `None` never
+    /// stops.
     ///
-    /// note: the sibling of `requests` above, over a different unit and a different span. That one
-    /// is the kernel's and bounds a turn; this one is the session's, and it is the guard for the
-    /// failure nothing else here catches - a model that has found a loop and a caller that is not
-    /// watching. See [`App::set_spend`](crate::app::App::set_spend).
+    /// note: the sibling of `requests`, over a different unit and span. `requests` is the kernel's
+    /// and bounds a turn; this bounds the session and guards the failure nothing else catches: a
+    /// model in a loop and a caller not watching. See
+    /// [`App::set_spend`](crate::app::App::set_spend).
     pub spend: Option<u64>,
     /// Whether what a command left running is left running when the session ends, rather than
     /// stopped; see [`stragglers_at_end`].
@@ -133,11 +130,10 @@ pub struct Setup {
     pub tools: Option<Vec<String>>,
     /// Whether to confine what the tools can reach.
     ///
-    /// note: *the tools*, not the `shell` alone. It is `Reach::confined` as well as the Landlock
-    /// ruleset - and an unconfined
-    /// `Reach` hands back every path untouched, so `read` of `~/.ssh/id_rsa` is a file rather
-    /// than a refusal. Somebody turning this off for one command should know they turned it off
-    /// for everything `fs` does as well.
+    /// note: the tools, not the shell alone. It is `Reach::confined` as well as the Landlock
+    /// ruleset. An unconfined `Reach` hands back every path untouched, so `read` of `~/.ssh/id_rsa`
+    /// is a file rather than a refusal. Somebody turning this off for the sake of one command turns
+    /// it off for everything `fs` does as well.
     pub confine: bool,
     /// Paths outside the working directory the tools may also read and write.
     pub reachable: Vec<std::path::PathBuf>,
@@ -166,15 +162,14 @@ pub struct Setup {
     pub files: Vec<String>,
     /// A model to ask where each shell command a question is about lands on a rubric.
     ///
-    /// note: `None` is the default and is a session that sends nothing about its tool calls
-    /// anywhere. Handing one over turns on the rating in [`tools::Advised`], which sends the
-    /// tool's id, its declared capabilities and its arguments to that endpoint and decides
-    /// nothing. The module says what leaves.
+    /// note: `None` is the default: a session that sends nothing about its tool calls anywhere.
+    /// Handing one over turns on the rating in [`tools::Advised`], which sends the tool's id, its
+    /// declared capabilities and its arguments to that endpoint and decides nothing. The module
+    /// says what leaves.
     ///
-    /// note: the connected client rather than a key or a flag, for the reason `wire` takes a
-    /// connected provider: this function reaches no network and reads no environment, so whether
-    /// to have an advisor at all - and which endpoint it is - is the caller's to decide and its
-    /// business to say out loud.
+    /// note: the connected client, not a key or flag, for the reason `wire` takes a connected
+    /// provider: this function reaches no network and reads no environment, so the caller decides
+    /// whether to have an advisor and which endpoint, and must say so explicitly.
     #[cfg(feature = "shell-advisor")]
     pub advisor: Option<Arc<dyn nachalnik_providers::system1::SystemOne>>,
 }
@@ -240,10 +235,10 @@ pub struct Wired {
 /// `App::refresh_full_notice`.
 pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
     let can = |op: &str| crate::introspect::reachable(kernel, policy, &format!("context:{op}"));
-    // note: both say what is left - this turn, what is pinned and the notes - because a model
-    // told only that the context was full went looking for tool results to elide, and one told
-    // to ask the person wrote a file larger than the room there was. Both say what not to do,
-    // since a request over the limit is not sent at all
+    // note: both say what is left - this turn, what is pinned and the notes - because a model told
+    // only that the context was full went looking for tool results to elide, and one told to ask
+    // the person wrote a file larger than the room. Both say what not to do, since a request over
+    // the limit is not sent
     let said = match (can("exclude") || can("elide"), can("look")) {
         (true, looks) => format!(
             "The context is full, and nothing more will be taken from it automatically: what \
@@ -276,10 +271,10 @@ pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
 /// Everything this program's own tools declare, for the names `Setup::check` holds `tools` to and
 /// the rules checked against what the tools do.
 ///
-/// note: read off tools built and dropped rather than from a list written out here. A list is a
-/// second thing to forget, and what it would drift from is exactly what the refusal in
-/// `Setup::check` is about - a name that is not a tool. Building them costs six schemas, at
-/// startup, once for `tools` and once for each rule checked.
+/// note: read off tools built and dropped, not from a list written here. A list is another thing to
+/// forget, and drifting from the tools is exactly what the refusal in `Setup::check` is about: a
+/// name that is not a tool. Building them costs six schemas at startup, once for `tools` and once
+/// for each rule checked.
 fn offered() -> Vec<nachalnik::ToolSpec> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
@@ -310,20 +305,20 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
     kernel.tool_specs()
 }
 
-/// What is wrong with a rule about a capability or a domain no tool here has, where something is.
+/// What is wrong with a rule about a capability or domain no tool here has, where something is.
 ///
-/// note: the path rules' objection, for the other two kinds. `--auto-deny shell` parsed as a domain
-/// called `shell`, and the shell is judged as `exec:run` - so it refused nothing, and a headless
-/// run given `--on-ask allow` ran every command unasked under a rule that read as given. So did a
-/// typo like `fs:writ`. The domains a call here can be judged under are the ones this program's
-/// tools declare, `net:reach`, which `shell` asks about per command, and `mcp:call`, which every
-/// tool from a server declares; anything else can match nothing.
+/// note: the path rules' objection, for capabilities and domains. `--auto-deny shell` parsed as a
+/// domain called `shell`, while the shell is judged as `exec:run`, so it refused nothing, and a
+/// headless run given `--on-ask allow` ran every command unasked under a rule that read as given.
+/// A typo like `fs:writ` did the same. The domains a call can be judged under are the ones this
+/// program's tools declare, `net:reach`, which `shell` asks about per command, and `mcp:call`,
+/// which every server tool declares. Anything else matches nothing.
 ///
-/// note: and the one refusal of that answer is about a file. A word holding a dot or a path is
-/// read as a domain by [`Subject::parse`], so `b.txt` and `main.rs` got here, and a sentence about
-/// domains tells somebody who wanted a path rule nothing. The rule is left as it is - taking a
-/// plain name as a path rule would answer a different question with a different subject, and see
-/// [`named`] - and what the refusal does is say how to write the rule instead.
+/// note: one form of that refusal is about a file. A word holding a dot or path is read as a domain
+/// by [`Subject::parse`], so `b.txt` and `main.rs` reached this point, and a sentence about domains
+/// tells someone who wanted a path rule nothing. The rule stays as it is: taking a plain name as a
+/// path rule would answer a different question with a different subject; see [`named`]. The refusal
+/// says how to write the rule instead.
 fn unreached(subject: &Subject) -> Option<String> {
     let (domain, op) = match subject {
         Subject::Capability(capability) => (capability.domain.to_string(), Some(&capability.op)),
@@ -393,19 +388,17 @@ fn unreached(subject: &Subject) -> Option<String> {
     }
 }
 
-/// Whether `domain` is the name of a file rather than of anything a rule here is written about.
+/// Whether `domain` is a file name rather than anything a rule here is written about.
 ///
-/// note: the characters a file name may hold and a domain may not, read by that alone. A domain
-/// and a tool's id are both bare words and nothing in either says which it is - which is why a
-/// server is named on an argument of its own - so this is the one place a rule about a file can
-/// be recognised at all, and the refusal above is where it says so.
+/// note: the characters a file name may hold and a domain may not. A domain and a tool's id are
+/// both bare words, and nothing says which it is, so a server is named on an argument of its own.
+/// This is the one place a rule about a file can be recognised; the refusal above says so.
 ///
-/// note: a path is read as a name too, since a path rule is a *file name* compared with the last
-/// name in a path: `main.rs*` is a rule about that file, and `src/main.rs` is not what a path
-/// rule is written as. `b.txt` is accepted here and refused, rather than taken: what a plain name
-/// means is a question about what a subject is, and the two ways of answering it - read every
-/// plain name as a file, or refuse one no domain claims - leave `shell` and `files` reading as
-/// files as well as domains nobody declared.
+/// note: a path is read as a name too, since a path rule is a file name compared with the last name
+/// in a path: `main.rs*` is a rule about that file, and `src/main.rs` is not. `b.txt` is accepted
+/// here and refused, rather than taken. What a plain name means is a question about what a subject
+/// is: read every plain name as a file, or refuse one no domain claims. Those two ways leave
+/// `shell` and `files` reading as files as well as domains nobody declared.
 fn named(domain: &str, ids: &[&str]) -> Option<String> {
     if ids.contains(&domain) {
         return None;
@@ -414,13 +407,13 @@ fn named(domain: &str, ids: &[&str]) -> Option<String> {
         .then(|| domain.to_owned())
 }
 
-/// Where a provider was pointed when the session began: the address and the model the flags gave
-/// it, for a `/restart` to put back.
+/// Where the provider was pointed when the session began: the endpoint address and the model the
+/// flags gave it. `/restart` puts them back.
 ///
 /// note: a restart carries the provider over rather than connecting again, because the connection
-/// is what is not cheap to rebuild - and `/model` and `/endpoint` switch that provider in place, so
-/// the model on it is this session's drift and not the flags'. Taken once, before the first
-/// session is wired, and put back before every relaunch.
+/// is not cheap to rebuild. `/model` and `/endpoint` switch that provider in place, so the model on
+/// it is this session's drift and not the flags'. Taken once, before the first session is wired,
+/// and put back before every relaunch.
 #[derive(Debug, Clone)]
 pub struct Flagged {
     endpoint: String,
@@ -474,16 +467,16 @@ impl std::fmt::Display for Refused {
 impl std::error::Error for Refused {}
 
 impl Setup {
-    /// What can be said about a setup before anything is reached: a path rule nothing can match,
-    /// a tool nobody offers.
+    /// What can be said about a setup before anything is reached: a path rule nothing can match, a
+    /// tool nobody offers.
     ///
-    /// note: separate from [`Setup::wire`], and called by it, so that a program can find out its
+    /// note: separate from [`Setup::wire`], and called by it, so a program can find out its
     /// arguments are wrong before it builds a provider. `main` connects to an endpoint and asks it
-    /// what the model holds, which is a round trip and an API key - neither of them anybody's idea
-    /// of how to be told that a settings file names `contxt`.
+    /// what the model holds, which costs a round trip and an API key; neither is how anyone wants
+    /// to learn that a settings file names `contxt`.
     ///
-    /// note: what is refused says which setting said it, so that a caller holding a settings file
-    /// can name the file where the file is what said it - and only there. See [`Refused`].
+    /// note: a refusal names the setting that caused it, so a caller holding a settings file can
+    /// name the file where the file is what said it - and only there. See [`Refused`].
     pub fn check(&self) -> Result<(), Refused> {
         let refused = |setting: &'static str, said: String| Refused {
             setting: Some(setting),
@@ -491,7 +484,7 @@ impl Setup {
         };
         for (list, subjects) in [("auto-allow", &self.allow), ("auto-deny", &self.deny)] {
             for subject in subjects {
-                // a path rule that cannot match stops the session rather than being drawn on the
+                // a path rule that cannot match stops the session instead of being drawn on the
                 // permissions tab like any other: a `--auto-deny` that refuses nothing is worse
                 // than no rule, because it reads as given
                 if let tools::Subject::Path(pattern) = subject
@@ -503,9 +496,9 @@ impl Setup {
         }
 
         // note: an allow for a file name a broader rule still asks about or refuses is refused,
-        // naming that rule. The two are each consulted and the strictest wins, so the allow could
-        // never decide anything, and a rule that changes nothing must not read as given. What the
-        // policy holds once every rule is in is what is asked, defaults and denies together
+        // naming that rule. Both rules are consulted and the strictest wins, so the allow could
+        // never decide anything, and a rule that changes nothing must not read as given. The policy
+        // is asked once every rule is in, defaults and denies together
         let ruled = tools::Careful::new();
         for (subjects, verdict) in [
             (&self.allow, nachalnik::Verdict::Allow),
@@ -550,8 +543,8 @@ impl Setup {
         }
 
         // note: a name that is not a tool stops the session rather than being skipped, for the
-        // reason `deny_unknown_fields` is on the settings struct. Asking for `contxt` and getting
-        // a session with no context tool and nothing said about it is the failure this setting is
+        // reason `deny_unknown_fields` is on the settings struct. Asking for `contxt` and getting a
+        // session with no context tool and nothing said about it is the failure this setting is
         // most likely to have
         if let Some(wanted) = &self.tools {
             let offered: Vec<String> = offered().into_iter().map(|it| it.id).collect();
@@ -585,12 +578,12 @@ impl Setup {
             ));
         }
 
-        // note: refused because it cannot be kept. Landlock only ever adds to what a process may
-        // do, so a read-only path inside a writable one is writable to `shell`, and `fs` checks
-        // the writable roots first - while every screen would say it was read-only
+        // note: refused because it cannot be kept. Landlock only adds permissions, so a read-only
+        // path inside a writable one is writable to `shell`, and `fs` checks the writable roots
+        // first. Every screen would still say it was read-only.
         //
-        // note: resolved through its parent where it is not there yet, since it can be made
-        // afterwards and is then just as writable - by the tools themselves, among others
+        // note: a path that does not exist yet is resolved through its parent, because it can be
+        // created afterwards and is then just as writable, by the tools themselves among others
         if self.confine {
             let workdir = std::env::current_dir().map_err(|e| Refused {
                 setting: None,
@@ -707,10 +700,10 @@ impl Setup {
         #[cfg(feature = "mcp")]
         kernel.set_picture_limit(Some(nachalnik_mcp::LARGEST_IMAGE));
 
-        // note: subscribed before anything is plugged in, so that the wiring is on the trace like
+        // note: subscribe before plugging anything in, so the wiring is on the trace like
         // everything else. Setting the provider, the policy, the compactor and each tool are all
-        // events, and a client that started listening afterwards gets a session whose first few
-        // facts are only in the log
+        // events; a client that starts listening afterwards gets a session whose first few facts
+        // are only in the log
         let events = kernel.subscribe();
 
         let policy = Arc::new(Careful::new());
@@ -725,26 +718,26 @@ impl Setup {
                 ruled.push((subject.to_string(), verdict));
             }
         }
-        // note: only where the provider names a model, because a session started without `-m` has
-        // an address and a key and nothing to ask - and the runtime already has a state for that.
-        // With no provider, `model_info()` answers `None`, every screen that draws a model draws
+        // note: set the provider only where it names a model. A session started without `-m` has an
+        // address and a key but nothing to ask, and the runtime already has a state for that.
+        // Without a provider, `model_info()` returns `None`, every screen that draws a model draws
         // the gap instead, and a turn is `Error::NoProvider` rather than a request naming nothing.
-        // `/model` hands it over, which is the moment there is something to hand over
+        // `/model` hands it over when there is something to hand over
         if !provider.model().is_empty() {
             kernel.set_provider(provider.clone());
         }
 
-        // note: the kernel gets the advisor wrapped around the standing rules where there is one,
-        // and the rules themselves where there is not. Everything else keeps holding `Careful`
-        // directly - the `shell` tool asks it what a command may reach, the permissions tab draws
-        // its stances, and `/allow` changes them - because those are all about the standing rules,
-        // which are the whole of what decides. What the wrapper adds is a rating of a command
-        // somebody is about to be asked about
+        // note: the kernel gets the advisor wrapped around the standing rules when there is one,
+        // and the standing rules themselves when there is not. Everything else keeps holding
+        // `Careful` directly: the `shell` tool asks it what a command may reach, the permissions
+        // tab draws its stances, and `/allow` changes them. Those are all about the standing rules,
+        // which are the whole of what decides. The wrapper adds a rating of a command somebody is
+        // about to be asked about.
         //
-        // note: built once and kept as itself as well as handed over, because the screen reads
-        // the rating off it and `Arc<dyn PermissionPolicy>` cannot be asked for
-        // one. Two of them would be two memories of what the advisor said, one of them always
-        // empty - and the empty one is the one the panel would be holding
+        // note: it is built once and kept as itself as well as handed over, because the screen
+        // reads the rating from it and `Arc<dyn PermissionPolicy>` cannot be asked for one. Two
+        // instances would be two memories of what the advisor said, one always empty, and the panel
+        // would hold the empty one
         #[cfg(feature = "shell-advisor")]
         let advisor = self
             .advisor
@@ -759,9 +752,9 @@ impl Setup {
         // one call rather than one per branch: setting the policy is an `Event`, and a session
         // whose trace said it twice would be a session that had two
         kernel.set_policy(decides);
-        // the projector decides the shape of a turn on the wire, so the provider that owns that
-        // wire is the thing asked what it can carry - rather than a caller deciding a second time
-        // from the same flag, which is how the two come apart
+        // the projector decides the shape of a turn on the wire, so ask the provider that owns that
+        // wire what it can carry. A caller deciding a second time from the same flag is how the two
+        // come apart
         kernel.set_projector(Arc::new(provider.projection()));
         let shed = self.compact.filter(|it| *it < 1.0).map(|threshold| {
             let derived = tools::Shedder::under(threshold);
@@ -780,16 +773,15 @@ impl Setup {
 
         // one table, shared by the tools that declare a limit and the `/limit` that changes them
         let limits = Limits::new();
-        // note: asked only when there is a `shell` to confine, because asking is not free: finding
-        // out what Landlock will take means applying a ruleset in a child process. It is settled
-        // once here rather than per command either way - see the note on `Shell::confiner` - and a
-        // caller that turns the built-in tools off and brings its own shell is the one building
-        // the confiner, so it is the one that asks
+        // note: ask only if there is a `shell` to confine. Asking is not free: finding out what
+        // Landlock accepts means applying a ruleset in a child process. It is settled once here,
+        // not per command; see the note on `Shell::confiner`. A caller that turns the built-in
+        // tools off and brings its own shell builds the confiner, so it asks.
         //
-        // note: asked whether or not `shell` is among the tools *offered*, because a shelved one
-        // can be offered later and it has to be the same shell. Deciding this from the starting
-        // list would make `/tools toggle shell` in a session that started without one an unconfined
-        // shell, with nothing on the screen saying so
+        // note: ask even if `shell` is not among the tools offered. A shelved shell can be offered
+        // later and must be the same shell. Deciding from the starting list would make
+        // `/tools toggle shell` in a session that started without one an unconfined shell, with
+        // nothing on the screen saying so
         let mut confinement = sandbox::Confinement::Off;
         // what the shell's commands leave running, which `App` holds for whoever ends the session
         let stragglers = tools::Stragglers::default();
@@ -823,10 +815,10 @@ impl Setup {
                     extra: reach.extra.clone(),
                     readable: reach.readable.clone(),
                     devices: self.devices,
-                    // only when it would actually confine anything. A binary that has been
-                    // replaced since this one started, or a kernel with no Landlock, is a `shell`
-                    // that runs unconfined and a permissions view that says so - rather than one
-                    // whose every command comes back with an error nobody can account for
+                    // Set the confiner only when it would actually confine anything. A binary
+                    // replaced since this one started, or a kernel without Landlock, gives a
+                    // `shell` that runs unconfined and a permissions view that says so, not a shell
+                    // whose every command fails with an error nobody can account for
                     confiner: confinement.is_confined().then(|| program.clone()),
                     limits: limits.clone(),
                     stragglers: stragglers.clone(),
@@ -847,14 +839,14 @@ impl Setup {
         for spec in kernel.tool_specs() {
             policy.offers(spec);
         }
-        // before anything is in the context, so that a call allowed by one of these later says
-        // where its permission came from, whether a flag or a settings file set it
+        // Record the rules before anything is in the context, so a later call allowed by one of
+        // them says where its permission came from, whether a flag or a settings file set it.
         //
-        // note: after the tools rather than where the rules are set, because the trace is read top
-        // down and a rule about `fs:write` read before there is an `fs` is a rule about nothing
-        // yet. Where they are set does not matter to what is decided - a stance is about a
-        // capability, not a tool, and `Setup::check` held the names to the tools already. The
-        // servers' tools still come after, because they are connected once this is done
+        // note: record them after the tools, not where the rules are set. The trace is read top
+        // down, so a rule about `fs:write` read before there is an `fs` is a rule about nothing
+        // yet. Where the rules are set does not affect the decision: a stance is about a
+        // capability, not a tool, and `Setup::check` already held the tool names. The servers'
+        // tools still come after, because they are connected once this is done
         for (subject, verdict) in ruled {
             kernel.record_rule(subject, verdict, None, false);
         }
@@ -882,14 +874,13 @@ impl Setup {
             }
         }
 
-        // note: everything is built and then what was not asked for is turned off, rather than
-        // only the named ones being built. That is what makes the list a starting position: the
-        // rest are on the shelf, `/tools toggle` reaches them, and a `shell` offered later is
-        // the one the confiner above was decided for.
+        // note: build everything, then turn off what was not asked for, rather than building only
+        // the named tools. That makes the list a starting position: the rest are on the shelf,
+        // `/tools toggle` reaches them, and a `shell` offered later is the one the confiner above
+        // was decided for.
         if let Some(wanted) = self.tools {
-            // the names were answered for by `Setup::check` before anything was built; what is
-            // left is the position itself - everything is here, and what was not asked for goes
-            // on the shelf
+            // `Setup::check` answered for the names before anything was built. What is left is the
+            // position itself: everything is here, and what was not asked for goes on the shelf
             let offered: Vec<String> = app
                 .kernel
                 .tool_specs()
@@ -911,26 +902,26 @@ impl Setup {
 
     /// Writes a session out and wires the one that takes its place, out of these settings.
     ///
-    /// note: what `/restart` is. The session handed in is ended here rather than left to whoever
-    /// writes it, because a record whose last line is not `session.finished` reads as a run that
-    /// was killed, and this one was asked to stop. Its record is the same one the end of a run
-    /// writes, and deliberately: a session somebody restarted is a session that ended, and a run
-    /// abandoned halfway is the case that safety net is most for.
+    /// note: this is what `/restart` does. The session handed in is ended here rather than left to
+    /// whoever writes it, because a record whose last line is not `session.finished` reads as a run
+    /// that was killed, and this one was asked to stop. Its record is the same one the end of a run
+    /// writes, deliberately: a restarted session is a session that ended, and a run abandoned
+    /// halfway is what that safety net is most for.
     ///
-    /// note: and only where the loop that handed it over has not ended it already. A served loop
-    /// and a headless one each owe their clients the last record on the stream they are writing,
-    /// so each emits it itself, and [`Kernel::finish`] emits every time it is called - so a second
-    /// one here would put `session.finished` in the log twice, under a line that says nothing more
-    /// will be recorded. The question is asked of the log because the log is what
-    /// this is about: the last line of the record it is going to write.
+    /// note: it ends the session only where the loop that handed it over has not ended it already.
+    /// A served loop and a headless one each owe their clients the last record on the stream they
+    /// are writing, so each emits it itself, and [`Kernel::finish`] emits every time it is called.
+    /// A second one here would put `session.finished` in the log twice, under a line that says
+    /// nothing more will be recorded. It asks the log because the last line of the record it is
+    /// going to write is what matters.
     ///
-    /// note: it hands back the sentence rather than saying it, because the thing to say it to
-    /// does not exist until this returns. The old [`App`] is about to be dropped and is the only
-    /// place the name and the paths are written down; the caller says it into the new one.
+    /// note: it hands back the sentence rather than saying it, because the thing to say it to does
+    /// not exist until this returns. The old [`App`] is about to be dropped and is the only place
+    /// the name and the paths are written down; the caller says it into the new one.
     ///
     /// note: `resume` and `session_name` are the two settings not taken at their word. A snapshot
-    /// is where the *run* started and a restart is somebody leaving it; and a name carried over
-    /// would give two sessions of one run the same identity, while `None` would fall back to the
+    /// is where the *run* started and a restart is somebody leaving it. A name carried over would
+    /// give two sessions of one run the same identity, while `None` would fall back to the
     /// runtime's counter, which is fine as an identity and useless as a filename. So a fresh
     /// session is stamped fresh, the way the first one was, and [`record`] settles two of them
     /// landing in the same second.
@@ -1048,9 +1039,9 @@ mod tests {
 
     /// A session is over once anything said so, whatever was recorded after.
     ///
-    /// note: the case a second `ctrl+c` makes - ended while a turn is still running, which goes
-    /// on recording. Reading the last record, this said the session had never ended, and it was
-    /// ended again.
+    /// note: a second `ctrl+c` ends the session while a turn is still running, and recording
+    /// continues. Reading the last record then said the session had never ended, so it was ended
+    /// again.
     #[test]
     fn a_session_that_said_it_was_over_is_over() {
         let kernel = Kernel::new(Config::default());
@@ -1156,9 +1147,9 @@ mod tests {
 
     /// What a session is set up with is not the first thing an undo takes away.
     ///
-    /// note: `--system-prompt` and `-f` were pushed onto a fresh kernel, each an operation of its
-    /// own, so `/undo` in a session nobody had typed in yet took the system instruction away, and
-    /// a second took the file.
+    /// note: `--system-prompt` and `-f` were pushed onto a fresh kernel, each as its own operation,
+    /// so `/undo` before any typing took the system instruction away, and a second undo took the
+    /// file.
     #[test]
     fn a_fresh_sessions_setup_is_not_undone() {
         let file = std::env::temp_dir().join(format!("kamchatka-setup-{}.txt", std::process::id()));
@@ -1185,11 +1176,10 @@ mod tests {
     /// A restart starts a session of its own rather than carrying the old one on a second time.
     ///
     /// note: `resume` and `session_name` are the two settings a restart does not take at their
-    /// word, and this is the half that is about the context. A snapshot is where the *run*
-    /// started and a restart is somebody leaving it, so a session begun out of one is the same
-    /// conversation twice - the old session's items, its parameters and its spent ceiling in it,
-    /// and a second `session.resumed` in the log where a session that has never been resumed
-    /// belongs.
+    /// word; this is the half about the context. A snapshot is where the *run* started, and a
+    /// restart is somebody leaving it, so a session begun from one is the same conversation twice:
+    /// it has the old session's items, its parameters and its spent ceiling, and it logs a second
+    /// `session.resumed` where a session that has never been resumed belongs.
     #[test]
     fn a_restart_starts_a_session_rather_than_carrying_the_last_one_on() {
         let base = Setup {
@@ -1215,15 +1205,15 @@ mod tests {
         );
     }
 
-    /// The session a restart starts is stamped fresh, and does not carry the name of the one it
+    /// The session a restart starts is stamped fresh and does not carry the name of the one it
     /// replaces.
     ///
-    /// note: a name carried over would give two sessions of one run the same identity and put
-    /// both records under one stem, where `record` settles that by writing the second beside the
-    /// first - so the two logs are told apart by a `-2` rather than by the session they belong
-    /// to, and the trace shows one session name for both. `None` would be worse and is why the
-    /// stamp is set rather than the name cleared: the runtime's own counter restarts at 0 with
-    /// the process, which is fine as an identity and useless as a filename.
+    /// note: a carried-over name would give two sessions of one run the same identity and put both
+    /// records under one stem. `record` settles that by writing the second beside the first, so the
+    /// logs are told apart by a `-2` rather than by the session they belong to, and the trace shows
+    /// one session name for both. `None` would be worse, which is why the stamp is set rather than
+    /// the name cleared: the runtime's own counter restarts at 0 with the process, which is fine as
+    /// an identity and useless as a filename.
     #[test]
     fn the_session_a_restart_starts_is_not_the_one_it_replaced() {
         let base = Setup {

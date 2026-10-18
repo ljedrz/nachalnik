@@ -44,11 +44,10 @@ use crate::tools::Careful;
 /// How wide the event-name column is, which is the longest name plus a space.
 const NAMES: usize = 20;
 
-/// The one thing this does, and the five ways of narrowing it.
+/// The one operation, reading the log, and the five ways of narrowing it.
 ///
-/// note: one operation, and asked for by name anyway, so that every tool this program offers takes
-/// an `action` and none of them is the exception a model has to remember. `shell` is written the
-/// same way and for the same reason.
+/// note: one operation, asked for by name like every other tool; each takes an `action`, so none is
+/// an exception a model must remember. `shell` is written the same way for the same reason.
 fn ops() -> Vec<Op> {
     vec![Op::new(
         "read",
@@ -64,29 +63,29 @@ fn ops() -> Vec<Op> {
                 "integer",
                 "only the records naming these context items",
             ),
-            // note: `0` said out loud, because it is not guessable and the guess is costly. This
-            // is exclusive - `since: N` means *after* record N - and a model reaching for
-            // "everything" writes the first number it has seen, which drops exactly that record.
-            // In a resumed session that is `session.resumed`, which is always the first and is
-            // often the answer to the question
+            // note: `0` is said out loud, because it is not guessable and guessing is costly.
+            // `since: N` is exclusive: it means after record N. A model asking for "everything"
+            // writes the first number it has seen, which drops exactly that record. In a resumed
+            // session that is `session.resumed`, which is always the first and is often the answer
+            // to the question
             Arg::whole(
                 "since",
                 "only the records after this sequence number, which is the first column; `0` is \
                  all of them",
             ),
-            // note: two of them written out, because "spelled as the summary spells them" sends a
-            // model to the summary for the vocabulary it needs before it can ask. The summary is
-            // still where the list is - it is this session's kinds rather than every kind there
-            // is - and a model that has not read one now knows the shape of a name
+            // note: two of them written out, because "spelled as the summary spells them" alone
+            // sends a model to the summary for the vocabulary it needs before it can ask. The
+            // summary still has the list, of this session's kinds rather than every kind there is,
+            // and a model that has not read one now knows the shape of a name
             Arg::list(
                 "kinds",
                 "string",
                 "only these kinds, as `context.added` or `permission.decided`; the summary lists \
                  the ones this session has",
             ),
-            // note: the same word `context`'s `look` uses for the same trade, because it is the
-            // same trade. Without it a replacement is shown as its first line; with it the whole of
-            // what the item said arrives in your context and costs what it costs
+            // note: the same word `context`'s `look` uses for the same trade. Without it a
+            // replacement is shown as its first line; with it the whole item text arrives in your
+            // context and costs what it costs
             Arg::truth(
                 "whole",
                 "print a replaced item's old text entire rather than its first line. It costs \
@@ -147,9 +146,9 @@ impl Tool for Log {
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        // note: a word this tool does not have is refused by name rather than read as `read`,
-        // which is what an absent `action` still is: a model that asked to `clear` the log should
-        // be told there is no such thing, not handed the log
+        // note: a word this tool does not have is refused by name rather than read as `read`. An
+        // absent `action` is still `read`; a model that asked to `clear` the log is told there is
+        // no such thing, not handed the log
         let args = match inner(&call.args) {
             Ok(args) => args,
             Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
@@ -168,20 +167,18 @@ impl Tool for Log {
             Ok(query) => query,
             Err(e) => return Ok(ToolOutput::error(e)),
         };
-        // taken before the session lock rather than inside it: the closure below must not call
-        // back into the kernel, and `counter()` is a call into the kernel
+        // taken before the session lock rather than inside it: the closure below must not call back
+        // into the kernel, and `counter()` is a call into the kernel
         let counter = kernel.counter();
-        // note: the records of the session this one was resumed from, and then the kernel's, read
-        // as one log. A resumed kernel numbers on from the last record its snapshot reflects, so
-        // the two meet at `session.resumed` with nothing missing between them, and everything
-        // below - the total, the kinds, `since`, the items with a beginning - is of the whole
+        // note: the records of the session this one was resumed from, then the kernel's, read as
+        // one log. A resumed kernel numbers on from the last record its snapshot reflects, so the
+        // two meet at `session.resumed` with nothing missing between them. The total, the kinds,
+        // `since`, and the items with a beginning cover the whole log
         let earlier = self.earlier.records();
 
-        // note: the filtering and the rendering both happen in here, which reads like too much to
-        // do under a lock and is the cheaper of the two shapes. `Kernel::history` would clone
-        // every record to get them out - its own documentation says so and points here for a
-        // search - and formatting is not a call back into the kernel, which is what the warning
-        // on `with_history` is actually about
+        // note: filtering and rendering both happen under the lock because it is cheaper than
+        // `Kernel::history` cloning every record out. Formatting does not call back into the
+        // kernel; the warning on `with_history` is about that
         let read = kernel.with_history(|session| {
             let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
             let mut every = String::new();
@@ -243,42 +240,38 @@ struct Read {
     /// Every record, rendered as the matches are, which is what "if you take them all" is priced
     /// from.
     every: String,
-    /// The ones that matched, rendered, one entry per record.
+    /// The records that matched, rendered, one string per record.
     ///
-    /// note: per record rather than one string, because `take` is "the most recent N of whatever
-    /// matched" and a record is not a line: `whole` prints a replaced item's old text entire, so
-    /// one record can be forty of them. Counted in lines, the last N would be the tail of
-    /// somebody's old file with no sequence number and no event name in front of it, under a
-    /// header calling that a count of records.
+    /// note: one string per record because `take` returns the most recent N of whatever matched,
+    /// and a record is not a line: `whole` prints a replaced item's old text entire, so one record
+    /// can be forty lines. Counting in lines would give the tail of somebody's old file, with no
+    /// sequence number or event name, under a header calling it a count of records.
     matched: Vec<String>,
     /// How many those were.
     hits: usize,
     /// The sequence number of the oldest record still here; `0` when there are none.
     ///
-    /// note: with [`Read::resumed`], what says which of the two records before it are missing.
-    /// `Session::drain_through` takes records out and leaves the counter alone, so a log whose
-    /// first record is not 1 is one that does not hold everything that happened - and an answer
-    /// that reported that as "nothing happened" would be making the one mistake this tool exists
-    /// not to make.
+    /// note: with [`Read::resumed`], this says which of the two records before it are missing.
+    /// `Session::drain_through` removes records but leaves the counter alone, so a log whose first
+    /// record is not 1 does not hold everything that happened. Reporting that as "nothing happened"
+    /// would be wrong.
     first_seq: u64,
     /// Whether this log begins at a session that was picked back up.
     ///
-    /// note: which cause belongs to which half of `first_seq > 1`, and the two are opposite
-    /// answers to the same question. A resumed session numbers on from the record the snapshot
-    /// left off after, so it *always* starts above 1 - and an answer that read the number alone
-    /// would tell a model its earlier records were drained, which is false, and would say nothing
-    /// at all on the paths where the number is never printed. The event at the head of the log
-    /// is what tells them apart.
+    /// note: `first_seq > 1` has two opposite causes. A resumed session numbers on from the record
+    /// the snapshot left off after, so it always starts above 1. Reading the number alone would
+    /// falsely tell a model its earlier records were drained, and says nothing on paths where the
+    /// number is never printed. The event at the head of the log tells them apart.
     resumed: bool,
     /// The items this log holds a `context.added` for.
     ///
-    /// note: kept so that the *absence* of one can be reported, which is the fact an `ids` filter
-    /// is usually really after. An item with no creation record here was in the context before
-    /// this log began, and nothing else in an answer says so.
+    /// note: kept so the absence of one can be reported, which is what an `ids` filter usually
+    /// wants. An item with no creation record here was in the context before this log began, and
+    /// nothing else in an answer says so.
     added: BTreeSet<ContextId>,
-    /// The records between the last one read from before the resume and the first of this
-    /// session's own, where there are any: a run killed after its snapshot was taken numbered
-    /// them, and the session carried on from the snapshot without what they did.
+    /// The records between the last one read before the resume and the first of this session's own,
+    /// where there are any. A run killed after its snapshot was taken numbered them, and the
+    /// session carried on from the snapshot without what they did.
     lost: Option<(u64, u64)>,
 }
 
@@ -436,7 +429,7 @@ impl Query {
             };
         }
 
-        // the true total, on every answer, whatever was asked for. It is what makes a short reply
+        // the true total, on every answer, whatever was asked for. It makes a short reply
         // self-describing rather than indistinguishable from an empty session
         let mut out = format!(
             "{} records, ~{} tokens",
@@ -449,8 +442,8 @@ impl Query {
                 " if you take them all. Nothing here is in your context until you ask for it.\n",
             );
             out.push_str(&histogram(read));
-            // and where the count above is not the whole session, which a total otherwise claims
-            // to be: the first thing a resumed session asks its log about is what came before
+            // and where the count above is not the whole session, which a total otherwise claims to
+            // be: the first thing a resumed session asks its log about is what came before
             out.push_str(&apart(earlier(read)));
             out.push_str(&format!(
                 "\n`take`, `ids`, `since` or `kinds` asks for the records themselves; the last \
@@ -463,8 +456,7 @@ impl Query {
         out.push_str(" in all.");
 
         // only where something decided which records *count*. A call carrying `take` alone has
-        // matched everything, and "15 match" against a total of 15 is a sentence that says
-        // nothing twice
+        // matched everything, so "15 match" against a total of 15 adds nothing
         if self.narrowed() {
             let matched = counter.count(&Content::text(read.matched.concat()));
             out.push_str(&format!(
@@ -475,18 +467,16 @@ impl Query {
             ));
 
             if read.hits == 0 {
-                // a real zero, arriving beside a total that is not zero, which is the shape that
-                // stops it reading as "nothing happened". The kinds go with it because a filter
-                // that matched nothing is usually one spelled for a session other than this one
+                // a zero beside a non-zero total stops it looking like nothing happened. The kinds
+                // go with it because a filter that matched nothing is usually for another session
                 out.push_str(" Nothing matched; these are the kinds this session holds:\n");
                 out.push_str(&histogram(read));
-                // and the records this log does not hold, because a filter for a kind this
-                // session never emitted is the shape a resumed one is in: the kind is in the log
-                // written beside the snapshot, not here
+                // and the records this log does not hold, because a filter for a kind this session
+                // never emitted is the shape a resumed one is in: the kind is in the log written
+                // beside the snapshot, not here
                 out.push_str(&earlier(read));
-                // and here most of all, because an `ids` filter that matched nothing is the exact
-                // shape an inherited item makes, and "nothing matched" is the least useful way to
-                // say so
+                // an `ids` filter that matched nothing is the shape an inherited item makes, so
+                // "nothing matched" is the least useful way to say so
                 out.push_str(&self.inherited(kernel, read, policy));
 
                 return out;
@@ -510,9 +500,9 @@ impl Query {
         let beyond = read.matched.len() - shown;
         match beyond {
             0 => out.push_str(&format!(" Showing {}.\n", thousands(shown))),
-            // said as a figure rather than implied by the count, because the thing a shortened
-            // log has to say is how much of it is not here - and in the word that is true of
-            // them, which is "older" when nothing narrowed what counts
+            // The number not here is stated as a figure, not implied by the count, because a
+            // shortened log must say how much is not here. The word is "older" when nothing
+            // narrowed what counts
             more => out.push_str(&format!(
                 " Showing the {} most recent; {} {} not here.\n",
                 thousands(shown),
@@ -537,9 +527,9 @@ impl Query {
                 thousands(super::TAKE)
             ));
         }
-        // `since` below the oldest record held, which is the whole of what a resumed session is:
-        // the filter asks for records this log has never had, and without this it says so as
-        // silence between the count and the records, which reads as there being none
+        // `since` below the oldest record held is a resumed session: the filter asks for records
+        // this log has never had. Without this message it says so as silence between the count and
+        // the records, which reads as there being none
         match self.since {
             Some(since) if read.skipped(since) => {
                 out.push_str(&format!(
@@ -549,8 +539,8 @@ impl Query {
                 ));
                 out.push_str(&earlier(read));
             }
-            // and every other answer that matched, for the reason the summary gives: `kinds`
-            // over a resumed log counts only what happened since the resume
+            // Every other answer that matched, because `kinds` over a resumed log counts only what
+            // happened since the resume
             _ => out.push_str(&apart(earlier(read))),
         }
         out.push_str(&self.inherited(kernel, read, policy));
@@ -568,8 +558,8 @@ impl Query {
     /// in every request since - and can read them as proof it wrote the item itself. What decides
     /// the question is the record that is not there.
     fn inherited(&self, kernel: &Kernel, read: &Read, policy: &Careful) -> String {
-        // an item the kernel has never held has no beginning anywhere, and saying it was inherited
-        // would be telling a model a history that did not happen
+        // an item the kernel has never held has no beginning; calling it inherited would tell the
+        // model a history that did not happen
         let (unborn, never): (Vec<&ContextId>, Vec<&ContextId>) = self
             .ids
             .iter()
@@ -653,8 +643,8 @@ fn apart(sentence: String) -> String {
     }
 }
 
-/// What a count that could not be read says was not done, which is the part a refusal from
-/// [`number`] leaves to its caller.
+/// What a count that could not be read says was not done, the part a refusal from [`number`] leaves
+/// to its caller.
 const UNREAD: &str = "Nothing was read, rather than nothing being found: an empty answer here \
                       would have read as an empty log.";
 
@@ -710,9 +700,9 @@ fn line(record: &Record, whole: bool) -> String {
 
 /// Whether an event is about a given context item.
 ///
-/// note: the events that name an item are the ones a question about an item is asked of, and they
-/// are the reason `ids` is worth having at all: "what happened to 12?" is a question the context
-/// cannot answer, because the context only holds what 12 says now.
+/// note: these are the events a question about an item is asked of, and they are why `ids` is worth
+/// having: "what happened to 12?" is a question the context cannot answer, because the context only
+/// holds what 12 says now.
 fn names(event: &Event, id: ContextId) -> bool {
     match event {
         Event::ContextAdded { id: at, .. }

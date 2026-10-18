@@ -33,12 +33,12 @@ pub struct Reach {
     pub confined: bool,
 }
 
-/// What a tool is about to do with a path, which is what decides whether a read-only path is in
-/// reach for it.
+/// What a tool is about to do with a path, which decides whether a read-only path is in reach for
+/// it.
 ///
-/// note: an argument rather than two methods, so that every call site says which it is. The
-/// distinction only exists because of `--sandbox-read`, and a default would put it back where it
-/// was: `write` quietly allowed somewhere only `read` was meant to go.
+/// note: an argument rather than two methods, so every call site says which it is. The distinction
+/// exists only because of `--sandbox-read`; a default would let `write` quietly go somewhere only
+/// `read` was meant to go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     /// Opening it and no more.
@@ -57,19 +57,19 @@ impl Reach {
     /// Everywhere it reaches and what may be done there, in the order the rules are consulted.
     ///
     /// note: a refusal that names only the working directory and calls it as far as this session
-    /// reaches stops being true the moment anybody passes `--sandbox-write` or `--sandbox-read`.
-    /// A refusal that under-reports the reach is worse than a vague one: a model reads it as the
-    /// whole boundary and never goes near the path somebody opened up for exactly this, and there
-    /// is nothing in front of it to say otherwise. [`Shell`](crate::tools::Shell) names them in
-    /// its description for the same reason.
+    /// reaches stops being true as soon as anybody passes `--sandbox-write` or `--sandbox-read`. A
+    /// refusal that under-reports the reach is worse than a vague one: the model reads it as the
+    /// whole boundary and never goes near the path somebody opened up for exactly this, and nothing
+    /// in front of it says otherwise. [`Shell`](crate::tools::Shell) names them in its description
+    /// for the same reason.
     ///
     /// note: the spelling is [`Sandbox`]'s, down to the `read-write` after each path, because the
     /// two say the same thing about the same session and a reader should not have to notice which
-    /// of them is talking.
+    /// is talking.
     ///
-    /// note: and it is spelled under what the policy makes of writing, as `Sandbox::of` is. A
-    /// refusal of `fs:write` makes every path here read-only for `shell`, and a refusal that went
-    /// on calling them read-write would be two rules for one session.
+    /// note: it is spelled under what the policy makes of writing, as `Sandbox::of` is. A refusal
+    /// of `fs:write` makes every path here read-only for `shell`; a refusal that still called them
+    /// read-write would be two rules for one session.
     fn range(&self, writing: bool) -> String {
         let written = match writing {
             true => "read-write",
@@ -98,35 +98,35 @@ impl Reach {
 
     /// Returns the path to use, or what to tell the model instead.
     ///
-    /// note: resolved before it is compared, so that `../` and a symlink out are the same question
-    /// as a plain absolute path. A path that does not exist yet - which is most of what `write` is
-    /// handed - is resolved through its parent, because a file cannot be created outside a
-    /// directory it is not in.
+    /// note: the path is resolved before it is compared, so `../` and a symlink out are the same
+    /// question as a plain absolute path. A path that does not exist yet, which is most of what
+    /// `write` is handed, is resolved through its parent, because a file cannot be created outside
+    /// a directory it is not in.
     ///
     /// note: a leading `~` is refused with a sentence rather than expanded, and it is refused
     /// *before* the unconfined early return. These tools run in process with no shell in front of
-    /// them, so nothing expands it - and expanding it here would mean `--no-sandbox` handing over
-    /// `$HOME/.ssh/id_rsa` for real, on a path the model wrote. Not expanding it is the safe
+    /// them, so nothing expands it, and expanding it here would mean `--no-sandbox` handing over
+    /// `$HOME/.ssh/id_rsa` for real on a path the model wrote. Not expanding it is the safe
     /// default. Saying nothing is not: `~/.gitconfig` then joins onto the working directory as a
     /// directory literally called `~` and comes back `No such file or directory`. That is the
-    /// `access(2)` trap in a second form: an error indistinguishable from the file being absent,
-    /// which a model believes - so it concludes the home directory is empty rather than that its
-    /// path was taken at its word, and nothing in front of it says otherwise.
+    /// `access(2)` trap in a second form, an error indistinguishable from the file being absent,
+    /// which a model believes: it concludes the home directory is empty rather than that its path
+    /// was taken at its word, and nothing in front of it says otherwise.
     ///
-    /// note: the sentence says the same path will be refused again, because a refusal that does
-    /// not close the retry is an invitation to retry, and the same path comes straight back. And
-    /// it names no path but the one it was handed. Every concrete path in a refusal is read as a
-    /// path to try, because a refusal is read under pressure to try something else: offered
-    /// `./~`, a model refused `~/notes.txt` reads `./~`. That spelling lives in `PATH_ARG`
-    /// instead, which is read while choosing.
+    /// note: the sentence says the same path will be refused again, because a refusal that does not
+    /// close the retry invites a retry and the same path comes straight back. It names no path but
+    /// the one it was handed. Every concrete path in a refusal is read as a path to try, because a
+    /// refusal is read under pressure to try something else: offered `./~`, a model refused
+    /// `~/notes.txt` reads `./~`. That spelling lives in `PATH_ARG` instead, which is read while
+    /// choosing.
     pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
         self.judged(path, doing, true, true)
     }
 
-    /// [`Reach::allows`], with a refusal that says what `policy` makes of writing.
+    /// [`Reach::allows`], but a refusal says what `policy` decides about writing.
     ///
-    /// note: what is allowed is the same either way. It is the policy that refuses a write, and it
-    /// does that before a call gets here; this is only the sentence a refusal names the reach in.
+    /// note: the allowed set is the same either way. `policy` refuses a write before this is
+    /// called; this only names the reach in the refusal.
     pub(crate) fn allows_under(
         &self,
         path: &str,
@@ -143,8 +143,9 @@ impl Reach {
         writing: bool,
         shell: bool,
     ) -> Result<PathBuf, String> {
-        // the whole string, not any component: `notes.txt~` is a real file and `./~` is how a
-        // shell asks for a literal one, so both go through untouched and the message says so
+        // `starts_with` matches the whole string, not a path component. `notes.txt~` is a real file
+        // and `./~` is a shell's way to name a literal `~`, so both pass untouched and the message
+        // says so
         if path.starts_with('~') {
             return Err(format!(
                 "{path}: `~` is not expanded here, and this path will be refused again exactly as \
@@ -173,11 +174,11 @@ impl Reach {
         if !self.confined {
             return Ok(resolved);
         }
-        // note: what `resolve` cannot resolve it leaves as it was, and a `..` after a directory
-        // that is not there is one of those: `nope/../../../etc/passwd` came back with its `..`s
-        // still in it, and a comparison by components found the working directory at the front of
-        // it. Where such a path ends up depends on a directory that does not exist yet, so it is
-        // not checked, it is refused
+        // note: `resolve` leaves a path it cannot resolve as it was. A `..` after a missing
+        // directory is one of those: `nope/../../../etc/passwd` came back with its `..`s still in
+        // it, and comparing components found the working directory at the front. Where such a path
+        // ends up depends on a directory that does not exist yet, so it is refused rather than
+        // checked
         if resolved
             .components()
             .any(|part| matches!(part, std::path::Component::ParentDir))
@@ -223,7 +224,7 @@ impl Reach {
                 ))
             }
             // note: the system directories are in the shell's reach, read-only, and not in this
-            // one. Sent to ask for one to be opened up, a model asks for a file it could already
+            // reach. A model sent to ask for one to be opened asks for a file it could already
             // `cat`; told where it can be read, it reads it there
             false
                 if readable
@@ -319,21 +320,20 @@ impl Reach {
     /// Replaces the whole of a file [`Reach::allows`] answered for with `content`, creating it if
     /// it is not there.
     ///
-    /// note: written into a new file beside it and renamed over it, so that a full disk or a
-    /// process killed halfway leaves the file as it was rather than shorter than either version.
-    /// The new file and the rename go through the directory as it was opened, beneath what it was
-    /// allowed under, for the reason [`Reach::open`] gives.
+    /// note: writes to a new file beside it and renames it over the original, so a full disk or a
+    /// kill halfway leaves the file as it was, not shorter than either version. The new file and
+    /// rename go through the directory as opened, beneath where it was allowed, for the reason
+    /// [`Reach::open`] gives.
     ///
-    /// note: a rename puts a different file at the path, and where that would show the file is
-    /// written in place instead, as it was before: when another hard link shares it, since the link
-    /// would keep the old contents; when the new file would not carry the old one's owner and group,
-    /// which only root could set; when its owner has made it read-only, so that the open refuses it
-    /// as it always did rather than a rename stepping round the refusal; when the directory will
-    /// not take a new file, or its name is too long to carry the temporary's suffix; when what
-    /// is there is not a regular file; and when the file was allowed on its own -
-    /// `--sandbox-write notes.txt` - since the directory it is in was never given, and a new file
-    /// made there would be one a kill in the middle leaves outside the reach. The permission bits
-    /// are copied across. Extended attributes are not.
+    /// note: a rename puts a different file at the path, so it writes in place instead when another
+    /// hard link shares the file (the link would keep the old contents); when the new file would
+    /// not carry the old owner and group, which only root could set; when the owner made it
+    /// read-only, so open refuses it as it always did rather than a rename stepping round the
+    /// refusal; when the directory will not take a new file or its name is too long for the
+    /// temporary's suffix; when what is there is not a regular file; and when the file was allowed
+    /// on its own (`--sandbox-write notes.txt`), since the directory was never given and a new file
+    /// made there would be one a kill in the middle leaves outside the reach. Permission bits are
+    /// copied across. Extended attributes are not.
     pub fn replace(&self, path: &Path, content: &[u8]) -> std::io::Result<()> {
         let was = std::fs::symlink_metadata(path).ok();
         let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
@@ -400,16 +400,16 @@ impl Reach {
     /// Makes the directories a file [`Reach::allows`] answered for is to go in, where they are not
     /// there.
     ///
-    /// note: inside the reach and nowhere else, which is what makes it `fs:write`'s and not a wider
-    /// right: a directory made to hold a file the session may write is no more than the file. The
-    /// part of the path that is there was resolved when it was allowed, so what is left is names
-    /// that are not there yet; each is made from the directory before it, held open beneath where
-    /// the path was allowed, and opened again refusing any link - so one swapped in between is
-    /// refused rather than followed, as [`Reach::open`] refuses it. On a kernel that will not open
-    /// beneath a directory it is `create_dir_all`, with the window SECURITY.md describes.
+    /// note: inside the reach and nowhere else, so it is `fs:write`'s and not a wider right: a
+    /// directory made to hold a file the session may write is no more than the file. The part of
+    /// the path that is there was resolved when allowed; what is left is names not there yet. Each
+    /// is made from the directory before it, held open beneath where the path was allowed, and
+    /// opened again refusing any link, so a link swapped in between is refused rather than
+    /// followed, as [`Reach::open`] refuses it. On a kernel that will not open beneath a directory
+    /// it is `create_dir_all`, with the window SECURITY.md describes.
     ///
-    /// note: only where the directory is *not there*. One that is there and cannot be searched is
-    /// left for the write to be refused by, with the kernel's own reason.
+    /// note: only where the directory is not there. A directory that is there but cannot be
+    /// searched is left for the write to be refused by, with the kernel's own reason.
     pub fn make_parents(&self, path: &Path) -> std::io::Result<()> {
         let Some(dir) = path.parent() else {
             return Ok(());
@@ -465,12 +465,11 @@ impl Reach {
 
 /// What opening something that is not a regular file comes to, as `doing` names it.
 ///
-/// note: a directory is not one refusal whichever way it was asked for. Read, it is a list of
-/// paths, which is what `glob` answers - and `shell` reads one that is meant to be read, a line
-/// in the middle of a log - each named where `policy` says the model could use it, and neither
-/// where there is no policy to ask. Written, it is the only thing a `write` is never for, and the
-/// name of it is what a caller needs; `shell`, which can make a directory, is no part of that
-/// answer.
+/// note: a directory is not one refusal however it was asked for. Read, it is a list of paths,
+/// which is what `glob` answers; `shell` reads one meant to be read, a line in the middle of a log,
+/// each named where `policy` says the model could use it, and not where there is no policy to ask.
+/// Written, it is the only thing a `write` is never for, and its name is what a caller needs;
+/// `shell`, which can make a directory, is no part of that answer.
 fn irregular(doing: Access, policy: Option<&Careful>) -> std::io::Error {
     let reading = match doing {
         Access::Reading => policy
@@ -580,15 +579,15 @@ fn owned_alike(was: &std::fs::Metadata, new: &std::fs::Metadata) -> bool {
 
 /// Opens `path` without leaving `root`, or `None` where the kernel will not do that.
 ///
-/// note: `None` for `ENOSYS`, a kernel older than 5.6, and for `EPERM`, which is what a container
-/// runtime's seccomp filter answers for `openat2` when it does not know the call. The ordinary open
-/// that follows gives the answer it would have given without this, and the real error where there
-/// is one.
+/// note: `None` for `ENOSYS`, a kernel older than 5.6, and for `EPERM`, which a container runtime's
+/// seccomp filter answers for `openat2` when it does not know the call. The ordinary open that
+/// follows gives the answer it would have given without this, and the real error where there is
+/// one.
 fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<std::fs::File>> {
     use rustix::fs::{Mode, OFlags};
 
-    // a mode only beside `CREATE`: `openat2` refuses one anywhere else, where `open` ignores it.
-    // `NONBLOCK` so that a pipe is opened and refused rather than waited on; see `Reach::open`
+    // a mode only beside `CREATE`: `openat2` refuses it elsewhere, where `open` ignores it.
+    // `NONBLOCK` so a pipe is opened and refused rather than waited on; see `Reach::open`
     let (flags, mode) = match doing {
         Access::Reading => (OFlags::RDONLY | OFlags::NONBLOCK, Mode::empty()),
         Access::Writing => (

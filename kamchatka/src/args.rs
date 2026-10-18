@@ -1,11 +1,11 @@
-//! The command line: what the program accepts, and what a session made of it looks like.
+//! Command-line arguments, and the session assembled from them.
 //!
-//! note: in the library rather than in `main.rs`. A session assembled from these arguments is the
-//! thing this crate is for, and embedders build sessions from it too, rather than keeping a second
-//! set of flags in sync.
+//! note: these live in the library rather than in `main.rs` because a session assembled from these
+//! arguments is what this crate is for, and embedders build sessions from them too instead of
+//! keeping a second set of flags in sync.
 //!
-//! note: what `main.rs` keeps is the part that is the program's own: which loop drives the session,
-//! where the record is written, and the refusal that `--connect` assembles nothing.
+//! note: `main.rs` keeps the part that is the program's own: which loop drives the session, where
+//! the record is written, and the refusal that `--connect` assembles nothing.
 
 use std::sync::Arc;
 
@@ -98,13 +98,13 @@ pub struct Args {
     pub model: Option<String>,
 
     /// Which API the requests speak. `chat-completions` is OpenAI's, which OpenRouter and most
-    /// local servers speak too. `responses` is OpenAI's Responses API, so that a turn keeps its
-    /// order and a reasoning model's thinking goes back sealed rather than being redone every turn;
-    /// OpenRouter answers it as well as OpenAI, at `KAMCHATKA_BASE_URL=https://api.openai.com/v1`
-    /// for OpenAI's own. `anthropic` is Anthropic's Messages API, so that a turn keeps its order
-    /// and its signed thinking goes back as it came; OpenRouter speaks it too, at
-    /// `https://openrouter.ai/api/v1`. `gemini` is Google's own, so that a turn keeps the order it
-    /// was produced in: thinking, a sentence, a tool call, more thinking.
+    /// local servers speak too. `responses` is OpenAI's Responses API, so a turn keeps its order
+    /// and a reasoning model's thinking goes back sealed rather than being redone every turn.
+    /// OpenRouter answers it as well as OpenAI; for OpenAI's own use
+    /// `KAMCHATKA_BASE_URL=https://api.openai.com/v1`. `anthropic` is Anthropic's Messages API, so
+    /// a turn keeps its order and its signed thinking goes back as it came. OpenRouter speaks it
+    /// too, at `https://openrouter.ai/api/v1`. `gemini` is Google's own, so a turn keeps the order
+    /// it was produced in: thinking, a sentence, a tool call, more thinking.
     #[arg(long, value_enum, value_name = "API", default_value_t = Api::ChatCompletions)]
     pub api: Api,
 
@@ -132,8 +132,8 @@ pub struct Args {
     #[arg(short, long, value_name = "PATH")]
     pub resume: Option<String>,
 
-    /// An MCP server to run, and offer the tools of, as `[name=]command`. May be repeated. The
-    /// command is split on whitespace, with no quoting, so none of its arguments can hold a space.
+    /// An MCP server to run, offering its tools, as `[name=]command`. May be repeated. The command
+    /// is split on whitespace, with no quoting, so none of its arguments can hold a space.
     #[cfg(feature = "mcp")]
     #[arg(long, value_name = "COMMAND")]
     pub mcp: Vec<String>,
@@ -169,7 +169,7 @@ pub struct Args {
     pub send_reasoning: bool,
 
     /// Run with no confinement at all: the shell reaches whatever the user running this can, and
-    /// `fs`, which is not a process, stops holding itself to the working directory.
+    /// `fs`, which is not a process, is not confined to the working directory.
     #[arg(long)]
     pub no_sandbox: bool,
 
@@ -188,9 +188,8 @@ pub struct Args {
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub sandbox_read: Vec<std::path::PathBuf>,
 
-    /// A device under `/dev` the shell may read and write, and the list replaces the usual one
-    /// rather than adding to it. Everything else under `/dev` - another terminal, shared memory, a
-    /// camera - stays out of reach.
+    /// A `/dev` device the shell may read and write. The list replaces the usual one rather than
+    /// adding to it. Everything else under `/dev` stays out of reach.
     #[arg(long, value_name = "PATH", value_delimiter = ',', default_values = crate::sandbox::DEVICES)]
     pub sandbox_device: Vec<std::path::PathBuf>,
 
@@ -246,8 +245,9 @@ pub struct Args {
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
     pub auto_deny: Vec<String>,
 
-    /// Allow every tool an MCP server offers, by the name it was given. Its own argument because
-    /// a server name and a domain are both bare words and nothing in either says which it is.
+    /// Allow every tool an MCP server offers, by name.
+    ///
+    /// It is a separate argument because a server name and a domain are both bare words.
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
     pub auto_allow_server: Vec<String>,
 
@@ -273,25 +273,23 @@ pub struct Args {
     pub max_silence_seconds: Option<u64>,
 
     /// How many seconds a call to an MCP server's tool may wait for its answer before it is given
-    /// up on; 600 unless given, and `0` waits as long as the server takes.
+    /// up on. 600 unless given. `0` waits as long as the server takes.
     #[arg(long, value_name = "SECONDS")]
     pub mcp_timeout_seconds: Option<u64>,
 
-    /// Stop the session once the provider has charged this many tokens for it, in and out; `0` is
-    /// no ceiling. Time is not the only thing a run nobody is watching can spend; `/spend` changes
-    /// it while it runs.
+    /// Stop the session once the provider has charged this many tokens for it, in and out. `0`
+    /// means no ceiling. `/spend` changes it while it runs.
     #[arg(long, value_name = "TOKENS")]
     pub max_spend_tokens: Option<u64>,
 
-    /// Leave what a `shell` command started in the background running when the session ends,
-    /// rather than stopping it. Either way, the end of the session names each one.
+    /// Leave background `shell` commands running when the session ends instead of stopping them.
+    /// The end of the session names each one either way.
     #[arg(long)]
     pub leave_running: bool,
 
-    /// A JSON file of settings, for the ones you would otherwise type every time. Anything given
-    /// here on the command line wins over what it says. Given none, `./kamchatka.json` is read if
-    /// it is there and you say yes when asked, and the one under your config directory if it is
-    /// not there.
+    /// A JSON file of settings for things you would otherwise type every time. Command-line values
+    /// win over the file. Given none, `./kamchatka.json` is read if it exists and you agree when
+    /// asked, and the one under your config directory if it does not exist.
     #[arg(long, value_name = "PATH")]
     pub config_file: Option<std::path::PathBuf>,
 
@@ -300,30 +298,29 @@ pub struct Args {
     #[arg(long)]
     pub print_config: bool,
 
-    /// Read a session's record and say what does not add up, and stop. PATH is the log, the
-    /// snapshot, or their name without the suffix, and whichever of the pair is there is read:
-    /// lines that are not records, events this version does not know, records missing or
-    /// numbered twice, calls asked for and never finished, and a snapshot that disagrees with its
-    /// log. Nothing is started, and anything found makes the exit status non-zero.
+    /// Read a session's record, report what does not add up, and stop. PATH is the log, the
+    /// snapshot, or their name without the suffix; whichever of the pair exists is read: lines that
+    /// are not records, events this version does not know, records missing or numbered twice, calls
+    /// asked for and never finished, and a snapshot that disagrees with its log. Nothing is
+    /// started. Anything found makes the exit status non-zero.
     #[arg(long, value_name = "PATH")]
     pub check: Option<String>,
 
     /// The frame's colour, which only a settings file can say; `None` is the terminal's own
     /// foreground colour. See `Settings::border_color`.
     ///
-    /// note: `skip` rather than an argument nobody would type twice, and it lives on `Args` all
-    /// the same so that the one merge in `under` stays the one place the file meets the command
-    /// line. A second path from a settings file to the program is a second set of rules about
-    /// which wins.
+    /// note: `skip` because nobody would type it twice, and it stays on `Args` so the one merge in
+    /// `under` remains the one place the file meets the command line. A second path from settings
+    /// to the program is a second set of rules about which wins.
     #[arg(skip = Some(config::BORDER_COLOR.to_owned()))]
     pub border_color: Option<String>,
 
-    /// Which tools to offer at startup, which only a settings file can say; see `Settings::tools`.
+    /// Which tools to offer at startup, which only a settings file can say. See `Settings::tools`.
     ///
-    /// note: `skip` for the reason above, and for one of its own. Which tools are worth their
-    /// tokens is a fact about the project, and belongs in the file beside it rather than in front
-    /// of somebody's hands. Turning one off for one session is `/tools toggle`, at the moment
-    /// somebody wants it rather than before the session starts.
+    /// note: `skip` for the reason above, and because which tools are worth their tokens is a fact
+    /// about the project, which belongs in the file beside it rather than on the command line.
+    /// Turn one off for one session with `/tools toggle`, when wanted rather than before the
+    /// session starts.
     #[arg(skip)]
     pub tools: Option<Vec<String>>,
 }
@@ -343,9 +340,9 @@ impl Args {
     pub fn under(mut self, settings: Settings, matches: &clap::ArgMatches) -> Result<Self> {
         let typed =
             |name: &str| matches.value_source(name) == Some(clap::parser::ValueSource::CommandLine);
-        // one macro rather than an `if` per field, and it names the argument once: the string clap
-        // knows it by is the field's own name, so a field renamed without its entry here stops
-        // compiling rather than stopping working
+        // one macro rather than an `if` per field, and it names the argument once: clap knows the
+        // field by its own name, so renaming a field without its entry here stops compiling rather
+        // than silently misbehaving
         macro_rules! fill {
             ($($field:ident),* $(,)?) => {$(
                 if !typed(stringify!($field)) && let Some(value) = settings.$field {
@@ -409,8 +406,8 @@ impl Args {
                 self.border_color = Some(border);
             }
         }
-        // the other one with no argument to lose to. Checking the names is `Setup::wire`'s, since
-        // the tools it would be checking against are the ones it is about to build
+        // the other one has no argument to lose to. `Setup::wire` checks the names, since the tools
+        // it would check against are the ones it is about to build
         self.tools = settings.tools;
         if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
             self.on_ask = OnAsk::from_str(&on_ask, true).map_err(|_| {
@@ -421,9 +418,9 @@ impl Args {
                      gets, and this is `{on_ask}`: it is `deny` or `allow`"
                 )
             })?;
-            // note: a file is read by the runs that have nobody else to ask, and `leave` there is
-            // a question nobody will ever answer. `--connect` does not read the file's `on-ask`
-            // at all; see `Args::given`
+            // note: runs that have nobody else to ask read the file, and `leave` there means a
+            // question nobody will ever answer. `--connect` does not read the file's `on-ask` at
+            // all; see `Args::given`
             if self.on_ask == OnAsk::Leave {
                 return Err(anyhow::anyhow!(
                     "`on-ask` in the settings file is `leave`, which only `--connect` can do - \
@@ -437,8 +434,8 @@ impl Args {
             Some(mcp) if !typed("mcp") => self.mcp = mcp,
             // note: a *server* that cannot be run is worth refusing over; an empty list asks for
             // nothing and is honoured by doing nothing. The crate's own `kamchatka.json` carries
-            // every key, `mcp` among them, so a stricter rule would make the shipped starting
-            // point unusable in a build that has no MCP
+            // every key, `mcp` included, so a stricter rule would make the shipped starting point
+            // unusable in a build with no MCP
             #[cfg(not(feature = "mcp"))]
             Some(mcp) if !mcp.is_empty() => anyhow::bail!(
                 "this build has no MCP support, so `mcp` in the settings file cannot be honoured"
@@ -462,31 +459,28 @@ impl Args {
         Ok(self)
     }
 
-    /// The command line as it was typed, with everything it did not say filled in from a settings
-    /// file.
+    /// The command line as typed, with unset arguments filled in from a settings file.
     ///
-    /// note: the matches come back with the arguments, because [`Args::under`] needs to know which
-    /// of them were *typed* and the struct cannot say - a value that equals its default and a
-    /// value somebody wrote out are the same field.
+    /// note: the matches come back with the arguments because [`Args::under`] needs to know which
+    /// were typed; the struct cannot tell a value that equals its default from one somebody wrote.
     ///
-    /// note: a path that was typed is not announced and a path that was found is. Somebody who
-    /// wrote `--config-file` knows; somebody who walked into a directory with one in it does not,
-    /// and a file that applies because of where you are standing has to say so rather than be
-    /// discovered later by its effects. Saying it is the caller's, because there is no session to
-    /// say it into yet.
+    /// note: a typed path is not announced and a found path is. Someone who wrote `--config-file`
+    /// knows; someone who walked into a directory with one does not. A file that applies because of
+    /// where you are standing must say so rather than be discovered later by its effects. Saying so
+    /// is the caller's, because there is no session to say it into yet.
     ///
-    /// note: nothing is looked for under `--connect`, which takes nothing else on principle: the
-    /// model, the key, the tools and the sandbox all belong to whoever is serving, and a file
-    /// picked up here would be a set of settings for a session this process is not assembling.
+    /// note: nothing is looked for under `--connect`, which takes nothing else: the model, key,
+    /// tools and sandbox belong to whoever is serving, and a file here would be settings for a
+    /// session this process is not assembling.
     pub fn given() -> Result<Given> {
         let matches = Self::command().get_matches();
         let mut args = Self::from_arg_matches(&matches)
             .map_err(|e| e.exit())
             .unwrap();
-        // note: before anything is looked for, because what this flag is for is
-        // `--print-config > kamchatka.json` - and the shell has emptied that file before this runs,
-        // so reading it first is a parse error about the file this was about to write. `--check`
-        // and a command run no session for a file's settings to be about
+        // note: before anything is looked for, because `--print-config > kamchatka.json` means the
+        // shell has emptied that file before this runs, so reading it first is a parse error about
+        // the file this was about to write. `--check` and a command run no session for a file's
+        // settings to be about
         if args.print_config || args.check.is_some() || args.command.is_some() {
             return Ok(Given {
                 args,
@@ -504,19 +498,19 @@ impl Args {
         let mut filed = None;
         if let Some(path) = args.config_file.clone().or_else(|| found.clone()) {
             let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
-            // the path the way `Settings::read` puts it on its own errors: what `under` refuses
-            // is a value in this file, and there are two places a file can be found
+            // the path the way `Settings::read` puts it on its own errors: `under` refuses a value
+            // in this file, and there are two places a file can be found.
             //
             // the two a served session does not read, taken before `under` moves them into the
-            // struct, where nothing can tell a file's value from a default
+            // struct, where nothing can tell a file's value from a default.
             //
-            // note: and only where the file's value is one this run would not otherwise have had.
+            // note: only where the file's value is one this run would not otherwise have had.
             // `--print-config` writes every key, so the file this program hands out to be edited
-            // carries `on-ask: deny` - which is the default, changes nothing, and refusing every
-            // `--serve` over it would break the very file the documentation tells a reader to
-            // write. A file saying `allow` is somebody's decision, and that is refused. Compared
-            // as the value is parsed, without regard to case, or `Deny` would be read as the
-            // default and refused as something else
+            // carries `on-ask: deny` - the default, which changes nothing, and refusing every
+            // `--serve` over it would break the file the documentation tells a reader to write. A
+            // file saying `allow` is somebody's decision, and that is refused. Comparison is
+            // case-insensitive, or `Deny` would be read as the default and refused as something
+            // else
             let unserved = [
                 ("max-run-seconds", settings.max_run_seconds.is_some()),
                 (
@@ -531,8 +525,8 @@ impl Args {
             .filter_map(|(id, carried)| carried.then_some(id))
             .collect();
             let granting = config::granting(&settings);
-            // every key the file gave a value, as the argument it stands in for spells it: what
-            // says a refused value was the file's rather than a default's, or a snapshot's
+            // every key the file gave a value, spelled as the argument it stands in for: what says
+            // a refused value was the file's rather than a default's or a snapshot's
             let carried = serde_json::to_value(&settings)
                 .ok()
                 .and_then(|value| value.as_object().cloned())
@@ -553,9 +547,9 @@ impl Args {
                 carried,
             });
 
-            // note: asked after the file is read and merged, both of which only look at it, so a
-            // file this program would refuse is refused with what is wrong with it rather than
-            // asked about first
+            // note: asked after the file is read and merged, which only look at it, so a file this
+            // program would refuse is refused with what is wrong with it rather than asked about
+            // first
             if found.as_deref().is_some_and(config::underfoot) && !asked(&path, &granting)? {
                 args = Self::from_arg_matches(&matches)
                     .map_err(|e| e.exit())
@@ -565,11 +559,11 @@ impl Args {
             }
         }
 
-        // note: last of all, so that `-m`, `KAMCHATKA_MODEL` and a settings file's `model` each
-        // still win: the record is what a session was talking to, and any of those is somebody
-        // saying what this one should. A snapshot holds the conversation and not the model, so a
-        // `-r` without this started a session with none - and a headless one given a message sent
-        // nothing and said so to nobody who was looking
+        // note: last of all, so that `-m`, `KAMCHATKA_MODEL` and a settings file's `model` still
+        // win: the record is what a session was talking to, and any of those is somebody saying
+        // what this one should. A snapshot holds the conversation and not the model, so `-r`
+        // without this started a session with none, and a headless one given a message sent nothing
+        // and said so to nobody who was looking
         if args.model.is_none()
             && let Some(path) = &args.resume
         {
@@ -586,29 +580,28 @@ impl Args {
 
     /// The session these arguments ask for, short of the provider that answers it.
     ///
-    /// note: the resumed session is read here rather than in [`Setup`], because the two error
-    /// messages worth writing - which path, and whether it was a session at all - belong to
-    /// whoever was handed the path.
+    /// note: the resumed session is read here rather than in [`Setup`], because the error messages
+    /// worth writing - which path, and whether it was a session at all - belong to whoever was
+    /// handed the path.
     pub fn setup(&self) -> Result<Setup> {
         self.setup_from(None)
     }
 
     /// [`Args::setup`], for a run that read a settings file, and the file's own refusals with it.
     ///
-    /// note: where the refusals of the merge ended and these began. `under` holds a value to the
-    /// file and says which key, `Setup::check` and the wiring hold them to what this program can
-    /// do and say nothing about where a value came from - and a file found underfoot is announced
-    /// on standard error, where a terminal's screen covers it and a failure has already ended the
-    /// run. So the two run together, and anything out of `self` rather than out of the file is
-    /// left as it would have been said: somebody who typed `--auto-deny` is looking at it.
+    /// note: where the merge's refusals ended and these began. `under` holds a value to the file
+    /// and names the key. `Setup::check` and the wiring hold them to what this program can do, and
+    /// say nothing about where a value came from. A file found underfoot is announced on standard
+    /// error, where a terminal's screen covers it and a failure has already ended the run, so the
+    /// two run together. Anything out of `self` rather than out of the file is left as it was said;
+    /// somebody who typed `--auto-deny` is looking at it.
     ///
-    /// note: a parameter rather than a field on [`Args`] because the file is not a setting: it is
-    /// two facts - which path, and which arguments were *typed* - and the second is what tells a
-    /// file's value from a flag's.
+    /// note: a parameter rather than a field on [`Args`] because the file is not a setting: it
+    /// holds which path and which arguments were typed, and the latter tells a file's value from a
+    /// flag's.
     pub fn setup_from(&self, filed: Option<&Filed>) -> Result<Setup> {
-        // one function for the refusals that are about the arguments, so that a value out of a
-        // file is answered with the file beside it and a value off the command line is answered
-        // as it always was
+        // one function for refusals about the arguments: a file value is answered with the file
+        // beside it, and a value off the command line is answered as it always was
         let at = |field: &str| filed_at(filed, field);
         // note: here rather than where the limit is read, because that is a round trip away and a
         // session measuring itself against nothing is not a session anybody finds out about. Every
@@ -623,9 +616,9 @@ impl Args {
              give every request up at once; leave it out for the default of 150",
             at("max_silence_seconds").unwrap_or_default()
         );
-        // note: here rather than in the parser, so that a settings file's `compact-context-at` is
-        // held to it too. A fraction, and said so: `80`, meant as a percentage, would be no
-        // compactor at all, and anything at or below zero one that took every tool result
+        // note: here rather than in the parser, so a settings file's `compact-context-at` is held
+        // to it too. It is a fraction above 0 and at most 1: `80`, meant as a percentage, compacts
+        // nothing, and anything at or below zero compacts every tool result
         anyhow::ensure!(
             self.compact_context_at.threshold > 0.0 && self.compact_context_at.threshold <= 1.0,
             "{}`compact-context-at` is how full the context may get, as a fraction above 0 and at \
@@ -633,10 +626,10 @@ impl Args {
             at("compact_context_at").unwrap_or_default(),
             self.compact_context_at.threshold
         );
-        // note: at most the threshold, because a target above it is a context that is over the
-        // threshold and already under the target, which a pass answers by dropping nothing - before
-        // every request, for as long as the context stays between the two. Equal is allowed: it is
-        // the pass that drops just enough each time, which is a choice and not a mistake
+        // note: at most the threshold, because a target above it means the context is over the
+        // threshold and already under the target, so a pass drops nothing before every request
+        // while the context stays between the two. Equal is allowed: the pass drops just enough
+        // each time
         if let Some(target) = self.compact_context_at.target {
             anyhow::ensure!(
                 target > 0.0 && target <= self.compact_context_at.threshold,
@@ -663,10 +656,10 @@ impl Args {
                 these(&servers)
             );
         }
-        // note: an `allow` of `mcp:call` or `mcp` matches no call, and is refused for the same
-        // reason. A server's tools are judged under its name in place of `mcp:call` - see
-        // `Careful::judges` - and every server here is one this program started, so the rule read
-        // as given and every call still went to the question. A `deny` of either is consulted
+        // note: an `allow` of `mcp:call` or `mcp` matches no call and is refused for the same
+        // reason. A server's tools are judged under its name instead of `mcp:call`; see
+        // `Careful::judges`. Every server here is one this program started, so the rule read as
+        // given and every call still went to the question. A `deny` of either is consulted
         if let Some(granted) = self.auto_allow.iter().find(|rule| {
             matches!(
                 Subject::parse(rule).to_string().as_str(),
@@ -685,9 +678,9 @@ impl Args {
                     &std::fs::read(path).with_context(|| format!("could not read {path}"))?,
                 )
                 .with_context(|| format!("{path} is not a session"))?;
-                // refused rather than repaired: the runtime would renumber or reserve its way round
-                // most of these, and a session carried on from a record that had to be changed to
-                // be read is one whose record no longer says what happened
+                // refused rather than repaired. The runtime would renumber or reserve its way
+                // around most of these, and a session carried on from a record that had to be
+                // changed to be read no longer has a record that says what happened
                 let problems = snapshot.problems();
                 anyhow::ensure!(
                     problems.is_empty(),
@@ -726,7 +719,7 @@ impl Args {
             record: !self.no_record,
             compact: Some(self.compact_context_at.threshold),
             compact_target: self.compact_context_at.target,
-            // note: `0` is no ceiling, as `/spend 0` and `--max-requests-per-turn 0` say it: a
+            // note: `0` is no ceiling, as `/spend 0` and `--max-requests-per-turn 0` say it. A
             // ceiling of nothing would be a session that refuses its first turn without saying why
             spend: self.max_spend_tokens.filter(|it| *it > 0),
             leave_running: self.leave_running,
@@ -758,10 +751,10 @@ impl Args {
         };
 
         // the last of the refusals, and the first one a value out of a file can reach without
-        // having said which file it came from: what this program offers and what a rule can match
-        // are both decided here, so a tool, a server and a path rule are all refused after the
-        // merge rather than in it - and the refusal says which setting it was, so that the file is
-        // named for what the file said and for nothing else
+        // saying which file it came from. What this program offers and what a rule can match are
+        // both decided here, so a tool, a server and a path rule are all refused after the merge
+        // rather than in it. The refusal says which setting it was, so the file is named for what
+        // the file said and for nothing else
         setup.check().map_err(|refused| {
             let at = refused
                 .setting
@@ -778,7 +771,7 @@ impl Args {
     ///
     /// note: said rather than refused, unlike a deny. Which servers run is up to the command line,
     /// so a settings file that allows the person's usual servers is right in general and was
-    /// refused whenever `--mcp` left one out - and an allow of a server that is not there grants
+    /// refused whenever `--mcp` left one out. An allow of a server that is not there grants
     /// nothing, which is the safe way for it to be wrong.
     pub fn unstarted(&self, filed: Option<&Filed>) -> Option<String> {
         let servers = self.servers();
@@ -803,11 +796,11 @@ impl Args {
         })
     }
 
-    /// How long a call to an MCP server's tool may wait: `--mcp-timeout-seconds`, ten minutes
-    /// unless given, and no limit for `0`.
+    /// How long a call to an MCP server's tool may wait: `--mcp-timeout-seconds`, ten minutes by
+    /// default, and no limit for `0`.
     ///
-    /// note: ten minutes because a tool may be a build or a search that takes a while, and what
-    /// this is for is the one that never answers at all; a turn can still be interrupted sooner.
+    /// note: ten minutes because a tool may be a build or a search that takes a while. The timeout
+    /// is for a tool that never answers; a turn can still be interrupted sooner.
     pub fn mcp_within(&self) -> Option<std::time::Duration> {
         match self.mcp_timeout_seconds.unwrap_or(MCP_TIMEOUT) {
             0 => None,
@@ -827,18 +820,18 @@ impl Args {
         Vec::new()
     }
 
-    /// The same, with the advisor attached where `--rate-shell-commands` asked for one.
+    /// The same setup, with the advisor attached where `--rate-shell-commands` asked for one.
     ///
-    /// note: after [`Setup::check`] and before the provider. A missing advisor key is a fact about
-    /// the arguments and should not cost a round trip to the *other* endpoint to find out about;
-    /// and a session that was asked for with `--rate-shell-commands` and could not reach an advisor
-    /// is refused rather than quietly run with every question uncoloured. Somebody who turned this
-    /// on is entitled to have it on or be told it is not.
+    /// note: this runs after [`Setup::check`] and before the provider. A missing advisor key is a
+    /// fact about the arguments, so finding it should not cost a round trip to the other endpoint.
+    /// A session asked for with `--rate-shell-commands` that cannot reach an advisor is refused,
+    /// rather than quietly run with every question uncoloured. Someone who turned this on is
+    /// entitled to have it on or to be told it is not.
     ///
-    /// note: nothing the advisor has to say is drained here. The session reports all of it,
-    /// through `App::on_event` and the drawn loop's tick, and a queue somebody else popped is a
-    /// queue missing its first line - for a local advisor, that it is not ready yet. Printing it
-    /// to stderr here would not help either: the screen arrives immediately and clears it.
+    /// note: nothing the advisor has to say is drained here. The session reports all of it through
+    /// `App::on_event` and the drawn loop's tick. A queue that somebody else popped is missing its
+    /// first line; for a local advisor, that line says it is not ready yet. Printing to stderr here
+    /// would not help: the screen arrives immediately and clears it.
     #[cfg(feature = "shell-advisor")]
     pub async fn advised(&self, setup: Setup) -> Result<Setup> {
         if !self.rate_shell_commands {
@@ -865,17 +858,16 @@ impl Args {
         }
     }
 
-    /// Where this session's requests go, in whichever dialect was asked for.
+    /// Where this session's requests go, in the dialect asked for.
     ///
-    /// note: four wire formats, one trait. `--api` is what a person picks, and everything
-    /// downstream - the kernel, the screen, `/model`, `/endpoint` - holds a `Dialect` and never
-    /// finds out which one it got.
+    /// note: there are four wire formats and one trait. `--api` selects the format. The kernel, the
+    /// screen, `/model`, and `/endpoint` hold a `Dialect` and never find out which one it is.
     ///
-    /// note: no model unless one was named. A default means that a session started without `-m`
-    /// talks to whatever this program's author picked, at the person's expense and with nothing
-    /// saying the choice was not theirs. Without one the session still starts - the address and
-    /// the key are settled, `/models` lists what is served and `/model` picks one - and until it
-    /// is picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
+    /// note: no model is used unless one was named. A default would make a session started without
+    /// `-m` talk to whatever this program's author picked, at the person's expense and without
+    /// saying the choice was not theirs. Without a model the session still starts: the address and
+    /// key are settled, `/models` lists what is served, and `/model` picks one. Until a model is
+    /// picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
     pub async fn provider(&self) -> Result<Arc<dyn Dialect>> {
         let model = self.model.as_deref();
         let provider = match self.wire() {
@@ -902,14 +894,15 @@ impl Args {
     }
 }
 
-/// Moves a snapshot's numbering past everything the log beside it numbered after it was taken.
+/// Moves a snapshot's numbering past everything the log beside it numbered after the snapshot was
+/// taken.
 ///
 /// note: the snapshot is rewritten when a turn begins and when the session rests, and the log is
-/// appended to as each event happens, so a run killed in the middle of a turn leaves a log that runs
-/// past its snapshot. Carried on from as it stands, the snapshot would have the next session number
-/// records, items, calls and permissions again from where it was taken - and two files of one
-/// session would say different things under one identifier. The log is the one `-r` already reads
-/// for `App::recall`, and one that is missing or cut off mid-line costs what it cannot say.
+/// appended to as each event happens. A run killed in the middle of a turn therefore leaves a log
+/// that runs past its snapshot. If the snapshot were carried on as it stands, the next session
+/// would number records, items, calls and permissions again from where it was taken, and two files
+/// of one session would say different things under one identifier. `-r` already reads this log for
+/// `App::recall`; one that is missing or cut off mid-line costs what it cannot say.
 fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path) {
     use nachalnik::{Event, Record};
 
@@ -946,10 +939,10 @@ fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path)
 
 /// The model the record beside a snapshot says the session was last talking to.
 ///
-/// note: the last `model.changed` or `model.requested` in it, whichever came later, so that a
-/// `/model` switch the session made is the one it carries on with - and a log running past the
-/// snapshot, as one a killed run leaves does, is read to its end like everything else here. A
-/// switch to no model is `None`, and so is a record that is missing or names none.
+/// note: this is the last `model.changed` or `model.requested` in the record, whichever came later,
+/// so a `/model` switch the session made is the one it carries on with. A log that runs past the
+/// snapshot, as a killed run leaves, is read to its end like everything else here. A switch to no
+/// model is `None`, and so is a record that is missing or names none.
 fn last_model(path: &std::path::Path) -> Option<String> {
     last_talked_to(path)
         .map(|info| info.model)
@@ -1045,13 +1038,13 @@ fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
     .context("could not ask about the settings file")
 }
 
-/// A command line, read: the arguments, what clap matched, and the settings file they were filled
-/// in from where one was found rather than named.
+/// The arguments, what clap matched, and the settings file they were filled in from where one was
+/// found rather than named.
 ///
-/// note: not `#[non_exhaustive]`, which every other struct this crate answers with carries, and
-/// `Wired` beside it is the same exception for the same reason: this exists to be taken apart at
-/// the call site. The attribute would make every caller write `..`, which is the one spelling that
-/// *hides* a field added later rather than stopping the build over it.
+/// note: not `#[non_exhaustive]`, which every other struct this crate answers with carries; `Wired`
+/// beside it is the same exception for the same reason. This struct exists to be taken apart at the
+/// call site. The attribute would make every caller write `..`, the one spelling that *hides* a
+/// field added later rather than stopping the build over it.
 pub struct Given {
     /// The arguments, with anything the command line did not say filled in from the file.
     pub args: Args,
@@ -1069,11 +1062,11 @@ pub struct Given {
 
 /// The settings file these arguments were filled in from, and which of them were *typed*.
 ///
-/// note: the two things a refusal about somebody else's value has to answer and the struct cannot.
-/// The path is what a value has to name to be found, and the matches are what says whether it came
-/// from the file or from a flag on the command line - which is the difference between naming the
-/// file and leaving somebody to wonder. A value that failed after the merge is a value somebody
-/// wrote down, and a file applies because of where they are standing as much as anything else.
+/// note: a refusal about somebody else's value has to answer two things the struct cannot. The path
+/// is what a value has to name to be found, and the matches say whether it came from the file or
+/// from a flag on the command line; that is the difference between naming the file and leaving
+/// somebody to wonder. A value that failed after the merge is a value somebody wrote down, and a
+/// file applies because of where they are standing as much as anything else.
 pub struct Filed {
     /// The file read, named the way `Settings::read` names it on its own errors.
     pub at: std::path::PathBuf,
@@ -1083,10 +1076,9 @@ pub struct Filed {
     ///
     /// note: asked here rather than read back off the struct, because the struct cannot say where a
     /// value came from: `--on-ask` has a default, so a merged `Args` looks the same whether the
-    /// file set it or nobody did. What the file carried is the fact, and it is the fact the refusal
-    /// needs - a settings file is a person writing `max-run-seconds` down once rather than typing
-    /// it every day, which is exactly the case that gets dropped without a word. See
-    /// [`Given::unserved`].
+    /// file set it or nobody did. What the file carried is the fact the refusal needs; a settings
+    /// file is a person writing `max-run-seconds` down once rather than typing it every day, which
+    /// is the case that gets dropped without a word. See [`Given::unserved`].
     pub unserved: Vec<&'static str>,
     /// Every key this file gave a value, as the argument's own name.
     ///
@@ -1097,12 +1089,11 @@ pub struct Filed {
 }
 
 impl Filed {
-    /// Whether this argument was written on the command line, which is what says a value was not
-    /// read out of the file.
+    /// Whether this argument was given on the command line rather than read from a settings file.
     ///
-    /// note: `false` for a name clap knows nothing of, rather than a panic. Some settings are
-    /// `#[arg(skip)]` - a file only, with no argument behind them - and a refusal about one of
-    /// those has to be able to ask where the value came from like any other.
+    /// note: returns `false` for a name clap knows nothing of, rather than panicking. Some settings
+    /// are `#[arg(skip)]` - file only, with no argument behind them - so a refusal about one must
+    /// be able to ask where the value came from like any other.
     pub fn typed(&self, name: &str) -> bool {
         self.matches.ids().any(|id| id.as_str() == name)
             && self.matches.value_source(name) == Some(ValueSource::CommandLine)
@@ -1113,21 +1104,20 @@ impl Given {
     /// What this command line carries that a served session does not read, and where each came
     /// from.
     ///
-    /// note: the two a served session has no loop to read - `--max-run-seconds`, which ends a
-    /// headless run, and `--on-ask`, which answers a question nobody is there to answer. Read off
-    /// the arguments rather than off clap's matches alone, because a value out of a settings file
-    /// is written into [`Args`] by [`Args::under`] and leaves nothing behind saying it was not
-    /// typed - so a check on the matches sees a file's `max-run-seconds` as absent, and a run that
-    /// serves for ever beside a file saying when it should have ended says nothing at all.
+    /// note: a served session has no loop to read `--max-run-seconds`, which ends a headless run,
+    /// and `--on-ask`, which answers a question nobody is there to answer. Read off the arguments
+    /// rather than clap's matches alone, because a value from a settings file is written into
+    /// [`Args`] by [`Args::under`] and leaves no trace it was not typed - so the matches see a
+    /// file's `max-run-seconds` as absent, and a run serving for ever beside a file saying when it
+    /// should end says nothing at all.
     ///
-    /// note: a file's value names the file, the way every other value out of one does. A person
-    /// writing `max-run-seconds` into a project's `kamchatka.json` is not looking at this run's
-    /// command line at all, so a refusal naming only `--max-run-seconds` would be a flag they never
-    /// typed.
+    /// note: a file's value names the file, as every value from one does. A person writing
+    /// `max-run-seconds` into `kamchatka.json` is not looking at this run's command line, so a
+    /// refusal naming only `--max-run-seconds` names a flag they never typed.
     ///
-    /// note: a file's `on-ask: deny` is not among them, because that is the default and a served
-    /// run would have had it anyway - `--print-config` writes it, and refusing every `--serve`
-    /// over the file this program hands out would break the one it tells a reader to write. See
+    /// note: a file's `on-ask: deny` is not among them, because it is the default and a served run
+    /// would have had it anyway. `--print-config` writes it, and refusing every `--serve` over the
+    /// file this program hands out would break the file it tells a reader to write. See
     /// `Args::given`.
     pub fn unserved(&self) -> String {
         let typed = |id: &str| {
@@ -1135,13 +1125,13 @@ impl Given {
                 .value_source(id)
                 .is_some_and(|source| source == ValueSource::CommandLine)
         };
-        // the argument and the key it stands for beside it, because one is `on_ask` and the other
-        // is `on-ask`, and a refusal that mixed them up would name a setting nobody wrote
+        // the argument and the key it stands for, because one is `on_ask` and the other `on-ask`,
+        // and a refusal that mixed them up would name a setting nobody wrote
         let mut said = Vec::new();
         let mut filed = None;
         for (id, key) in [("max_run_seconds", "max-run-seconds"), ("on_ask", "on-ask")] {
-            // typed first, because a value on the command line is somebody looking at this run,
-            // and a file's would only say where it was written down
+            // typed first: a command-line value means somebody is looking at this run; a file's
+            // value only says where it was written down
             if typed(id) {
                 said.push(format!("`--{}`", id.replace('_', "-")));
             } else if let Some(from) = self.filed.as_ref()
@@ -1164,17 +1154,17 @@ impl Given {
 
 /// What this program does instead of running a session.
 ///
-/// note: a command rather than a flag, unlike `--check`, because it takes a list and an output
-/// and is a program of its own. `--check` reads; this writes a session somebody then resumes.
+/// note: a command rather than a flag, unlike `--check`, because it takes a list and an output and
+/// is a program of its own. `--check` reads; this writes a session to resume.
 #[derive(clap::Subcommand)]
 #[non_exhaustive]
 pub enum Command {
     /// Fold several hard forks of one session into one session to carry on from, and stop.
     ///
-    /// The items the forks share are kept whole. From each fork's own part only the notes the
-    /// agent wrote down for itself are carried, and two that disagree are both kept and named.
-    /// Nothing is sent to a model: `kamchatka -r` on what it wrote carries on, and `/request`
-    /// shows what the first request would be.
+    /// The items the forks share are kept whole. From each fork's own part only the notes the agent
+    /// wrote for itself are carried; two that disagree are both kept and named. Nothing is sent to
+    /// a model: `kamchatka -r` on what it wrote carries on, and `/request` shows what the first
+    /// request would be.
     Reconcile {
         /// The forks: sessions `/save` wrote, each with the log beside it where there is one.
         #[arg(value_name = "PATH", num_args = 2.., required = true)]
@@ -1188,13 +1178,12 @@ pub enum Command {
 
 /// What an unanswerable question is answered with.
 ///
-/// note: `deny` is the default, and that is the difference between this and `examples/recorded.rs`,
-/// which grants every question it is asked. That is right for a recording somebody is watching and
-/// wrong for a program: a run nobody is watching should not be able to do a thing nobody has
-/// allowed, and `--auto-allow exec` is one flag away for anyone who means it.
+/// note: `deny` is the default. `examples/recorded.rs` grants every question because a recording is
+/// watched; a program is not, and an unwatched run must not do anything that has not been allowed.
+/// Pass `--auto-allow exec` to allow them.
 ///
-/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries - it was
-/// missing, and `Leave` is what found out.
+/// note: every public enum in this workspace carries `#[non_exhaustive]`. It was missing here, and
+/// `Leave` found that out.
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 #[non_exhaustive]
 pub enum OnAsk {

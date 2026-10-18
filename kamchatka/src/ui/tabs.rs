@@ -1,11 +1,11 @@
-//! The four tab bodies, and nothing else: the chrome around them is in `mod.rs` and the panel
-//! that floats over them is in `overlay`.
+//! The four tab bodies. The chrome around them is in `mod.rs`; the panel that floats over them is
+//! in `overlay`.
 //!
-//! note: four tabs, each of which gets the whole window, because each of them is a whole view;
-//! what each one is for is on [the crate root](crate). The fourth is every answer somebody has
-//! given the policy and a count of what is still a question, not a row per undecided thing: `ask`
-//! is what this policy does when nobody has told it anything, and a screenful of it buries the one
-//! line that says what can happen without stopping.
+//! note: each tab gets the whole window because each tab is a whole view; what each one is for is
+//! on [the crate root](crate). The fourth lists every answer given to the policy and a count of
+//! what is still a question, not a row per undecided thing. `ask` is what the policy does when
+//! nobody has told it anything; a screenful of `ask` buries the line that says what can happen
+//! without stopping.
 
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
@@ -38,14 +38,14 @@ use super::{Scrolled, faint, in_view, quiet};
 pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Scrolled {
     let width = inner.width as usize;
     let mut lines: Vec<Row> = Vec::new();
-    // the item the last marked line belonged to, so that a turn and the calls it asked for say
-    // once between them why they are not going rather than once each
+    // the item the last marked line belonged to, so a turn and its calls say once between them why
+    // they are not going rather than once each
     let mut marked: Option<ContextId> = None;
     // held by the loop, because the lines borrow their words out of these rather than copying
     // the whole conversation once a frame to show what it was already showing
     let items = app.kernel.items();
-    // the turns holding a call that is waiting on an answer, which the projector leaves out of
-    // the request and which is not the same thing as being left out; see `held` below
+    // the turns holding a call waiting on an answer. The projector leaves them out of the request;
+    // that is not the same as being left out. See `held` below
     let waiting: Vec<_> = app
         .kernel
         .pending_permissions()
@@ -63,33 +63,33 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     for said in app.conversation(&items, going) {
         let item = said.item;
 
-        // what the model is no longer shown is drawn so that the eye can tell without reading
-        // it. `going.sends_content` rather than the state, for the reason it exists: an item the
-        // projector repaired away is `Active` and is not in the request. A line that is nobody's
-        // item - a note, an error, something still arriving - is left exactly as it is
-        // note: `is_elided` is handled by `App::conversation`, on its own terms, so what is left
-        // here is the item a *projector* took out of a request it is otherwise in - a second result
-        // for a call that already has one. That is not a decision anybody made and there is no
-        // marker for it, so it keeps the rule down its left and the line saying why
-        // note: and not one whose call is only waiting to be answered. The projector leaves a
-        // turn out while a call of its has no result - it has to, a call with no answer is a
-        // request most providers reject - so `sends_content` says no for the whole of the time
-        // the permission prompt is open, and the line saying why would sit directly above the
-        // call the person is being asked to authorise and describe it as a fault. It is not left
-        // out; it is mid-flight, and answering the question that is already on screen is what
-        // puts it in
+        // what the model is no longer shown is drawn so the eye can tell without reading it. It
+        // uses `going.sends_content` rather than the state because an item the projector repaired
+        // away is `Active` and not in the request. A line with no item - a note, an error,
+        // something still arriving - is left as it is.
+        //
+        // note: `is_elided` is handled by `App::conversation`. What remains here is an item a
+        // projector took out of a request it is otherwise in: a second result for a call that
+        // already has one, not one whose call is only waiting to be answered. It is not a decision
+        // anyone made and has no marker, so it keeps the rule down its left and the line saying
+        // why.
+        //
+        // note: the projector leaves out a turn while its call has no result: it has to, because a
+        // call with no answer is a request most providers reject. So `sends_content` says no for
+        // the whole time the permission prompt is open. The line saying why would sit above the
+        // call the person is asked to authorise and call it a fault. It is mid-flight, not left
+        // out; answering the question already on screen puts it in
         let held = item.filter(|item| {
             !going.sends_content(item) && !item.state.is_elided() && !deciding.contains(&item.id)
         });
 
         let speaker = said.speaker;
-        // note: an elided item already reads as its marker here - the projector's own words, with
-        // the brackets it put round them, which is exactly the text the model reads there. That
-        // substitution is `App::conversation`'s, because what an elision *means* is not a rendering
-        // decision, and a second client must not be handed the content of an item whose whole point
-        // is that the model no longer has it. All that is left here is drawing it with the
-        // speaker's own prefix and dimmed, so a `> ` still says whose turn it was and the dimming
-        // says there is nothing of it left to read
+        // note: an elided item already reads as its marker here: the projector's words in brackets,
+        // exactly the text the model reads. The substitution is `App::conversation`'s: what an
+        // elision means is not a rendering decision, and a second client must not receive the
+        // content of an item whose point is that the model no longer has it. All that is left is to
+        // draw it with the speaker's prefix and dimmed: `> ` still says whose turn it was, and the
+        // dimming says nothing is left to read
         let said = said.text;
 
         if let Some(item) = held {
@@ -106,10 +106,10 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             // all: a highlighted block that kept its colours and lost only its brightness still
             // reads as live text at a glance, which is the one thing the mark exists to prevent
             //
-            // note: the rule is put on afterwards rather than passed to `wrapped` as a prefix.
-            // A prefix is a speaker's, so it belongs to the first row and the rest hang under it -
-            // which is right for `> ` and wrong for this, where a long answer would come out with
-            // one marked row and the rest reading as ordinary indented text
+            // note: the rule is applied afterwards, not passed to `wrapped` as a prefix. A prefix
+            // marks the first row and hangs the rest under it, which is right for `> ` but wrong
+            // here: a long answer would get one marked row and the rest reading as ordinary
+            // indented text
             for text in wrapped(&said, width.saturating_sub(2), "") {
                 lines.push(Row::Drawn(Line::from(vec![
                     Span::styled("╎ ", faint()),
@@ -121,10 +121,9 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         }
         marked = None;
 
-        // the model writes markdown, and a terminal that printed the asterisks would be showing
-        // the punctuation instead of the emphasis. Nothing else here is markdown: a tool's output
-        // is whatever the tool said, and running it through a renderer would be inventing
-        // structure the tool did not put there
+        // the model writes markdown; printing the asterisks would show punctuation instead of
+        // emphasis. Nothing else here is markdown: a tool's output is whatever the tool said, and
+        // rendering it would invent structure the tool did not put there
         if speaker == Speaker::Model {
             let answer = match fresh.get(said.as_ref()) {
                 Some(answer) => answer,
@@ -154,9 +153,9 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // somebody watching a command run is waiting for. Drawn in the colour of what it says,
         // so it answers from across the room and the output under it stays quiet
         //
-        // note: the rest is wrapped separately, under a prefix of the same width rather than the
-        // speaker's own - `wrapped` puts the prefix on its first row and hangs the others, so
-        // handing it the rule a second time would draw a `│` in the middle of one result
+        // note: the rest is wrapped separately under a prefix of the same width, not the speaker's
+        // own. `wrapped` puts the prefix on its first row and hangs the others, so applying the
+        // rule twice would draw a `│` in the middle of one result
         let (head, rest) = match said.split_once('\n') {
             Some((head, rest)) => (head, rest),
             None => (said.as_ref(), ""),
@@ -211,11 +210,11 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     }
 }
 
-/// A row of the chat: one drawn for this frame, or one of an answer's as [`Drawn`] keeps them.
+/// A row of the chat: one drawn for this frame, or one of an answer's rows kept by [`Drawn`].
 ///
-/// note: an answer's rows are pointed at rather than copied, and only the ones on screen become
-/// lines. Copying every answer's rows into every frame, to show one screenful of them, cost more
-/// than drawing the rest of the chat did.
+/// note: an answer's rows are referenced rather than copied, and only the rows on screen become
+/// lines. Copying every answer's rows into every frame, to show one screenful, cost more than
+/// drawing the rest of the chat.
 enum Row {
     Drawn(Line<'static>),
     Kept(Rc<[Line<'static>]>, usize),
@@ -232,10 +231,10 @@ impl From<Row> for Line<'static> {
 
 /// The model's answers as the last frame drew them, and the width it drew them at.
 ///
-/// note: kept from one frame to the next because an answer - its markdown, its tables and above
-/// all its highlighted code - is the dearest thing on the chat to draw, and on nearly every frame
-/// it is the same as it was. Held by the text rather than by the item, so an answer still arriving
-/// is drawn afresh as it grows, and dropped when a frame does not draw it.
+/// note: kept from one frame to the next because drawing an answer - its markdown, tables, and
+/// highlighted code - is expensive, and on nearly every frame it is unchanged. Held by the text
+/// rather than by the item, so an answer still arriving is drawn afresh as it grows, and dropped
+/// when a frame does not draw it.
 #[derive(Default)]
 struct Drawn {
     width: usize,
@@ -262,9 +261,8 @@ fn answer(said: &str, width: usize) -> Vec<Line<'static>> {
     let split = chunks(said);
     let last = split.len().saturating_sub(1);
     for (nth, chunk) in split.into_iter().enumerate() {
-        // a fenced block gets a rule down its left rather than a slab of background,
-        // which is the one thing a terminal cannot do without knowing the theme - and its
-        // tokens in colours chosen the same way
+        // a fenced block gets a rule down its left rather than a background slab; a terminal cannot
+        // show a background slab without knowing the theme. Its tokens are coloured the same way
         let prose = match chunk {
             // a fixed shape, laid out to the window rather than to its contents; see
             // `draw_table`
@@ -307,13 +305,12 @@ fn answer(said: &str, width: usize) -> Vec<Line<'static>> {
     lines
 }
 
-/// The colour of a shell result's first line, which is what somebody reads one for.
+/// The colour of a shell result's first line.
 ///
-/// note: the three this program already uses for exactly this question - `allow`/`ask`/`deny` on
-/// the permissions tab, and the budget bar as it fills - rather than a fourth vocabulary for a
-/// reader to learn. Yellow is the honest middle here: not "a small failure", which nothing in a
-/// status line can tell, but *the command never reported* - stopped, killed, or a status that
-/// could not be read. See [`Exit`].
+/// note: the three colours this program already uses for this question - `allow`/`ask`/`deny` on
+/// the permissions tab and the budget bar as it fills - rather than a fourth vocabulary to learn.
+/// Yellow means the command never reported: stopped, killed, or a status that could not be read,
+/// not "a small failure", which a status line cannot tell. See [`Exit`].
 fn exit_style(exit: Exit) -> Style {
     match exit {
         Exit::Ok => Style::default().fg(Color::Green),
@@ -325,11 +322,11 @@ fn exit_style(exit: Exit) -> Style {
 // ---------------------------------------------------------------------------------- the context
 
 /// The context as a table: every item, what kind of thing it is, what it costs, and either the
-/// first line of what it says or - if it is not going into the next request - why not.
+/// first line of what it says or, if it is not going into the next request, why not.
 ///
-/// note: With the whole window to work in there is room for the last column, and it is the one
-/// that matters: a list of labels and numbers tells you an item exists, and this tells you what
-/// the model is actually being told.
+/// note: the whole window leaves room for the last column, and it is the one that matters: a list
+/// of labels and numbers tells you an item exists, and this tells you what the model is actually
+/// being told.
 pub(super) fn draw_context(
     frame: &mut Frame,
     app: &mut App,
@@ -342,13 +339,13 @@ pub(super) fn draw_context(
     if items.is_empty() {
         // the empties are not the same, and each has its own way out of it.
         //
-        // note: a search is named first, because it is the thing somebody just did and the thing
-        // `esc` undoes - and `f` is named beside it when that is holding rows back too, since a
-        // pane naming one of two reasons is a pane somebody clears and finds still empty.
+        // note: a search is named first because it is what somebody just did and what `esc` undoes;
+        // `f` is added when it is also holding rows back, since a pane naming one of two reasons is
+        // a pane somebody clears and finds still empty.
         //
-        // note: and no count while a search is on. `held_back` is every item `listed` dropped,
-        // and with a search running that is the two filters added together - so the figure would
-        // be blaming `f` for rows the query is what hid, which is a number worse than none
+        // note: no count while a search is on. `held_back` is every item `listed` dropped; with a
+        // search running it is both filters added together, so it would blame `f` for rows the
+        // query hid
         let empty = match (app.search.is_some(), app.sending_only, held_back) {
             (true, false, _) => "nothing here matches; esc clears the search".to_owned(),
             (true, true, _) => {
@@ -398,7 +395,8 @@ pub(super) fn draw_context(
                     (false, _) => String::new(),
                     (true, false) => "what it says, or why it is not being sent".to_owned(),
                     // the count belongs on the header rather than in a note, because it is a
-                    // property of what is on the screen and it stops being true when the toggle does
+                    // property of what is on the screen and it stops being true when the toggle
+                    // does
                     // note: counted here rather than taken from `held_back`, which is every item
                     // `listed` dropped - both filters added together. With a search running as
                     // well, that figure would blame `f` for rows the query hid; the empty pane
@@ -517,8 +515,8 @@ pub(super) fn draw_context(
         &mut app.list,
     );
 
-    // read after the render, because that is what settles the offset: the list scrolls itself to
-    // keep the selected row on screen, and asking first would measure the frame before this one
+    // read after the render, because that is what settles the offset. The list scrolls itself to
+    // keep the selected row on screen; asking first would measure the frame before this one
     Scrolled {
         position: app.list.offset(),
         total: items.len(),
@@ -548,10 +546,10 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
 
 /// The line a build that can rate commands draws when nothing is rating them.
 ///
-/// note: the feature puts the advisor in the binary and `--rate-shell-commands` is what starts one,
-/// so a build with the first and not the second draws a question with no rating, and without this
-/// nothing anywhere would account for the absence. That is the failure this program is least for,
-/// and the tab that answers "what is deciding" is where somebody wondering will already be.
+/// note: the feature puts the advisor in the binary and `--rate-shell-commands` starts one, so a
+/// build with the feature but not the flag draws a question with no rating. Without this nothing
+/// anywhere would account for the absence. That is the failure this program is least for, and the
+/// tab that answers "what is deciding" is where somebody wondering will already be.
 #[cfg(feature = "shell-advisor")]
 fn unrated(app: &App) -> Vec<Line<'static>> {
     match app.advisor.is_none() {
@@ -570,12 +568,12 @@ fn unrated(_: &App) -> Vec<Line<'static>> {
     Vec::new()
 }
 
-/// How a list marks its selected row: reversed while the keys are on it, underlined while they
-/// are not.
+/// How a list marks its selected row: reversed while the keys are on it, underlined while they are
+/// not.
 ///
 /// note: underlined rather than a dark slab behind it. `Rgb(40, 40, 40)` is a shade of the
-/// background this program does not know it has - it reads as barely-there on a dark theme and as
-/// a black bar on a light one, which is the same mistake the code blocks avoid.
+/// background this program does not know it has - it reads as barely-there on a dark theme and as a
+/// black bar on a light one, the same mistake the code blocks avoid.
 fn highlight(app: &App) -> Style {
     match app.focus == Focus::Body {
         true => Style::default().add_modifier(Modifier::REVERSED),
@@ -585,11 +583,11 @@ fn highlight(app: &App) -> Style {
 
 /// What the policy will answer about each capability, and which tools that covers.
 ///
-/// note: The permission prompt is the policy's only other appearance, and it shows up one call at
-/// a time, at the worst possible moment to think about it. This is the same decisions, all of
-/// them, in advance, and changeable - which is also the plainest thing to point at when somebody
-/// asks what a replaceable `PermissionPolicy` buys you: a policy is an object with state, not a
-/// callback you can only learn about by triggering it.
+/// note: the permission prompt is the policy's only other appearance, and it shows up one call at a
+/// time, at the worst possible moment to think about it. This is the same decisions, all of them,
+/// in advance and changeable - the plainest thing to point at when somebody asks what a replaceable
+/// `PermissionPolicy` buys you: a policy is an object with state, not a callback you can only learn
+/// about by triggering it.
 pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
 
@@ -624,10 +622,10 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     frame.render_widget(Paragraph::new(said), stated);
 
     if rows.is_empty() {
-        // note: what is *not* here is a row per thing nobody has answered about yet. The policy
-        // asks about everything by default, so listing the defaults is listing the absence of
-        // decisions - and it would bury the one or two lines that say what this agent can do
-        // without stopping. What arrives here is what somebody answered `a` to, or set here
+        // note: what is not here is a row per thing nobody has answered about yet. The policy asks
+        // about everything by default, so listing the defaults is listing the absence of decisions,
+        // and it would bury the one or two lines that say what this agent can do without stopping.
+        // What arrives here is what somebody answered `a` to, or set here
         frame.render_widget(
             Paragraph::new(crate::app::text::NOTHING_DECIDED)
                 .style(quiet())
@@ -649,10 +647,9 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
                 "capability or path",
                 "answer",
                 match covers >= 8 {
-                    // note: not "the tools it covers". A capability, a server and a path are
-                    // each about a set of tools; a whole domain is about a set of capabilities,
-                    // and naming its tools instead would tell somebody who wrote `--auto-allow log`
-                    // that it covered `log`
+                    // note: not "the tools it covers". A capability, a server and a path each cover
+                    // a set of tools; a whole domain covers a set of capabilities. Naming its tools
+                    // instead would tell someone who wrote `--auto-allow log` that it covered `log`
                     true => "what it covers",
                     false => "",
                 }
@@ -666,9 +663,9 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
         .iter()
         .map(|row| {
             let (answer, style) = verdict_word(row.verdict);
-            // a capability nothing declares is still worth a row, and it should say so rather
-            // than look like an oversight - but `network` is not one of them, however it looks: no
-            // tool declares it and the shell is judged against it anyway, on what the command says
+            // a capability nothing declares is still worth a row, and should say so rather than
+            // look like an oversight. `network` is not one of them: no tool declares it, and the
+            // shell is judged against it anyway, on what the command says
             let tools = row.covers();
 
             ListItem::new(Line::from(vec![
@@ -741,16 +738,17 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     let events = app.traced();
     let found = events.len();
     for event in events {
-        // the gap to the line above, blank under a tenth of a second, so the few that took real
-        // time are the only ones with anything in the column at all
+        // the gap to the line above, blank under a tenth of a second, so only the few that took
+        // real time have anything in the column.
+        //
         // note: `replace` runs either way, so the line after a person's still measures from this
         // one. What is skipped is drawing the figure, not keeping the clock
         let gap = match (clock, before.replace(event.at)) {
             // note: and not where the gap is somebody's. `after_a_person` marks the line that ends
-            // a wait for a person - an answered question, a message finally typed - and however
-            // long that took it is not a step this program spent any time on. It is also usually
-            // the biggest number in the column, so the one figure nobody should act on would be
-            // the one the eye goes to first
+            // a wait for a person - an answered question, a message finally typed. However long
+            // that took, it is not a step this program spent time on. It is usually the biggest
+            // number in the column, so the one figure nobody should act on would be the one the eye
+            // goes to first
             (true, Some(previous)) if !event.after_a_person => {
                 waited_since(event.at.saturating_duration_since(previous))
             }
@@ -769,14 +767,13 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         };
         // dimmer than the gap on purpose: the gap is the figure being looked for, the time is the
         // one being looked *up*. A run whose zone could not be determined is shown in UTC and
-        // marked, rather than shown as though it were local
+        // marked, not as though it were local
         let read = when.then(|| read_off(event.wall));
-        // note: the date is a rule across the pane rather than a column, and is drawn only where it
-        // changes. A session can outlast a day - that is the shape of run this clock is for - and
-        // `00:15` against two different Tuesdays says nothing; repeating the date on every line to
-        // disambiguate two of them would spend eleven columns on what is the same answer almost
-        // every time. It carries the zone as well, which is the one place that is worth saying out
-        // loud rather than implying with a colour.
+        // note: the date is a rule across the pane, not a column, and is drawn only where it
+        // changes. A session can outlast a day, so `00:15` against two different Tuesdays says
+        // nothing. Repeating the date on every line to disambiguate two of them would spend eleven
+        // columns on the same answer almost every time. The row also carries the zone, which is
+        // stated rather than implied by a colour.
         if let Some(read) = &read
             && day.replace(read.date.clone()).as_ref() != Some(&read.date)
         {
@@ -798,16 +795,15 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             )],
         };
         let stamp = [when_span, gap_span].concat();
-        // note: the same two colours the chat tab reads by - a tool call is cyan there and a
-        // permission is what the question is drawn in - so a row on the trace and the line it
-        // accounts for agree without anybody having to learn a second scheme. `.failed` is
-        // matched first on purpose: a call that went wrong is a failure before it is a call.
+        // note: these are the two colours the chat tab reads by: a tool call is cyan there, and a
+        // permission is the colour of the question. A trace row and the line it accounts for then
+        // agree without a second scheme to learn. `.failed` is matched first on purpose: a call
+        // that went wrong is a failure before it is a call.
         //
-        // note: named colours rather than the logo's own `#59b8b2`, which is what cyan is
-        // standing in for. Every colour in this program is a named one, so a terminal's palette
-        // and its background decide how it lands; one hardcoded triple would be the only thing
-        // on the screen that ignored both, and it would be the wrong side of legible on a light
-        // background.
+        // note: named colours are used rather than the logo's own `#59b8b2`, which cyan stands in
+        // for. Every colour in this program is named, so the terminal's palette and background
+        // decide how it lands. One hardcoded triple would be the only thing on screen that ignored
+        // both, and would be hard to read on a light background.
         let colour = match () {
             _ if event.name.ends_with(".failed") => Color::Red,
             _ if event.name.starts_with("tool") => Color::Cyan,
@@ -824,10 +820,10 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             (false, false) => 0,
         });
         let indent = " ".repeat(column.max(2));
-        // note: what is left after the columns in front of it, rather than the width of the pane.
-        // Every line carries the clock and the name in front of it, so a detail wrapped against
-        // the whole width would run off the right edge and be clipped - in the one pane whose
-        // promise is that a detail wraps rather than being cut
+        // note: the width is what is left after the columns in front of the detail, not the width
+        // of the pane. Every line carries the clock and the name in front of it, so wrapping
+        // against the whole width would run off the right edge and be clipped. This is the pane
+        // where a detail wraps rather than being cut
         let room = width.saturating_sub(columns(&under) + indent.len());
         let mut detail = wrapped(&event.detail, room, "").into_iter();
         match (event.name.is_empty(), event.detail.is_empty()) {
@@ -886,10 +882,10 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 
 // ----------------------------------------------------------- what both lists say about an item
 
-/// The mark and style an item in this state is drawn with.
+/// The mark and style used for an item in this state.
 ///
-/// note: shared by the context tab and the chat, so that one screen cannot call an item
-/// excluded while the other draws it as though it were still being read.
+/// note: shared by the context tab and the chat, so one screen cannot call an item excluded while
+/// the other draws it as still being read.
 fn state_mark(state: ContextState) -> (&'static str, Style) {
     match state {
         ContextState::Active => ("·", Style::default()),
@@ -905,15 +901,15 @@ fn state_mark(state: ContextState) -> (&'static str, Style) {
 /// Why this item's content is not going into the next request, in the projector's own words where
 /// it has any.
 ///
-/// note: the same answer for the context tab's tail and the chat's mark, out of one place, for
-/// the reason [`Going`] keeps its two halves together: an item is either in the request or out of
-/// it for a reason, and two screens working that out separately is how they come to disagree.
+/// note: the context tab's tail and the chat's mark use this same answer from one place, for the
+/// reason [`Going`] keeps its two halves together: an item is either in the request or out of it
+/// for a reason, and two screens working that out separately is how they come to disagree.
 fn withheld_why(item: &ContextItem, going: &Going) -> String {
     match going.left_out.get(&item.id) {
         // the projector's own words about an item it did not carry
         Some(why) => why.clone(),
-        // an elided one it *did* carry, as a marker, so it has nothing to say about it - and what
-        // the model reads there is the note, so the note is what belongs on the row
+        // an elided item is carried as a marker, so the projector has nothing to say about it. The
+        // model reads the note there, so the note belongs on the row
         None => match &item.note {
             Some(note) => format!("{}: {note}", item.state),
             None => item.state.to_string(),

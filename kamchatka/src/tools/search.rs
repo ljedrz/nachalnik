@@ -37,10 +37,10 @@ use crate::{
 /// How many matching lines one `grep` answers with.
 ///
 /// note: matches rather than bytes, and the two are not the same cut. A byte limit takes the tail
-/// of the last file searched and leaves a model believing it has seen the whole of the rest; this
-/// stops the search and says it stopped, which is a thing the model can act on - narrow the
-/// pattern, or name a directory. The byte limit is still in force underneath, as a backstop for
-/// the pathological line rather than as the thing that shapes the answer.
+/// of the last file searched, so the model believes it has seen the whole of the rest; this stops
+/// the search and says it stopped, which the model can act on by narrowing the pattern or naming a
+/// directory. The byte limit is still in force underneath as a backstop for the pathological line,
+/// not as the thing that shapes the answer.
 pub(super) const MATCHES: usize = 100;
 
 /// How many paths one `glob` answers with.
@@ -48,10 +48,10 @@ pub(super) const PATHS: usize = 200;
 
 /// How many lines either side of a match `context` will go to.
 ///
-/// note: said out loud when a call asks for more, rather than clamped quietly. An answer that
-/// does not say what it did with an argument reads as an answer to the argument given, so a model
-/// clamped in silence asks again for more and gets the same answer back - a request spent on a
-/// number nothing had told it was a ceiling.
+/// note: said out loud when a call asks for more, rather than clamped quietly. An answer that does
+/// not say what it did with an argument reads as an answer to the argument given, so a model
+/// clamped in silence asks again for more and gets the same answer back, a request spent on a
+/// number nothing told it was a ceiling.
 const CONTEXT: u64 = 10;
 
 /// How much of one line is shown, in characters.
@@ -65,18 +65,18 @@ pub(super) const WIDTH: usize = 200;
 /// What both tools say about a glob.
 ///
 /// note: one string for the same reason [`PATH_ARG`](crate::tools::files) is one: `grep`'s filter
-/// and `glob`'s pattern are the same language, and two descriptions of it are two places for a
-/// model to learn two different rules. The last clause is there because a model that reads `*`
-/// as "not across a separator", which is what a shell taught it, writes `**/*.rs` where `*.rs`
-/// would have done and `src/*.rs` where it wanted everything under `src`.
+/// and `glob`'s pattern are the same language, and two descriptions are two places for a model to
+/// learn two different rules. The last clause is there because a model that reads `*` as "not
+/// across a separator", which a shell taught it, writes `**/*.rs` where `*.rs` would have done and
+/// `src/*.rs` where it wanted everything under `src`.
 pub(super) const GLOB_ARG: &str = "a glob over the whole path, not just the name: `**/*.rs`, `src/**/mod.rs`, \
                         `Cargo.*`. `*` crosses `/`, so `*.rs` finds every Rust file at any depth";
 
 /// What both tools need: where they may look, what they may not open, and how much they may say.
 ///
 /// note: the policy is here rather than consulted through the kernel because the question is not
-/// "may this call run" - that one was answered before `invoke` - but "may this *file* be opened",
-/// once per file in a walk, without asking anybody. [`Careful::paths`] answers it as data.
+/// "may this call run" - that was answered before `invoke` - but "may this file be opened", once
+/// per file in a walk, without asking anybody. [`Careful::paths`] answers it as data.
 #[derive(Clone)]
 pub(super) struct Looking {
     pub(super) reach: Arc<Reach>,
@@ -85,34 +85,33 @@ pub(super) struct Looking {
 }
 
 impl Looking {
-    /// The path rules a walk has to honour by not opening things, in the order they are consulted.
+    /// The path rules a walk must honour, in the order consulted, by not opening things.
     ///
-    /// note: this is the reason a search is not simply `read` in a loop. [`Careful::judges`]
-    /// matches path rules against the path *in the call*, and a search names a directory: the
-    /// files under it are never judged, so `.env*: ask` would bind `read` and wave a `grep`
-    /// through. A rule that is not `allow` therefore bars the file from the walk, and the answer
-    /// says how many it barred and which kind - "ask me first" cannot be honoured once for every
-    /// file in a walk, and the nearest honest thing to it is not to read them and to say so. A
-    /// rule that refuses is counted apart from one that asks, because they are different things a
-    /// model may conclude: the first is closed and the second is a question this answer is not.
+    /// note: this is why a search is not simply `read` in a loop. [`Careful::judges`] matches path
+    /// rules against the path in the call. A search names a directory, so files under it are never
+    /// judged: `.env*: ask` would otherwise bind `read` and let `grep` through. A rule that is not
+    /// `allow` bars the file from the walk. The answer says how many it barred and which kind.
+    /// `ask` cannot be honoured once for every file in a walk, so the answer does not read them and
+    /// says so. A refusal is counted apart from an ask: the first is closed, the second is a
+    /// question this answer is not.
     ///
-    /// note: what this does *not* cover is the path the call itself names. That one goes through
-    /// `judges` like any other, so `grep` in `.env` is a question exactly as `read` of it is - and
-    /// a file somebody has just answered that question about is not then skipped for the same
-    /// rule. The distinction is between what was asked about and what was merely walked over.
+    /// note: this does not cover the path the call itself names. That goes through `judges` like
+    /// any other, so `grep` in `.env` is a question exactly as `read` of it is. A file somebody has
+    /// just answered that question about is not then skipped for the same rule. The distinction is
+    /// between what was asked about and what was merely walked over.
     fn barred(&self) -> Vec<(String, Verdict)> {
         barred(&self.policy)
     }
 
-    /// Where a walk starts, as the call named it and as it resolved, once the reach and the path
-    /// rules have allowed it; or the refusal, which says nothing was `doing`.
+    /// Where a walk starts, as the call named it and as it resolved, once reach and path rules
+    /// allow it; or a refusal saying nothing was `doing`.
     fn root(&self, args: &Value, doing: &str) -> Result<(String, PathBuf), String> {
         let asked = words(args, "path")?.unwrap_or(".").to_owned();
         let root = self
             .reach
             .allows_under(&asked, Access::Reading, &self.policy)?;
-        // the call's own path is exempt from what a walk bars because it was asked about by its
-        // name, and a link's name is not where it leads
+        // the call's own path is exempt from what a walk bars because it was asked about by name. A
+        // link's name is not where it leads
         if let Some(refusal) = linked(&asked, &root, &self.reach, &self.policy, doing) {
             return Err(refusal);
         }
@@ -148,13 +147,12 @@ impl Looking {
     }
 }
 
-/// The path rules that are not `allow`, which a walk does not open things under and a link may
-/// not lead past, with what each says.
+/// The path rules that are not `allow`, which a walk does not open things under and a link may not
+/// lead past, with what each says.
 ///
-/// note: the refusals first, so that [`led_past`], which takes the first rule it finds, reports
-/// the strictest of those a path falls under. Which of two rules a path matches is a fact about
-/// the tree and not about the order somebody typed them in, and a refusal is the one of the two
-/// a model must not be offered a way round.
+/// note: refusals first, so [`led_past`] reports the strictest rule a path falls under, since it
+/// takes the first rule it finds. Which rule a path matches is a fact about the tree, not the order
+/// it was typed in. A refusal is the rule a model must not be offered a way round.
 pub(super) fn barred(policy: &Careful) -> Vec<(String, Verdict)> {
     let mut barred: Vec<(String, Verdict)> = policy
         .paths()
@@ -166,7 +164,7 @@ pub(super) fn barred(policy: &Careful) -> Vec<(String, Verdict)> {
 }
 
 /// What the strictest of `barred` says about a file a walk came to, by its name unless that is the
-/// name the call gave, and by where it leads; `None` where nothing bars it.
+/// call's name, and by where it leads; `None` where nothing bars it.
 fn barring(
     barred: &[(String, Verdict)],
     path: &str,
@@ -186,19 +184,17 @@ fn barring(
         .reduce(Verdict::strictest)
 }
 
-/// The first of `barred` that is about where a link leads and not about the name it was reached
-/// by, if one is.
+/// The first of `barred` that is about where a link leads and not about the name it was reached by,
+/// if one is.
 ///
-/// note: a rule is about a name, and a link is a second name - so `alias -> .env` was read, walked
-/// and written under `.env*: deny` because the name was `alias`. What this does is not make the
-/// rule about targets, which would ask a question about a name the model never wrote: it closes
-/// the side door, and the caller refuses or skips and says the target's name, which is then asked
-/// about like any other. A rule that matches both names was already consulted for the one given,
-/// and is not consulted again.
+/// note: a rule is about a name, and a link is a second name. This does not make the rule about the
+/// target, which would ask a question about a name the model never wrote; it closes the side door.
+/// The caller refuses or skips and says the target's name, which is then asked about like any
+/// other. A rule that matches both names was already consulted for the name given, and is not
+/// consulted again.
 ///
 /// note: matched against the target relative to the working directory, the way a walk's own paths
-/// are, so a directory rule is about directories in the tree rather than about wherever somebody
-/// happens to keep it.
+/// are, so a directory rule is about directories in the tree.
 pub(super) fn led_past<'a>(
     named: &str,
     resolved: &Path,
@@ -213,21 +209,20 @@ pub(super) fn led_past<'a>(
 
 /// What a walk left behind, and why.
 ///
-/// note: counted rather than listed. The point is that an answer accounts for itself - a model
-/// that searched for a symbol and found nothing should be able to tell "it is not there" from
-/// "eleven files were not opened" - and the names of those eleven are both longer and, for the
-/// path rules, exactly what somebody did not want handed over.
+/// note: counted rather than listed, so an answer accounts for itself: a model can tell "it is not
+/// there" from "eleven files were not opened". The names are longer and, for path rules, exactly
+/// what somebody did not want handed over.
 ///
-/// note: a path that is not a file is among them, and that is the half the tool's own description
-/// promised: the walks count everything they passed over, and a pipe passed over in silence makes
-/// a model conclude the pipe is not there. What is left out is a directory, which is what the
-/// walk descended into rather than something it passed over.
+/// note: a path that is not a file is among them, as the tool's own description promised: the walks
+/// count everything they passed over, and a pipe passed over in silence makes a model conclude the
+/// pipe is not there. What is left out is a directory, which the walk descended into rather than
+/// passed over.
 ///
-/// note: a binary file is named by the byte that made it one. `read` reads a NUL as a character
-/// and shows the file as text, because a NUL is a character - so a model that has just read a
-/// file and then greps it gets two opposite accounts of it, with nothing in either saying why.
-/// This is the engine's own criterion rather than this tool's: `BinaryDetection::quit(b'\0')`
-/// stops the search at the first NUL, and a file holding one is stopped at whatever line it is in.
+/// note: a binary file is named by the byte that made it one. `read` reads a NUL as a character and
+/// shows the file as text, so a model that has just read a file and then greps it gets two opposite
+/// accounts of it, with nothing in either saying why. This is the engine's criterion, not this
+/// tool's: `BinaryDetection::quit(b'\0')` stops the search at the first NUL, and a file holding one
+/// is stopped at whatever line it is in.
 #[derive(Default)]
 struct Skipped {
     /// Files a path rule says to ask about, which a walk cannot ask about.
@@ -283,23 +278,21 @@ impl Skipped {
     }
 }
 
-/// The walk both tools do, which is the same walk with a different question asked of each file.
+/// The walk both tools do, with a different question asked of each file.
 ///
-/// note: each setting here stops a model concluding something false. Sorted, because the parallel
-/// walker's order is nondeterministic and two identical searches answering in two different
-/// orders would be two different context items. Hidden files searched, because a model that
-/// cannot find `.github/workflows` concludes the file does not exist - an absence it cannot
-/// account for is worse than a few extra files opened - and `.git` alone is skipped, because it is
-/// a database rather than anything anybody wrote. And the walker does not follow links: each one
-/// is yielded as itself, and [`followed`] decides about it one at a time, which is where a link is
-/// a question about the *reach* rather than about walking.
+/// note: each setting stops a model concluding something false. Sorted, because the parallel
+/// walker's order is nondeterministic and identical searches in different orders would be different
+/// context items. Hidden files are searched, because a model that cannot find `.github/workflows`
+/// concludes the file does not exist, and an absence it cannot account for is worse than a few
+/// extra files opened. `.git` alone is skipped, because it is a database rather than anything
+/// anybody wrote. The walker does not follow links: each one is yielded as itself, and [`followed`]
+/// decides about it one at a time; a link is a question about reach, not walking.
 ///
-/// note: `require_git(false)` is what makes the tool's own description true. The walker honours a
-/// `.gitignore` only inside a git repository by default, and `fs` tells the model it obeys one
-/// with no condition attached - so outside a repository a session would be handed build output
-/// while its own definition said it had been spared it. What a `.gitignore` says is what it says
-/// wherever it is found; whether the directory around it has been committed to anything is a fact
-/// about a workflow, not about which files somebody meant.
+/// note: `require_git(false)` makes the tool's description true. The walker honours a `.gitignore`
+/// only inside a git repository by default, and `fs` tells the model it obeys one unconditionally;
+/// outside a repository a session would be handed build output while its definition said it had
+/// been spared it. A `.gitignore` says what it says wherever it is found; whether the directory has
+/// been committed is a fact about a workflow, not about which files somebody meant.
 fn walk(root: &Path) -> ignore::Walk {
     WalkBuilder::new(root)
         .hidden(false)
@@ -323,9 +316,9 @@ struct Seen {
 ///
 /// note: one walk for the two tools, because what a walk passes over and why is the boundary a
 /// search is held to, and a copy of it per tool was two answers to what a search may open. What
-/// differs is what each does with a file, which is `each`'s - including the counts only a search
-/// can make, a file that would not open or turned out to be binary, which is why it is handed the
-/// count as well.
+/// differs is what each does with a file, which is `each`'s, including the counts only a search can
+/// make - a file that would not open or turned out binary - which is why it is handed the count as
+/// well.
 fn walked(
     root: &Path,
     reach: &Reach,
@@ -386,8 +379,8 @@ fn walked(
         }
 
         let path = relative(entry.path(), workdir);
-        // the file the *call* named is one the policy has already been asked about; only what the
-        // walk found under it is barred here. See `Looking::barred`, and `led_past` for a link
+        // the policy has already been asked about the file named by the call; only what the walk
+        // found under it is barred here. See `Looking::barred`, and `led_past` for a link
         match barring(
             barred,
             &path,
@@ -442,9 +435,8 @@ enum Link {
     /// Something that is not a file at all - a pipe, a socket, a device: passed over, and counted
     /// as the thing itself would be.
     Elsewhere,
-    /// Nothing at all: a dangling link, or a loop of them. Counted apart from a pipe, because
-    /// calling one a pipe, a socket or a device sends a model looking for a thing that is not
-    /// there.
+    /// Nothing at all: a dangling link or a loop of them. Counted apart from a pipe, because
+    /// calling one a pipe, socket, or device sends a model looking for a thing that is not there.
     Nowhere,
     /// Somewhere this session does not reach: count it and say so.
     Refuse,
@@ -463,24 +455,23 @@ fn followed(reach: &Reach, path: &Path, inside: &Path) -> Link {
     }
 }
 
-/// The working directory in the shape the walked paths are in, so that one is a prefix of the
-/// other.
+/// The working directory in the shape of the walked paths, so one is a prefix of the other.
 ///
-/// note: resolved rather than taken off `Reach`, because the walk root came through
+/// note: resolved rather than taken from `Reach`, because the walk root came through
 /// `Reach::allows`, which canonicalizes. A working directory reached through a link is a different
-/// string from the one every walked path starts with, and `strip_prefix` would match nothing: every
-/// line of every answer would carry the whole of the resolved path in front of it.
+/// string from the one every walked path starts with, so `strip_prefix` would match nothing and
+/// every answer line would carry the whole resolved path in front of it.
 fn under(workdir: &Path) -> PathBuf {
     workdir
         .canonicalize()
         .unwrap_or_else(|_| workdir.to_path_buf())
 }
 
-/// What to call a path in an answer: relative to the working directory wherever it is under it.
+/// What to call a path in an answer: relative to the working directory when it is under it.
 ///
-/// note: the spelling `read` takes back, and the one the person is looking at in their editor.
-/// `Reach::allows` hands back a resolved absolute path, so without the strip every line of every
-/// answer would carry the whole of somebody's home directory in front of it.
+/// note: the spelling `read` takes back, and the one the person sees in their editor.
+/// `Reach::allows` returns a resolved absolute path, so without the strip every answer line would
+/// carry the whole of somebody's home directory in front of it.
 fn relative(path: &Path, workdir: &Path) -> String {
     path.strip_prefix(workdir)
         .unwrap_or(path)
@@ -496,11 +487,11 @@ fn cut(line: &str, width: usize) -> String {
     }
 }
 
-/// Collects what one file matched on, and stops when the answer is full.
+/// Collects one file's matches and stops when the answer is full.
 ///
-/// note: a [`Sink`] of its own rather than `grep_searcher::sinks::UTF8`, which cannot carry
-/// context lines and cannot tell the caller how many matches a file had. Both of those are the
-/// shape of the answer rather than the search, which is the line this module draws.
+/// note: a [`Sink`] of its own rather than `grep_searcher::sinks::UTF8`, which cannot carry context
+/// lines and cannot tell the caller how many matches a file had. Both are the shape of the answer
+/// rather than the search, which is the line this module draws.
 #[derive(Default)]
 struct Lines {
     /// What to call the file at the front of each line.
@@ -509,8 +500,8 @@ struct Lines {
     kept: Vec<String>,
     /// How many matches this file had, which is not how many lines were kept.
     matched: usize,
-    /// How many more matches there is room to keep a line for; `None` keeps none of them and
-    /// counts every one, which is what `files_only` wants.
+    /// How many more matches there is room to keep a line for. `None` keeps none and counts every
+    /// one, which is what `files_only` wants.
     room: Option<usize>,
     /// Set where the file turned out to be binary, which discards the rest.
     binary: bool,
@@ -519,9 +510,9 @@ struct Lines {
 impl Lines {
     /// Whether the searcher should keep going through this file.
     ///
-    /// note: counting to the end of a file is the point of `files_only`, so a sink keeping no
-    /// lines is never full. One keeping them stops when it has as many as the answer has room
-    /// for, which is what makes a hundred matches cost a hundred lines and not a file's worth.
+    /// note: counting to the end of a file is the point of `files_only`, so a sink keeping no lines
+    /// is never full. One keeping them stops when it has as many as the answer has room for, so a
+    /// hundred matches cost a hundred lines and not a file's worth.
     fn wanted(&self) -> bool {
         self.room.is_none_or(|room| room > 0)
     }
@@ -560,8 +551,7 @@ impl Sink for Lines {
 
     /// note: what a binary file matched on is thrown away rather than reported as
     /// `binary file matches`, which is what `grep` says and what a terminal wants. A model cannot
-    /// do anything with a line of object code, and the count in the header is the whole of what
-    /// the fact is worth here.
+    /// do anything with a line of object code; only the count in the header matters.
     fn binary_data(&mut self, _searcher: &Searcher, _offset: u64) -> Result<bool, io::Error> {
         self.binary = true;
 
@@ -583,9 +573,9 @@ struct Found {
     skipped: Skipped,
     /// Which files matched and how often, kept whichever way the answer was asked for.
     ///
-    /// note: in line mode this is a by-product - one entry per matching file, at most a hundred
-    /// of them - and it is what a lines answer too big to send falls back to. Collected always so
-    /// that the fallback is a rearrangement of what was already found rather than a second walk.
+    /// note: in line mode this is a by-product - one entry per matching file, at most a hundred -
+    /// and it is what a lines answer too big to send falls back to. Collected always so the
+    /// fallback is a rearrangement of what was already found rather than a second walk.
     by_file: Vec<(String, usize)>,
     /// Whether the room ran out before the walk did.
     full: bool,
@@ -614,8 +604,8 @@ impl Grep {
             Err(why) => return Ok(ToolOutput::error(why)),
         };
         // note: the regex is built before anything is walked, so a pattern that does not parse
-        // costs no directory at all - and the answer is the one thing a model can act on
-        // immediately, which is why it says how to spell what it probably meant
+        // costs no directory. The answer is the one thing a model can act on immediately, so it
+        // says how to spell what it probably meant
         let matcher = match RegexMatcherBuilder::new()
             .case_insensitive(ignore_case)
             .build(&pattern)
@@ -638,10 +628,10 @@ impl Grep {
             Err(why) => return Ok(ToolOutput::error(why)),
         };
 
-        // note: read rather than reached for. `as_u64().unwrap_or(0)` on an argument a model
-        // quoted - `"context": "3"` - is a search that quietly does something else and says it
-        // did what was asked, and for `files_only` that is the expensive answer arriving with
-        // nothing to explain it. See `tools::whole`
+        // note: read rather than reached for. `as_u64().unwrap_or(0)` on a quoted argument such as
+        // `"context": "3"` quietly does something else and says it did what was asked. For
+        // `files_only` that is the expensive answer arriving with nothing to explain it. See
+        // `tools::whole`
         let wanted = match whole(args, "context", 0) {
             Ok(lines) => lines,
             Err(why) => return Ok(ToolOutput::error(why)),
@@ -657,9 +647,9 @@ impl Grep {
         let sink = output.clone();
 
         // note: the walk is blocking and `ignore` has no async form, so it goes on a thread that
-        // may block - and a blocking task cannot be aborted, which is why the loop asks the sink
-        // whether somebody has pressed escape rather than relying on being cancelled. A search of
-        // a large tree that nobody can stop is the one way this could be worse than the shell
+        // may block. A blocking task cannot be aborted, so the loop asks the sink whether somebody
+        // has pressed escape rather than relying on being cancelled. A search of a large tree that
+        // nobody can stop is the one way this could be worse than the shell
         let found = tokio::task::spawn_blocking(move || {
             let mut searcher = SearcherBuilder::new()
                 .binary_detection(BinaryDetection::quit(b'\x00'))
@@ -702,16 +692,16 @@ impl Grep {
                         skipped.binary += 1;
                         return ControlFlow::Continue(());
                     }
-                    // counted here rather than before the search, so that the two numbers in the
-                    // answer add up: a file that would not open or turned out to be binary is one of
-                    // the skipped, and not also one of the files read through
+                    // counted here rather than before the search, so the two numbers in the answer
+                    // add up: a file that would not open or turned out to be binary is one of the
+                    // skipped, and not also one of the files read through
                     found.searched += 1;
                     if lines.matched == 0 {
                         return ControlFlow::Continue(());
                     }
 
-                    // every line reaches the screen as it is found, the way a command's output does:
-                    // a search of a large tree is then visible while it runs rather than at the end
+                    // every line reaches the screen as it is found, so a search of a large tree is
+                    // visible while it runs rather than at the end
                     match files_only {
                         true => sink.push(format!("{}: {}\n", lines.named, lines.matched)),
                         false => {
@@ -743,11 +733,10 @@ impl Grep {
             found.stopped = stopped;
             found.skipped = skipped;
 
-            // note: by how much each file matched rather than by path, which is the one place
-            // here that does not answer in walk order. The question `files_only` is asked is
-            // *where does this live*, and the file with twelve matches is the answer to it far
-            // more often than the file with one. The path breaks a tie, so it is still the same
-            // answer twice for the same tree
+            // note: sorts by match count, then by path; this is the one place not in walk order.
+            // `files_only` asks where the thing lives, so a file with many matches answers it more
+            // often than a file with one. The path breaks ties, so the same tree gets the same
+            // answer twice
             found
                 .by_file
                 .sort_by(|(a, count), (b, than)| than.cmp(count).then_with(|| a.cmp(b)));
@@ -805,9 +794,8 @@ fn instead(found: &Found, pattern: &str, path: &str, bytes: usize) -> String {
          pattern or name one of these files to read them",
         found.matches,
         found.files,
-        // the same caveat a capped lines answer carries, because the same thing happened to it:
-        // the walk stopped when the room ran out, so these are the files it reached and not
-        // every file that matches
+        // the same caveat as a capped lines answer: the walk stopped when the room ran out, so
+        // these are the files it reached, not every file that matches
         match found.full {
             true => ", which is as many as this searches for, so there may be more",
             false => "",
@@ -823,21 +811,19 @@ fn instead(found: &Found, pattern: &str, path: &str, bytes: usize) -> String {
 
 /// What a search says about itself, above the lines it found.
 ///
-/// note: above them, because an output limit cuts from the end - the same reason `shell` puts its
-/// exit line first. A summary under a hundred matches is the first thing a limit takes, and
-/// what it leaves is a list of lines with nothing saying how many more there were.
+/// note: above them because an output limit cuts from the end - the same reason `shell` puts its
+/// exit line first. A summary under a hundred matches is the first thing a limit takes, and what it
+/// leaves is a list of lines with nothing saying how many more there were.
 fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u64) -> String {
     let files = format!("{} file(s) searched", found.searched);
-    // what ran out, and what to do about it, both named as the thing the caller asked for: a
-    // search answering with lines fills up with lines, and one answering with files fills up with
-    // files.
+    // what ran out and what to do about it, both named as the thing the caller asked for: a search
+    // answering with lines fills up with lines, and one answering with files fills up with files.
     //
-    // note: `files_only` is named as the way out of a lines answer and not of a `files_only` one,
-    // because it answers the situation rather than working around it. A capped lines answer is
-    // filled from the start of the alphabet and can end before it reaches the file the question
-    // was about, where the file names see the whole tree for a fraction of the tokens - and an
-    // answer that is already the file names has said where they are, so advising it spends a turn
-    // to get the same lines back
+    // note: `files_only` is the way out of a lines answer, not of a `files_only` answer, because it
+    // answers the situation rather than working around it. A capped lines answer fills from the
+    // start of the alphabet and can end before the file the question was about; file names see the
+    // whole tree for a fraction of the tokens. An answer that is already file names has said where
+    // they are, so advising it spends a turn to get the same lines back
     let (full, advice) = match files_only {
         true => (
             "that is as many file(s) as this answers with",
@@ -882,12 +868,10 @@ fn counted(matches: usize, files: usize, files_only: bool) -> String {
     }
 }
 
-/// A header, whatever the answer has to account for, and the lines - with nothing left dangling
-/// where one of those is empty.
+/// A header, the notes, and the lines, with empty parts omitted.
 ///
-/// note: one function for both tools, because an empty list joined onto the header leaves a
-/// trailing newline, which is one byte and the difference between two answers a test can compare
-/// and two it cannot.
+/// note: one function for both tools because an empty list joined onto the header leaves a trailing
+/// newline of one byte, the difference between answers a test can compare and ones it cannot.
 fn said<const N: usize>(head: String, notes: [Option<String>; N], lines: &[String]) -> String {
     std::iter::once(Some(head))
         .chain(notes)
@@ -933,9 +917,9 @@ impl Glob {
                     return ControlFlow::Continue(());
                 }
 
-                // note: one past the cap and no further. Walking the rest of the tree was what
-                // an exact count cost, and on a large tree it was most of the call; what the model
-                // does with "there are more" is the same whatever the number, which is narrow it
+                // note: one past the cap and no further. An exact count means walking the
+                // rest of the tree, most of the call on a large tree. The model only narrows on
+                // "there are more", whatever the number
                 if paths.len() == PATHS {
                     more = true;
                     return ControlFlow::Break(());
@@ -1011,9 +995,9 @@ mod tests {
 
     /// A line too wide for the answer is cut where it says it is cut.
     ///
-    /// note: over characters rather than bytes, which is what stops a cut landing inside one. The
-    /// third case is a line of two-byte characters, where a count of bytes and a count of
-    /// characters put the cut in different places.
+    /// note: counted over characters rather than bytes, so a cut never lands inside one. The third
+    /// case is a line of two-byte characters, where a byte count and a character count put the cut
+    /// in different places.
     #[test]
     fn a_long_line_is_cut_and_says_so() {
         assert_eq!(cut("short", 10), "short");

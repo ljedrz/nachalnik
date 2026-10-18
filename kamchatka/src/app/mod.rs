@@ -1,10 +1,10 @@
 //! Everything the terminal knows: what is on the screen, what the keys do, and what to make of
 //! the events the kernel broadcasts.
 //!
-//! note: the kernel is driven from a task of its own, and this loop never blocks on it. What
-//! arrives here is [`Event`]s - the same ones the session log is made of - so the screen is a
-//! rendering of the record rather than a second account of it. When a turn stops for a decision,
-//! the task ends and hands control back; nothing is waiting on a channel for an answer.
+//! note: the kernel runs on its own task and this loop never blocks on it. Events here are
+//! [`Event`]s, the same ones the session log is made of, so the screen is a rendering of the
+//! record rather than a second account of it. When a turn stops for a decision, the task ends and
+//! hands control back; nothing waits on a channel for an answer.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -65,19 +65,18 @@ const TRACE_DEPTH: usize = 400;
 /// How many earlier versions of one item the viewer keeps.
 const VERSIONS: usize = 8;
 
-/// How much of a still-running tool's output the transcript holds on to.
+/// The transcript holds this much of a still-running tool's output.
 ///
-/// note: a tool's output and nothing else. A command can produce megabytes and the whole of it is
-/// in the context either way, one keystroke from being read - but a *message* is never shortened
-/// on the way to the screen, however long it is. See [`App::append`].
+/// note: only the tool's output, nothing else. A command can produce megabytes and all of it is in
+/// the context. A message is never shortened on the way to the screen, however long it is. See
+/// [`App::append`].
 const LIVE_OUTPUT: usize = 8_000;
 
 /// How far a chain of edits is followed before the conversation stops asking where an item
 /// belongs.
 ///
-/// note: a bound rather than a cycle check, because the thing being followed is a number in a
-/// free-form `meta` that nothing in this program wrote alone - a hand-written snapshot can
-/// point two items at each other, and a screen is a poor place to find out.
+/// note: a bound rather than a cycle check, because the followed number is in free-form `meta` that
+/// this program did not write alone - a hand-written snapshot can point two items at each other.
 const HOPS: usize = 16;
 
 /// Which half of the window the keys are talking to.
@@ -85,8 +84,8 @@ const HOPS: usize = 16;
 pub enum Focus {
     /// The prompt, which is on the chat tab and wherever an item is being edited.
     Input,
-    /// Whatever else on the screen takes keys: the tab's own body, or - on the chat tab - the
-    /// question standing in the prompt's place, which is the only thing there that does.
+    /// What takes keys on the screen: the tab's body, or on the chat tab the question in the
+    /// prompt's place, the only thing there that takes keys.
     Body,
 }
 
@@ -133,13 +132,13 @@ pub struct Traced {
     pub name: String,
     /// The rest of it.
     pub detail: String,
-    /// When it arrived, on the clock that only goes forwards.
+    /// When it arrived, on a clock that only goes forwards.
     ///
-    /// note: what a log is missing without a clock is the question people actually bring to one:
-    /// which step was slow. Kept as an instant rather than a rendered string because what the
-    /// pane shows beside it is the gap to the line above, which is not a property of either line
-    /// alone - and because an `Instant` cannot be dragged backwards by the system clock being
-    /// set, which a duration computed from wall time can.
+    /// note: without a clock, a log cannot answer the question people bring to one: which step was
+    /// slow. Kept as an `Instant` rather than
+    /// a rendered string because the pane shows the gap to the line above, which is not a property
+    /// of either line alone, and because an `Instant` cannot be dragged backwards by the system
+    /// clock, which a duration from wall time can be.
     pub at: Instant,
     /// When it arrived, on the clock a person reads.
     ///
@@ -162,10 +161,9 @@ pub struct Traced {
     /// figure in the column, which would make the one number nobody should act on the one the eye
     /// goes to first.
     ///
-    /// note: set on the line that *ends* the wait rather than the one that begins it, because the
-    /// gap belongs to the line it is drawn beside. `App::trace` takes it, so it marks exactly one
-    /// line: the first thing that happens after somebody acts, which is the line whose gap spans
-    /// their thinking.
+    /// note: set on the line that ends the wait rather than the one that begins it, because the gap
+    /// belongs to the line it is drawn beside. `App::trace` takes it, so it marks exactly one line:
+    /// the first thing that happens after somebody acts.
     pub after_a_person: bool,
 }
 
@@ -215,8 +213,8 @@ pub struct Proposed {
     pub rows: Vec<String>,
     /// How many items there are.
     pub count: usize,
-    /// What they are holding between them, which is not what the request will fall by: an elided
-    /// item leaves a marker behind, and the difference is the marker.
+    /// What they hold between them, not what the request will fall by: an elided item leaves a
+    /// marker behind, and the difference is the marker.
     pub holding: usize,
 }
 
@@ -237,52 +235,50 @@ pub struct Proposed {
 pub struct Anchor {
     /// The items whose own content was in that request.
     ///
-    /// note: whose content, which is not the same as which items were in it. An elided one is in
-    /// a request as a marker, and recording it here would have the arithmetic below take the
-    /// whole of what it *holds* back out of a figure that only ever had a line of text in it.
-    /// That is not a rounding error: once a large attachment is elided and one request goes out
-    /// without it, the corner would read `~0` for the rest of the session.
+    /// note: whose content, which is not the same as which items were in it. An elided item is a
+    /// marker in a request. Recording it here would make the arithmetic below subtract everything
+    /// it holds from a figure that only ever held a line of text. That is not a rounding error: if
+    /// a large attachment is elided and a request goes out without it, the corner would read `~0`
+    /// for the rest of the session.
     pub sent: Vec<ContextId>,
-    /// What everything else in it came to - the markers standing where an elided item was.
+    /// What everything else in it came to: the markers standing where an elided item was.
     ///
-    /// note: a stored figure, where everything else here is re-estimated on the way past, and
-    /// the exception is deliberate. Re-estimating is what makes an unchanged item cancel exactly
-    /// against itself, but it needs the *text* that was sent, and the text of a marker is gone
-    /// as soon as the item stops being elided. A marker is one line, so what is lost by storing
-    /// it in older money is a fraction of twenty tokens - against the whole of an elided item
-    /// that getting it wrong costs.
+    /// note: a stored figure. Everything else here is re-estimated on the way past, and the
+    /// exception is deliberate. Re-estimating makes an unchanged item cancel exactly against
+    /// itself, but it needs the text that was sent. A marker's text is gone as soon as the item
+    /// stops being elided. A marker is one line. Storing it costs a fraction of twenty tokens;
+    /// getting it wrong costs the whole of an elided item.
     pub markers: usize,
     /// The provider's own figure for the whole of it, tool definitions and framing included.
     pub reported: usize,
 }
 
-/// How long leaving a session waits for a turn that is still running to stop; see
-/// [`App::wait_for_turn`].
+/// How long leaving a session waits for a running turn to stop. See [`App::wait_for_turn`].
 ///
-/// note: long enough for anything that looks at its interrupt - a model's stream, `shell`, the
-/// searches and `fork` do - and short enough that a `/quit` does not look like a hang.
+/// note: long enough for anything that checks its interrupt - a model's stream, `shell`, the
+/// searches and `fork` - and short enough that `/quit` does not look like a hang.
 pub const LEAVING: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// How often a loop with nothing drawing it looks for a notice while a turn runs; see
+/// How often a loop with nothing drawing it checks for notices while a turn runs. See
 /// [`App::take_notices`].
 ///
-/// note: the drawn loop has a tick of its own and reads them on that.
+/// note: the drawn loop has its own tick and reads notices on that.
 pub(crate) const NOTICES: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// What one line handed to [`App::submit`] did.
 ///
 /// note: three answers rather than two, because "it was queued" is a different thing to tell
-/// somebody than "it was asked". A line sent into a running turn waits for the end of that turn -
-/// see the note on [`App::submit`] for why it cannot go in any earlier - and a caller that read
-/// that as "asked" would be waiting for an answer to a question the model has not been given yet.
+/// somebody than "it was asked". A line sent into a running turn waits for that turn to end. See
+/// the note on [`App::submit`] for why it cannot go in earlier. A caller that read that as "asked"
+/// would wait for an answer to a question the model has not been given.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Did {
     /// It went into the context as a message, and a turn was started for it.
     Asked(ContextId),
-    /// A turn was already running, so it waits for the end of that one and then gets its own; or
-    /// a command was still out at the endpoint, so the line waits for that and is handed in
-    /// after, whatever it turns out to be. See [`App::in_flight`].
+    /// If a turn was already running, the line waits for it to end and then gets its own turn. If a
+    /// command was still out at the endpoint, the line waits for that and is handed in afterwards.
+    /// See [`App::in_flight`].
     Queued,
     /// It began with `/`, so it was a command, and it has been run.
     Ran,
@@ -291,13 +287,12 @@ pub enum Did {
 /// What came back from one line: what it did, what was said about it, and any page it opened.
 ///
 /// note: this is the half of `submit` that is otherwise readable only by watching [`App::loose`]
-/// and [`App::overlay`] change - which is what a *screen* does, because a screen re-reads both
-/// every frame. A caller that is not a screen is answering a line rather than redrawing a
-/// window, and it asked a question: this is the answer to it.
+/// and [`App::overlay`] change. A screen does that, re-reading both every frame. Any other caller
+/// answers a line rather than redrawing a window; it asked a question, and this is the answer.
 ///
-/// note: what it carries is a copy rather than a move. The lines are still in [`App::loose`] and
-/// the page is still in [`App::overlay`], because the terminal reads them from there and a reply
-/// nobody collected must not take a command's output off the screen.
+/// note: it carries a copy rather than a move. The lines stay in [`App::loose`] and the page stays
+/// in [`App::overlay`], because the terminal reads them from there. A reply nobody collected must
+/// not take a command's output off the screen.
 pub struct Reply {
     /// What the line did.
     pub did: Did,
@@ -305,15 +300,15 @@ pub struct Reply {
     pub said: Vec<Entry>,
     /// The page it opened, if it opened one.
     ///
-    /// note: an `Option` rather than an empty page, and it is the *new* one rather than whatever
-    /// the overlay happens to hold: a command that says a line while an earlier command's page is
-    /// still open opened nothing, and reporting that page again would have a headless caller
-    /// print `/seams` twice for two unrelated commands.
+    /// note: an `Option` rather than an empty page, and it is the new page rather than whatever the
+    /// overlay holds. A command that says a line while an earlier command's page is still open
+    /// opened nothing. Reporting that page again would make a headless caller print `/seams` twice
+    /// for two unrelated commands.
     ///
     /// note: the whole overlay rather than the [`Page`] inside it, because the title is on the
-    /// overlay and a `Page` opened by `App::preview` is deliberately nameless - there is one of
-    /// them, and the strip along the top of a one-page box would be saying nothing. A caller
-    /// handed the page alone gets `--- ---` where `--- the budget ---` belongs.
+    /// overlay. A `Page` opened by `App::preview` is deliberately nameless: there is one of them,
+    /// and the strip along the top of a one-page box would say nothing. A caller handed the page
+    /// alone gets `--- ---` where `--- the budget ---` belongs.
     pub page: Option<Overlay>,
 }
 
@@ -324,45 +319,43 @@ pub struct App {
     /// When the runtime last started doing something, for the marker that says it still is.
     ///
     /// note: read at draw time rather than counted in frames, so the marker keeps time with the
-    /// world instead of with the redraw rate - and so that it stops dead if the screen stops
-    /// being drawn, which is the one thing it exists to make visible.
+    /// world instead of the redraw rate. It stops dead if the screen stops being drawn; that is
+    /// what it exists to make visible.
     pub since: Instant,
 
     /// The policy, which the permission overlay teaches.
     pub policy: Arc<Careful>,
-    /// The advisor wrapped around it, where there is one, for the rating the question draws.
+    /// The advisor wrapped around it, if there is one, for the rating the question draws.
     ///
-    /// note: the only thing this is read for. What *decides* is inside the kernel and is reached
-    /// through no field here - see the note in `wiring`, which is careful that the policy the
-    /// kernel holds and the stances the screen draws are one object and not two. This is the
-    /// advisor's own memory of what it said about a command, which nothing else has a way to ask
-    /// it for.
+    /// note: the only thing this is read for. What decides is inside the kernel and is reached
+    /// through no field here. See the note in `wiring`: it keeps the policy the kernel holds and
+    /// the stances the screen draws as one object, not two. This is the advisor's own memory of
+    /// what it said about a command; nothing else can ask it for that.
     ///
-    /// note: `None` in a session started without `--rate-shell-commands`, which is the default.
+    /// note: `None` in a session started without `--rate-shell-commands`, the default.
     #[cfg(feature = "shell-advisor")]
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Dialect>,
-    /// A `/model` or `/endpoint` still settling, which the next line waits for.
+    /// A `/model` or `/endpoint` still settling. The next line waits for it.
     ///
-    /// note: both commands hand the switch to a task rather than standing there while it happens,
-    /// because finding out what the new model holds and whether the new address serves it is two
-    /// round trips and a screen should not stop for them. What the *next line* may not do is read
-    /// a session that has not finished changing: `/endpoint URL ID` followed by `/model` would
-    /// report the old model, and a message on the line after a switch could be asked of whichever
-    /// of the two won the race. Down a pipe there is no gap between the lines at all, so what is a
-    /// race at a keyboard is the ordinary case in a script.
+    /// note: both commands hand the switch to a task rather than waiting for it. Finding out what
+    /// the new model holds and whether the new address serves it takes two round trips, and a
+    /// screen should not stop for them. The next line must not read a session that has not finished
+    /// changing: `/endpoint URL ID` followed by `/model` would report the old model, and a message
+    /// after a switch could be asked of whichever of the two won the race. Down a pipe there is no
+    /// gap between lines, so a keyboard race is the ordinary case in a script.
     ///
-    /// note: held for in [`App::submit`] rather than anywhere the provider is read, which is the
-    /// narrower door and the right one: a frame drawn mid-switch showing the old name for a
-    /// moment is a frame, and the next one corrects it. A *line* acting on the old name is an
-    /// answer. Every question a switch asks the endpoint is bounded by the provider, so this
-    /// cannot hold lines for ever. See [`App::in_flight`].
+    /// note: held in [`App::submit`] rather than anywhere the provider is read: the narrower door,
+    /// and the right one. A frame drawn mid-switch showing the old name for a moment is just a
+    /// frame, and the next one corrects it. A line acting on the old name is an answer. Every
+    /// question a switch asks the endpoint is bounded by the provider, so this cannot hold lines
+    /// for ever. See [`App::in_flight`].
     pub settling: Option<tokio::task::JoinHandle<()>>,
-    /// A command's request still out at the endpoint - `/models`, or a compaction pass being
-    /// worked out - which [`App::on_outcome`] finishes when it comes back.
+    /// A command's request still out at the endpoint: `/models`, or a compaction pass being worked
+    /// out. [`App::on_outcome`] finishes it when it comes back.
     ///
-    /// note: one, because nothing is handed a line while it is out; see [`App::in_flight`].
+    /// note: one, because nothing is handed a line while it is out. See [`App::in_flight`].
     errand: Option<Errand>,
     /// How many errands have been sent, which is what numbers them.
     errands: u64,
@@ -371,33 +364,30 @@ pub struct App {
     held: VecDeque<(String, bool)>,
     /// How much of each tool's output the model is shown, which `/limit` changes.
     ///
-    /// note: the same handle the tools were built with, so `/limit` changes the number they will
-    /// actually declare on the next request. Holding a second one would be a command that reports
-    /// success and does nothing.
+    /// note: the same handle the tools were built with, so `/limit` changes the number they declare
+    /// on the next request. A second handle would report success and do nothing.
     pub limits: Limits,
     /// What items used to say, oldest first, for the ones that have been rewritten.
     ///
-    /// note: kept here rather than in the kernel because the kernel deliberately does not keep
-    /// it. A replacement is the one context operation that overwrites something, which is why
-    /// [`nachalnik::Event::ContextReplaced`] is the one event that carries content - so that a
-    /// client which wants the history can have it, and one that does not pays nothing. Without
-    /// this, a `context` that rewrote a tool result would leave the old text nowhere a person can
-    /// read it: on the trace as a line of JSON, and in an undo window that closes.
+    /// note: kept here rather than in the kernel because the kernel deliberately does not keep it.
+    /// A replacement is the one context operation that overwrites something, which is why
+    /// [`nachalnik::Event::ContextReplaced`] is the one event that carries content: so a client
+    /// that wants the history can have it, and one that does not pays nothing. Without it, a
+    /// `context` rewrite of a tool result would leave the old text unreadable: on the trace as
+    /// JSON, and in an undo window that closes.
     ///
-    /// note: both hands land here. A terminal edit replaces in place as `context: revise`
-    /// does, so this is where the words it changed are, and the reason it needs no second
-    /// mechanism of its own.
+    /// note: a terminal edit replaces in place as `context: revise` does, so this is where the
+    /// words it changed are. It needs no second mechanism of its own.
     versions: BTreeMap<ContextId, Vec<Content>>,
 
-    /// The handle the introspection tools reach the kernel through, kept for as long as the
-    /// session lasts.
+    /// The handle the introspection tools reach the kernel through, kept for as long as the session
+    /// lasts.
     ///
-    /// note: it is here rather than in `main` because it has to outlive the tools: they hold a
-    /// weak handle to it, and dropping it is what takes their reach away. See
-    /// [`crate::introspect::install`].
+    /// note: it is here rather than in `main` because it has to outlive the tools: they hold a weak
+    /// handle to it, and dropping it takes their reach away. See [`crate::introspect::install`].
     ///
     /// note: dropping it is not how the tools are switched off, because it would also throw away
-    /// what `context` is remembering. Turning a tool off is [`App::toggle`], and a shelved tool is
+    /// what `context` is remembering. Turning a tool off is [`App::toggle`]. A shelved tool is
     /// still the same tool: what it pinned is still pinned, and what it could still walk back it
     /// still can.
     pub introspect: Option<crate::introspect::Installed>,
@@ -407,67 +397,63 @@ pub struct App {
     /// The tools this session is not offering, by id, kept so that they can be offered again.
     ///
     /// note: the tool itself rather than its id, which is what makes this work for a tool nobody
-    /// here wrote. A list of names would mean rebuilding whatever was named, and there is no way
-    /// to rebuild an MCP server's tool or an embedder's - so turning one off would be turning it
-    /// off for good. What [`Kernel::remove_tool`] hands back is the tool, and this keeps it.
+    /// here wrote. A list of names would mean rebuilding whatever was named, and there is no way to
+    /// rebuild an MCP server's tool or an embedder's, so turning one off would turn it off for
+    /// good. What [`Kernel::remove_tool`] hands back is the tool, and this keeps it.
     pub shelved: BTreeMap<String, Arc<dyn Tool>>,
     /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
     ///
-    /// note: on `App` rather than worked out where it is drawn, because finding out means
-    /// applying a ruleset in a child process and that is not something a frame should be doing
-    /// sixty times a second. It cannot change while the program runs.
+    /// note: on `App` rather than worked out where it is drawn, because finding out means applying
+    /// a ruleset in a child process - not something a frame should do sixty times a second. It
+    /// cannot change while the program runs.
     pub confinement: Confinement,
-    /// Why the sandbox did not take, where it was asked for and did not and something said why;
-    /// see [`crate::sandbox::Probed::why`].
+    /// Why the sandbox did not take, where it was requested but did not, with the reason; see
+    /// [`crate::sandbox::Probed::why`].
     pub unconfined_because: Option<String>,
     /// The address of the page `--web` serves, its key included, for `/web` to show again.
     ///
-    /// note: the run's rather than the session's, and set by whoever started the page, because the
-    /// page outlives every `/restart` and nothing in a session made it.
+    /// note: the run's rather than the session's, set by whoever started the page because the page
+    /// outlives every `/restart` and nothing in a session made it.
     pub web: Option<String>,
     /// What the shell's commands left running, for whoever ends the session to stop or name; see
     /// [`crate::tools::Stragglers`].
     pub stragglers: crate::tools::Stragglers,
     /// What the provider charged for the last request, and what was in it. See [`Anchor`].
     pub anchor: Option<Anchor>,
-    /// The items the request now in flight was built from, until there is a figure to pair
-    /// them with.
+    /// The items the request in flight was built from, until there is a figure to pair them with.
     ///
-    /// note: two events, because the runtime reports what went out and what came back
-    /// separately and neither is any use here without the other.
+    /// note: two events, because the runtime reports what went out and what came back separately,
+    /// and neither is any use here without the other.
     pending: Anchor,
     /// The lines of the chat that are not context items, in the order they were said.
     ///
-    /// note: not "the conversation". The conversation is the context, and
-    /// [`App::conversation`] reads it every frame; this is what that reading cannot account
-    /// for. See [`Entry`].
+    /// note: not "the conversation". The conversation is the context, which [`App::conversation`]
+    /// reads every frame; this is what that reading cannot account for. See [`Entry`].
     pub loose: Vec<Entry>,
     /// How many times [`App::clear_notices`] has emptied the program's own lines.
     ///
     /// note: a generation rather than a flag, because what reads it is a watermark rather than a
     /// screen. [`App::notes`] is safe to count against only while the filtered sequence is
-    /// append-only, and this is the one thing in the program that is not - it empties that
-    /// sequence outright. A loop holding `said` against a sequence that went back to nothing
-    /// swallows the next `said` lines, silently, for the rest of the session. Compare it, and
-    /// start again from nothing when it moves.
+    /// append-only; this is not, because it empties that sequence outright. A loop holding `said`
+    /// against a sequence that went back to nothing swallows the next `said` lines silently for the
+    /// rest of the session. Compare it, and start again from nothing when it moves.
     cleared: u64,
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
     /// The prompt.
     #[cfg(feature = "tui")]
     pub input: TextArea<'static>,
-    /// The colour of the window's frame, and of everything drawn in it to say *the keys are
-    /// here*: the active tab, the prompt while it has them, an answerable question.
+    /// The colour of the window's frame and of what is drawn in it to show that the keys are here:
+    /// the active tab, the prompt while it has them, an answerable question.
     /// [`config::BORDER_COLOR`](crate::config::BORDER_COLOR) unless a settings file says otherwise.
     ///
     /// note: one field rather than one per border, because they are one statement. All four are
-    /// this colour to say the same thing, and a setting that moved three of them would leave the
-    /// fourth reading as a different kind of thing rather than as the one somebody forgot.
+    /// this colour to say the same thing; moving three would leave the fourth looking different
+    /// rather than forgotten.
     ///
-    /// note: not every yellow in the program. `ask` on the permissions tab, a budget bar past
-    /// seven tenths, a command that was killed, a pinned row - those are yellow because yellow
-    /// *means* something there, and they stay yellow against a frame of any colour. This is the
-    /// accent; those are the vocabulary.
+    /// note: not every yellow in the program. `ask` on the permissions tab, a budget bar past seven
+    /// tenths, a killed command, and a pinned row are yellow because yellow means something there,
+    /// and they stay yellow against a frame of any colour.
     #[cfg(feature = "tui")]
     pub accent: ratatui::style::Color,
     /// Which pane the keys go to.
@@ -483,10 +469,10 @@ pub struct App {
     pub list: ratatui::widgets::ListState,
     /// The context rows the last frame drew, until the next key.
     ///
-    /// note: what the context keys count rows in, so that a key does not filter the whole
-    /// context again to find the rows the frame has just found - with a search open, that doubled
-    /// what every key cost. Only the first key after a frame reads them: whatever it changed, no
-    /// frame has drawn yet, so the key after it filters afresh.
+    /// note: what the context keys count rows in, so a key does not filter the whole context again
+    /// to find the rows the frame has just found - with a search open, that doubled the cost of
+    /// every key. Only the first key after a frame reads them: whatever it changed, no frame has
+    /// drawn yet, so the next key filters afresh.
     #[cfg(feature = "tui")]
     pub(crate) drawn: Option<Vec<ContextId>>,
     /// What is on top, if anything.
@@ -503,69 +489,68 @@ pub struct App {
     pub busy: bool,
     /// The failure already reported for the turn now running, so the same one is not said twice.
     ///
-    /// note: scoped to a turn, because one failure being reported twice is a fact about a turn -
-    /// the kernel emits the event and then the turn comes to the same end, the second wrapping
-    /// the first. Comparing against the last line in [`App::loose`] would not do, because that
-    /// outlives every turn: nothing said between two turns goes in there, since a message and an
-    /// answer are both drawn from the context. The first red line would stay the last loose line
-    /// for the rest of the session and swallow every later failure with the same words, so a
-    /// model with one canned refusal would fail silently from its second refusal on.
+    /// note: scoped to a turn because reporting the same failure twice is about one turn: the
+    /// kernel emits the event and then the turn comes to the same end, the second wrapping the
+    /// first. Comparing against the last line in [`App::loose`] would not do: it outlives every
+    /// turn, and nothing said between turns goes in there, since a message and an answer are both
+    /// drawn from the context. The first failure would stay the last loose line for the
+    /// rest of the session and swallow later failures with the same words, so a model with one
+    /// canned refusal would fail silently from its second refusal on.
     failed: Option<String>,
     /// Whether a person has just done something the trace has not drawn a line for yet.
     ///
-    /// note: private, and set at the two doors a person comes through - `submit`, where a line is
+    /// note: private, and set at the two places a person comes through: `submit`, where a line is
     /// handed in, and the answer to a permission question. [`Traced::after_a_person`] is what it
     /// becomes, and `App::trace` takes it, so it marks the one line whose gap is somebody's
     /// thinking rather than the program's working.
     ///
-    /// note: set where the program learns a person acted rather than where the waiting begins.
-    /// A question opens and `state.changed`, a recount and the question itself all arrive in the
-    /// same millisecond, so a flag set at the opening would be spent on one of those and the
-    /// person's wait would still be drawn beside `permission.decided`.
+    /// note: set where the program learns a person acted, not where the waiting begins. A question
+    /// opens, `state.changed`, a recount, and the question itself all arrive at once, so a flag set
+    /// at the opening would be spent on one of those and the person's wait would still be drawn
+    /// beside `permission.decided`.
     acted: bool,
     /// Whether it is time to leave.
     pub quit: bool,
     /// Whether the session is to be written out and started again from nothing.
     ///
-    /// note: beside [`App::quit`] and read the same way, by the loop rather than here, because
-    /// what a restart replaces is this whole object. A method cannot hand back the thing it was
-    /// called on, and every loop already has the one branch that ends it - so a restart is that
-    /// branch with somewhere to go afterwards. [`App::restart`] is what sets it.
+    /// note: beside [`App::quit`] and read the same way, by the loop rather than here, because a
+    /// restart replaces this whole object. A method cannot hand back the thing it was called on,
+    /// and every loop already has the branch that ends it, so a restart is that branch with
+    /// somewhere to go afterwards. [`App::restart`] sets it.
     ///
-    /// note: it outranks `quit` nowhere. A session asked to do both leaves, because leaving is the
-    /// one of the two that cannot be got back to by typing the other word again.
+    /// note: it does not outrank `quit`. A session asked to do both leaves, because leaving cannot
+    /// be undone by typing the other word again.
     pub restart: bool,
     /// Text the loop has been asked to hand the terminal, for its clipboard, and has not yet.
     ///
     /// note: a field rather than a write, because a screen belongs to whoever owns it. The two
-    /// loops in this program take it and write the escape sequence; a host embedding the `App`
-    /// gets the text and does whatever its own window does with a copy, which is what it would
-    /// have had to do anyway with an escape it never asked for written into its terminal.
+    /// loops in this program take it and write the escape sequence; a host embedding the `App` gets
+    /// the text and does whatever its own window does with a copy, which is what it would have had
+    /// to do anyway with an escape it never asked for written into its terminal.
     ///
-    /// note: the whole of the item rather than what is drawn of it. That is the point of copying
-    /// from here instead of dragging a mouse over the pane: this text is not wrapped to a window,
-    /// has no frame down either side of it, and is all there whether or not it fits on a screen.
+    /// note: the whole item rather than what is drawn of it. Copying from here instead of dragging
+    /// a mouse over the pane gives text that is not wrapped to a window, has no frame down either
+    /// side, and is all there whether or not it fits on a screen.
     pub clipboard: Option<String>,
     /// The line [`App::copy`] said about what is in [`App::clipboard`], and the item it was about,
     /// for [`App::not_copied`] to take back.
     ///
-    /// note: what is being taken back is a receipt, not a retraction. The text has left the
-    /// program either way and the loop is the only thing that can find out what happened to it,
-    /// so the line saying it is rewritten once, by whoever knows. See `App::not_copied`.
+    /// note: what is being taken back is a receipt, not a retraction. The text has left the program
+    /// either way, and the loop is the only thing that can find out what happened to it, so the
+    /// line is rewritten once, by whoever knows. See `App::not_copied`.
     receipt: Option<(String, ContextId)>,
     /// How many tokens the provider may charge for this session before it stops; `None` never
     /// stops. [`App::set_spend`] is how it is changed, and [`App::spend`] reads it.
     ///
-    /// note: here rather than in the loop that drives the session, which is what makes it a
-    /// ceiling rather than a headless flag. Every caller
-    /// hands events to [`App::on_event`] - the screen, the headless driver, and an embedder with a
-    /// loop of its own - so this is the one place where counting them reaches all three. A guard
-    /// that only the program's own loop applied would be no guard for the embedder who most needs
-    /// one.
+    /// note: here rather than in the loop that drives the session, which makes it a ceiling rather
+    /// than a headless flag. Every caller hands events to [`App::on_event`] - the screen, the
+    /// headless driver, and an embedder with its own loop - so this is the one place where counting
+    /// them reaches all three. A guard applied only by the program's own loop would not protect the
+    /// embedder who most needs one.
     ///
     /// note: private, alone among the things a caller sets, because it is not the only field that
-    /// has to move: raising it has to let a stopped session go again, and a ceiling written
-    /// straight in would leave `overspent` latched over a limit nothing has reached.
+    /// has to move: raising it must let a stopped session go again, and a ceiling written straight
+    /// in would leave `overspent` latched over a limit nothing has reached.
     spend: Option<u64>,
     /// How many wrapped lines the transcript came to, as of the last frame.
     pub rendered: usize,
@@ -573,9 +558,9 @@ pub struct App {
     pub viewport: usize,
     /// The `/` filter over this tab's rows, while its box is on the screen.
     ///
-    /// note: one box rather than one per tab, and it is cleared when the tab changes. A query
-    /// written for the trace means nothing against the context, and carrying it over would filter
-    /// a pane by a phrase nobody typed there.
+    /// note: one box rather than one per tab, cleared when the tab changes. A trace query means
+    /// nothing against the context; carrying it over would filter a pane by a phrase nobody typed
+    /// there.
     #[cfg(feature = "tui")]
     pub search: Option<Search>,
     /// Which context item the prompt is editing, if it is editing one rather than composing a
@@ -586,15 +571,14 @@ pub struct App {
     pub stepping: bool,
     /// Whether somebody is at a screen, with this program's keys to press.
     ///
-    /// note: what `/help` turns on, and it is a fact about the *caller* rather than about the
-    /// session - which is why the loop sets it and `App` cannot work it out. A run down a pipe and
-    /// a browser attached over a socket both have no `ctrl+p` to press, and neither should be
-    /// handed pages about one.
+    /// note: what `/help` turns on. It is a fact about the caller, not the session, so the loop
+    /// sets it and `App` cannot work it out. A pipe and a socket browser have no `ctrl+p` to press,
+    /// so neither should be handed pages about one.
     ///
-    /// note: `true` by default, and the direction is deliberate rather than convenient. This type
-    /// is the terminal's state - it holds a prompt, a focus, a tab and two scroll positions - so
-    /// the caller that departs from its shape is the one without keys, and it is the one that says
-    /// so. `headless.rs` and [`crate::remote`] are both driven by a loop that knows.
+    /// note: `true` by default, deliberately. This type is the terminal's state: a prompt, a focus,
+    /// a tab and two scroll positions. So the caller that departs from its shape is the one without
+    /// keys, and that caller says so. `headless.rs` and [`crate::remote`] are driven by a loop that
+    /// knows.
     pub keys: bool,
     /// Digits typed at the context tab, waiting for the key that uses them.
     pub count: String,
@@ -689,23 +673,21 @@ pub struct App {
     spent: u64,
     /// The sequence number of the last record in the log that [`App::charge`] has seen.
     ///
-    /// note: the log rather than the broadcast, because a broadcast that falls behind drops
-    /// events, `model.finished` among them, and a response dropped there was never counted - so a
-    /// ceiling could be passed by whatever the lag took. The log drops nothing, and nothing in this
-    /// program drains it.
+    /// note: the log rather than the broadcast, because a broadcast that falls behind drops events,
+    /// `model.finished` among them, and a dropped response was never counted - so the ceiling could
+    /// be passed by the lag. The log drops nothing and nothing in this program drains it.
     charged: u64,
-    /// How much of [`Advised::spent`](crate::tools::Advised::spent) has been charged, which is
-    /// how much of `spent` was the advisor's.
+    /// How much of [`Advised::spent`](crate::tools::Advised::spent) has been charged: the advisor's
+    /// part of `spent`.
     #[cfg(feature = "shell-advisor")]
     advised: u64,
     /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
     overspent: bool,
-    /// How large the context was when the last turn was refused for a request longer than the
-    /// model takes, until another one starts; `None` where it was not.
+    /// How large the context was when the last turn was refused for a request longer than the model
+    /// takes, until another starts; `None` where it was not.
     ///
-    /// note: the size rather than a flag, for an endpoint that publishes no limit. There the
-    /// refusal is the only measure there is, and a context no smaller than the one refused is a
-    /// request that will be refused again.
+    /// note: the size rather than a flag, for an endpoint that publishes no limit: the refusal is
+    /// the only measure, and a context no smaller than the one refused will be refused again.
     oversized: Option<usize>,
     /// Whether it has already said that the endpoint reports no figures to add up.
     ///
@@ -714,32 +696,31 @@ pub struct App {
     unreported: bool,
     /// The files `/save` wrote this session to in each directory it was given, by directory.
     ///
-    /// note: so that saving into one again replaces this sitting's own pair, which is the
-    /// ordinary case, while the first save into it takes a name nothing else has written. A
-    /// session's name is shared with the session it resumed and with any other started in the
-    /// same second, so the name alone would have written over theirs.
+    /// note: so that saving into one again replaces this sitting's own pair, the ordinary case,
+    /// while the first save into it takes a name nothing else has written. A session's name is
+    /// shared with the session it resumed and with any other started in the same second, so the
+    /// name alone would overwrite theirs.
     saved_into: BTreeMap<std::path::PathBuf, (std::path::PathBuf, std::path::PathBuf)>,
     /// What the last request failed with, while no answer has come since.
     ///
-    /// note: for `/raw`. The kernel keeps the last *answer*, and a request that failed leaves the
-    /// one before it standing, which shown on its own would be an older answer passed off as the
-    /// provider's latest.
+    /// note: for `/raw`. The kernel keeps the last answer, and a failed request leaves the previous
+    /// one standing, which shown alone would pass off an older answer as the provider's latest.
     unanswered: Option<String>,
     /// The fraction of the limit this program's own compactor aims for, when that is the one
     /// plugged in.
     ///
     /// note: for `/compact`, to tell a context already under the target from one with nothing
-    /// eligible, both of which come back from `plan` as no plan. Known here rather than asked of
-    /// the compactor, because the `Compactor` trait has no such question and a client's message is
-    /// no reason to give it one. Whoever plugs in a compactor says what it aims for here, and
-    /// `None` is the sentence that does not claim to know.
+    /// eligible, both of which `plan` reports as no plan. Known here rather than asked of the
+    /// compactor, because the `Compactor` trait has no such question and a client's message is no
+    /// reason to give it one. Whoever plugs in a compactor says what it aims for here; `None` means
+    /// no claim.
     pub compact_target: Option<f64>,
-    /// The fraction of the limit at which that compactor starts making room, for the same
-    /// question asked of a context between the two.
+    /// The fraction of the limit at which that compactor starts making room, for the same question
+    /// asked of a context between the two.
     ///
-    /// note: `Shedder` makes room only past it, so a context between the target and the
-    /// threshold is one with nothing to do rather than one with nothing eligible - and measured
-    /// against the target alone, `/compact` there said the second.
+    /// note: `Shedder` makes room only past it, so a context between the target and the threshold
+    /// is one with nothing to do rather than one with nothing eligible - and measured against the
+    /// target alone, `/compact` there said the second.
     pub compact_threshold: Option<f64>,
 }
 
@@ -758,10 +739,10 @@ impl App {
             input.set_placeholder_text("ask for something, or /help");
             input.set_cursor_line_style(ratatui::style::Style::default());
             // a long message wraps rather than scrolling sideways: the default keeps one long line
-            // on one row and slides it under the left border, so what somebody typed a moment ago
-            // is off the screen while they are still typing it. `WordOrGlyph` breaks at spaces and
-            // splits a word only when it could not fit on a line of its own - a path or a URL,
-            // which is exactly the thing worth seeing all of
+            // on one row and slides it under the left border, so what was typed a moment ago is off
+            // the screen while typing continues. `WordOrGlyph` breaks at spaces and splits a word
+            // only when it could not fit on a line of its own - a path or a URL, which is exactly
+            // the thing worth seeing all of
             input.set_wrap_mode(WrapMode::WordOrGlyph);
 
             input
@@ -782,8 +763,8 @@ impl App {
             introspect: None,
             earlier: crate::wiring::Earlier::default(),
             shelved: BTreeMap::new(),
-            // the terminal's own default, for a screen test that never spawns anything; the
-            // program overwrites it with what a child process actually reported
+            // the terminal's own default for a screen test that never spawns anything; overwritten
+            // with what a child process actually reported
             confinement: Confinement::Off,
             unconfined_because: None,
             web: None,
@@ -796,9 +777,9 @@ impl App {
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
             input,
-            // note: the same colour the program draws with when nothing says otherwise, so that
-            // an embedder's window and this program's are one window. Read off the constant
-            // rather than written out again, and it cannot fail - it is a hex the suite parses
+            // note: the same colour the program draws with by default, so an embedder's window and
+            // this program's look like one window. Read from the constant rather than written out
+            // again; it cannot fail, since it is a hex the suite parses
             #[cfg(feature = "tui")]
             accent: {
                 let (r, g, b) = crate::config::rgb(crate::config::BORDER_COLOR)
@@ -879,7 +860,7 @@ impl App {
 
         versions.push(was);
         // the oldest goes rather than the newest: a rewrite somebody is asking about is nearly
-        // always the last one, and a cap that dropped from that end would answer nothing
+        // always the last one, and dropping from that end would answer nothing
         if versions.len() > VERSIONS {
             versions.remove(0);
         }
@@ -888,13 +869,13 @@ impl App {
     /// How many earlier versions of an item are still there to read.
     ///
     /// note: the current content is not one of them, so an item nobody has rewritten answers `0`
-    /// and an item rewritten once answers `1` - which is `v1`, with what it says now as `v2`.
+    /// and an item rewritten once answers `1` - `v1`, with what it says now as `v2`.
     ///
     /// note: an undo is why this is not `Vec::len`. Putting an old content back makes the newest
-    /// remembered version the current one as well, and two identical faces side by side say the
-    /// same thing twice - so the last is dropped when it matches. The rule lives here rather than
-    /// in the terminal's strip of faces, because a client counting versions for a button and a
-    /// terminal counting them for a page have to reach the same number.
+    /// remembered version current as well, and two identical faces side by side say the same thing
+    /// twice, so the last is dropped when it matches. The rule lives here rather than in the
+    /// terminal's strip of faces, because a client counting versions for a button and a terminal
+    /// counting them for a page must reach the same number.
     pub fn versions(&self, id: ContextId) -> usize {
         let history = self.versions.get(&id).map(Vec::as_slice).unwrap_or(&[]);
         let same = self
@@ -907,9 +888,9 @@ impl App {
 
     /// What one of them said, counting from `1` as the oldest.
     ///
-    /// note: `None` for `0`, for anything past [`App::versions`], and for an item that has none -
-    /// which is one answer for "there is no such version" rather than three ways of saying it.
-    /// The number is the one on the face: `v1` is `at = 1`.
+    /// note: `None` for `0`, for anything past [`App::versions`], and for an item with none - one
+    /// answer for "there is no such version" rather than three. The number is the one on the face:
+    /// `v1` is `at = 1`.
     pub fn version(&self, id: ContextId, at: usize) -> Option<Content> {
         (at >= 1 && at <= self.versions(id))
             .then(|| self.versions.get(&id)?.get(at - 1).cloned())
@@ -973,14 +954,14 @@ impl App {
         Some(offered)
     }
 
-    /// Words the notice the model is told the context is full with for what it could use to make
-    /// room now, and rewrites a copy of it standing in the context to match.
+    /// Writes the notice the model is told when the context is full, with what it could use to make
+    /// room now, and rewrites the standing copy in the context to match.
     ///
-    /// note: called wherever that can change - a tool toggled, a rule set, a headless run saying
+    /// note: called wherever that can change: a tool toggled, a rule set, a headless run saying
     /// what a question nobody answers comes to. The standing copy is replaced where it stands
     /// rather than left: the kernel knows a notice it placed by what it says, so a copy in the old
-    /// words would be one it never took out again, and would go on sending the model to a tool it
-    /// no longer has. A session given no notice is given none here.
+    /// words would never be taken out again and would keep sending the model to a tool it no
+    /// longer has. A session given no notice is given none here.
     pub fn refresh_full_notice(&self) {
         let Some(standing) = self.kernel.full_notice() else {
             return;
@@ -1045,10 +1026,9 @@ impl App {
     /// Says what was waiting to go in when the session ended, and lets go of it.
     ///
     /// note: messages typed into a turn wait in a queue, and lines handed in while a command was
-    /// out wait behind it; a session that ends takes none of them in. They used to go with it
-    /// without a word - a line answered `queued` and then seen again by nobody, which is the one
-    /// thing the queue is there to stop. What can be done for them is to say which, so that
-    /// whoever typed one knows to send it again.
+    /// out wait behind it; a session that ends takes none of them. They used to go with it without
+    /// a word - a line answered `queued` and then seen again by nobody, which is the one thing the
+    /// queue is there to stop. This says which, so that whoever typed one knows to send it again.
     ///
     /// note: for a loop that leaves without [`App::wait_for_turn`], which calls this - a second
     /// `ctrl+c`.
@@ -1087,9 +1067,9 @@ impl App {
     ) -> Option<String> {
         use tokio::sync::broadcast::error::RecvError;
 
-        // a `/model` or `/endpoint` still settling first, for the reason the turn is waited for:
-        // its change is a record, and a script whose last line is the switch reaches the end of
-        // its input with no next line to wait for it. Under the same bound, and left the same way
+        // a `/model` or `/endpoint` still settling is waited for first: its change is a record, and
+        // a script whose last line is the switch reaches the end of its input with no next line to
+        // wait for it. It is under the same bound and left the same way
         self.settled(Some(LEAVING)).await;
         if !self.busy {
             return None;
@@ -1165,11 +1145,11 @@ impl App {
     /// Asks the running turn to stop at the next opportunity.
     ///
     /// note: `pub` for the same reason [`App::submit`] is. `esc` is one caller; a deadline, a
-    /// budget ceiling or a request cap watching from another task is another, and the kernel
-    /// takes an interrupt from any thread. What it never does is discard what arrived.
+    /// budget ceiling or a request cap watching from another task is another, and the kernel takes
+    /// an interrupt from any thread. It never discards what arrived.
     pub fn interrupt(&mut self) {
-        // a listing or a pass being worked out is stopped as a turn is, and before one: it is
-        // what holds every line after it. A switch is not, for the reason on `in_flight`
+        // a listing or a pass being worked out is stopped as a turn is, and before one: it holds
+        // every line after it. A switch is not, for the reason on `in_flight`
         if let Some(errand) = self.errand.take() {
             errand.task.abort();
             self.say(
@@ -1326,8 +1306,8 @@ impl App {
             .filter(|section| section.applies(asked, self.keys))
             .collect();
         // note: found rather than computed, because a section that is not offered shifts every
-        // index after it - `question` is left out whenever nothing is waiting, which is nearly
-        // always, and an index counted against `SECTIONS` would open `context` on the trace tab
+        // index after it - `question` is left out when nothing is waiting, and an index against
+        // `SECTIONS` would open `context` on the trace tab
         let at = offered
             .iter()
             .position(|section| section.name == here)
@@ -1340,9 +1320,8 @@ impl App {
             })
             .collect();
 
-        // note: and what it is *called* follows the same rule. A caller with no keys is handed a
-        // page of slash commands, and titled `the keys` the panel would be telling it that what it
-        // is reading is the thing it has not got
+        // note: the title follows the same rule. A caller with no keys is handed a page of slash
+        // commands, and calling it `the keys` would say what it is reading is what it has not got
         let title = match self.keys {
             true => "the keys",
             false => "the commands",
@@ -1367,8 +1346,8 @@ impl App {
     /// Takes in one key press.
     #[cfg(feature = "tui")]
     pub async fn on_key(&mut self, key: KeyEvent) {
-        // a terminal speaking the kitty keyboard protocol reports releases and repeats as well,
-        // and each of those answered as a press is one key doing its work twice
+        // a terminal speaking the kitty keyboard protocol reports releases and repeats, and
+        // answering each as a press does one key's work twice
         if key.kind != KeyEventKind::Press {
             return;
         }
@@ -1376,10 +1355,10 @@ impl App {
         // taken by every key, whichever handler it reaches; see the field
         let drawn = self.drawn.take();
 
-        // before anything else, including whatever is on top: these two mean the same thing
-        // wherever they are pressed, and an overlay that took them for its own would be answering
-        // a question nobody asked: `d` is a key at a permission question, and `ctrl+d` reaching it
-        // would drop every pending call
+        // ctrl+c and ctrl+d are handled before anything else, including whatever is on top, and
+        // mean the same thing wherever pressed. An overlay taking them would answer a question
+        // nobody asked: `d` is a key at a permission question, and `ctrl+d` reaching it would drop
+        // every pending call
         if ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
             match self.stoppable() && key.code == KeyCode::Char('c') {
                 true => self.interrupt(),
@@ -1393,10 +1372,9 @@ impl App {
             return;
         }
 
-        // the search box has the keys while it is open, and takes them before the arm below that
-        // reads `esc` as "stop the turn". Not a loss of that gesture: `ctrl+c` is what interrupts
-        // a run and it is handled above this, where nothing can shadow it. What would be a loss is
-        // a box on the screen that `esc` does not close, which is the one thing everybody tries
+        // the search box has the keys while open and takes them before the arm below reads `esc` as
+        // stop the turn. `ctrl+c` interrupts a run and is handled above this, where nothing can
+        // shadow it; a box on screen that `esc` does not close would be a loss
         if self.search.is_some() && self.search_key(key) {
             return;
         }
@@ -1418,40 +1396,35 @@ impl App {
             (KeyCode::Char('p'), true) => {
                 self.preview("the next request", request_preview(&self.kernel, self.keys))
             }
-            // the way back down from wherever the reading got to, without paging through however
-            // much arrived in the meantime. Scrolling to the bottom does it too, and that is the
-            // gesture most people will find first; this is the one for a turn that wrote a
-            // thousand lines while somebody was looking at the twelfth
+            // the way back down from wherever the reading got to, without paging through whatever
+            // arrived in the meantime. Scrolling to the bottom does it too; this is for a turn that
+            // wrote a thousand lines while somebody was looking at the twelfth
             (KeyCode::Char('e'), true) => self.follow = true,
             // `/continue`, `r` for resume
             (KeyCode::Char('r'), true) => self.carry_on(),
-            // `ctrl+l` is what it is in every shell, narrowed to the only thing on this screen
-            // that is safe to clear: the program's own lines. Everything else on the chat is the
-            // context, and a key that took *that* off the screen would be hiding the thing the
-            // screen is for - `space` on the context tab is how something stops being sent, and
-            // it says so on the row afterwards
+            // ctrl+l clears only the program's own lines, not the chat context, which is what the
+            // screen is for. On the context tab, `space` stops something being sent, and the row
+            // says so afterwards
             (KeyCode::Char('l'), true) => self.clear_notices(),
-            // the two ends of the conversation, one key each. With control held, because `home`
-            // and `end` are the prompt's own - a prompt whose keys moved something else while
-            // somebody was editing a line would be the trap
+            // ctrl+home and ctrl+end jump to the two ends of the conversation. Control is held
+            // because `home` and `end` are the prompt's own keys, so they must not move the
+            // conversation while a line is being edited
             (KeyCode::Home, true) => {
                 self.scroll = 0;
                 self.follow = false;
             }
             (KeyCode::End, true) => self.follow = true,
             (KeyCode::F(1), _) => self.help(),
-            // `?` is what F1 is on the three tabs with no prompt for a letter to be typed into,
-            // and it is answered here rather than in each of their handlers because two of the
-            // three would swallow it: `context_key` and `permissions_key` return early when
-            // their list is empty, which is exactly the moment somebody is most likely to ask what
-            // the keys are. `Focus::Body` is the guard rather than the tab alone, so that the `?`
-            // of a sentence typed into an item being edited is still a `?`
+            // `?` is F1 on the three tabs with no prompt. It is handled here rather than in each
+            // tab's handler because `context_key` and `permissions_key` return early when their
+            // list is empty, which is when someone is most likely to ask what the keys are.
+            // `Focus::Body` is the guard, not the tab alone, so a `?` typed into an item being
+            // edited is still a `?`
             (KeyCode::Char('?'), false) if self.tab != Tab::Chat && self.focus == Focus::Body => {
                 self.help()
             }
-            // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
-            // with no prompt there is no other thing - so it means the one gesture that is always
-            // worth having: back to where typing happens
+            // `tab` moves the keys to the other thing on screen that wants them. On a tab with no
+            // prompt there is no other thing, so it returns to where typing happens
             (KeyCode::Tab, _) => match (self.tab, self.asking()) {
                 // it is what puts the keys on a waiting question, and the only thing that does
                 // from this tab. There is nothing to hand them back to until the question is
@@ -1476,8 +1449,8 @@ impl App {
                     && matches!(key.code, KeyCode::Char(_)) => {}
                 // the pinned question, which is what `Focus::Body` means on the chat tab
                 (Tab::Chat, Focus::Body) => self.question_key(key).await,
-                // a question is on the screen and has not been given the keys, so the prompt is
-                // not on the screen either and there is nothing here for a key to do
+                // a question is on screen and has not been given the keys, so the prompt is not on
+                // screen and a key has nothing to do here
                 (Tab::Chat, Focus::Input) if self.asking() => self.locked_key(key),
                 (Tab::Context, Focus::Body) => self.context_key(key, &count, drawn),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
@@ -1487,32 +1460,30 @@ impl App {
         }
     }
 
-    /// Takes the program's own lines off the chat: what it said about what it did, and what it
+    /// Removes the program's own lines from the chat: what it said about what it did, and what it
     /// answered a key with.
     ///
-    /// note: the chat is two things drawn as one - the conversation, which is read off the
-    /// context every frame, and the lines this program said about it, which are not in the
-    /// context and not anybody's turn. Only the second kind goes. An item stays until something
-    /// changes *the context*, which is the context tab's to do and says so on the row.
+    /// note: the chat is two things drawn as one: the conversation, read off the context every
+    /// frame, and the lines this program said about it, which are not in the context and not
+    /// anybody's turn. Only the second kind goes. An item stays until something changes the
+    /// context; changing the context is the context tab's job, and the tab says so on the row.
     ///
-    /// note: they pile up because each of them was worth saying once. Eleven items excluded one
-    /// at a time is eleven lines that have done their job, and the run they are interleaved with
-    /// is the thing somebody is trying to read.
+    /// note: they pile up because each was worth saying once. Eleven items excluded one at a time
+    /// are eleven lines that have done their job, and the run they are interleaved with is what
+    /// someone is trying to read.
     ///
-    /// note: nothing is said to say it happened, which is the one place this program says
-    /// nothing on purpose: a line reporting that the lines are gone would be the first line of
-    /// the pile it just cleared. What went is on the trace, which is the record and is not
-    /// touched by this.
+    /// note: nothing is said to report it, the one place this program says nothing on purpose: a
+    /// line reporting that the lines are gone would be the first line of the pile just cleared.
+    /// What went is on the trace, which is the record and is not touched by this.
     ///
-    /// note: an entry still arriving stays, because it is not finished being said. Only a
-    /// streamed answer is ever open, and it is a turn rather than a notice - but the guard is
-    /// here rather than left to the speaker, since what must never happen is a line vanishing
-    /// mid-sentence.
+    /// note: an entry still arriving stays, because it is not finished being said. Only a streamed
+    /// answer is ever open, and it is a turn rather than a notice. The guard is here rather than
+    /// left to the speaker, because a line must never vanish mid-sentence.
     ///
     /// note: it counts, and [`App::cleared`] is the count. A loop with no screen reads its lines
-    /// through [`App::notes`], which is a watermark over the filtered sequence and is safe only
-    /// while that sequence grows - and this is the one thing that empties it. A caller that did
-    /// not notice would skip the next `said` lines for good.
+    /// through [`App::notes`], a watermark over the filtered sequence that is safe only while that
+    /// sequence grows. This is the one thing that empties it, so a caller that did not notice would
+    /// skip the next `said` lines for good.
     pub fn clear_notices(&mut self) {
         self.loose
             .retain(|entry| entry.open || !matches!(entry.speaker, Speaker::Note | Speaker::Error));
@@ -1542,8 +1513,8 @@ impl App {
 
     /// Records a rule the policy has just been given, and says it.
     pub(super) fn ruled(&mut self, subject: &Subject, verdict: Verdict) {
-        // recorded, because the rule is what a later call is allowed or refused by, and the record
-        // otherwise says only that the policy decided
+        // recorded, because a later call is allowed or refused by the rule, and without it the
+        // record says only that the policy decided
         self.kernel
             .record_rule(subject.to_string(), verdict, None, false);
         self.refresh_full_notice();
@@ -1581,24 +1552,24 @@ impl App {
             return Err(format!("there is no item {id}"));
         };
         let (to, note) = match item.state {
-            // note: this one is read by the model, in the brackets the projector puts round it,
-            // so it is written for somebody who has never heard of this program: no "at the
-            // terminal", which is this codebase's own idiom for "a person did it here" and reads
-            // to a model like a shell or a state. It does not invite the model to ask for it back
-            // either - the thing hidden may be the thing that should not be asked for
+            // note: this one is read by the model, in the brackets the projector puts round it, so
+            // it is written for somebody who has never heard of this program. No "at the terminal":
+            // that idiom means "a person did it here" and reads to a model like a shell or a state.
+            // It does not invite the model to ask for it back; the thing hidden may be the thing
+            // that should not be asked for
             ContextState::Active | ContextState::Pinned => (
                 ContextState::Elided,
                 Some("removed from view by the user".into()),
             ),
-            // note: no "at the terminal" here either, and for a reason of its own rather than the
-            // one above: this ring is reachable from a socket, a pipe and a browser, so the person
-            // who did it may never have seen one. It is read back in `Projection::skipped`, which
-            // is what a client draws beside the row to say why the item is not in the request
+            // note: no "at the terminal" here either. This ring is reachable from a socket, a pipe
+            // and a browser, so the person who did it may never have seen one. It is read back in
+            // `Projection::skipped`, which a client draws beside the row to say why the item is not
+            // in the request
             ContextState::Elided => (ContextState::Excluded, Some("taken out by the user".into())),
-            // note: a note here too, and for the compactor rather than the model, which is not
-            // shown a note on an item it is shown: one the person brought back is one it leaves
-            // alone until the context is full, where without it it was elided again before the
-            // next request - see `tools::Shedder`
+            // note: a note here too, for the compactor rather than the model, which is not shown a
+            // note on an item it is shown. One the person brought back is one it leaves alone until
+            // the context is full; without it, it was elided again before the next request. See
+            // `tools::Shedder`
             _ => (
                 ContextState::Active,
                 Some("brought back by the user".into()),
@@ -1611,23 +1582,21 @@ impl App {
 
     /// How many times the program's own lines have been taken off the chat.
     ///
-    /// note: for a caller holding a watermark into [`App::notes`], and it is all such a caller
-    /// has to do about `/cleanup`: keep this beside `said`, and when it moves, set
-    /// `said` back to nothing. There is no arithmetic to do, because what a clear leaves behind
-    /// is not a shorter sequence but an empty one - everything it removes is exactly what `notes`
-    /// filters *for*, and the only survivor is a line still being streamed, which is a model
-    /// speaking and not a notice.
+    /// note: for a caller holding a watermark into [`App::notes`]; it is all such a caller has to
+    /// do about `/cleanup`. Keep this beside `said`, and when it moves, set `said` back to nothing.
+    /// No arithmetic is needed: a clear leaves an empty sequence, not a shorter one. Everything it
+    /// removes is what `notes` filters for; the only survivor is a line still being streamed, which
+    /// is a model speaking and not a notice.
     pub fn cleared(&self) -> u64 {
         self.cleared
     }
 
-    /// Opens a tab, and puts the keys wherever they are useful on it.
+    /// Opens a tab and puts the keys wherever they are useful on it.
     ///
-    /// note: switching to the context or the trace is something somebody does in order to work on
-    /// it, so the focus follows - and there is nothing else on those tabs for it to be on. On the
-    /// conversation the keys go to the prompt, unless something is being asked: coming back to a
-    /// waiting question is what somebody does *in order to answer it*, having just been away
-    /// looking at what it is about, and making them press `tab` first would be asking twice.
+    /// note: on the context and the trace the focus goes to the tab's content, because somebody
+    /// switches to them in order to work on them and there is nothing else there for it to be on.
+    /// On the conversation the keys go to the prompt, unless a question is waiting: somebody coming
+    /// back to it is there to answer it, and making them press `tab` first would be an extra step.
     pub fn show(&mut self, tab: Tab) {
         // an edit belongs to the tab it was started from, and leaving that tab abandons it.
         // Otherwise the prompt is still holding the item's text with `editing` still set, and the
@@ -1650,21 +1619,19 @@ impl App {
 
     /// Whether the prompt is on the screen at all.
     ///
-    /// note: it belongs to the conversation, rather than being under every tab so that a message
-    /// can be sent from anywhere. That would cost a mode on three tabs that have no use for one:
-    /// every key on them would be either a key or a letter depending on where the focus happened
-    /// to be, and forgetting would be a `space` typed into a message instead of cycling the row
-    /// somebody was looking at. The exception is an edit, which is the prompt doing a job for the
-    /// tab underneath it: the item being rewritten is on that tab, and the box has to be beside
-    /// it.
+    /// note: the prompt belongs to the conversation, not under every tab so that a message can be
+    /// sent from anywhere. That would cost a mode on three tabs that have no use for one: every key
+    /// would be a key or a letter depending on where the focus is, and forgetting would type a
+    /// `space` into a message instead of cycling the row being looked at. An edit is the exception:
+    /// the prompt is doing a job for the tab underneath, so the box sits beside the item being
+    /// rewritten.
     ///
-    /// note: and a waiting question takes its place rather than stacking above it, so that the box
-    /// the keys are in is the box on the screen. Stacked, the two disagree on a short window: the
-    /// question needs the room, so the prompt gives way - and goes on holding the keys and
-    /// whatever had been typed into it from off the screen, which is a session waiting on an
-    /// answer nobody can give it without first pressing a key nothing mentions. What was typed is
-    /// not lost; the box comes back with it, and `App::locked_key` is what stands between a
-    /// keystroke and a prompt that is not there.
+    /// note: a waiting question takes the prompt's place rather than stacking above it, so the box
+    /// holding the keys is the box on the screen. Stacked, a short window gives the room to the
+    /// question, and the prompt goes off the screen still holding the keys and the typed text, so
+    /// the session waits on an answer nobody can give without first pressing a key nothing
+    /// mentions. What was typed is not lost; the box comes back with it, and `App::locked_key`
+    /// stops keystrokes from reaching a prompt that is not there.
     pub fn prompted(&self) -> bool {
         match self.tab {
             Tab::Chat => !self.asking(),
@@ -1674,11 +1641,10 @@ impl App {
 
     /// Puts pasted text into the prompt.
     ///
-    /// note: the line breaks inside a paste arrive as carriage returns rather than newlines,
-    /// because a terminal sends a paste as though it had been typed and that is what the enter key
-    /// sends. The editor underneath splits on newlines, so a pasted stack trace would go in as one
-    /// line with invisible characters where its breaks were and read as its lines run together -
-    /// in the one place whose whole job is to show somebody what they are about to send.
+    /// note: a terminal sends a paste as though it had been typed, and the enter key sends a
+    /// carriage return, so a paste's line breaks arrive as carriage returns. The editor underneath
+    /// splits on newlines, so without the replacement a pasted stack trace would go in as one line
+    /// with invisible characters where its breaks were.
     #[cfg(feature = "tui")]
     pub fn paste(&mut self, text: &str) {
         self.input
@@ -1693,19 +1659,19 @@ impl App {
 
     /// Nothing: there is no prompt in a build with no screen, so nothing is half-typed.
     ///
-    /// note: a method rather than a `#[cfg]` at each of the two places that ask, because what
-    /// they ask for is a *figure* - `/budget` reports it and the status line adds it in - and an
-    /// empty draft is the honest answer to both. The alternative was gating [`App::drafted`],
-    /// which would have put a `#[cfg]` in the middle of `/budget`.
+    /// note: a method rather than a `#[cfg]` at each of the two places that ask, because what they
+    /// ask for is a figure - `/budget` reports it and the status line adds it in - and an empty
+    /// draft is the right answer to both. Gating [`App::drafted`] instead would have put a `#[cfg]`
+    /// in the middle of `/budget`.
     #[cfg(not(feature = "tui"))]
     fn draft(&self) -> String {
         String::new()
     }
 }
 
-/// Holds the output limits to the context window of the model in use: the rows, and what the
-/// kernel cuts a tool with no row at - one from an MCP server - which starts where the kernel was
-/// built to cut it and only ever comes down from there. A kernel built to cut nothing is left so.
+/// Holds the output limits to the context window of the model in use: the rows, and the default cut
+/// for a tool with no row, such as one from an MCP server. That default starts where the kernel was
+/// built to cut it and only comes down. A kernel built to cut nothing is left unchanged.
 fn held_to_window(kernel: &Kernel, limits: &Limits) {
     limits.window(kernel.budget().limit);
     if let Some(built) = kernel.config().default_tool_output_limit {

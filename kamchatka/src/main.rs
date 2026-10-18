@@ -42,34 +42,33 @@ use kamchatka::{app::Outcome, ui};
 #[cfg(feature = "tui")]
 use nachalnik::Event;
 
-/// How often the loop looks for what arrives with no event to carry it: a notice, the busy line's
-/// clock, an advisor's rating.
+/// How often the loop looks for what arrives with no event: a notice, the busy line's clock, an
+/// advisor's rating.
 #[cfg(feature = "tui")]
 const TICK: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// How many ticks go by with nothing to draw before the screen is drawn anyway.
 ///
-/// note: a floor under the rule that a frame is drawn only when something changed, for whatever
-/// changes without saying so. Missing one of those costs a second of a stale screen rather than a
-/// screen that waits for a key.
+/// note: a frame is drawn only when something changed; this is a floor under that rule for changes
+/// that announce nothing. Missing one leaves the screen stale for a second instead of waiting for a
+/// key.
 #[cfg(feature = "tui")]
 const HEARTBEAT: u32 = 8;
 
 fn main() -> Result<std::process::ExitCode> {
     // before anything else, and before a runtime exists: this is the mode the `shell` tool
-    // re-executes this program in, and its whole job is to confine itself and run one command.
-    // Landlock restricts the calling thread, so the one shape that needs no thought about which
-    // thread that was is a program with only one
+    // re-executes this program in; its job is to confine itself and run one command. Landlock
+    // restricts the calling thread, so a single-threaded program needs no thought about which
+    // thread that was
     if let Some(code) = sandbox::run_if_asked() {
         std::process::exit(code);
     }
 
-    // and still before a runtime exists, for a reason of the same shape as the one above. Working
-    // out the local time of day means asking libc, which reads the process environment, and a
-    // thread setting a variable while another reads one is undefined behaviour - so `time`
-    // refuses to answer once a program is threaded. Here there is nobody to race, and the answer
-    // is good for the rest of the run: the trace pane needs an offset, not a calendar, and a build
-    // without the pane has no use for either
+    // and still before a runtime exists, for a reason of the same shape as above. The local time
+    // of day comes from libc, which reads the process environment; a thread setting a variable
+    // while another reads it is undefined behaviour, so `time` refuses once a program is threaded.
+    // Here nothing races, and the answer stays valid for the rest of the run: the trace pane needs
+    // an offset, not a calendar, and a build without the pane needs neither
     #[cfg(feature = "tui")]
     kamchatka::app::when::note_local_offset(
         time::UtcOffset::current_local_offset()
@@ -77,10 +76,10 @@ fn main() -> Result<std::process::ExitCode> {
             .map(time::UtcOffset::whole_seconds),
     );
 
-    // and still before a runtime exists, for the reason the first of these gives: the answers
-    // decide whether this run assembles a session with its commands confined, and such a run puts
-    // itself where nothing it starts may signal past it - see `sandbox::scope_signals` - which has
-    // to happen while this is the only thread and nothing has been started
+    // and still before a runtime exists, for the reason the first of these gives. The arguments
+    // decide whether this run assembles a session with confined commands; such a run puts itself
+    // where nothing it starts may signal past it - see `sandbox::scope_signals` - which has to
+    // happen while this is the only thread and nothing has been started
     let given = Args::given()?;
     let assembles = !given.args.print_config
         && given.args.check.is_none()
@@ -115,9 +114,9 @@ fn main() -> Result<std::process::ExitCode> {
     // their child processes - and what is being abandoned is a thread waiting on a pipe.
     runtime.shutdown_background();
 
-    // note: a headless run cut short says so in its status as well as on standard error, because
-    // the status is what a script reads; see `headless::Stop`. Every other run that ends without
-    // an error is a `0`, and an error is `anyhow`'s `1`
+    // note: a headless run cut short says so in its status as well as on standard error, because a
+    // script reads the status; see `headless::Stop`. Every other run that ends without an error is
+    // a `0`, and an error is `anyhow`'s `1`
     match outcome {
         Ok(stopped) => Ok(std::process::ExitCode::from(
             stopped.map_or(0, headless::Stop::code),
@@ -133,14 +132,14 @@ fn main() -> Result<std::process::ExitCode> {
     }
 }
 
-/// What a run with no screen comes to: how it stopped short, if it did, or why it failed.
+/// How a run with no screen stopped short, if it did, or why it failed.
 ///
-/// note: a stop by the clock or a signal decides the status even when the last turn had failed
-/// before it. The status is what a script tells a timeout from a failure by, and the failure has
-/// already been said on standard error and is in the record; said again here, as a failure that
+/// note: a stop by the clock or a signal decides the status even when the last turn had already
+/// failed. A script tells a timeout from a failure by the status; the failure has already been
+/// reported on standard error and is in the record, and is reported again here, as a failure that
 /// ends the run is. A run that reached its spend ceiling or `--max-requests-per-turn` after a
-/// failed turn is still a failure: those stops are read off the session rather than made by
-/// anything outside it.
+/// failed turn is still a failure: those stops are read off the session, not made by anything
+/// outside it.
 fn stopped_over_failed(
     ran: std::result::Result<(), String>,
     stopped: Option<headless::Stop>,
@@ -166,10 +165,10 @@ const UNWATCHED_TRIES: usize = 10;
 
 /// Whether this run is driven by lines rather than by keys.
 ///
-/// note: three ways into it. Somebody says so; or stdout is not a terminal, so there is nowhere to
-/// draw; or **this build has no screen in it**. The third has to be a decision and not only a
-/// notice: without it, `--no-default-features` in a terminal with no flag says this is a headless
-/// run and then walks into the `unreachable!` below.
+/// note: three ways in: `asked`, stdout not being a terminal so there is nowhere to draw, or **this
+/// build having no screen in it**. The third has to be a decision and not only a notice: without
+/// it, `--no-default-features` in a terminal with no flag would report a headless run and then hit
+/// the `unreachable!` below.
 ///
 /// note: a function rather than an expression so that it can be tested. Every test of this binary
 /// pipes its stdout, so `piped` is true in all of them and none can reach the case where it is
@@ -180,9 +179,9 @@ fn headless(asked: bool, piped: bool) -> bool {
 
 /// A deadline that passed before the session had started.
 ///
-/// note: a type of its own so that `main` can find it under `anyhow` and leave with the status a
-/// deadline has - `124`, as a deadline in the middle of a run does - rather than a failure's `1`.
-/// A script asking whether a run was out of time should not have to know how far it had got.
+/// note: a type of its own so that `main` can find it under `anyhow` and exit with the status a
+/// deadline has, `124`, as a deadline in the middle of a run does, rather than a failure's `1`. A
+/// script asking whether a run was out of time should not have to know how far it had got.
 #[derive(Debug)]
 struct OutOfTime(String);
 
@@ -202,7 +201,7 @@ impl std::error::Error for OutOfTime {}
 /// Awaits one step of starting a run, unless the deadline passes first.
 ///
 /// note: an error rather than the driver's "out of time", which ends a session and writes it out.
-/// Here there is no session yet, and nothing was run to keep.
+/// Here there is no session yet and nothing was run to keep.
 async fn starting<T>(
     ends: Option<tokio::time::Instant>,
     step: &str,
@@ -218,24 +217,23 @@ async fn starting<T>(
 
 /// What else was typed on a command line that also has `--connect`.
 ///
-/// note: refused rather than ignored, and named rather than counted. A client assembles nothing,
-/// so every one of these is an argument that would be dropped on the floor - and `-m "a question"`
-/// beside `--connect` is a natural thing to type, which would otherwise connect and say nothing at
-/// all about the message.
+/// note: these arguments are refused rather than ignored, and named rather than counted. A client
+/// assembles nothing, so each one would be dropped; `-m "a question"` beside `--connect` is a
+/// natural thing to type, and would otherwise connect and say nothing about the message.
 ///
 /// note: read off the matches rather than declared as `conflicts_with_all`, because the list would
-/// be every argument this program has and two of them are behind features. `--serve` can say it
-/// the short way because it conflicts with two.
+/// be every argument this program has and two of them are behind features. `--serve` can say it the
+/// short way because it conflicts with two.
 fn also_typed(matches: &clap::ArgMatches, besides: &[&str]) -> Vec<String> {
     // the declared arguments rather than `ArgMatches::ids`, which also hands back the group clap's
-    // derive makes for the struct itself - and that group reads as typed whenever anything in it is
+    // derive makes for the struct itself. That group reads as typed whenever anything in it is
     Args::command()
         .get_arguments()
         .map(|arg| arg.get_id().as_str().to_owned())
-        // note: `on_ask` is the one exception, and it is one because it is not an argument a
-        // client would have dropped on the floor. Everything else here assembles a session that
-        // belongs to whoever is serving; this says what *this* client does with a question left
-        // open when its input closes, which is nobody else's business. See `Client::settle`
+        // note: `on_ask` is the one exception because it is not an argument a client would drop.
+        // Everything else here assembles a session for whoever is serving. This says what this
+        // client does with a question left open when its input closes, which is nobody else's
+        // business. See `Client::settle`
         .filter(|id| {
             !besides.contains(&id.as_str())
                 && matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
@@ -354,9 +352,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         filed,
     } = &given;
     if args.print_config {
-        // note: written rather than `print!`ed, which panics when the write fails. This is the
-        // whole of what the flag asks for, and a stream nobody can write to is a place a script
-        // sends a redirect as readily as a place a person types one
+        // note: written rather than `print!`ed, which panics when the write fails. This is all the
+        // flag asks for. A stream nobody can write to is as much a place for a script redirect as
+        // for a person typing
         let _ = write!(stdout(), "{}", kamchatka::config::SHIPPED);
 
         return Ok(None);
@@ -379,12 +377,12 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             _ => unreachable!("every command this build has is matched above"),
         };
     }
-    // note: printed before anything the file asked for is done, because what it can ask for
-    // includes MCP servers - programs started a few lines below - and a sandbox turned off. The
-    // conversation exists only once the session is wired, which is too late to be the first place
-    // this is said. A screen covers the line while it is up and leaves it behind when it goes; the
-    // conversation says it again, for the screen and for a served session's clients. Written
-    // rather than `eprintln!`ed, which panics with nobody left reading and takes the run with it
+    // note: printed before anything the file asked for is done, because it can ask for MCP servers
+    // started below and a sandbox turned off. The conversation exists only once the session is
+    // wired, too late to be the first place this is said. A screen covers the line while it is up
+    // and leaves it behind when it goes; the conversation says it again for the screen and a served
+    // session's clients. Written rather than `eprintln!`ed, which panics with nobody reading and
+    // takes the run with it
     if let Some(path) = &found {
         let _ = writeln!(std::io::stderr(), "· settings read from {}", path.display());
     }
@@ -433,7 +431,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     }
 
     // refused before anything is started - a socket, a provider or an MCP server: `leave` is
-    // somebody else's to answer, and a run that is not a `--connect` has nobody else
+    // someone else's to answer, and a run that is not `--connect` has nobody else
     let Some(on_ask) = args.on_ask.grant() else {
         return Err(anyhow::anyhow!(
             "`--on-ask leave` is for `--connect`, where another client can answer what this one \
@@ -441,10 +439,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         ));
     };
 
-    // note: bound before the provider is reached, so that an address nobody can listen on is a
-    // refusal in the first second rather than after a round trip to somebody's API. The socket
-    // file it may have made is taken away again by `Server`'s own `Drop`, so failing after this
-    // point leaves nothing behind
+    // note: bind before the provider is reached, so an address that cannot be listened on fails in
+    // the first second rather than after a round trip to an API. `Server`'s `Drop` removes any
+    // socket file it made, so failing after this point leaves nothing behind.
     //
     // `--web` without `--serve` still needs a served session for the page to relay to: a loopback
     // port picked by the kernel
@@ -492,23 +489,23 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         ),
         _ => None,
     };
-    // the screen is drawn to stdout, so a stdout that is nobody's terminal cannot have one. It is
-    // announced rather than silently chosen: a program that draws or does not draw depending on
+    // the screen is drawn to stdout, so a stdout that is not a terminal cannot have one. The mode
+    // is announced rather than silently chosen: a program that draws or does not draw depending on
     // what is on the other end of a pipe should say which it decided, and `--headless` is how
-    // somebody says it themselves
+    // somebody says it themselves.
     //
     // note: the notice is not said for a served session. The line driver is never one of its
-    // answers, so a notice about headless runs would be about a pipe nobody had mentioned
+    // answers, so a notice about headless runs would be about a pipe nobody mentioned
     let piped = !std::io::stdout().is_terminal();
-    // note: asked of a served session too. A session with a socket in front of it draws as well,
-    // where there is anything to draw on, so that the person running it can drive it from the desk
-    // it is on and from a browser in the same breath. What the question decides for a served run is
-    // only whether there is a screen, since `--serve` conflicts with `--headless`
+    // note: the question is asked of a served session too. A session with a socket in front of it
+    // draws as well, where there is anything to draw on, so the person running it can drive it from
+    // the desk it is on and from a browser. For a served run the question decides only whether
+    // there is a screen, since `--serve` conflicts with `--headless`
     let headless = headless(args.headless, piped);
     if server.is_none() && headless && !args.headless {
-        // note: written rather than `eprintln!`ed, which panics with nobody left reading and takes
+        // note: written rather than `eprintln!`ed, which panics when nobody is reading and takes
         // the run with it. Saying which mode was chosen must not be able to end the run, and this
-        // is said on the way into the mode where a stream nobody is reading is the ordinary case
+        // is said on the way into the mode where an unread stream is the ordinary case
         let _ = match piped {
             true => writeln!(
                 std::io::stderr(),
@@ -535,12 +532,12 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         .filter(|seconds| *seconds > 0 && headless && server.is_none())
         .and_then(|seconds| begun.checked_add(std::time::Duration::from_secs(seconds)));
 
-    // note: before the provider, which is a round trip and an API key away. Everything the
-    // checks answer is answerable from the arguments alone - a tool nobody offers, a path rule
-    // nothing can match - and being told about one of those by an endpoint's refusal to talk is
-    // being told about the wrong thing. They are asked here rather than by a separate `check`,
-    // because that is where a value out of a settings file can still be named; `wire` asks again
-    // for whoever is not `main`
+    // note: the checks run before the provider, which is a round trip and an API key away.
+    // Everything they answer is answerable from the arguments alone - a tool nobody offers, a path
+    // rule nothing can match - and hearing about one of those through an endpoint's refusal to
+    // talk is hearing about the wrong thing. They are asked here rather than by a separate `check`,
+    // because that is where a value from a settings file can still be named; `wire` asks again for
+    // whoever is not `main`
     let setup = args.setup_from(filed.as_ref())?;
     // said the way the kernel's gaps are below: once on standard error, and into each session
     let unstarted = args.unstarted(filed.as_ref());
@@ -561,10 +558,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     }
     let flagged = kamchatka::wiring::Flagged::of(&*provider);
 
-    // note: kept so that `/restart` can wire a second session out of the same settings. That is
-    // what makes the new one the session the *flags* describe rather than a copy of this one's
-    // drift - a model switched with `/model`, a capability answered `always`, a tool toggled off
-    // are all this session's, and none of them survive being started again
+    // note: kept so `/restart` can wire a second session from the same settings. The new session is
+    // the one the flags describe, not a copy of this session's drift - a model switched with
+    // `/model`, a capability answered `always`, a tool toggled off are all this session's, and none
+    // of them survive being started again
     let base = setup.clone();
 
     let Wired {
@@ -574,23 +571,23 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     } = setup
         .wire(provider.clone())
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    // the record beside the snapshot, before this session's own is started: that one begins
-    // with what this reads, so that it is the whole session rather than the part of it this run
-    // saw, and `App::replay` below says how much of it came back. The path is the one the person
-    // typed, so the log it finds is the one belonging to the session they asked for
+    // the record beside the snapshot is read before this session's own is started. That one
+    // begins with what this reads, so it is the whole session rather than the part this run saw,
+    // and `App::replay` below says how much of it came back. The path is the one typed, so the log
+    // it finds is the one belonging to the session asked for
     if let Some(path) = &args.resume {
         app.recall(Path::new(path));
     }
     start_recording(&mut app, base.record);
 
-    // the servers have to outlive every session this run has, not just the first: dropping one
-    // takes its child process with it, and leaves its tools unable to answer. A restart installs
-    // the tools they already offer into the new kernel rather than spawning them again - the
-    // handshake is a round trip and a `npx` server is seconds of it
+    // the servers must outlive every session this run has, not just the first: dropping one takes
+    // its child process with it and leaves its tools unable to answer. A restart installs the tools
+    // they already offer into the new kernel rather than spawning them again, because the handshake
+    // is a round trip and a `npx` server is seconds of it.
     //
-    // note: each one named before it is started, because a handshake nothing bounds is otherwise
-    // a run that says nothing at all while it waits - and a server named by a file found underfoot
-    // is a program somebody may not know they asked for
+    // note: each one is named before it is started, because an unbounded handshake is otherwise a
+    // run that says nothing while it waits - and a server named by a file found underfoot is a
+    // program somebody may not know they asked for
     #[cfg(feature = "mcp")]
     let servers = {
         for spec in &args.mcp {
@@ -607,27 +604,26 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // note: one reader for the whole run rather than one per session, because of `/restart` in a
     // piped run. A `BufReader` has read ahead by the time a line is handed over, so building a
     // second one for the second session drops whatever was already in the first one's buffer -
-    // `do this / restart / do that` would run the restart and never see the third line. The
-    // reader is the *run's* input; the sessions take turns on it
+    // `do this / restart / do that` would run the restart and never see the third line. The reader
+    // is the run's input; the sessions take turns on it
     let mut input = tokio::io::BufReader::new(tokio::io::stdin());
 
     if let Some(server) = &server {
         // note: printed once for the whole run rather than said into each session, and the two
         // halves of that pair are addressed to different people. `remote::opening` goes into the
-        // conversation through `App::say`, which is how a client attaching an hour later finds
-        // out what it has joined, and a restarted session owes a newcomer that as much as the
-        // first one did. This is for whoever typed the flag, and the address does not move
+        // conversation through `App::say`, so a client attaching an hour later finds out what it
+        // has joined, and a restarted session owes a newcomer that as much as the first one did.
+        // This line is for whoever typed the flag, and the address does not move
         //
-        // note: and written rather than `println!`ed, which panics with nobody left reading and
-        // takes the run with it. A served run's stdout is often a supervisor's, and one that has
-        // closed it is a run that should go on serving rather than one that should panic on its
-        // first line
+        // note: written rather than `println!`ed, because `println!` panics if nobody is reading
+        // and takes the run with it. A served run's stdout is often a supervisor's. If it has
+        // closed, the run should keep serving rather than panic on its first line
         let _ = writeln!(stdout(), "· serving on {}", server.address());
     }
     // the page runs for the whole run, across `/restart`; browsers reconnect by themselves.
-    // Connection errors go to stderr, except under a drawn screen, which they would corrupt. A
-    // LAN warning goes to stderr and into each session, since a screen hides stderr and browsers
-    // only see the session
+    // Connection errors go to stderr, except under a drawn screen, which they would corrupt. A LAN
+    // warning goes to stderr and into each session, because a screen hides stderr and browsers only
+    // see the session
     #[cfg(feature = "webui")]
     let exposure = web.as_ref().and_then(kamchatka::web::Web::exposure);
     #[cfg(not(feature = "webui"))]
@@ -643,9 +639,8 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             "· a browser reaches the session at {}",
             web.address()
         );
-        // note: the code only where a person is looking at it. A stdout that is a pipe is a
-        // program reading the address off the line above, and half a screen of blocks after it is
-        // nothing that program can use
+        // note: the code only where a person is looking at it. A piped stdout is a program reading
+        // the address off the line above; half a screen of blocks is nothing it can use
         if std::io::stdout().is_terminal()
             && let Some(code) = kamchatka::qr::Code::new(&web.address())
         {
@@ -665,28 +660,27 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }));
     }
 
-    // what this kernel leaves out of the sandbox, said the way the page's exposure is: once on
-    // standard error, and into each session, since a screen hides the first. Asked whatever tools
-    // are offered at first, because a shell can be toggled on later and it is the same sandbox
+    // what this kernel leaves out of the sandbox, once on standard error and into each session,
+    // since a screen hides the first. Asked whatever tools are offered at first, because a shell
+    // can be toggled on later and it is the same sandbox
     let weaker = (!args.no_sandbox).then(sandbox::weaker_here).flatten();
     if let Some(weaker) = &weaker {
         let _ = writeln!(std::io::stderr(), "· {weaker}");
     }
 
-    // note: a loop because `/restart` writes this session out and asks for another. What is inside
-    // it is everything a *session* is - the opening lines, the driving, and the ending - and what
-    // is above it is everything the *run* is: the socket, the servers, the provider and the
-    // settings the next one is built from
+    // note: a loop because `/restart` writes this session out and asks for another. Inside is
+    // everything a session is: the opening lines, the driving, and the ending. Above is everything
+    // the run is: the socket, the servers, the provider, and the settings the next one is built
+    // from
     let mut first = true;
     let outcome = loop {
         // note: after the wiring rather than a field in `Setup`, because `Setup` is what an
-        // embedder fills in to get a session and this is a fact about a window. Somebody embedding
-        // `App` draws it themselves and sets this themselves, the way they already set
-        // `App::accent`'s neighbours
+        // embedder fills in to get a session and this is a fact about a window. An embedder draws
+        // it and sets this themselves, as they do with `App::accent`'s neighbours.
         //
-        // note: parsed again rather than carried through as three bytes, and it cannot fail here -
-        // `under` refused the file if it would. Doing it there is what makes a bad colour an error
-        // about a settings file instead of a frame that is silently the default colour
+        // note: parsed again rather than carried through as three bytes, and it cannot fail here:
+        // `under` refused the file if it would. Parsing it there makes a bad colour an error about
+        // a settings file instead of a frame that is silently the default colour
         #[cfg(feature = "tui")]
         {
             app.accent = match args
@@ -700,14 +694,14 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
 
         // note: three statements rather than one match over the pair, because a resumed headless
-        // run wants both of the first two and the match gave it one. The replay line says what was
+        // run wants both of the first two and a match gives only one. The replay line says what was
         // picked up; the opening says how this run is driven and what a question nobody can answer
-        // gets, which a session carried on from a file needs to know exactly as much as a fresh one
+        // gets. A session carried on from a file needs to know that as much as a fresh one.
         //
         // note: not for a served session, whose loop is `Server::run` even with no screen. That
         // loop reads no lines of this program's and never consults `--on-ask`, so the opening would
-        // tell every client that attaches that a question is answered `deny` - beside a line saying
-        // the session waits for one
+        // tell every attaching client that a question is answered `deny`, beside a line saying the
+        // session waits for one
         if headless && server.is_none() {
             headless::opening(&mut app, on_ask);
         }
@@ -718,10 +712,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             app.say(Speaker::Note, exposure.clone());
         }
         app.web = page.clone();
-        // note: shown as the screen opens where the page is for a phone, since the screen covers
-        // the code printed above it; on loopback the browser is on this machine, and the address
-        // can be copied rather than photographed. The first session only: a `/restart` is
-        // somebody already using it
+        // note: shown as the screen opens where the page is for a phone, because the screen covers
+        // the code printed above it; on loopback the browser is on this machine and the address can
+        // be copied rather than photographed. First session only: a `/restart` means somebody is
+        // already using it
         if first && !headless && exposure.is_some() {
             app.web_page();
         }
@@ -731,21 +725,21 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         if let Some(unstarted) = &unstarted {
             app.say(Speaker::Note, unstarted.clone());
         }
-        // a resumed session has a conversation in it already, and it would be strange to have to
-        // read it out of the context pane one item at a time
+        // a resumed session already has a conversation; replay it instead of reading it one item at
+        // a time.
         //
-        // note: what the items used to say is not in the snapshot - it is in the log `/save` wrote
-        // beside it, which `App::recall` read as the session was wired and `App::replay` says the
-        // size of
+        // note: the items' previous text is not in the snapshot; it is in the log `/save` wrote
+        // beside it. `App::recall` read it when the session was wired, and `App::replay` reports
+        // its size.
         //
-        // note: the first session of the run only. A snapshot is where somebody asked to *start*,
-        // and `/restart` is them saying they are done with where they started - a restart that
-        // read it back in would be a command with no way to reach an empty session from a resumed
-        // one, which is most of what it is for
+        // note: first session of the run only. A snapshot is where somebody asked to start, and
+        // `/restart` says they are done with where they started. A restart that read it back in
+        // would leave no way to reach an empty session from a resumed one, which is most of what
+        // it is for
         if first && let Some(path) = &args.resume {
             app.replay();
-            // the `context` tool's own undo history, where the snapshot carries one, so that the
-            // model can still walk back what it changed before; see `introspect::History`
+            // the `context` tool's undo history, carried from the snapshot so the model can still
+            // walk back what it changed. See `introspect::History`
             if let (Some(installed), Some(saved)) = (
                 &app.introspect,
                 kamchatka::introspect::saved_history(Path::new(path)),
@@ -768,29 +762,29 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                 );
             }
         }
-        // note: `server.is_none()` as well as `!headless`, because those are two different
+        // note: `server.is_none()` as well as `!headless`, because they are two different
         // questions. The greeting tells the reader that `ctrl+p` shows the next request and `F1`
-        // lists the keys, and it goes into the conversation, which is in every projection - so in
-        // a served session it would reach every client that ever attached, none of which has this
+        // lists the keys. It goes into the conversation, which is in every projection, so in a
+        // served session it would reach every client that ever attached, none of which has this
         // program's keys to press
         #[cfg(feature = "tui")]
         if !headless && server.is_none() && !(first && args.resume.is_some()) {
             app.say(Speaker::Note, ui::GREETING);
         }
-        // said again here, where a screen and a served session's clients read, because this is
-        // the one line a person needs before they wonder where a setting came from. Not in a
-        // headless run with nobody attached, whose conversation is printed to the stream the line
-        // above already went to
+        // said again here, where a screen and a served session's clients read, because this is the
+        // line a person needs before wondering where a setting came from. Not in a headless run
+        // with nobody attached: its conversation is printed to the stream the line above already
+        // went to
         if let Some(path) = found.as_ref().filter(|_| !headless || server.is_some()) {
             app.say(
                 Speaker::Note,
                 format!("settings read from {}", path.display()),
             );
         }
-        // note: said into the conversation rather than printed, because all three loops read that
-        // one and a session with no model has the same thing to say to each of them. The corner
-        // says it too, for as long as it is true, and `start_turn` says it again to anything that
-        // tries to send - this is the orientation, not the enforcement
+        // note: said into the conversation rather than printed, because all three loops read it and
+        // a session with no model has the same thing to say to each of them. The corner says it
+        // too, for as long as it is true, and `start_turn` says it again to anything that tries to
+        // send. This is the orientation, not the enforcement
         if app.kernel.model_info().is_none() {
             app.say(
                 Speaker::Note,
@@ -800,13 +794,13 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                 ),
             );
         }
-        // note: the first session only. A `--message` asked again on every restart would make
-        // `/restart` a way of putting the same question to the model for ever, which is the
-        // opposite of what somebody types it to escape
+        // note: first session only. Asking `--message` again on every restart would make `/restart`
+        // a way of putting the same question to the model for ever, the opposite of what somebody
+        // types it to escape.
         //
-        // note: the text and not the arity, which is how a line down a pipe is judged: an empty
-        // one is nothing, and a script that hands over a variable it never set would otherwise
-        // pay a round trip and a failed turn for a request the provider refuses
+        // note: the text, not the arity, is how a line down a pipe is judged: an empty one is
+        // nothing, and a script that hands over a variable it never set would otherwise pay a round
+        // trip and a failed turn for a request the provider refuses
         if first
             && let Some(message) = (!args.message.is_empty())
                 .then(|| args.message.join(" "))
@@ -817,11 +811,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         first = false;
 
-        // note: a served session with a screen is the *drawn* loop with a socket beside it, rather
-        // than a fourth loop or a precedence somebody has to know. Only one loop can own the
-        // `App`, so the one with the keys keeps it and `remote::Serving` is what it answers
-        // clients through - the same calls `Server::run` makes. A served session with no screen
-        // has `Server::run` as its loop, and that is what ends the session
+        // note: a served session with a screen runs the drawn loop with a socket beside it, not a
+        // fourth loop or a precedence rule. Only one loop can own the `App`, so the loop with the
+        // keys keeps it and answers clients through `remote::Serving`, using the same calls as
+        // `Server::run`. A served session with no screen uses `Server::run` as its loop, and
+        // `Server::run` ends the session
         let ran = match &mut server {
             Some(server) => match headless {
                 #[cfg(feature = "tui")]
@@ -865,10 +859,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             break ran;
         }
 
-        // note: the loop that just returned went round once more than it needed to for a session
-        // that is over. That is the price of `App::leaving` being one question: what it answers is
-        // *stop holding this*, and which of the two reasons it was is read here, where there is
-        // somewhere to go with the answer
+        // note: the loop that just returned runs one extra iteration after the session is over.
+        // That is the cost of `App::leaving` asking one question, *stop holding this*; this code
+        // reads which of the two reasons applied, because here there is somewhere to go with the
+        // answer
         flagged.restore(&*provider).await;
         let (wired, said) = base
             .relaunch(&app, provider.clone())
@@ -907,11 +901,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     )
 }
 
-/// Starts writing the session down as it goes, unless `--no-record` was given.
+/// Starts recording the session as it goes, unless `--no-record` was given.
 ///
-/// note: a record that cannot be claimed is said and not fatal, because `--no-record` is the
-/// flag for wanting none and a temporary directory somebody else has made unusable should not
-/// keep a person from running the program. `finish` tries once more at the end, which is how a
+/// note: if the record cannot be claimed, the failure is reported and is not fatal. `--no-record`
+/// is the flag for wanting no record, and a temporary directory made unusable by someone else
+/// should not stop the program from running. `finish` tries once more at the end, which is how a
 /// session with no recorder was always written.
 fn start_recording(app: &mut App, record: bool) {
     if !record {
@@ -928,10 +922,9 @@ fn start_recording(app: &mut App, record: bool) {
 
 /// Ends the session if nothing else has, says where it got to, and writes it down.
 ///
-/// note: three loops and one of these, because everything in here is about the run rather than
-/// about how it was driven. The one thing it asks about the driving is `logged`: whether stdout
-/// is carrying the record stream, which a headless run does and a served one does not, even with
-/// no screen.
+/// note: there are three loops and one `finish`, because everything here concerns the run rather
+/// than how it was driven. The only thing it asks about the driving is `logged`: whether stdout
+/// carries the record stream. A headless run does; a served run does not, even with no screen.
 fn finish(
     app: &App,
     record: bool,
@@ -939,22 +932,21 @@ fn finish(
     leave_running: bool,
     outcome: Result<Option<headless::Stop>>,
 ) -> Result<Option<headless::Stop>> {
-    // note: the headless driver and the server each end the session themselves, so that the record
-    // saying so goes down their own stream with the rest rather than being the one nobody was sent.
-    // `Kernel::finish` emits an event every time it is called, so this asks the log whether it has
-    // been, rather than asking which loop ran: a loop meant to end the session can leave before it
-    // gets there - the headless driver returns on a line it cannot read, or a stdout that went away
-    // - and the record written below still has to say the session ended
+    // note: the headless driver and the server each end the session, so the record saying so goes
+    // down their own stream with the rest, rather than being an event no stream carries.
+    // `Kernel::finish` emits an event every time it is called, so this asks the log whether the
+    // session has ended rather than which loop ran. A loop meant to end the session can exit before
+    // doing so: the headless driver returns on a line it cannot read, or when stdout goes away. The
+    // record written below must still say the session ended
     if !kamchatka::wiring::ended(&app.kernel) {
         app.kernel.finish();
     }
-    // note: on stderr in a headless run, because stdout is the log there. A line of prose in the
-    // middle of a stream of JSON is the one thing that would make it unparseable, and this is the
-    // last line written - so it would be the one nobody noticed until a reader fell over the end
+    // note: written to stderr in a headless run, because stdout is the log there. A line of prose
+    // in a stream of JSON makes it unparseable, and this is the last line written.
     //
-    // note: and written without the macros, which panic when the write fails. A run piped into
-    // `head` has nobody reading either stream by the time it gets here, and a panic on the first
-    // line would take the record down with it
+    // note: written without the macros, which panic when the write fails. A run piped into `head`
+    // has nobody reading either stream by the time it gets here, and a panic on the first line
+    // would take the record down
     let say = |line: &str| {
         let _ = match logged {
             true => writeln!(std::io::stderr(), "{line}"),
@@ -962,8 +954,8 @@ fn finish(
         };
     };
     // written whether or not anybody typed `/save`: a session that ended badly is the one worth
-    // reading afterwards, and it is the one nobody thinks to save - and written before anything is
-    // said about it, since saying is the part that can fail
+    // reading afterwards, and the one nobody thinks to save. It is written before anything is said
+    // about it, because saying is the part that can fail
     let written = record.then(|| kamchatka::wiring::record(app));
     say(&format!(
         "{} · {} events recorded",
@@ -981,14 +973,14 @@ fn finish(
         Some(Err(e)) => {
             let _ = writeln!(std::io::stderr(), "the session was not written: {e}");
         }
-        // the fact `/restart` says at the other door, in the same words: the count above reads as
-        // a pointer to a record, and under this flag there is no file to point at. Not said about
-        // where the records went instead - a piped run writes them to stdout whatever else was
-        // asked for, and a drawn or a served one has nowhere
+        // the fact `/restart` says at the other door, in the same words: the count above reads as a
+        // pointer to a record, and under this flag there is no file to point at. It does not say
+        // where the records went instead: a piped run writes them to stdout whatever else was asked
+        // for, and a drawn or served one has nowhere
         None => say("`--no-record`, so nothing was written"),
     }
-    // last, because it is the one thing here that waits - a straggler is given a moment to leave on
-    // `SIGTERM` - and a record written first is a record a slow one cannot keep from being kept
+    // last, because it is the one thing here that waits: a straggler is given a moment to leave on
+    // `SIGTERM`. A record written first is a record a slow straggler cannot keep from being kept
     for line in kamchatka::wiring::stragglers_at_end(app, leave_running) {
         say(&line);
     }
@@ -1042,8 +1034,8 @@ async fn drawn(
     .await;
     let _ = execute!(stdout(), PopKeyboardEnhancementFlags, DisableBracketedPaste);
     ratatui::restore();
-    // however the loop was left - `/quit`, a signal, or a terminal that stopped answering - a turn
-    // still running is stopped and waited for before anybody writes `session.finished`
+    // A turn still running is stopped and waited for before anybody writes `session.finished`,
+    // however the loop was left: `/quit`, a signal, or a terminal that stopped answering
     app.wait_for_turn(events, finished, |_| {}).await;
 
     // note: a drawn session ends itself only where it was also served. `session.finished` is a
@@ -1100,8 +1092,8 @@ async fn run(
             terminal.draw(|frame| ui::draw(frame, app))?;
             (stale, quiet_ticks) = (false, 0);
         }
-        // after the frame rather than before it, so the line saying what was handed over is on
-        // the screen by the time the terminal has it
+        // after the frame rather than before it, so the hand-over line is on the screen by the time
+        // the terminal has it
         if let Some(text) = app.clipboard.take()
             && let Err(why) = kamchatka::clipboard::hand_over(&text)
         {
@@ -1139,8 +1131,8 @@ async fn run(
                 }
             },
             Some(outcome) = finished.recv() => apply_outcome(app, events, outcome),
-            // and the two that are only there where this session is also served. They are the same
-            // pair `remote::Server::run` selects on, in a loop that happens to have a screen
+            // and the two that exist only when this session is also served. They are the same pair
+            // `remote::Server::run` selects on, in a loop that happens to have a screen
             arrived = async {
                 match &server {
                     Some(server) => server.arrived().await,
@@ -1177,14 +1169,14 @@ async fn run(
             } => app.quit = true,
             _ = ticks.tick() => {
                 // note: on the tick as well as on an event, because a provider and an advisor
-                // have things to say when nothing is happening - a retry's wait, a local advisor
+                // produce notices when nothing is happening - a retry's wait, a local advisor
                 // loading a checkpoint before the first question - and no event carries those
                 stale |= app.take_notices();
-                // the two things on the screen that move with nothing to announce them: the busy
-                // line's clock, and a question a running command asks at the network gate, which
-                // is read out of `Careful::reaching` rather than arriving as an event. An
-                // advisor's rating is not one of them: the kernel awaits the policy before it
-                // raises a question, so the rating is there before the panel is
+                // two things move on screen without announcing themselves: the busy line's clock,
+                // and a question a running command asks at the network gate, read from
+                // `Careful::reaching` rather than arriving as an event. An advisor's rating is not
+                // one of them: the kernel awaits the policy before raising a question, so the
+                // rating is there before the panel is
                 quiet_ticks += 1;
                 stale |= app.busy || app.asking() || quiet_ticks >= HEARTBEAT;
                 continue;

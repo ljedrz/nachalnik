@@ -49,12 +49,11 @@ pub(super) struct Errand {
 }
 
 impl App {
-    /// Starts, or carries on with, a turn.
+    /// Starts or continues a turn.
     ///
-    /// note: it refuses once the ceiling has been reached, and that refusal is what makes
-    /// [`App::spend`] a bound rather than a report. Stopping the turn that crossed the line is
-    /// only half of it: a loop that hands in the next line - a script, a person, an agent driving
-    /// this from somewhere else - would start spending again, and every caller goes through here.
+    /// note: it refuses once the ceiling is reached, which makes [`App::spend`] a bound rather than
+    /// a report. Stopping the turn that crossed the line is not enough: a loop that hands in the
+    /// next line would spend again, so every caller goes through here.
     pub fn start_turn(&mut self) {
         self.launch(false);
     }
@@ -107,11 +106,11 @@ impl App {
             };
             outcome.unwrap_or_else(|e| Outcome::Failed(e.to_string()))
         });
-        // note: the turn on a task of its own and the outcome sent from this one, because a turn
-        // that panics sends nothing from inside itself. The kernel answers a tool's panic as a
-        // failed call, so what reaches here is a panic in the kernel or in something this program
-        // handed it, and unanswered it left `busy` set for good: the headless loop waited for
-        // an outcome that never came and read no more input
+        // note: the turn runs on its own task and this task sends the outcome, because a panicking
+        // turn sends nothing from inside itself. The kernel answers a tool's panic as a failed
+        // call, so what reaches here is a panic in the kernel or in something this program handed
+        // it. Left unanswered, `busy` stays set for good, so the headless loop waits for an outcome
+        // that never comes and reads no more input
         tokio::spawn(async move {
             let outcome = turn.await.unwrap_or_else(|e| {
                 Outcome::Failed(match e.try_into_panic() {
@@ -151,13 +150,13 @@ impl App {
         self.say(Speaker::Note, format!("step → {told}"));
     }
 
-    /// Says whatever the provider and the advisor have put up since the last look, and whether
-    /// there was anything.
+    /// Says what the provider and advisor have put up since the last look, and whether there was
+    /// anything.
     ///
-    /// note: each holds one notice and a newer one replaces it, so a loop has to look often -
-    /// while a turn runs, and not only when it ends - or all but the last retry of a turn is lost
-    /// and the last arrives after the failure it led up to. The loops call this on a tick; the
-    /// places below call it where a notice is known to be about something that has just finished.
+    /// note: each holds one notice and a newer one replaces it, so a loop must look while a turn
+    /// runs, not only when it ends, or all but the last retry of a turn is lost and the last
+    /// arrives after the failure it led up to. Loops call this on a tick; other callers use it
+    /// where a notice is about something that has just finished.
     pub fn take_notices(&mut self) -> bool {
         let mut heard = false;
         if let Some(notice) = self.provider.take_notice() {
@@ -195,8 +194,8 @@ impl App {
     ///
     /// note: what a client is told as `busy`, rather than the turn alone. A client whose input has
     /// closed leaves on `busy: false`, and a piped `/models` or `/compact` is answered the moment
-    /// it is sent - so told only about the turn, it left before the list or the pass came back,
-    /// and wrote out none of what it had asked for.
+    /// it is sent. Told only about the turn, it left before the list or the pass came back and
+    /// wrote out none of what it had asked for.
     pub fn working(&self) -> bool {
         self.busy || self.in_flight()
     }
@@ -281,13 +280,13 @@ impl App {
         self.settling = Some(settling);
     }
 
-    /// Runs `work` as a task, and sends what it came back with to the loop as an
+    /// Runs `work` as a task and sends what it came back with to the loop as an
     /// [`Outcome::Returned`].
     ///
-    /// note: a task watching a task, so that the answer is sent however the work ended. A request
-    /// that panicked would otherwise send nothing, and every line after it would be held for ever
-    /// behind a command that is never coming back; one that was stopped sends nothing on purpose,
-    /// because whoever stopped it has already let go of it.
+    /// note: a task watches a task, so the answer is sent however the work ended. A panicked
+    /// request would otherwise send nothing, and every line after it would be held for ever behind
+    /// a command that never comes back. A stopped request sends nothing on purpose: whoever stopped
+    /// it has already let go of it.
     pub(super) fn send_out<T: Send + 'static>(
         &mut self,
         errand: Option<u64>,
@@ -332,9 +331,9 @@ impl App {
 
     /// Waits for a `/model` or `/endpoint` still settling, and says what the switch had to say.
     ///
-    /// note: the notice is taken here, the moment the switch is done, because it is about that
-    /// switch: left for the next look, it lands after whatever the next line does, and a script's
-    /// last line never has a next look at all.
+    /// note: the notice is taken when the switch finishes because it is about that switch. Left for
+    /// the next look, it lands after whatever the next line does, and a script's last line never
+    /// has a next look.
     pub(super) async fn settled(&mut self, within: Option<std::time::Duration>) {
         let Some(settling) = self.settling.take() else {
             return;
@@ -359,15 +358,13 @@ impl App {
         self.close();
         self.keep_record();
 
-        // note: before anything this says about the turn, because most of what a provider puts
-        // here is *about* the turn that just ended - "the model was cut off mid-answer; what had
-        // arrived is kept" is the account of the answer above it, and reads as a remark about the
-        // next one if it lands after. The loops also look on a tick, and taking it twice costs
-        // nothing.
+        // note: placed before anything about the turn, because most of what a provider puts here is
+        // about the turn that just ended. "The model was cut off mid-answer; what had arrived is
+        // kept" is the account of the answer above it, and reads as a remark about the next one if
+        // it lands after. The loops also look on a tick, and taking it twice costs nothing.
         //
-        // note: here rather than only in those loops, so that a notice is not something only this
-        // program's own loops receive: an embedder driving `App` directly would otherwise never
-        // hear that an answer was cut off.
+        // note: here rather than only in those loops, so an embedder driving `App` directly hears
+        // that an answer was cut off.
         self.take_notices();
 
         // note: a turn that stopped to ask a question has not ended - the call it is asking about
@@ -386,28 +383,27 @@ impl App {
             // taken at the top, and never a turn's
             Outcome::Returned(_) => false,
         };
-        // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
-        // not the moment to start something else; either way what was typed waits for `/continue`
+        // a `Stepped` outcome means someone is driving a transition at a time. A failure is not the
+        // moment to start something else. Either way, what was typed waits for `/continue`
         let interrupted = std::mem::take(&mut self.interrupting);
         let carry_on = ended && !interrupted && matches!(outcome, Outcome::Stopped(_));
         match outcome {
             Outcome::Failed(e) => self.say_error(e),
             Outcome::Returned(_) => {}
-            // note: a turn stopping to ask says nothing here, and opens nothing. The question is
-            // drawn from `pending_permissions()` every frame, so there is no moment at which it
-            // has to be put on the screen and none at which it has to be taken off, so nothing
-            // can be left standing over a question that was answered somewhere else
+            // note: a turn stopping to ask says nothing here and opens nothing. The question is
+            // drawn from `pending_permissions()` every frame, so there is no moment to put it on
+            // the screen or take it off, and nothing can be left standing over a question answered
+            // somewhere else.
             //
             // note: unless every question was answered while this outcome was on its way, in which
             // case the turn is carried on here. `permission.requested` is broadcast while the turn
             // that raised it is still unwinding, so an answer inside that window is recorded and
-            // then goes nowhere: `App::decide` calls `start_turn`, `start_turn` refuses because the
-            // old turn is still marked as running, and the session stops for good with every
-            // question answered and nothing to answer. The window is narrow but real - it is
-            // whatever the gap is between a client's socket and this loop. `headless.rs` stays
-            // out of it by only answering while the kernel rests; the keys and a socket cannot,
-            // because a person answers when they answer, so it is closed here instead, once, for
-            // all three
+            // goes nowhere: `App::decide` calls `start_turn`, `start_turn` refuses because the old
+            // turn is still marked running, and the session stops for good with every question
+            // answered and nothing to answer. The window is narrow but real: the gap between a
+            // client's socket and this loop. `headless.rs` stays out by only answering while the
+            // kernel rests; the keys and a socket cannot, because a person answers when they
+            // answer, so it is closed here once for all three
             Outcome::Stopped(State::Deciding { .. })
                 if !self.stepping && self.kernel.pending_permissions().is_empty() =>
             {
@@ -415,8 +411,8 @@ impl App {
                 self.interrupting = interrupted;
             }
             Outcome::Stopped(State::Deciding { .. }) => {}
-            // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
-            // the difference matters to whoever is reading the screen
+            // a turn that stops in `Idle` either ran out of requests or was asked to stop, and the
+            // difference matters to whoever is reading the screen
             Outcome::Stopped(State::Idle) if !interrupted => {
                 self.paused = true;
                 let budget = self
@@ -433,13 +429,13 @@ impl App {
             Outcome::Stepped(state) => self.stepped(state),
         }
 
-        // a message somebody sent into this turn has waited for it to end; now the oldest goes in,
-        // and unless the turn was stopped, stepped or failed it gets a turn of its own. The rest
-        // wait for that one, as they waited for this
+        // a message sent into this turn has waited for it to end; the oldest goes in, and unless
+        // the turn was stopped, stepped or failed it gets a turn of its own. The rest wait for that
+        // one.
         //
-        // note: `caught_up` because the line saying it was waiting is a live one - it was said
-        // when there was no item to say it from - and pushing is what gives it one. The item is
-        // drawn in its place, at the end of the conversation, which is where the request has it
+        // note: `caught_up` because the line saying it was waiting is live: it was said when there
+        // was no item to say it from, and pushing gives it one. The item is drawn in its place at
+        // the end of the conversation, where the request has it
         if ended && let Some(message) = self.typed_ahead.pop_front() {
             let id = self.kernel.push(ContextItem::user(message));
             self.caught_up(id);
@@ -448,22 +444,22 @@ impl App {
             }
         }
 
-        // the counter has just been told what the last request really cost, so the figures on the
-        // older items are out of date. Bringing them into line is a decision, not a side effect
+        // the counter has just been told what the last request cost, so the figures on older items
+        // are out of date. Bringing them into line is a decision, not a side effect
         self.kernel.recount();
     }
 
     /// Writes the session down as far as it has got, where a record is being kept.
     ///
-    /// note: every record the log has grown, and the snapshot too when the session is resting: a
-    /// snapshot carries every item's content and a turn announces something every few
+    /// note: every record the log has grown, and the snapshot too when the session is resting. A
+    /// snapshot carries every item's content, and a turn announces something every few
     /// milliseconds, so one per event mid-turn would write the whole context over and over for a
-    /// snapshot that the end of the turn rewrites anyway. At rest the events are a person's, and
-    /// each of them - an exclusion, a note, an undo - is a change the snapshot should show.
+    /// snapshot the end of the turn rewrites anyway. At rest the events are a person's, and each -
+    /// an exclusion, a note, an undo - is a change the snapshot should show.
     ///
-    /// note: a record that cannot be written stops being kept, and says so once. Saying it on every
+    /// note: a record that cannot be written stops being kept and says so once. Saying it on every
     /// event would be a red line per event for the rest of the session, and the end of the run
-    /// still tries once more, the way a session with no recorder is written.
+    /// still tries once more, as a session with no recorder is written.
     pub(super) fn keep_record(&mut self) {
         let Some(recorder) = &self.recorder else {
             return;

@@ -1,18 +1,17 @@
 //! Drawing. Nothing here decides anything - it reads [`App`] and the kernel and puts what it
 //! finds on the screen.
 //!
-//! note: the frame and the chrome on it - the tab bar, the footer, the prompt, the status
-//! line - and `draw`, which is the one entry point. What goes inside is next door: `tabs` draws
-//! the four bodies, `overlay` the panel that floats over one of them, `markdown` and `table` turn
-//! what a model wrote into styled lines, and `text` measures and fits all of it. Everything but
-//! [`GREETING`], [`SECTIONS`], [`Section`], [`everything`], [`wrapped_rows`] and `draw` itself is
-//! private to this module, because a screen is not an API.
+//! note: the frame and its chrome - the tab bar, the footer, the prompt, the status line - and
+//! `draw`, the one entry point. `tabs` draws the four bodies, `overlay` the panel that floats over
+//! one of them, `markdown` and `table` turn what a model wrote into styled lines, and `text`
+//! measures and fits all of it. Everything but [`GREETING`], [`SECTIONS`], [`Section`],
+//! [`everything`], [`wrapped_rows`] and `draw` itself is private to this module, because a screen
+//! is not an API.
 //!
-//! note: this whole module is behind the `tui` feature, and the key reference lives in `help`
-//! rather than here for that reason: `/help` is answered by a build with no screen, so the text a
-//! command owns cannot sit behind the feature that draws. What is here is a re-export, because
-//! `ui` is the path somebody may already be reaching it through - [`crate::help`] is the one that
-//! works in every configuration.
+//! note: this module is behind the `tui` feature. `/help` is answered by a build with no screen, so
+//! the text a command owns cannot sit behind the feature that draws; the key reference lives in
+//! [`crate::help`], which works in every configuration. What is here is a re-export, because `ui`
+//! is the path somebody may already be reaching it through.
 
 use std::time::Duration;
 
@@ -45,10 +44,9 @@ use crate::ui::{
 
 /// The first line of a session that is not being resumed.
 ///
-/// note: `pub` for the same reason [`SECTIONS`] is: so that a test can check that what somebody is
-/// told on their first screen is what the keys actually do. `tab` does not move to the context -
-/// on the chat tab it moves the keys onto a waiting question - and the trace is two presses of
-/// `ctrl+t` away rather than one.
+/// note: `pub` for the same reason [`SECTIONS`] is: a test can check that the first screen shows
+/// what the keys do. `tab` does not move to the context; on the chat tab it moves the keys onto a
+/// waiting question, and the trace is two presses of `ctrl+t` away rather than one.
 pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt+1 comes back · \
                             ctrl+p shows the next request · F1 lists the keys";
 
@@ -73,23 +71,22 @@ pub fn wrapped_rows(lines: &[String], width: usize) -> usize {
 }
 /// Draws one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    // editing an item wants more room than composing a message does, and the tab underneath is
-    // the one thing that can afford to give it up: the item being edited is on it
+    // editing an item needs more room than composing a message. The tab underneath can afford to
+    // give it up because the item being edited is on it
     let most = match app.editing.is_some() {
         true => 16,
         false => 8,
     };
-    // the *wrapped* height, not the number of lines somebody typed: with soft wrapping on, one
-    // long line is several rows, and a box sized to the line count would show the last of them
-    // and hide the rest
+    // the wrapped height, not the number of lines typed. With soft wrapping, one long line is
+    // several rows; a box sized to the line count would show the last row and hide the rest
     let inner = frame.area().width.saturating_sub(2) as usize;
-    // the prompt belongs to the conversation, and to an edit wherever that was started. The three
-    // other tabs are read and operated rather than typed into, and a box there was a mode: every
-    // letter on them was a key or a character depending on where the focus had got to
+    // the prompt belongs to the conversation and to an edit wherever it started. The other three
+    // tabs are read and operated rather than typed into; a box there was a mode, where every letter
+    // was a key or a character depending on the focus
     let prompted = app.prompted();
-    // the search box goes in the prompt's place, which on the panes that have a search is empty.
-    // One row: what is being typed is a phrase, not a message, and a box that grew would be
-    // taking rows from the very thing it is filtering
+    // the search box goes in the prompt's place, which is empty on panes that have a search. One
+    // row: what is being typed is a phrase, not a message, and a box that grew would take rows from
+    // the thing it is filtering
     let searching = app.search.is_some();
     let input_height = match (prompted, searching) {
         (_, true) => 1,
@@ -104,11 +101,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         true => question_rows(app, inner),
         false => 0,
     };
-    // what it may have is everything except the status line and enough of the conversation to see
-    // what the question is about - and if that is not enough to answer with, the conversation
-    // gives way too. There is no prompt left to bargain with: `App::prompted` is false while a
-    // question waits, so `input_height` is already nought here, and the box holding the keys is
-    // never the one that goes
+    // the question may have everything except the status line and enough of the conversation to see
+    // what the question is about. If that is not enough to answer with, the conversation gives way
+    // too. `App::prompted` is false while a question waits, so `input_height` is already nought
+    // here. The box holding the keys is never the one that goes
     let mut question = 0;
     if wanted != 0 {
         question = wanted.min(height.saturating_sub(1 + MIN_CHAT));
@@ -124,12 +120,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
-    // one projection a frame, shared by the three places that report on it. Each asking for its
-    // own would be three walks of the context per redraw, and - worse - three answers that could
-    // disagree about the same request
+    // one projection a frame, shared by the three places that report on it. Each asking for its own
+    // would be three walks of the context per redraw, and three answers that could disagree about
+    // the same request
     let going = app.going();
-    // and one budget a frame, for the same reason: the corner and the context tab's own line are
-    // two readings of the request that is about to go, and two walks could disagree about it
+    // One budget a frame, for the same reason: the corner and the context tab's own line are two
+    // readings of the request that is about to go, and two walks could disagree about it
     let budget = app.kernel.budget();
     let scrolled = draw_body(frame, app, &going, &budget, body);
     if question != 0 {
@@ -138,8 +134,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         app.question_scroll = draw_question(frame, app, asked);
     }
     match (searching, prompted) {
-        // the rows the context tab just drew are the ones the search found, and filtering the
-        // whole context a second time to count them doubled what every keystroke of a search cost
+        // the rows the context tab just drew are the ones the search found. Filtering the whole
+        // context again to count them doubled the cost of every search keystroke
         (true, _) => draw_search(
             frame,
             app,
@@ -166,18 +162,18 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 /// Text that is secondary but still meant to be read.
 ///
-/// note: `Gray`, not `DarkGray`. `DarkGray` is the terminal's bright *black*: on a good half of the
-/// themes people actually use it sits a shade off the background, and nearly everything on these
-/// screens that is not the answer itself - why an item is not being sent, what an event says, the
-/// whole of the trace - is meant to be read. Anything a person is meant to read is this.
+/// note: `Gray`, not `DarkGray`. `DarkGray` is the terminal's bright black and sits a shade off
+/// the background on many themes. Everything that is not the answer - why an item is not being
+/// sent, what an event says, the whole trace - is meant to be read. Anything a person is meant to
+/// read is this.
 pub(super) fn quiet() -> Style {
     Style::default().fg(Color::Gray)
 }
 
 /// Chrome that is supposed to stay out of the way: borders, rules, the rule down a code block.
 ///
-/// note: this one is `DarkGray`, and it is the only thing that should be. It is drawing lines,
-/// not words.
+/// note: this one is `DarkGray`, and it is the only thing that should be. It draws lines, not
+/// words.
 pub(super) fn faint() -> Style {
     Style::default().fg(Color::DarkGray)
 }
@@ -276,15 +272,13 @@ pub(super) fn in_view<T>(rows: Vec<T>, at: usize, area: Rect) -> Vec<T> {
 
 /// Draws a scrollbar down the window's right-hand border, when there is anything to scroll.
 ///
-/// note: on the border rather than in a column of its own. A tab that gave up a column would be
-/// one character narrower for the whole session in order to say something that is only true some
-/// of the time, and the two table tabs spend that column on the thing they exist for - what the
-/// model will actually read of an item. The track *is* the border character, so a window with
-/// nothing to scroll looks exactly as it did before.
+/// note: on the border rather than in a column of its own. Giving up a column makes a tab one
+/// character narrower for the whole session to show something true only sometimes; the table tabs
+/// use that column for what the model reads of an item. The track is the border character, so an
+/// unscrollable window looks unchanged.
 ///
-/// note: it lines up with the content rather than with the window: the context and permissions
-/// tabs spend their first row on a header, and a bar that started above it would be off by one
-/// for the whole length of the list.
+/// note: it lines up with the content rather than the window. The context and permissions tabs use
+/// their first row for a header, so a bar starting above it would be off by one for the whole list.
 pub(super) fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled: Scrolled) {
     let viewport = scrolled.area.height as usize;
     if viewport == 0 || scrolled.total <= viewport {
@@ -297,12 +291,11 @@ pub(super) fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled
         width: 1,
         height: scrolled.area.height,
     };
-    // note: `content_length` is the number of *scroll positions*, not the number of rows. Ratatui
-    // places the thumb over `0..content_length` and adds the viewport back on at the far end, so
-    // passing the row count says the last position is "the final row alone at the top" - a page
-    // further down than anything here scrolls to, and the thumb stops short of the bottom. Every
-    // tab stops at the last full page, so the positions it can be in are `total - viewport + 1`,
-    // and with that the thumb reaches the last row when the content does.
+    // note: `content_length` is the number of scroll positions, not rows. Ratatui places the thumb
+    // over `0..content_length` and adds the viewport at the far end, so passing the row count
+    // places the last position a page below the last scrollable position and the thumb stops short
+    // of the bottom. Every tab stops at the last full page, so the positions are
+    // `total - viewport + 1`, and the thumb reaches the last row when the content does.
     let mut state = ScrollbarState::new(scrolled.total - viewport + 1)
         .position(scrolled.position)
         .viewport_content_length(viewport);
@@ -324,10 +317,9 @@ pub(super) fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled
 /// What the open tab has to say about itself, along the bottom, the most important first.
 pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
     match app.tab {
-        // note: a conversation somebody has scrolled back through stays where they left it, so
-        // this is the line that has to say there is more underneath - and how to get to it. Left
-        // out, "sticky" reads as "stuck": the window simply stops moving and nothing accounts
-        // for it
+        // note: a conversation scrolled back stays where it was left, so this line says there is
+        // more underneath and how to reach it. Without it, "sticky" reads as "stuck": the window
+        // stops moving and nothing explains why
         Tab::Chat => {
             let mut parts = Vec::new();
             if !app.follow {
@@ -345,9 +337,8 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
             parts
         }
         Tab::Context => {
-            // counted by whether the model is being shown what the item says, which is the
-            // question this line is answering. An elided item is in the request and is not being
-            // shown, and calling it "going" would be the more misleading of the two
+            // counted by whether the model is shown what the item says. An elided item is in the
+            // request but not shown; calling it "going" would be more misleading
             let items = app.kernel.items();
             let out = items
                 .iter()
@@ -361,11 +352,10 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
                 (n, e) => format!("{held}, {n} not going, {e} elided"),
             };
 
-            // note: the figure to act on, on the tab where acting on it happens. The corner says
-            // the request is over the limit and turns red about it; what it has no room to say is
-            // *by how much*, and the difference between "over" and "over by two thousand" is the
-            // difference between reading a list of forty rows and taking one of them out. Not
-            // shown under the limit, where it is not a number anybody needs
+            // note: the figure to act on, on the tab where acting happens. The corner says the
+            // request is over the limit and turns red, but has no room to say by how much; the
+            // difference between "over" and "over by two thousand" is reading forty rows versus
+            // removing one of them. Not shown under the limit, where it is not needed
             match budget
                 .limit
                 .map(|limit| budget.used().saturating_sub(limit))
@@ -380,12 +370,13 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
             format!("{} events", app.trace.len()),
             "/save keeps them all".to_owned(),
         ],
-        // note: the caveat comes first because it is the one thing on this tab that is not
-        // negotiable. A registered shell that is not refused can read, write and reach the
-        // network whatever the other rows answer, so a tab that listed five verdicts and said
-        // nothing about that would be reporting four restrictions that are not there
-        // note: the count of what is *not* listed. The tab is the decisions; this is the honest
-        // footnote that they are not the whole policy
+        // note: the caveat comes first because it is non-negotiable. A registered shell that is not
+        // refused can read, write and reach the network whatever the other rows answer; a tab
+        // listing five verdicts and saying nothing about it would report four restrictions that are
+        // not there.
+        //
+        // note: the count is of what is not listed. The tab shows decisions; they are not the whole
+        // policy
         Tab::Permissions => {
             let mut parts = Vec::new();
             if let Some(line) = app.confinement() {
@@ -395,9 +386,9 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
                 0 => {}
                 n => parts.push(format!("{n} more it will ask about")),
             }
-            // note: the same keys whatever else is on the line, whether or not there is a sandbox
-            // line beside them. Not named with nothing decided yet, when there is no row for them
-            // to act on
+            // note: the same keys whatever else is on the line, with or without a sandbox line
+            // beside them. Not named when nothing is decided yet and there is no row for them to
+            // act on
             if !app.permissions().is_empty() {
                 parts.push("space cycles · a allow · n never · r ask again".to_owned());
             }
@@ -409,10 +400,9 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
 
 /// The footer's parts that fit in a width, padded by a space either side.
 ///
-/// note: whole parts, dropped from the end, because the line is right-aligned and a title too
-/// wide for its border is cut from the left - which is where the part that matters most is. A
-/// first part that does not fit by itself is shortened instead, from its end, like everything else
-/// on this screen that runs out of room
+/// note: whole parts are dropped from the end because the line is right-aligned. A title too wide
+/// for its border is cut from the left, where the part that matters most is. A first part that does
+/// not fit by itself is shortened from its end.
 fn fitted(parts: &[String], width: usize) -> String {
     let mut line = String::new();
     for part in parts {
@@ -436,16 +426,15 @@ fn fitted(parts: &[String], width: usize) -> String {
 
 /// The prompt, which is the one thing on the chat tab the keys can be on.
 ///
-/// note: the accent when the keys are on it, which is the same colour the pinned question wears
-/// for the same reason - the two are the boxes that can hold them, and one of them holding them is
-/// what the colour says. Not white: against grey that is a difference in brightness rather than
-/// in hue, the weaker of the two signals and the first to go on a pale theme.
+/// note: the accent when the keys are on it is the same colour the pinned question wears, because
+/// both are boxes that can hold keys and the colour shows which one holds them. Not white: against
+/// grey it is a difference in brightness rather than hue, the weaker of the two signals and the
+/// first to go on a pale theme.
 ///
-/// note: an edit is the accent only while the keys are on it, like a message. The accent either way
-/// would be the same colour doing a second job, and would leave two such boxes on the screen at once
-/// with the item being edited on the tab underneath. What says this box is not composing a message
-/// is its title, which spells the whole of it out; the colour is left to say the one thing it says
-/// everywhere else.
+/// note: an edit is the accent only while the keys are on it, like a message. The same colour doing
+/// a second job would leave two such boxes on screen at once, with the item being edited on the tab
+/// underneath. The title says this box is not composing a message; the colour says the one thing it
+/// says everywhere else.
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Input;
     // the same box does two jobs, so it has to say which one it is doing: typing into it
@@ -498,13 +487,12 @@ fn draw_search(frame: &mut Frame, app: &mut App, found: Option<usize>, area: Rec
         _ => app.kernel.items().len(),
     };
 
-    // where the next character goes, which is not the end of the query any more: `left` and
-    // `right` move it, so the cursor is drawn between the two halves rather than after both
+    // where the next character goes, not the end of the query any more. `left` and `right` move it,
+    // so the cursor is drawn between the two halves rather than after both
     let (before, after) = search.parts();
-    // note: a block over the character the cursor is on, as the prompt draws it, rather than a bar
-    // between two of them. A bar glyph is a cell of its own with only its left edge painted, so it
-    // read as a cursor with a space after it; past the end there is no character, and the block
-    // is the cell the next one will take
+    // note: a block over the character under the cursor, not a bar between two characters. A bar
+    // glyph is its own cell with only its left edge painted, so it reads as a cursor with a space
+    // after it. Past the end there is no character; the block is the cell the next one will take
     let mut rest = after.chars();
     let under = rest.next().map_or_else(|| " ".to_owned(), String::from);
 
@@ -565,12 +553,11 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
         ),
     }
 
-    // what the next request would cost with the message being typed in it, taken from what the
-    // last one really cost wherever there is one to take it from. The `~` stays either way -
-    // both are predictions - but an anchored one is out by a few percent of what has changed
-    // since the last request rather than of the whole context, and a draft moving the figure is
-    // only worth showing at that accuracy. See `App::anchored`, and `App::expected` for why every
-    // other view shows the same figure
+    // The next request's cost with the message being typed, taken from the last request's real cost
+    // where there is one. The `~` stays either way: both are predictions. An anchored figure is out
+    // by a few percent of what changed since the last request, not of the whole context, and a
+    // draft moving the figure is only worth showing at that accuracy. See `App::anchored` and
+    // `App::expected` for why every other view shows the same figure
     let draft = app.drafted();
     let next = app.expected(going, budget) + draft;
     let used = thousands(next);
@@ -618,24 +605,24 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
         add(format!("{} of it typed", thousands(draft)), dim);
     }
 
-    // the `~` above is not decoration: that figure is an estimate from a counter that does not
-    // have the model's tokenizer. This one is what the provider charged for, and the two being
-    // side by side is the only reason either can be trusted. `/budget` has the whole story
+    // the `~` above is not decoration: that figure is an estimate from a counter without the
+    // model's tokenizer. This one is what the provider charged for; the two side by side is the
+    // only reason either can be trusted. `/budget` has the whole story
     if let Some(reported) = budget.reported.and_then(|usage| usage.input_tokens) {
         add(format!("{} really", thousands(reported as usize)), dim);
     }
 
-    // note: counted over the request rather than over the states, so this and `/budget` and the
-    // `held` column are one answer. `tokens_withheld` misses an item the projector repaired away,
-    // which is holding as much as any excluded one
+    // note: counted over the request, not the states, so this, `/budget`, and the `held` column are
+    // one answer. `tokens_withheld` misses an item the projector repaired away, which holds as much
+    // as any excluded one
     let (withheld, _) = app.withheld(going);
     if withheld != 0 {
         add(format!("{} held back", thousands(withheld)), dim);
     }
-    // note: `esc stops it` and nothing in its place when idle. `F1` is said on the first screen by
-    // `GREETING` and again by every `there is no /x`, and this line's right-hand end is the first
-    // thing a narrow terminal loses. This is the one place a running turn says how to stop it,
-    // and it is on every tab, so the chat's footer does not say it again
+    // note: `esc stops it` and nothing in its place when idle. `F1` appears in `GREETING` on the
+    // first screen and in every `there is no /x`; this line's right end is the first thing a narrow
+    // terminal loses. This is the only place a running turn shows how to stop it, and it is on
+    // every tab, so the chat's footer does not repeat it
     if app.busy {
         add("esc stops it".to_owned(), dim);
     }
@@ -658,8 +645,8 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
 /// the columns it was costing are better spent on the figures to its right.
 const HOST_FLOOR: usize = 8;
 
-/// The least of a model's name worth showing, which is more than a host's: the name is what the
-/// line is about, and a session cannot tell what it is talking to from `…h`.
+/// The least of a model's name worth showing, more than a host's: the name is what the line is
+/// about, and `…h` tells nothing about what a session is talking to.
 const MODEL_FLOOR: usize = 12;
 
 /// The same spans with the `model @ host` shortened to claw back `over` columns.
@@ -682,9 +669,9 @@ fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> 
             // one column of the saving goes on the ellipsis that says it was shortened
             let keep = columns(host).saturating_sub(over + 1);
             if keep >= HOST_FLOOR {
-                // from the right: the leftmost label is the one that distinguishes an endpoint -
-                // `generativelanguage` in Google's, the resource name in an Azure deployment -
-                // and the rest of it is a domain shared with everything else the vendor runs
+                // from the right: the leftmost label distinguishes an endpoint -
+                // `generativelanguage` in Google's, the resource name in an Azure deployment - and
+                // the rest is a domain shared with everything else the vendor runs
                 return Span::styled(
                     format!("{model} @ {}…", &host[..prefix_within(host, keep)]),
                     style,
@@ -702,8 +689,8 @@ fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> 
 /// A model's name with `over` columns taken out of it, or as near as is still worth reading.
 ///
 /// note: the opposite end from a host, because the distinguishing part is at the opposite end.
-/// `dots-studio/` is shared with everything that vendor publishes and `dots-3-note-preview:free`
-/// is the model, so the prefix goes first and the ellipsis afterwards eats from the left.
+/// `dots-studio/` is shared with everything that vendor publishes and `dots-3-note-preview:free` is
+/// the model, so the prefix goes first and the ellipsis takes from the left.
 fn shrink_model(model: &str, over: usize) -> String {
     if over == 0 {
         return model.to_owned();
@@ -719,8 +706,8 @@ fn shrink_model(model: &str, over: usize) -> String {
     let keep = columns(named).saturating_sub(short + 1);
     match keep >= MODEL_FLOOR {
         true => format!("…{}", &named[named.len() - suffix_within(named, keep)..]),
-        // below the floor there is nothing left to say and nothing to be gained by saying half of
-        // it; the line is drawn as it is and the terminal clips what does not fit
+        // below the floor there is nothing to gain by saying half of it; the line is drawn as it
+        // is and the terminal clips what does not fit
         false => named.to_owned(),
     }
 }
@@ -731,17 +718,15 @@ const BLINK: Duration = Duration::from_millis(280);
 /// How long a wait has to last before the marker also says how long it has been.
 const AT_LENGTH: Duration = Duration::from_secs(5);
 
-/// Three dots with one of them lit, moving; and after a while, the seconds.
+/// Three dots, one lit and moving; after a while, the elapsed seconds.
 ///
-/// note: which dot is lit comes from the clock rather than from a frame counter, so it moves at
-/// the same speed whatever the screen is doing - and stops where it is if the screen stops being
-/// drawn at all. `asking` on its own is the same word whether a request is in flight or the
-/// program is wedged, and a dot that moves is what tells the two apart.
+/// note: the lit dot comes from the clock, not a frame counter, so it moves at the same speed
+/// whatever the screen is doing and stops moving if the screen stops being drawn. `asking` is the
+/// same whether a request is in flight or the program is wedged; the moving dot tells them apart.
 ///
-/// note: the seconds only after five of them. A turn that answers in two should not leave a
-/// number flickering on the line, and one that has been going for ninety should not make somebody
-/// guess at how long they have been waiting - which is the question the marker raises and cannot
-/// answer on its own.
+/// note: the seconds only after five of them. A two-second turn should not leave a number
+/// flickering on the line, and a ninety-second turn should not make someone guess how long they
+/// have waited.
 pub(super) fn waiting(elapsed: Duration) -> Vec<Span<'static>> {
     let lit = (elapsed.as_millis() / BLINK.as_millis()) as usize % 3;
     let mut spans: Vec<Span<'static>> = (0..3)
