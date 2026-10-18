@@ -1088,6 +1088,40 @@ mod tests {
         running.abort();
     }
 
+    /// A listener that keeps failing is said about once, and tried again `RESTING` apart rather
+    /// than as fast as the loop goes.
+    ///
+    /// note: running out of file descriptors is what this is for, but it would take every other
+    /// test in the process down with it. A listening socket shut for reading fails every `accept`
+    /// on Linux, which is the same loop.
+    ///
+    /// note: a second message ends the loop with a panic. A loop that does not rest never yields,
+    /// so this test would otherwise never run again to see it.
+    #[tokio::test(start_paused = true)]
+    async fn a_listener_that_keeps_failing_is_said_once_and_rested_on() {
+        let web = Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
+            .await
+            .expect("it listens");
+        socket2::SockRef::from(&web.listener)
+            .shutdown(std::net::Shutdown::Read)
+            .expect("it shuts");
+        let (told, mut telling) = tokio::sync::mpsc::unbounded_channel();
+        let times = std::sync::atomic::AtomicUsize::new(0);
+        let running = tokio::spawn(web.run(move |said| {
+            let _ = told.send(said);
+            let before = times.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            assert_eq!(before, 0, "said again");
+        }));
+
+        tokio::time::sleep(crate::remote::server::RESTING * 5).await;
+        assert!(!running.is_finished(), "still trying");
+        running.abort();
+
+        let said = telling.try_recv().expect("the failure is said");
+        assert!(said.contains("could not be accepted"), "{said}");
+        assert!(telling.try_recv().is_err(), "and said once");
+    }
+
     /// Once [`WAITING`] connections are open without a request, the next one is closed as it
     /// arrives and that is said once; a request is served again as soon as they have sent theirs.
     #[tokio::test]
@@ -1106,7 +1140,8 @@ mod tests {
         for _ in 0..WAITING {
             waiting.push(TcpStream::connect(at).await.expect("it answers"));
         }
-        for _ in 0..2 {
+        // said before the connection is closed, so it is there once the close has been read
+        for first in [true, false] {
             let mut turned_away = TcpStream::connect(at).await.expect("it accepts");
             let _ = turned_away.write_all(request.as_bytes()).await;
             let mut answer = Vec::new();
@@ -1114,10 +1149,14 @@ mod tests {
                 tokio::time::timeout(HEAD_WAIT / 2, turned_away.read_to_end(&mut answer)).await;
             assert!(closed.is_ok(), "closed at once rather than left waiting");
             assert!(answer.is_empty(), "{}", String::from_utf8_lossy(&answer));
+            match first {
+                true => {
+                    let said = telling.try_recv().expect("the cap is said at the first");
+                    assert!(said.contains("without having sent a request"), "{said}");
+                }
+                false => assert!(telling.try_recv().is_err(), "and said once"),
+            }
         }
-        let said = telling.try_recv().expect("the cap is said");
-        assert!(said.contains("without having sent a request"), "{said}");
-        assert!(telling.try_recv().is_err(), "and said once");
 
         // each answer is written after the connection has stopped counting as waiting
         for mut browser in waiting {
