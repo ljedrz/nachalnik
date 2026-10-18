@@ -1,8 +1,7 @@
 //! The kernel's events as they happen, and the two channels that report what is still arriving.
 //!
-//! note: one enum carries the whole observability story. No state change skips it, and there is no
-//! logging a user cannot see. Adding a variant promises something will be announced; removing one
-//! means clients no longer see it.
+//! note: one enum is the whole observability story. No state change skips it, no logging the user
+//! cannot see. Adding a variant promises an announcement; removing one hides it from clients.
 
 use std::sync::Arc;
 
@@ -40,10 +39,9 @@ pub enum Delta {
 
 /// The kernel's events as they happen.
 ///
-/// note: this enum is the whole observability story: no logging the user cannot see, and no state
-/// change skips it. Clients subscribe with [`Kernel::subscribe`] and render what they like; the
-/// same events form the session log, minus streaming fragments unless [`Config::record_progress`]
-/// is on.
+/// note: No logging the user cannot see; every state change is announced. Clients subscribe with
+/// [`Kernel::subscribe`] and render what they choose; the same events form the session log,
+/// minus streaming fragments unless [`Config::record_progress`] is on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
 #[non_exhaustive]
@@ -57,8 +55,7 @@ pub enum Event {
     /// A session was rebuilt from a [`Snapshot`](crate::Snapshot).
     ///
     /// note: one event, not one `context.added` per item. Those describe things happening; this
-    /// describes a session that already happened being picked back up. A log that replayed a
-    /// thousand additions to say so would describe things that did not happen.
+    /// describes picking up what already happened.
     #[serde(rename = "session.resumed")]
     SessionResumed {
         /// The session's name.
@@ -83,9 +80,8 @@ pub enum Event {
     /// [`Kernel::turn`] stopped at [`Kernel::max_requests_per_turn`] before the model ended its
     /// turn, and the next `turn` carries on from here.
     ///
-    /// note: the machine rests in [`State::Idle`] either way, so without this
-    /// the records of a turn that ran out of requests read exactly as those of a turn the model
-    /// ended in as many.
+    /// note: the machine rests in [`State::Idle`] either way. Without this, a turn that ran out
+    /// of requests is indistinguishable from one the model ended.
     #[serde(rename = "turn.paused")]
     TurnPaused {
         /// The requests the turn had made, which is the budget it reached.
@@ -130,17 +126,17 @@ pub enum Event {
         because: Option<String>,
         /// The metadata it was added with.
         ///
-        /// note: copied, where the rest of the item is named, for the reason
-        /// [`Event::ContextReplaced`] copies what it overwrote: a hint is what a
-        /// [`Compactor`](crate::Compactor) decides by, and an item's first one is otherwise only in
-        /// a snapshot taken before the next [`Event::ContextAnnotated`] replaced it.
-        /// `serde(default)` so a log written before this reads as an item added with none.
+        /// note: copied (others are named) for the reason [`Event::ContextReplaced`] copies what
+        /// it overwrote: a hint is what a [`Compactor`](crate::Compactor) decides by. An item's
+        /// first one otherwise appears only in a snapshot before the next
+        /// [`Event::ContextAnnotated`] replaces it. `serde(default)` lets logs written before
+        /// this read as added with no metadata.
         #[serde(default)]
         meta: Value,
     },
     /// A context item's state or note changed, e.g. it was excluded from the projection or pinned.
     ///
-    /// note: a new note on an unchanged state is a change too, so `from` and `to` can be equal.
+    /// note: a new note on an unchanged state is a change; `from` and `to` can be equal.
     #[serde(rename = "context.changed")]
     ContextChanged {
         /// The item's identifier.
@@ -180,8 +176,8 @@ pub enum Event {
     },
     /// A context change was undone.
     ///
-    /// note: An undo that only said how many items were left would be the one context change a
-    /// client could not render, and the one the user is most likely to want to check.
+    /// note: An undo showing only remaining count would be the one context change a client
+    /// cannot render and the user most likely wants to check.
     #[serde(rename = "context.undone")]
     ContextUndone {
         /// The number of items the context holds now.
@@ -208,8 +204,8 @@ pub enum Event {
     /// An item's metadata was replaced.
     ///
     /// note: the kernel never reads [`ContextItem::meta`](crate::ContextItem::meta), but a
-    /// [`Compactor`](crate::Compactor) does, and a hint that decides what gets dropped should not
-    /// change without anybody seeing it.
+    /// [`Compactor`](crate::Compactor) does. A hint deciding what gets dropped must not change
+    /// unnoticed.
     #[serde(rename = "context.annotated")]
     ContextAnnotated {
         /// The item's identifier.
