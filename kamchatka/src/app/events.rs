@@ -198,8 +198,8 @@ impl App {
                     self.say(Speaker::Note, format!("{tool}: {reason}"));
                 }
             }
-            // the one event that carries content, and the only place the old text exists at all
-            // once the undo window closes; the viewer reads it back off `←` and `→`
+            // the only event that carries content, and the only place the old text exists once the
+            // undo window closes; the viewer reads it back off `←` and `→`
             Event::ContextReplaced { id, was, .. } => self.remember(id, was),
             Event::ToolStarted { .. } => self.streamed_bytes = 0,
             // note: nothing. The calls a turn asked for are on the turn's own item and are drawn

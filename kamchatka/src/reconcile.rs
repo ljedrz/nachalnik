@@ -31,8 +31,7 @@ use serde_json::{Value, json};
 
 use crate::app::{App, beside};
 
-/// One fork as it was read: what it was called on the command line, its snapshot, and the log
-/// beside it where there was one.
+/// One fork as read: its command-line name, its snapshot, and its log if there was one.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Fork {

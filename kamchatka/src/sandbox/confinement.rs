@@ -532,16 +532,16 @@ pub struct Probed {
     pub gated: bool,
 }
 
-/// Whether a confinement would hold here, and the gate with it, asked without running anything.
+/// Checks whether a confinement would hold here, and the gate with it, without running anything.
 ///
-/// note: asked in a child, because finding out means applying a ruleset and a process cannot take
-/// one off again. Doing it in the terminal's own process would confine the terminal.
+/// note: asked in a child, because applying a ruleset cannot be undone by a process. Doing it in
+/// the terminal's own process would confine the terminal.
 ///
-/// note: the child is asked for [`Network::Shut`], so it installs the gate as it would for a
-/// refusing session, sends the listener down the socket it is handed, and says whether both took.
-/// Nothing reads the listener here, because `exit 0` makes no attempt to answer; it is dropped with
-/// this end of the socket. What the child cannot try is a held call being let through, and
-/// [`crate::gate::holds`] asks the kernel that without installing anything.
+/// note: the child is asked for [`Network::Shut`], so it installs the gate as for a refusing
+/// session, sends the listener down the socket it is handed, and says whether both took. Nothing
+/// reads the listener here: `exit 0` makes no attempt to answer, so it is dropped with this end of
+/// the socket. The child cannot try a held call being let through; [`crate::gate::holds`] asks the
+/// kernel that without installing anything.
 pub fn available(program: &Path) -> Probed {
     let sandbox = Sandbox {
         workdir: std::env::temp_dir(),
@@ -633,9 +633,9 @@ pub fn run_if_asked() -> Option<i32> {
     // identifier, which is the number `shell` signals
     let detached = rustix::process::setsid().is_ok() || std::fs::File::open("/dev/tty").is_err();
 
-    // a temporary directory of this run's own, made before anything is restricted and handed to
-    // the command as `TMPDIR`; see the notes on `confine` and `make_scratch`. Whoever spawned this
-    // removes it again, being the only one of the two processes that can
+    // a temporary directory for this run, made before anything is restricted and handed to the
+    // command as `TMPDIR`; see the notes on `confine` and `make_scratch`. Whoever spawned this
+    // removes it again; the other process cannot
     let scratch = make_scratch(&scratch_for(std::process::id()));
 
     let (confinement, why) = confine_saying(&sandbox, scratch.as_ref());

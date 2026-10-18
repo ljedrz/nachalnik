@@ -127,11 +127,10 @@ impl App {
                 ));
             }
         }
-        // note: counted here as well as on the tab, because the tab's count is drawn along its
-        // bottom edge and a page has no bottom edge. It is the one figure that keeps a short
+        // note: counted here as well as on the tab because the tab's count is drawn along its
+        // bottom edge and a page has no bottom edge. This is the one figure that stops a short
         // table from reading as a whole policy: these are the subjects a call will stop and ask
-        // about, and a table of two decisions silently standing for sixteen answers is a different
-        // kind of dishonest
+        // about, and a table of two decisions standing for sixteen answers misleads
         body.push(String::new());
         body.push(format!(
             "and {} it will ask about, which are not listed above",

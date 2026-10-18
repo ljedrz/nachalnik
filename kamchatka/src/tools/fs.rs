@@ -220,9 +220,8 @@ impl Tool for Fs {
         };
         let args = &*args;
 
-        // note: the operation is checked here as well as in `needs`, because a refusal a model
-        // can act on is one that names what was wrong. The alternative - dispatching on a default
-        // - runs something nobody asked for
+        // note: the operation is checked here as well as in `needs`, because a refusal a model can
+        // act on names what was wrong. Dispatching on a default runs something nobody asked for
         let Some(action) = self.op(call) else {
             let does = actions(&self.ops).join(", ");
             return Ok(ToolOutput::error(match &args["action"] {

@@ -195,8 +195,8 @@ impl App {
             return None;
         }
         let projection = self.kernel.project();
-        // note: said here rather than left to the kernel's `EmptyProjection`, which comes back as
-        // a failed turn - and a headless run ending on one exits `1` for a request never sent
+        // note: said here rather than left to the kernel's `EmptyProjection`, which comes back as a
+        // failed turn. A headless run ending on one exits `1` for a request never sent
         let Some(last) = projection.messages.last() else {
             return Some(
                 "nothing in the context would be sent, so there is nothing to answer; a message \

@@ -67,9 +67,9 @@ fn ops() -> Vec<Op> {
 
 /// What the last fork of a turn read, and which turn that was.
 ///
-/// note: one entry rather than a per-turn map, because a turn is over before the next one starts
-/// and the next one overwrites it - so a fork asked alone is always the first of its turn, and a
-/// fork beside any other call knows whether the call before it read the same items.
+/// note: one entry rather than a per-turn map, because a turn ends before the next starts and the
+/// next overwrites it. A fork asked alone is always the first of its turn; a fork beside another
+/// call knows whether the call before it read the same items.
 #[derive(Default)]
 struct Read {
     /// The assistant turn whose calls these are.
@@ -128,9 +128,9 @@ impl Tool for Fork {
         )
     }
 
-    /// note: per operation, because they cost the same and mean different things. `draft` asks
-    /// what this session would say next, which is a question about this context; `ask` puts words
-    /// of the model's own to a copy, which is not.
+    /// note: per operation, because they cost the same and mean different things. `draft` asks what
+    /// this session would say next, a question about this context; `ask` puts the model's own words
+    /// to a copy, which is not.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
             Some(op) => vec![domains::fork(op)],
@@ -347,10 +347,10 @@ async fn branch(
         // which of the two operations asked for it would not be
         let theirs: std::collections::BTreeSet<ContextId> =
             fork.items().iter().map(|item| item.id).collect();
-        // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
-        // tool calls and their results and no tool definitions at all, and a model reading that asks
-        // for a tool - which nothing here can run, so the answer comes back as a call and no words.
-        // Without being told, a model does this as a rule rather than as a corner case
+        // note: stated explicitly because the copy cannot work it out. It inherits tool calls and
+        // their results but no tool definitions, so a model that asks for a tool gets a call back
+        // and no words - nothing here can run one. Without being told, a model does this as a rule,
+        // not a corner case
         fork.push(
             ContextItem::system(
                 "You are a copy of this session, made to think and not to act. You have no tools \
@@ -362,9 +362,9 @@ async fn branch(
         if let Some(question) = question {
             fork.push(ContextItem::user(question).because("put to a fork of this context"));
         }
-        // what the fork will actually read, rather than what it was handed: the projector still has
-        // to repair the call this very tool is answering out of the copy, and a count taken before it
-        // did would be one the fork never saw
+        // what the fork will actually read, not what it was handed: the projector must repair the
+        // call this tool is answering out of the copy first, so a count taken before that would be
+        // one the fork never saw
         let read: Vec<ContextId> = fork
             .project()
             .included

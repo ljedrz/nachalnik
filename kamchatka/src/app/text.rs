@@ -556,11 +556,10 @@ pub(crate) fn stored(item: &ContextItem) -> String {
 
 /// The whole of what an item says, including the parts `to_text` leaves out.
 ///
-/// note: for most items this is the content and nothing else. For a turn a provider recorded in
-/// the order it was produced, `to_text` is only the *text* blocks - which is right on the wire and
-/// wrong on this screen, which is there to show what the item really holds. The
-/// thinking and the calls are read out where they happened, because between two calls is where
-/// the thinking that led to the second one belongs.
+/// note: for most items this is the content and nothing else. For a turn a provider recorded in the
+/// order it was produced, `to_text` is only the *text* blocks: right on the wire, wrong on this
+/// screen, which shows what the item really holds. The thinking and the calls are read out where
+/// they happened, because the thinking that led to the second call belongs between the two calls.
 pub(crate) fn whole(content: &Content) -> String {
     let Some(blocks) = content.as_blocks() else {
         return unpadded(&content.to_text()).to_owned();
@@ -824,12 +823,12 @@ pub(crate) fn verdict_word(verdict: Verdict) -> &'static str {
     }
 }
 
-/// `1 item`, `12 items` - a count and the thing counted, agreeing.
+/// `1 item`, `12 items`: a count and the thing counted, agreeing.
 ///
-/// note: the `item(s)` spelling everywhere else in this program is for text a *model* reads,
-/// where the parenthesis costs a token and nothing else. This is for a line a person reads, and
-/// `1 items` in the corner of a screen is the kind of small wrongness that makes somebody wonder
-/// what else is approximate. Only `s` plurals, because every noun on that line is one.
+/// note: the `item(s)` spelling everywhere else in this program is for text a *model* reads, where
+/// the parenthesis costs a token and nothing else. This is for a line a person reads: `1 items` in
+/// the corner of a screen is a small wrongness that makes somebody wonder what else is approximate.
+/// Only `s` plurals, because every noun on that line is one.
 pub(crate) fn plural(n: usize, thing: &str) -> String {
     match n {
         1 => format!("1 {thing}"),

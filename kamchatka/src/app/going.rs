@@ -26,27 +26,25 @@ use nachalnik::{ContextId, ContextItem, Kernel};
 pub struct Going {
     /// What each item in the request costs it.
     pub costs: BTreeMap<ContextId, usize>,
-    /// What each item holds, counted at the same moment as [`Going::costs`] and with the same
-    /// counter.
+    /// What each item holds, counted at the same moment as [`Going::costs`] with the same counter.
     ///
     /// note: not [`ContextItem::tokens`], which is the figure taken when the item arrived. A
-    /// `Calibrating` counter learns a new scale from every response, and the items already in
-    /// the context keep the figure they were counted with until something recounts them, which
-    /// `App` does when a *turn* ends. A reading taken inside a turn would set a stored figure on
-    /// one scale against a freshly projected message on another, and the few percent between
-    /// them would arrive in the `held` column as tokens held back that nothing is holding - even
-    /// under a projector that holds nothing back at all. The `context` tool is worse off again,
-    /// because it is only ever called from inside a turn.
+    /// `Calibrating` counter learns a new scale from every response, and items already in the
+    /// context keep their figure until `App` recounts them at the end of a *turn*. A reading inside
+    /// a turn would set a stored figure on one scale against a freshly projected message on
+    /// another, and the few percent between them would appear in the `held` column as tokens held
+    /// back that nothing is holding - even under a projector that holds nothing back. The `context`
+    /// tool is worse off because it is only ever called from inside a turn.
     pub holds: BTreeMap<ContextId, usize>,
     /// Why each item that is not in the request was left out, in the projector's own words.
     pub left_out: BTreeMap<ContextId, String>,
-    /// What the model reads in place of an item whose content is not going but which is still
-    /// in the request - that is, an elided one.
+    /// What the model reads in place of an item whose content is not going but is still in the
+    /// request - that is, an elided one.
     ///
-    /// note: taken out of the projection rather than assembled from the item's state and note,
-    /// for the same reason [`Going::left_out`] is. The brackets are the projector's, the words
-    /// inside them are whoever elided it, and a screen that put its own version of the sentence
-    /// next to the one the model is reading would be showing a third thing that is neither.
+    /// note: taken from the projection rather than assembled from the item's state and note, for
+    /// the same reason [`Going::left_out`] is. The brackets are the projector's and the words
+    /// inside them are from whoever elided it. A screen that adds its own version next to the one
+    /// the model reads would show a third thing that is neither.
     pub marker: BTreeMap<ContextId, String>,
 }
 
@@ -73,9 +71,9 @@ impl Going {
     pub fn of(kernel: &Kernel) -> Going {
         let projection = kernel.project();
         let counter = kernel.counter();
-        // `included` and `messages` line up one for one under a projector that makes a message
-        // per item; one that merges them has no per-item answer, and the item's own figure is a
-        // better guess than a number taken from the wrong message
+        // `included` and `messages` line up one for one when a projector makes one message per
+        // item. A merging projector has no per-item answer; the item's own figure is better than a
+        // number from the wrong message
         let paired = projection.included.len() == projection.messages.len();
 
         Going {
@@ -126,13 +124,12 @@ impl Going {
 
     /// Whether this item's own content is going into the request.
     ///
-    /// note: two conditions rather than [`nachalnik::ContextState::sends_content`], and the
-    /// second is the one that bites. An item may be in a state that sends content and still not
-    /// be in the request, because a projector repairs a request to keep it valid - a second
-    /// result for a call that already has one is dropped, which is what putting the whole of a
-    /// truncated output back beside the short copy produces. Anything asking "is this item's
-    /// content going" asks here, so that the columns, the reason beside them and `/budget`
-    /// cannot drift apart.
+    /// note: two conditions rather than [`nachalnik::ContextState::sends_content`]; the second is
+    /// the one that matters. An item may send content by state and still not be in the request,
+    /// because a projector repairs a request to keep it valid: a second result for a call that
+    /// already has one is dropped, as when a truncated output is restored beside the short copy.
+    /// Everything asking whether this item's content is going asks here, so the columns, the reason
+    /// beside them and `/budget` cannot drift apart.
     pub fn sends_content(&self, item: &ContextItem) -> bool {
         item.state.sends_content() && self.costs.contains_key(&item.id)
     }

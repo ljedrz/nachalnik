@@ -387,11 +387,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         let _ = writeln!(std::io::stderr(), "· settings read from {}", path.display());
     }
 
-    // note: before any of the wiring below, which is why it is here rather than beside the three
-    // loops at the bottom. A client assembles nothing: the model, the key that pays for it, the
-    // tools, the sandbox and the context all belong to whoever is serving, and a client that
-    // attached to somebody else's session and then failed because *it* could not reach a provider
-    // would be failing about a job that was never its own
+    // note: before any of the wiring below, so it is here rather than beside the three loops at the
+    // bottom. A client assembles nothing: the model, the key that pays for it, the tools, the
+    // sandbox and the context belong to whoever is serving. A client attached to somebody else's
+    // session that failed because it could not reach a provider would be failing about a job that
+    // was never its own
     if let Some(address) = args.connect.clone() {
         let ignored = also_typed(matches, &["connect", "on_ask"]);
         if !ignored.is_empty() {
@@ -401,11 +401,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                 ignored.join(", ")
             ));
         }
-        // note: `leave` unless this command line says otherwise - a settings file's `on-ask`
-        // included, which is written for the runs that have nobody else to ask. A client whose
-        // input closes is usually one watching a session somebody else is driving, and answering
-        // their questions for them - `deny` by default - was this client deciding what another
-        // person was about to
+        // note: `leave` unless this command line says otherwise, including a settings file's
+        // `on-ask`, which is written for runs that have nobody else to ask. A client whose input
+        // closes is usually watching a session somebody else is driving. Answering their questions
+        // for them - `deny` by default - would be this client deciding what another person was
+        // about to do
         let typed = matches.value_source("on_ask") == Some(clap::parser::ValueSource::CommandLine);
         let on_ask = match typed {
             true => args.on_ask,
@@ -454,12 +454,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     let served = args.serve.clone();
     let mut server = match &served {
         Some(address) => {
-            // note: before the bind, for the reason the whole of this comment gives: a refused
-            // argument must leave nothing listening either. Asked of the arguments rather than off
-            // the matches, because a settings file's `max-run-seconds` and `on-ask` are written
-            // into the arguments by the merge and leave nothing behind saying where they came
-            // from - so a check on the matches reads a file that says when the run should end as
-            // carrying nothing, and the session serves for ever without a word
+            // note: before the bind: a refused argument must leave nothing listening. Check the
+            // arguments, not the matches, because the merge writes a settings file's
+            // `max-run-seconds` and `on-ask` into the arguments and leaves no trace of their
+            // source. A check on the matches would read a file-supplied deadline as nothing, and
+            // the session would serve for ever without a word
             let unserved = given.unserved();
             let flag = match args.serve {
                 Some(_) => "--serve",
@@ -518,15 +517,14 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         };
     }
 
-    // note: the run's rather than a session's, and counted from the start. `--max-run-seconds`
-    // promises to stop a run however far it has got, and the endpoint's probe and an MCP server's
-    // handshake are both waits on somebody else's program that nothing else bounds - see
-    // POSTPONED.md for why a server's has no timeout of its own. A `/restart` does not start the
-    // clock again
+    // note: the run's, not the session's, and counted from the start. `--max-run-seconds` stops a
+    // run however far it has got. The endpoint's probe and an MCP server's handshake wait on
+    // somebody else's program, and nothing else bounds them - see POSTPONED.md for why a server's
+    // has no timeout of its own. `/restart` does not start the clock again.
     //
-    // note: `0` is none, as it is for `--max-spend-tokens` and `--max-requests-per-turn`: a
-    // deadline of nothing stops the run before the first line is read, which nobody asks for. And
-    // one too far off to add to the clock is none as well, rather than a panic
+    // note: `0` is none, as for `--max-spend-tokens` and `--max-requests-per-turn`: a deadline of
+    // nothing stops the run before the first line is read. A duration too far off to add to the
+    // clock is none as well, rather than a panic
     let ends = args
         .max_run_seconds
         .filter(|seconds| *seconds > 0 && headless && server.is_none())
@@ -833,8 +831,8 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                 true => {
                     let (mut records, mut prose) = (stdout(), std::io::stderr());
                     let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
-                        // here rather than in the library's default: taking a process-wide
-                        // signal is the program's decision, and here this *is* the program
+                        // here rather than in the library's default: taking a process-wide signal
+                        // is the program's decision, and this is the program
                         .stops_on_ctrl_c()
                         .leaves_when_terminated();
                     if let Some(ends) = ends {
@@ -874,18 +872,17 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         } = wired;
         (app, events, finished) = (fresh, replaced, reported);
 
-        // the first thing the new session says, because it is the only place the old one's name
-        // and the file it went to are still written down
+        // the first thing the new session says, because only here are the old session's name and
+        // the file it went to still written down
         app.say(Speaker::Note, said);
         start_recording(&mut app, base.record);
 
-        // note: the servers keep running and their tools are installed into the new kernel, which
-        // is why `attach` is above the loop and this is not it. Re-spawning them would be seconds
-        // of handshake for a set of tools the process is already holding open
+        // note: the servers keep running and their tools are installed into the new kernel, so
+        // `attach` is above the loop and this is not. Re-spawning them would cost seconds of
+        // handshake for tools the process already holds open.
         //
-        // note: after the line above, which is what says the old session ended. A server that
-        // would not list its tools comes first otherwise, and the first thing the new session
-        // says is about the old one
+        // note: after the line that says the old session ended. Otherwise a server that would not
+        // list its tools comes first, and the first thing the new session says is about the old one
         #[cfg(feature = "mcp")]
         for left_out in kamchatka::mcp::reinstall(&app.kernel, &app.policy, &servers).await {
             app.say(Speaker::Error, left_out);
@@ -1039,8 +1036,8 @@ async fn drawn(
     app.wait_for_turn(events, finished, |_| {}).await;
 
     // note: a drawn session ends itself only where it was also served. `session.finished` is a
-    // record like any other, and the clients still attached are owed it and the lines under it -
-    // which `finish` could not send, because the voice they arrive on is this loop's. A drawn
+    // record like any other, and the clients still attached are owed it and the lines under it.
+    // `finish` could not send them, because the voice they arrive on is this loop's. A drawn
     // session with no socket leaves it to `finish`
     if let Some(serving) = serving {
         app.kernel.finish();

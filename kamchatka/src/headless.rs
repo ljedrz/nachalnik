@@ -97,13 +97,13 @@ pub struct Headless<'a> {
     stopped: Option<Stop>,
     /// Whether any of the answer being written has been printed as it arrived.
     streamed: bool,
-    /// Fragments of the answer that went by too fast to print, counted until the answer they
-    /// belong to has been said.
+    /// Fragments of the answer that went by too fast to print, counted until the answer they belong
+    /// to has been said.
     ///
-    /// note: held rather than said where it happened, because what was lost is worth saying
-    /// beside the answer it was part of: a line about fragments going past in the middle of two
-    /// other lines is a line about the typing, and one arriving after the answer has finished is
-    /// a note about an answer somebody has already read.
+    /// note: held rather than said where it happened, because what was lost is worth saying beside
+    /// the answer it was part of. A line about fragments going past between two other lines is
+    /// about the typing; one arriving after the answer has finished is about an answer already
+    /// read.
     missed: u64,
     /// Whether a model is answering, which is the only thing this loop prints fragments of.
     ///
@@ -162,10 +162,10 @@ impl<'a> Headless<'a> {
         self
     }
 
-    /// Takes `SIGTERM` and `SIGHUP` as `/quit` rather than letting them kill the process; see
+    /// Takes `SIGTERM` and `SIGHUP` as `/quit` rather than killing the process; see
     /// [`crate::stopping::Terminated`].
     ///
-    /// note: off by default for the reason `stops_on_ctrl_c` is.
+    /// note: off by default, for the same reason as `stops_on_ctrl_c`.
     pub fn leaves_when_terminated(mut self) -> Self {
         self.terminated = true;
         self
@@ -370,8 +370,8 @@ impl<'a> Headless<'a> {
                             // `App::loose` for the ones that arrive with no line to answer; the
                             // page belongs to this call alone and has no other way out
                             let opened = app.submit(line.trim()).await.page;
-                            // what the line did to the context is said with it, rather than on some
-                            // later turn round - after the next line, or never if this was the last
+                            // the line's effect on the context is said with it, not on a later
+                            // pass - after the next line, or never if this was the last
                             while let Ok(event) = events.try_recv() {
                                 self.say(&app.kernel, &event)?;
                                 app.on_event(event);
@@ -411,7 +411,7 @@ impl<'a> Headless<'a> {
                             // Its list is said, so `echo` prints it
                         }
                         // stdin has closed. Whatever is running still finishes, and the loop leaves
-                        // when it has: a script that pipes one question in and goes away is asking
+                        // when it has. A script that pipes one question in and goes away is asking
                         // for the answer, not for the turn to be abandoned
                         Ok(None) => reading = false,
                         Err(e) => return Err(format!("could not read the input: {e}")),
@@ -515,11 +515,11 @@ impl<'a> Headless<'a> {
                             }
                         }
                     }
-                    // taken as `/quit`, which the check at the top of the loop then acts on. Said as it
-                    // arrives rather than at the parting line, because a run a signal ended is over at
-                    // this point: a caller reading the tail of this stream has to be able to tell it
-                    // from one that finished its own work - and a script reads the status, `128`
-                    // and the signal; see `Stop`
+                    // taken as `/quit`, which the check at the top of the loop acts on. It is
+                    // reported as it arrives, not at the parting line, because a run ended by a
+                    // signal is over at this point. A caller reading the tail of the stream must be
+                    // able to tell it from one that finished its own work; a script reads status
+                    // `128` and the signal. See `Stop`
                     ending = async {
                         match terminations.as_mut() {
                             Some(terminations) => terminations.which_arrived().await,
@@ -538,8 +538,8 @@ impl<'a> Headless<'a> {
                     // answered at the top of the loop, like the kernel's questions
                     Ok(()) = reaching.changed() => {}
                     // note: while a turn runs, because that is when a provider waits and says so.
-                    // Read only when the turn ended, a retry's notice came out after the answer it
-                    // had held up, and of several retries only the last was said at all
+                    // Read only when the turn ended: a retry's notice came out after the answer it
+                    // held up, and of several retries only the last was said
                     _ = notices.tick(), if app.busy => {
                         app.take_notices();
                     }
@@ -564,16 +564,16 @@ impl<'a> Headless<'a> {
         // `ctrl+c` did not wait for
         app.unsent();
 
-        // note: the session is ended here rather than by the caller, and it is the one piece of
-        // lifecycle this loop owns. `session.finished` is a record like any other, and a caller
-        // that ended the session after this returned would have written every record but the last
-        // one down the stream.
+        // note: the session is ended here rather than by the caller; this loop owns that one piece
+        // of lifecycle. `session.finished` is a record like any other. A caller that ended the
+        // session after this returned would have written every record but the last one down the
+        // stream.
         app.kernel.finish();
         let flushed = self.flush(app, &mut written);
-        // and the last answer's own line, which nothing else is going to end: a model that stops
-        // mid-sentence, or on a closing fence, leaves the caller's parting line stuck to the end
-        // of it. Ended before either error is returned, because the caller has a parting line for
-        // a run that failed as well
+        // ends the last answer's own line, because nothing else will: a model that stops
+        // mid-sentence, or on a closing fence, leaves the caller's parting line stuck to the end of
+        // it. Ended before either error is returned, because the caller has a parting line for a
+        // run that failed as well
         let ended = self.prose.fresh_line();
         driven?;
         flushed?;
@@ -602,23 +602,22 @@ impl<'a> Headless<'a> {
 
     /// Says what the program has said since the last look, and prints whatever a command opened.
     ///
-    /// note: this is what stops `/budget` from being silent. A command answers through
-    /// [`App::say`] for a line and an overlay for a page of text, because the screen is what reads
-    /// both - so a caller with no screen has to read them too, or every verb typed at it does
-    /// nothing visible.
+    /// note: this is what stops `/budget` from being silent. A command answers through [`App::say`]
+    /// for a line and an overlay for a page of text, because the screen reads both. A caller with
+    /// no screen must read them too, or every verb typed at it does nothing visible.
     ///
-    /// note: only [`Speaker::Note`] and [`Speaker::Error`] - what the *program* said. The model's
-    /// own words are printed from the fragments as they arrive, and they land in the same list, so
-    /// echoing those as well would print every answer twice.
+    /// note: only [`Speaker::Note`] and [`Speaker::Error`] - what the program said. The model's own
+    /// words are printed from the fragments as they arrive and land in the same list, so echoing
+    /// them as well would print every answer twice.
     ///
     /// note: pages are not read from here. A command's page comes back from `submit` itself, and
-    /// the overlay it also sets is left where it is: nothing in a headless run draws one, and
-    /// taking it would be this loop keeping a screen's state tidy on a screen's behalf.
+    /// the overlay it sets is left where it is. Nothing in a headless run draws one; taking it
+    /// would be this loop keeping a screen's state tidy on a screen's behalf.
     ///
     /// note: which lines those are, and why `said` counts the filtered sequence rather than the
     /// list, are both [`App::notes`], because the other loop with no screen - the one in
-    /// [`crate::remote`] - needs the same answer, and a watermark rule stated twice will
-    /// eventually be two.
+    /// [`crate::remote`] - needs the same answer. A watermark rule stated twice will eventually be
+    /// two.
     fn echo(&mut self, app: &App, said: &mut usize, cleared: &mut u64) -> Result<(), String> {
         // `/cleanup` empties the sequence this watermark indexes rather than shortening it, so the
         // mark goes back to zero. Nothing is printed: a pipe cannot take back output it has already

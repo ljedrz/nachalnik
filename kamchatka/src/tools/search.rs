@@ -56,10 +56,10 @@ const CONTEXT: u64 = 10;
 
 /// How much of one line is shown, in characters.
 ///
-/// note: enough for any line somebody wrote and not enough for a minified one. `MATCHES * WIDTH`
-/// is deliberately under the byte limit these start with, so the two cuts do not both fire on an
-/// ordinary answer without context lines. With them, a hundred matches can pass the limit, and
-/// the answer becomes the files the matches are in.
+/// note: enough for any line somebody wrote and not enough for a minified one. `MATCHES * WIDTH` is
+/// deliberately under the byte limit, so the two cuts do not both fire on an ordinary answer
+/// without context lines. With context lines, a hundred matches can pass the limit, and the answer
+/// becomes the files the matches are in.
 pub(super) const WIDTH: usize = 200;
 
 /// What both tools say about a glob.
@@ -749,19 +749,17 @@ impl Grep {
         .await?;
 
         let answer = report(&found, &pattern, &asked, files_only, wanted);
-        // note: a lines answer that will not fit is answered as the files those lines were in,
-        // rather than as the first however-many-thousand bytes of it. Both are less than was
-        // found; the difference is that one of them is *true of the whole tree it looked at* and
-        // the other is true of whatever the walk reached before the room ran out, which can be
-        // one directory that never gets as far as the file the question was about. The advice
-        // this tool already gives a capped answer - ask for `files_only` - is the same move, so
-        // taking it rather than printing it saves a round trip and the lines nobody asked for.
+        // note: a lines answer that will not fit is answered as the files those lines were in, not
+        // as the first however-many-thousand bytes. Both are less than was found; one is true of
+        // the whole tree, the other true of whatever the walk reached before the room ran out,
+        // which can be one directory that never gets as far as the file the question was about. The
+        // tool's advice for a capped answer - ask for `files_only` - is the same move, so taking it
+        // rather than printing it saves a round trip and the lines nobody asked for.
         //
-        // note: what is lost is that the lines are not excluded beside the shortened copy, the
-        // way an output limit's truncation leaves them. They were never handed over: a tool
-        // deciding what its answer *is* is a different thing from the kernel shortening one it
-        // was given, and this tool has always decided - it stops at a hundred matches and never
-        // mentions the hundred and first.
+        // note: what is lost is that the lines are not excluded beside the shortened copy, as an
+        // output limit's truncation leaves them. They were never handed over: a tool deciding what
+        // its answer is differs from the kernel shortening one it was given. This tool has always
+        // decided: it stops at a hundred matches and never mentions the hundred and first.
         let over = self
             .0
             .limits
@@ -781,12 +779,11 @@ fn as_a_count((path, count): &(String, usize)) -> String {
     format!("{path}: {count}")
 }
 
-/// The answer a lines search gives when its lines would not fit: where they were.
+/// The answer when a lines search would not fit: where they were.
 ///
 /// note: it says what happened to the lines and what to do to see some of them, because a model
-/// handed a list of files where it asked for lines will otherwise ask the same question again.
-/// The two ways out are the two this tool has always named - narrow it, or take one file - and
-/// naming them here is what stops the retry.
+/// handed a list of files where it asked for lines will otherwise ask the same question again. The
+/// two ways out are narrow the pattern or name one file; naming them here stops the retry.
 fn instead(found: &Found, pattern: &str, path: &str, bytes: usize) -> String {
     let head = format!(
         "{} match(es) in {} file(s) for `{pattern}` in {path}{} · the lines came to {bytes} \
@@ -850,9 +847,9 @@ fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u6
         (false, n) => format!("{} · {files}", counted(n, found.files, files_only)),
     };
 
-    // the `context` clamp is about the lines an answer carries, and a `files_only` answer carries
-    // none: `room` is `None` there, so neither `Lines::keep` nor `Lines::context` is ever called
-    // and nothing was clamped whatever the argument said
+    // the `context` clamp concerns the lines an answer carries; a `files_only` answer carries none,
+    // so `room` is `None`, neither `Lines::keep` nor `Lines::context` is ever called, and nothing
+    // was clamped whatever the argument said
     let clamped = (!files_only && wanted > CONTEXT).then(|| {
         format!("context: {CONTEXT} lines either side is the most this answers with, and you asked for {wanted}")
     });
@@ -951,20 +948,19 @@ impl Glob {
     }
 }
 
-/// Paths in the shape `ls -R` prints them: each directory's path and a `:`, the names in it one
-/// to a line, and a blank line before the next directory, `.` being the working directory.
+/// Paths in the shape `ls -R` prints them: each directory's path and a `:`, the names in it one to
+/// a line, and a blank line before the next directory; `.` is the working directory.
 ///
-/// note: `ls -R`'s shape exactly, rather than one of this program's own, because it is one a model
-/// has read a great deal of and needs no explaining past a sentence in the tool's description.
-/// What it buys is every directory written once rather than on every line: a `glob` is mostly
-/// asked with a pattern that matches most of a tree, and the prefixes were most of its tokens.
-/// What it costs is a model now and then reading a bare name as a path, which is one failed call
-/// it recovers from - cheaper than paying for the prefixes on every answer.
+/// note: `ls -R`'s shape exactly, not one of this program's own, because a model has read it a
+/// great deal and the tool's description explains it in a sentence. Every directory is written once
+/// rather than on every line: a `glob` usually matches most of a tree, and the prefixes were most
+/// of its tokens. The cost is a model now and then reading a bare name as a path, one failed call
+/// it recovers from, cheaper than paying for the prefixes on every answer.
 ///
-/// note: the directories in the order `ls -R` walks them, a directory before those under it, which
-/// is the order `Path` compares in; the names in each in the order the walk found them, which is
-/// by name. What is listed is only what matched, so a directory's subdirectories are not among
-/// its names the way `ls -R` has them.
+/// note: directories are in the order `ls -R` walks them, a directory before those under it, which
+/// is the order `Path` compares in; names are in the order the walk found them, by name. Only what
+/// matched is listed, so a directory's subdirectories are not among its names as they are in
+/// `ls -R`.
 fn listed(paths: &[String]) -> Vec<String> {
     let mut directories: std::collections::BTreeMap<&Path, Vec<&str>> = Default::default();
     for path in paths {

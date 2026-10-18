@@ -1,16 +1,13 @@
-//! Putting a file in the context: text as text, and everything else as bytes.
+//! Putting a file in the context: text as text, everything else as bytes.
 //!
-//! note: one function, reached two ways. `-f` at startup and `/attach` at the prompt are the same
-//! act at two moments. The alternative - a flag that reads text and a command that reads bytes -
-//! would mean `-f report.pdf` failing with a decoding error at the one moment a person has the
-//! least idea what this program can do. So `-f` does the whole of it: whatever the file is, it
-//! goes in as what it is.
+//! note: one function, reached two ways: `-f` at startup and `/attach` at the prompt. A separate
+//! flag and command would make `-f report.pdf` fail with a decoding error, so `-f` takes any file
+//! as what it is.
 //!
-//! note: what decides is the extension, and only for the types listed below. Sniffing the content
-//! gets the interesting case wrong: an uncompressed PDF is valid UTF-8 for pages at a time, so "is
-//! it text?" answers yes and sends the model PDF source where a provider has a part that would
-//! have carried the document. So a short table says what this program is prepared to name - a
-//! media type is a claim, and guessing one builds a request the model cannot read.
+//! note: the extension decides, and only for the types listed below. Sniffing content fails: an
+//! uncompressed PDF is valid UTF-8 for pages at a time, so it looks like text and the model gets
+//! PDF source instead of the document. The table names the media types this program is prepared to
+//! claim; guessing one builds a request the model cannot read.
 
 use std::path::Path;
 
@@ -21,10 +18,10 @@ use serde_json::json;
 
 /// The most a single attachment may be, on disk.
 ///
-/// note: base64 is a third larger again, so this is a little over 21 MB on the wire, which is
-/// past what the endpoints accept anyway. What the cap is really for is the other failure: with
-/// none, a mistyped path at a video file builds a request nothing will take, spends a minute
-/// uploading it, and leaves a session log that cannot be written. Refusing costs a sentence.
+/// note: base64 is a third larger, so this is a little over 21 MB on the wire, past what the
+/// endpoints accept. Without the cap, a mistyped path at a video file builds a request nothing will
+/// take, spends a minute uploading it, and leaves a session log that cannot be written. Refusing
+/// costs a sentence.
 const MOST: u64 = 16 * 1024 * 1024;
 
 /// What this program is prepared to call a file, by extension.
@@ -148,16 +145,14 @@ fn contents(path: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// What an item is carrying, for the line that says so, or `None` for one that is only text.
+/// What an item is carrying, or `None` for one that is only text.
 ///
-/// note: read back off the item rather than returned beside it, so that the sentence the person
-/// reads cannot describe something other than what was pushed.
+/// note: read back off the item rather than returned beside it, so the sentence read cannot
+/// describe something other than what was pushed.
 ///
-/// note: the blob's own `Display` - `[application/pdf, 292.47kB]` - rather than a size formatted
-/// here. That notation is already what the context pane shows, what a dialect with nowhere to put
-/// a payload sends, and what `nachalnik-mcp` answers with, so a second one would be a second
-/// format to keep in step and a second number to reconcile: a length on disk here beside the
-/// pane's base64 would give one file two sizes on one screen.
+/// note: the blob's own `Display` (`[application/pdf, 292.47kB]`), not a size formatted here. That
+/// notation is what the context pane shows, what a dialect with nowhere to put a payload sends, and
+/// what `nachalnik-mcp` answers with; a second format would give one file two sizes on one screen.
 pub fn describe(item: &ContextItem) -> Option<String> {
     let blobs = item.content.blobs();
 
@@ -166,17 +161,16 @@ pub fn describe(item: &ContextItem) -> Option<String> {
 
 /// What somebody has to be told about an item they just put in, or `None` for nothing.
 ///
-/// note: an empty file of a type that is not text goes in as asked - what to attach is the
-/// person's to decide - and the endpoint refuses the request carrying it, and every one after it
-/// while it is in. The refusal comes back as the endpoint's own sentence, `Invalid image data-url`
-/// or a bare 502, and names no item, so the consequence and the way out are said here, where the
-/// item went in.
+/// note: an empty file of a type that is not text goes in as asked - what to attach is the person's
+/// to decide - and the endpoint refuses the request carrying it, and every request after it while
+/// it is in. The refusal is the endpoint's own sentence, `Invalid image data-url` or a bare 502,
+/// and names no item, so the consequence and the way out are said here.
 ///
 /// note: a picture that does not start the way its type does is said for the same reason: the
 /// endpoint refuses what it cannot read, every request after it as well, and names no item. It is
-/// said rather than refused, because the type is the person's claim and INVARIANTS.md keeps it
-/// theirs; what is checked is the claim, against the few bytes each type this program names begins
-/// with, and nothing is chosen in its place.
+/// said rather than refused because the type is the person's claim and INVARIANTS.md keeps it
+/// theirs; the claim is checked against the few bytes each type this program names begins with, and
+/// nothing is chosen in its place.
 pub fn caution(item: &ContextItem) -> Option<String> {
     let blobs = item.content.blobs();
     if let Some(empty) = blobs.iter().find(|blob| blob.byte_len() == 0) {
@@ -198,8 +192,8 @@ pub fn caution(item: &ContextItem) -> Option<String> {
     ))
 }
 
-/// Whether a picture's bytes, as the base64 they are held in, start the way its type's do; `None`
-/// for a type this does not know the start of.
+/// Whether a picture's base64 bytes start the way its type's do; `None` for a type this does not
+/// know the start of.
 ///
 /// note: read off the base64 rather than decoded, since a signature of a few bytes is a few fixed
 /// characters there. A WebP file is `RIFF`, four bytes of size and then `WEBP`, so the characters
@@ -222,12 +216,12 @@ mod tests {
 
     use super::caution;
 
-    /// A picture whose bytes do not start the way its type's do is said with the `/exclude` that
-    /// takes it out, and one that does is said nothing about.
+    /// A picture whose bytes do not start as its type does is said with the `/exclude` that takes
+    /// it out; one that does is said nothing about.
     ///
     /// note: the endpoint refuses a picture it cannot read, and every request after it while it is
-    /// in, with a sentence that names no item. Each start below is the real format's, a WebP's
-    /// with a size between `RIFF` and `WEBP` that differs from file to file.
+    /// in, with a sentence that names no item. Each start below is the real format's; a WebP's has
+    /// a size between `RIFF` and `WEBP` that differs from file to file.
     #[test]
     fn a_picture_that_does_not_start_as_one_is_said() {
         let item = |media_type: &str, bytes: &[u8]| {
@@ -259,8 +253,8 @@ mod tests {
             );
         }
 
-        // a RIFF container that is not a WebP (here an AVI) opens with the same four bytes, and
-        // is still said about: the `WEBP` after the size is what makes it one
+        // a RIFF container that is not a WebP (here an AVI) opens with the same four bytes, and is
+        // still said about: `WEBP` after the size is what makes it one
         let avi = caution(&item("image/webp", b"RIFF\x24\x01\0\0AVI LIST"))
             .expect("a RIFF that is not a WebP was said nothing about");
         assert!(

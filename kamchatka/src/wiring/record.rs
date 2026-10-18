@@ -236,19 +236,19 @@ impl Recorder {
     }
 }
 
-/// The records of the session a resumed one carries on from, read once out of the log beside its
-/// snapshot, so that this session's record and its `log` tool hold the whole of it.
+/// The records of the session a resumed one carries on from, read once from the log beside its
+/// snapshot so this session's record and its `log` tool hold the whole of it.
 ///
-/// note: a resumed kernel's log starts at `session.resumed` and numbers on from the last record
-/// the snapshot reflects, so these and the kernel's own are one log with nothing missing between
-/// them. Kept here rather than given to the kernel, whose log is what happened in this process.
+/// note: a resumed kernel's log starts at `session.resumed` and numbers on from the last record the
+/// snapshot reflects, so these and the kernel's own are one log with nothing missing between them.
+/// Kept here rather than given to the kernel, whose log is what happened in this process.
 ///
 /// note: copied forward into every record written after it - see [`Recorder`] and
 /// [`App::write_session`] - so a log written by this program is the whole session however many
 /// times it was resumed, and one hop back is always enough.
 ///
-/// note: shared, because the `log` tool is built before anybody has read anything; a clone reads
-/// what the first one was given.
+/// note: shared because the `log` tool is built before anything is read; a clone reads what the
+/// first one was given.
 #[derive(Clone, Debug, Default)]
 pub struct Earlier(Arc<OnceLock<Arc<[Record]>>>);
 
@@ -261,16 +261,16 @@ impl Earlier {
     /// Reads the log beside the snapshot at `state`, up to the record the snapshot reflects, and
     /// returns how many records it held past that; once, and a second read changes nothing.
     ///
-    /// note: best effort, and deliberately not an error. The session has resumed by the time this
-    /// runs, and a log that is absent, unreadable or half-written costs the history before the
-    /// resume rather than the session. A line that will not parse is skipped rather than ending
-    /// the walk: the last line of a log from a run that was killed is the one most likely to be
-    /// half a record, and the ones before it are fine.
+    /// note: best effort, deliberately not an error. The session has resumed by the time this runs,
+    /// and a log that is absent, unreadable or half-written costs the history before the resume
+    /// rather than the session. A line that will not parse is skipped rather than ending the walk:
+    /// the last line of a log from a killed run is the one most likely to be half a record, and the
+    /// ones before it are fine.
     ///
-    /// note: and only up to the record the snapshot was taken at. A run killed in the middle of a
-    /// turn leaves a log that runs past its snapshot, and those records are not this session's:
-    /// what they did is not in it, and the kernel numbers on from the snapshot, so the next record
-    /// here would share a number with one of them.
+    /// note: only up to the record the snapshot was taken at. A run killed in the middle of a turn
+    /// leaves a log that runs past its snapshot, and those records are not this session's: what
+    /// they did is not in it, and the kernel numbers on from the snapshot, so the next record here
+    /// would share a number with one of them.
     pub fn read(&self, state: &Path) -> usize {
         /// The one field of the snapshot this needs, read without the rest of it.
         #[derive(Deserialize)]
@@ -328,17 +328,16 @@ fn private_dir() -> Result<PathBuf, String> {
 fn private(dir: &Path) -> Result<(), String> {
     use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
-    // note: opened without following a link, and made private and looked at through what was
-    // opened, because the temporary directory is everybody's and this name is fixed. A link
-    // somebody left at it is refused before anything is done through it, a chmod of what it
-    // points at included. A directory somebody else made there first is one the chmod cannot
-    // make private - it fails, and is ignored - so without the look the transcript would go
-    // into a directory they can read.
+    // note: opened without following a link, made private and looked at through what was opened,
+    // because the temporary directory is everybody's and this name is fixed. A link left at it is
+    // refused before anything is done through it, including a chmod of what it points at. A
+    // directory somebody else made there first is one the chmod cannot make private; it fails and
+    // is ignored. Without the look, the transcript would go into a directory they can read.
     //
-    // note: and whose it is, before the chmod, because the mode bits say nothing to a process
-    // that can read past them. Run as root, or holding `CAP_DAC_OVERRIDE`, this writes into a
-    // directory another user made `0700` there first, and chmods one they left open - and they
-    // read the transcript either way
+    // note: and whose it is, before the chmod, because mode bits say nothing to a process that can
+    // read past them. Run as root, or holding `CAP_DAC_OVERRIDE`, this writes into a directory
+    // another user made `0700` there first, and chmods one they left open; they read the transcript
+    // either way
     let private = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::DIRECTORY).bits() as i32)
@@ -521,11 +520,11 @@ mod tests {
 
     /// A directory this user owns but cannot make private is refused, whatever it is made of.
     ///
-    /// note: the mode is checked because it is what the other users of the machine go by, and the
-    /// check is after a `chmod` because a directory that can be tightened is. procfs is the case
-    /// where the two come apart: `/proc/self/task` is this user's own, is `0555`, and refuses to
-    /// be changed - so the `chmod` is ignored, the bits stay, and a transcript written under it
-    /// would be one anybody on the machine could read.
+    /// note: the mode is checked because it is what other users of the machine go by, and the check
+    /// is after a `chmod` because a directory that can be tightened is. procfs is the case where
+    /// the two come apart: `/proc/self/task` is this user's own, is `0555`, and refuses to be
+    /// changed, so the `chmod` is ignored, the bits stay, and a transcript written under it would
+    /// be readable by anybody on the machine.
     #[test]
     fn a_directory_that_cannot_be_made_private_is_refused() {
         use std::os::unix::fs::PermissionsExt as _;
@@ -541,8 +540,8 @@ mod tests {
         if !mine {
             return;
         }
-        // note: a machine that lets the `chmod` through is one where this directory is made
-        // private and there is nothing here to check
+        // note: if the `chmod` succeeds, this directory is made private and there is nothing to
+        // check
         let tightened = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
         let mode = std::fs::metadata(dir)
             .expect("still there")
@@ -589,9 +588,9 @@ mod tests {
 
     /// A link at the snapshot's name is a name that is taken, even when it points at nothing.
     ///
-    /// note: `exists` follows a link and answers no for one to a file that is not there, and the
-    /// write after it follows the link too - so a link left at a predictable name would be a file
-    /// created wherever it pointed.
+    /// note: `exists` follows a link and answers no for a link to a file that is not there, and the
+    /// write after it follows the link too. A link left at a predictable name would create a file
+    /// wherever it pointed.
     #[test]
     fn a_link_at_the_snapshots_name_is_not_written_through() {
         let dir = std::env::temp_dir().join("kamchatka-unclaimed-link");

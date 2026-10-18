@@ -48,8 +48,8 @@ impl Code {
         let mut code = Grid::new(version);
         code.draw_functions();
         code.draw_data(&codewords);
-        // every mask is a valid code; the one with the fewest look-alikes of the finders and the
-        // fewest long runs is the one a camera reads most easily
+        // every mask is valid. The mask with the fewest finder look-alikes and the fewest long runs
+        // is the one a camera reads most easily
         let mask = mask.unwrap_or_else(|| {
             (0..8)
                 .min_by_key(|&mask| {
@@ -79,16 +79,14 @@ impl Code {
         x < self.size && y < self.size && self.dark[y * self.size + x]
     }
 
-    /// The code as lines of text, two rows of modules to a line, inside a quiet zone of two.
+    /// The code as lines of text: two rows of modules per line, inside a quiet zone of two.
     ///
-    /// note: a *light* module is the one drawn with a block, because a terminal draws its text
-    /// light on dark far more often than not, and a code the wrong way round is one some cameras
-    /// will not read. Where the colours can be set, a block drawn white on black is right on any
-    /// background.
+    /// note: a light module is drawn with a block because terminals usually draw text light on
+    /// dark, and a reversed code is one some cameras will not read. Where colours can be set, a
+    /// block drawn white on black suits any background.
     ///
-    /// note: half blocks, so that a module is about as tall as it is wide: a terminal cell is
-    /// roughly twice as tall as it is wide, and a code of whole cells is stretched to double
-    /// height and takes twice the lines.
+    /// note: half blocks make a module about as tall as it is wide, because a terminal cell is
+    /// roughly twice as tall as it is wide; whole cells double the height and take twice the lines.
     pub fn lines(&self) -> Vec<String> {
         const QUIET: usize = 2;
         let side = self.size + 2 * QUIET;
@@ -503,12 +501,12 @@ mod tests {
         }
     }
 
-    /// Each of the eight masks flips the modules the standard's table of mask patterns says, at
-    /// every module of a version 6 grid, and nothing else.
+    /// Each of the eight masks flips the modules the standard's mask table specifies, at every
+    /// module of a version 6 grid, and nothing else.
     ///
-    /// note: the conditions are the table's, in its own terms: `i` is the row and `j` the column.
-    /// Version 6 is large enough for the products and quotients to part company with what another
-    /// operator would make of them.
+    /// note: the conditions are the table's: `i` is the row and `j` the column. Version 6 is large
+    /// enough for the products and quotients to differ from what another operator would make of
+    /// them.
     #[test]
     fn each_mask_flips_the_modules_the_standard_says() {
         let table = |mask: usize, i: usize, j: usize| match mask {
@@ -538,10 +536,10 @@ mod tests {
         }
     }
 
-    /// A grid `size` modules square, dark where the row and the column add up to an even number,
-    /// with its top row drawn as `top` gives it (`#` dark) where there is one. A checkerboard has
-    /// no run, no block of one colour and nothing like a finder, and it is half dark, so it scores
-    /// nothing by any of the four rules; what a test changes in it is all it scores.
+    /// A grid `size` modules square, dark where row plus column is even, with its top row drawn as
+    /// `top` gives it (`#` dark) where present. A checkerboard has no run, no block of one colour
+    /// and nothing like a finder; it is half dark, so it scores nothing under any of the four
+    /// rules. A test's changes are all it scores.
     fn checkerboard(size: usize, top: Option<&str>) -> Grid {
         let mut grid = Grid {
             version: 1,
@@ -588,8 +586,8 @@ mod tests {
         assert_eq!(grid.penalty(), 3);
     }
 
-    /// `#.###.#`, a finder's 1:1:3:1:1, scores forty where four light modules are on either side of
-    /// it, a side past the edge of the code counted light, and nothing where neither side is.
+    /// `#.###.#`, a finder's 1:1:3:1:1, scores forty where four light modules are on either side; a
+    /// side past the edge counts as light, and nothing scores where neither side is.
     #[test]
     fn a_finder_with_four_light_beside_it_scores_forty() {
         for (top, score) in [
@@ -663,8 +661,8 @@ mod tests {
         assert_eq!(lines.len(), side.div_ceil(2));
         assert!(lines.iter().all(|line| line.chars().count() == side));
         assert!(lines[0].chars().all(|c| c == '█'), "{}", lines[0]);
-        // the finder patterns' top edge, dark all across, over their next row, dark only at its
-        // ends: two modules in from either side, with a light separator inside each
+        // the finder patterns' top edge is dark all across; the next row is dark only at its ends,
+        // two modules in from either side, with a light separator inside each
         let finder = " ▄▄▄▄▄ ";
         assert!(
             lines[1].starts_with(&format!("██{finder}█")),

@@ -202,24 +202,23 @@ pub(crate) fn yes_or_no(args: &Value, name: &str) -> Result<bool, String> {
     }
 }
 
-/// What a call's output is cut at when nothing more specific is said, in bytes.
+/// The default cut-off for one call's output, in bytes.
 ///
-/// note: named because two places need the same number and one of them is not a row in this table.
-/// Every tool this program ships has a row; a tool from an MCP server has none and holds no handle
-/// to this, so what stops one of those filling a context is
-/// [`Config::default_tool_output_limit`](nachalnik::Config), set to this in `wiring` and held to
-/// the window with the rows; see [`Limits::held`].
+/// note: two places need this number, and one is not a row in this table. Every tool this program
+/// ships has a row; a tool from an MCP server has none and no handle to this, so
+/// [`Config::default_tool_output_limit`](nachalnik::Config) stops it filling a context. Set to this
+/// in `wiring` and held to the window with the rows; see [`Limits::held`].
 pub(crate) const CEILING: usize = 32_000;
 
-/// The most of one call's output a tool here keeps, in bytes: what a command writes to each of its
-/// two streams, and the largest file `fs` edits. How far `read` counts lines is
-/// [`COUNTED`], since counting keeps nothing.
+/// The most of one call's output a tool keeps here, in bytes: what a command writes to each of its
+/// two streams, and the largest file `fs` edits. [`COUNTED`] is how far `read` counts lines;
+/// counting keeps nothing.
 ///
-/// note: a limit decides what the model is shown, and the kernel keeps the whole of what a tool
-/// returned, excluded - so without this the whole was whatever arrived: a `yes` nobody stopped,
-/// or a 2 GB log, held in this process, in the context and in every save after it. Past this a
-/// command's output is read and let go, and the answer says how much at the top, where no limit
-/// cuts it; a file is refused an edit with a sentence saying how else to make one.
+/// note: a limit decides what the model is shown. The kernel keeps the whole of what a tool
+/// returned, excluded; without this, the whole was whatever arrived: a `yes` nobody stopped, or a 2
+/// GB log held in this process, in the context and in every save after it. Past this, a command's
+/// output is read and let go. The answer says how much at the top, where no limit cuts it. A file
+/// is refused an edit with a sentence saying how else to make one.
 pub const KEPT: usize = 8 * 1024 * 1024;
 
 /// The limit for one call's output when the answer is a fixed-shape report rather than a piece of
@@ -377,9 +376,9 @@ impl Limits {
         self.0.lock().window = tokens;
     }
 
-    /// A limit nobody set, in bytes, held to the window as a row nobody set is.
+    /// A limit nobody set, in bytes, held to the window like an unset row.
     ///
-    /// note: for what a tool with no row is cut at - one from an MCP server - which is the kernel's
+    /// note: the cut-off for a tool with no row, such as one from an MCP server. It is the kernel's
     /// own limit rather than a row, since what has no row cannot be set. The `App` hands it to
     /// [`Kernel::set_default_tool_output_limit`] as the window moves.
     ///

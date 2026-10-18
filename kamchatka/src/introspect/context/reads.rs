@@ -682,11 +682,11 @@ pub(super) fn search(
         return out;
     };
 
-    // note: clamped, and said. A model that writes a "big enough" number - which is what a
-    // search over a whole context invites - got the entire match set in one tool result, and the
-    // compactor elided it on the way in, so the tool paid for the answer and the model was left
-    // holding a marker. There is no way to page further, so the sentence says what to narrow
-    // instead, rather than inviting a second call that will hand back the same first page
+    // note: the number is clamped, and the sentence says so. A model that writes a "big enough"
+    // number gets the entire match set in one result, which the compactor elided on the way in, so
+    // the tool paid for the answer and the model was left holding a marker. There is no way to page
+    // further, so the sentence says what to narrow instead of inviting a second call that returns
+    // the same first page
     let capped = take.min(TAKE);
     let shown = capped.min(rendered.len());
     match rendered.len() - shown {
@@ -711,9 +711,8 @@ pub(super) fn search(
 
 /// A matching line, trimmed to the part with the match in it.
 ///
-/// note: around the match rather than from the start of the line, because the line a search finds
-/// something in is as likely as not a minified one or a log line, and the first eighty characters
-/// of those is the part nobody asked about.
+/// note: around the match rather than from the start of the line, because the line is likely
+/// minified or a log line, and its first eighty characters are not the part asked about.
 fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
     /// How much of a matching line comes back.
     const WINDOW: usize = 100;
@@ -725,9 +724,9 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
         if line.chars().count() <= WINDOW {
             return line.to_owned();
         }
-        // note: counted in the lowercased line, which is where the offset came from. Lowercasing
-        // can change a character's length - the Kelvin sign is three bytes and its `k` is one - so
-        // the same offset into the line as written can land inside a character, which is a panic
+        // note: counted in the lowercased line, where the offset came from. Lowercasing can change
+        // a character's length: the Kelvin sign is three bytes and its `k` is one. The same offset
+        // into the line as written can land inside a character, which panics
         let lower = line.to_lowercase();
         let at = lower
             .find(needle)
@@ -950,12 +949,11 @@ pub(super) fn request(kernel: &Kernel) -> String {
         ));
     }
 
-    // note: split by *what* dropped it, because the two halves are answered differently and one
-    // list could not say which was which. An item left out by its own state is one `restore`
-    // puts straight back. An item the projector dropped is a consequence of something else in
-    // the context, and restoring it does nothing whatever - the thing to move is the cause. A
-    // model reading one undifferentiated list has to guess which it is looking at, and the cheap
-    // guess is `restore`, which is the one that changes nothing and costs a call.
+    // note: split by what dropped it, because the two halves are answered differently and one list
+    // could not say which was which. An item left out by its own state is one `restore` puts
+    // straight back. An item the projector dropped is a consequence of something else in the
+    // context; restoring it does nothing, so move the cause. A model reading one undifferentiated
+    // list would guess `restore`, which changes nothing and costs a call.
     let (by_state, by_projector): (Vec<_>, Vec<_>) =
         projection
             .skipped

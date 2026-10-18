@@ -832,9 +832,8 @@ mod tests {
 
     /// An allowed command runs, and nothing about it leaves the machine.
     ///
-    /// note: the property the rest of this file is arranged around. An `allow` is somebody's
-    /// decision: there is no question for a rating to be drawn in, and nothing the advisor could
-    /// say is allowed to reopen it - so it is not asked.
+    /// note: an `allow` is a decision. No rating is drawn for it, and the advisor cannot reopen it,
+    /// so it is not asked.
     #[tokio::test]
     async fn an_allowed_command_is_not_sent_anywhere() {
         let careful = Arc::new(Careful::new());
@@ -912,13 +911,12 @@ mod tests {
     }
 
     /// A claim lands on the top band when it holds, the bottom when it is confidently false, and
-    /// the middle the rest of the time.
+    /// the middle otherwise.
     ///
-    /// note: the pair with `a_score_lands_on_the_band_it_is_nearest`, and the case worth having it
-    /// for is the middle. A `noul` at 0.51 is the advisor saying it could not tell, and reading it
-    /// by which side of a half it fell on would draw a coin toss in red - the same mistake
-    /// `Rated::shown` exists to stop one primitive along, made here instead where `shown` could
-    /// not undo it, because that rule only ever raises a band.
+    /// note: this pairs with `a_score_lands_on_the_band_it_is_nearest`; the middle case is the one
+    /// worth having it for. A `noul` at 0.51 means the advisor could not tell. Reading it by which
+    /// side of a half it fell on would be a coin toss - the same mistake `Rated::shown` exists to
+    /// stop. Here `shown` cannot undo it because that rule only ever raises a band.
     #[test]
     fn a_claim_lands_on_the_top_band_only_when_it_holds() {
         let band = |danger| Rated::claimed(danger).shown();
@@ -965,9 +963,9 @@ mod tests {
 
     /// A rating nobody is sure of is never drawn green, and is never drawn safer than it scored.
     ///
-    /// note: the property this feature stands on. A spread distribution over a safety rubric is
-    /// not evidence that a command is safe - it is the advisor saying it could not tell - and
-    /// green is the one colour that would report it as the former.
+    /// note: a spread distribution over a safety rubric is not evidence that a command is safe; it
+    /// is the advisor saying it could not tell. Green is the one colour that would report it as
+    /// safe.
     #[test]
     fn an_unsure_rating_is_never_drawn_safer_than_it_scored() {
         for unsure in [0.0, 0.3, 0.5, SURE - 0.01] {
@@ -985,9 +983,8 @@ mod tests {
 
     /// A command going to be refused is not rated, whatever the feature is doing.
     ///
-    /// note: the disclosure half of the same argument the verdict makes. A `Deny` has no question
-    /// to colour, so rating one would send the arguments of a call that was never going to run to
-    /// a third party and put nothing on any screen in exchange.
+    /// note: a `Deny` has no question to colour, so rating one would send the arguments of a call
+    /// that was never going to run to a third party and put nothing on any screen in exchange.
     #[tokio::test]
     async fn a_command_the_rules_already_refuse_is_not_rated() {
         let careful = Arc::new(Careful::new());
@@ -1009,10 +1006,10 @@ mod tests {
         assert!(why.contains("`exec:run`"), "{why}");
     }
 
-    /// And one going to be asked about is rated, which is the only call that is.
+    /// A command going to be asked about is rated, which is the only call that is.
     ///
-    /// note: the endpoint is not there, so what this pins is that the request was *attempted* -
-    /// the rating itself needs a live model and lives in `tests/advise.rs`. It pairs with
+    /// note: the endpoint is not there, so this pins that the request was *attempted* - the rating
+    /// itself needs a live model and lives in `tests/advise.rs`. It pairs with
     /// `a_call_already_going_to_be_asked_about_is_not_sent_anywhere`, which passes because it asks
     /// about `fs:read`; this one is what `exec:run` changes.
     #[tokio::test]
@@ -1070,11 +1067,11 @@ mod tests {
         assert!(advised.why_unrated(&request.call).is_some());
     }
 
-    /// A score past the top of the rubric is no position on it, and is not a rating either.
+    /// A score past the top of the rubric is no position on it, and not a rating either.
     ///
-    /// note: the rubric runs from `0` to the top level's index, `2`. Read as anything wider, a
-    /// score of `2.5` is drawn as the top band with full confidence - a reading the question
-    /// never offered, taken as the advisor's word.
+    /// note: the rubric runs from `0` to `2`, the top level's index. A score of `2.5` read as
+    /// anything wider is drawn as the top band with full confidence, a reading the question never
+    /// offered.
     #[tokio::test]
     async fn a_score_past_the_top_of_the_rubric_is_not_a_rating() {
         struct Off(f64);
@@ -1115,9 +1112,8 @@ mod tests {
 
     /// A claim that is no probability is not an answer either.
     ///
-    /// note: read as one, `-3` was a claim of no danger at "400% sure", which is drawn green - a
-    /// clean bill for a command nothing had read, which is what the score's own range is checked
-    /// against.
+    /// note: `-3` read as a probability is "400% sure" of no danger, drawn green - a clean bill for
+    /// a command nothing had read. The score's range is checked against that.
     #[tokio::test]
     async fn a_claim_that_is_no_probability_is_not_a_rating() {
         struct Beyond;
@@ -1329,19 +1325,17 @@ mod tests {
         assert_eq!(engine.attempts(), 1, "one request, however many stages");
     }
 
-    /// The fold is over what each stage is *shown* as, and taking the scores first loses the
-    /// property the whole rubric rests on.
+    /// The fold is over what each stage is shown as; folding the scores first loses the property
+    /// the rubric rests on.
     ///
-    /// note: the case is not a corner. A stage scored `0.4` at 95% is a confident `Reads`; one
-    /// scored `0.1` at 30% is a reading nobody could make, which `Rated::shown` lifts to `Changes`
-    /// because green is the one colour that must never come out of a coin toss. Fold the *scores*
-    /// and `0.4` wins, and the command is drawn green on the strength of the other stage's
-    /// uncertainty - a higher number standing for a safer command, which is exactly backwards.
-    /// Fold what each is shown as and the pair is `Changes`.
+    /// note: a stage scored `0.4` at 95% is a confident `Reads`; one scored `0.1` at 30% is a
+    /// reading nobody could make, which `Rated::shown` lifts to `Changes` because green must never
+    /// come from a coin toss. Folding the scores lets `0.4` win and draws the command green on the
+    /// other stage's uncertainty - a higher number for a safer command, which is backwards. Folding
+    /// what each is shown as gives `Changes`.
     ///
-    /// note: the pair with `an_unsure_rating_is_never_drawn_safer_than_it_scored`, which holds
-    /// one stage to this. Passing that says nothing about a fold of several, which is why this is
-    /// separate rather than another case in it.
+    /// note: this pairs with `an_unsure_rating_is_never_drawn_safer_than_it_scored`, which holds
+    /// one stage to this. Passing that says nothing about a fold of several, so this is separate.
     #[test]
     fn the_worst_of_several_stages_is_folded_after_the_unsure_rule_and_not_before() {
         let sure = Rated::of(0.4, 0.95);
@@ -1472,8 +1466,8 @@ mod tests {
 
     /// Which commands are taken apart, and which are rated whole.
     ///
-    /// note: the four refusals are the half worth pinning. Each of them leaves the rating exactly
-    /// what it was before any of this, and each is a different reason - see `stages`.
+    /// note: the four refusals each leave the rating unchanged, and each is a different reason -
+    /// see `stages`.
     #[test]
     fn a_command_is_taken_apart_only_where_taking_it_apart_says_something_true() {
         let cmd = "cargo build && rm -rf target";
@@ -1491,8 +1485,8 @@ mod tests {
         // a heredoc is not scanned at all, which is `joints`' rule and the reason a long script
         // costs nothing here
         assert!(stages("python3 - <<'PY'\nprint(1 | 2)\nPY").is_empty());
-        // over `ROOM` the state is a cut of the command, so a stage past the cut would be placed
-        // against a command the advisor was not shown the end of
+        // over `ROOM`, the state is a cut of the command, so a stage past the cut would be placed
+        // against a command whose end the advisor was not shown
         assert!(stages(&format!("echo {} | wc -l", "a".repeat(ROOM))).is_empty());
 
         // up to `STAGES`, and past it the command is rated whole rather than in part

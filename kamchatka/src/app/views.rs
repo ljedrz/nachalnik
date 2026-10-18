@@ -32,10 +32,10 @@ pub struct Stance {
     pub tools: Vec<String>,
     /// The registered tools the policy judges against it only sometimes, by looking at the call.
     ///
-    /// note: `network` and `shell` are the pair this exists for. No tool here declares `network` -
-    /// a model that wants the network writes `curl` - so without this the row would read `nothing
-    /// registered needs it` beside a verdict of `deny`, a restriction that is not there. What is
-    /// there is [`crate::tools::Careful`] reading the command, and that is what this says.
+    /// note: `network` and `shell` are the pair this exists for. No tool here declares `network`; a
+    /// model that wants the network writes `curl`. Without this, the row would read
+    /// `nothing registered needs it` beside a verdict of `deny`, though no such restriction exists.
+    /// [`crate::tools::Careful`] reads the command, and that is what this says.
     pub sometimes: Vec<String>,
     /// What makes it *that* time, in a clause the pane puts after [`Stance::sometimes`].
     ///

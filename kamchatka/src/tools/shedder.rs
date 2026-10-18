@@ -1,35 +1,32 @@
-//! `Shedder`: the compactor, which sheds what the conversation is done with and says exactly what
-//! it took.
+//! `Shedder`: the compactor. It sheds what the conversation is done with and says exactly what it
+//! took.
 //!
-//! note: two rules, and they answer different questions. The first is about *what has served its
-//! purpose*, and it runs before every request whether the context is full or not: a tool result
-//! the model has read and whose turn is over goes to a marker, and so does a picture the model has
-//! been shown, in an exchange before the one in progress. The second is about *room*: once the
-//! context reaches the threshold, the oldest exchanges with the person go whole - the message, the
-//! turns answering it and their results - until it is down to the target. The pair is a high- and
-//! a low-water mark, so the second rule runs in bursts rather than an exchange at a time before
-//! every turn.
+//! note: two rules answer different questions. The first, about what has served its purpose, runs
+//! before every request whether the context is full or not: a tool result the model has read and
+//! whose turn is over goes to a marker, and so does a picture the model has been shown in an
+//! exchange before the one in progress. The second, about room, runs once the context reaches the
+//! threshold: the oldest exchanges with the person go whole - the message, the turns answering it
+//! and their results - until the context is down to the target. The pair is a high- and low-water
+//! mark, so the second rule runs in bursts rather than an exchange at a time before every turn.
 //!
-//! note: neither rule touches the turn in progress. What the model is in the middle of is what it
-//! has not finished using, and a result taken from under it - read once, never answered with -
-//! was read again, and elided again on the next step. A turn that fills the context is told so by
-//! the full notice, in the same turn, and what goes is for the model or the person to say.
+//! note: neither rule touches the turn in progress. The model is still using what it is in the
+//! middle of. A result taken from under it - read once, never answered with - was read again and
+//! elided again on the next step. A turn that fills the context is told so by the full notice, in
+//! the same turn. What goes is for the model or the person to say.
 //!
-//! note: and neither takes anything the model has not been shown. That is what lets the marker
-//! say the model had read what it stands in for, which it needs to say: a model reading a marker
-//! that said only "compacted" decided it had never seen the files it had just summarised, called
-//! its own summaries fabricated and withdrew them.
+//! note: neither takes anything the model has not been shown. The marker must say the model had
+//! read what it stands in for; a marker that said only "compacted" made the model withdraw its own
+//! summaries as fabricated.
 //!
-//! note: what it frees has to beat what it costs, and both sides are counted on the counter's own
-//! scale. An elided item leaves behind a sentence carrying the reason for eliding it, so a result
-//! smaller than that sentence is not worth taking - and a counter that has corrected itself
-//! upwards prices the sentence higher than a plain bytes-over-four does.
+//! note: what it frees has to beat what it costs, both counted on the counter's own scale. An
+//! elided item leaves behind a sentence carrying the reason for eliding it, so a result smaller
+//! than that sentence is not worth taking. A counter that has corrected itself upwards prices the
+//! sentence higher than a plain bytes-over-four does.
 //!
-//! note: with one exception, which is a blob. A [`Content::Blob`](nachalnik::Content::Blob) is
-//! counted at `0` by every counter in this workspace, because what a picture costs is a formula
-//! over its dimensions and no byte length reaches one - so that same check reads a picture as
-//! recovering nothing, and the largest thing in the context would be the one thing this could
-//! never take. Where it cannot judge, it takes.
+//! note: one exception is a blob. [`Content::Blob`](nachalnik::Content::Blob) is counted at `0` by
+//! every counter in this workspace, because a picture's cost is a formula over its dimensions and
+//! no byte length reaches one. So a picture reads as recovering nothing, and the largest thing in
+//! the context would be the one thing this could never take. Where it cannot judge, it takes.
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -69,10 +66,9 @@ pub struct Shedder {
 impl Shedder {
     /// One that starts dropping at this fraction of the limit and aims below it.
     ///
-    /// note: the target is twenty points under where it starts, or half of it, whichever leaves
-    /// more. Below a fifth the subtraction goes negative and the target becomes no context at all,
-    /// so something has to catch it; a fraction of the threshold catches it without ever rising
-    /// above it.
+    /// note: the target is twenty points under the threshold, or half of it, whichever is larger.
+    /// Below a fifth, the subtraction goes negative and the target becomes no context at all, so a
+    /// fraction of the threshold catches it without ever rising above it.
     #[must_use]
     pub fn under(threshold: f64) -> Self {
         Self {

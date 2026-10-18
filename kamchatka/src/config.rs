@@ -565,13 +565,12 @@ mod tests {
         );
     }
 
-    /// A compaction setting prints as the spelling that reads it back, both halves.
+    /// A compaction setting prints as the spelling that reads it back.
     ///
-    /// note: the round trip rather than a comparison against a literal for its own sake, because
-    /// what one setting has is one value with three spellings - `0.8` on the command line, `0.8` or
-    /// `[0.8, 0.6]` in a file - and this is the one of them a caller holding the value gets. It
-    /// also carries the target, which the threshold alone would lose: a setting printed without
-    /// it is a session that compacts somewhere else the next time it is written down.
+    /// note: the round trip, because one value has three spellings - `0.8` on the command line,
+    /// `0.8` or `[0.8, 0.6]` in a file - and this is the spelling a caller holding the value gets.
+    /// It also carries the target, which the threshold alone would lose; printed without it, the
+    /// session compacts somewhere else the next time it is written down.
     #[test]
     fn a_compaction_setting_prints_the_way_it_is_typed() {
         assert_eq!(Compact::at(0.8).to_string(), "0.8");

@@ -139,8 +139,8 @@ impl App {
         // is a pair that does not round-trip: `/save notes.jsonl` writes `notes.json` beside the
         // log, and `/load notes.jsonl` would otherwise go looking for `notes.jsonl.json`
         let file = format!("{}.json", stem(path));
-        // `/save` takes a directory and names the files in it after the session, which this
-        // cannot know; saying what the argument is beats "could not read rec/.json"
+        // `/save` takes a directory and names the files in it after the session, which this cannot
+        // know. Saying what the argument is beats "could not read rec/.json"
         if std::fs::metadata(&file).is_err() && std::path::Path::new(path).is_dir() {
             self.say(
                 Speaker::Error,

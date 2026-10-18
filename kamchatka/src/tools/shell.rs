@@ -1148,23 +1148,22 @@ fn signal_name(signal: i32) -> String {
     }
 }
 
-/// Stops a running command, and whatever that command started that is still in its group.
+/// Stops a running command and the processes it started that are still in its process group.
 ///
-/// note: the group rather than the process, because a shell command is rarely one process. `make`
-/// starts a compiler, `npm test` starts a runner, and a signal addressed to the shell alone leaves
-/// those running - confined, since the domain is inherited, but still writing in the working
-/// directory with nothing left that will ever report them. Somebody who pressed escape has been
-/// told it stopped.
+/// note: it signals the group rather than the process, because a shell command is rarely one
+/// process: `make` starts a compiler and `npm test` starts a runner. A signal to the shell alone
+/// leaves those running. They are confined by the inherited domain but still write in the working
+/// directory, with nothing left to report them. Someone who pressed escape was told it stopped.
 ///
 /// note: a process that left the group is not reached. One run under `setsid`, or a daemon that
-/// detaches itself, runs on after the call has said it stopped, confined still. Holding the whole
+/// detaches itself, runs on, confined still, after the call has said it stopped. Holding the whole
 /// tree takes a cgroup or a PID namespace per command, and there is neither here.
 ///
-/// note: through `sh`, because signalling a *group* is not in `std`, and this crate keeps its
+/// note: it acts through `sh`, because signalling a group is not in `std` and this crate keeps its
 /// `unsafe` to [`crate::gate`]. It is the same `sh` the tool is built on, so it brings nothing new
-/// into the program. The group is the child's own - `process_group(0)` asked for that at spawn, or
-/// the confined child's `setsid` made it - and the child has not been waited on yet, so the
-/// identifier cannot yet mean anybody else.
+/// into the program. The group is the child's own: `process_group(0)` asked for it at spawn, or the
+/// confined child's `setsid` made it. The child has not been waited on yet, so the identifier
+/// cannot yet mean anybody else.
 async fn stop(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         let _ = tokio::process::Command::from(killing(pid)).status().await;
@@ -1526,10 +1525,9 @@ mod tests {
 
     /// A call dropped while its command runs takes the command's whole group with it.
     ///
-    /// note: a call is dropped when the process is going - a runtime shut down mid-turn, a panic -
-    /// and a group of its own is not sent the terminal's hangup, so without `Running` the
-    /// subshell here, which the shell started, finishes and writes the file after nobody is
-    /// watching.
+    /// note: a call is dropped when the runtime shuts down mid-turn or panics. A group of its own
+    /// is not sent the terminal's hangup, so without `Running` the subshell the shell started
+    /// finishes and writes the file after nobody is watching.
     #[tokio::test]
     async fn a_dropped_call_takes_its_command_with_it() {
         let dir = std::env::temp_dir().join(format!("kamchatka-dropped-{}", std::process::id()));

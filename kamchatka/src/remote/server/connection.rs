@@ -73,14 +73,13 @@ where
     // note: subscribe before the first log read, not after, so an event that arrives between
     // subscribing and reading is a duplicate wakeup rather than a missed record
     let mut events = kernel.subscribe();
-    // note: whether the fragments are in the log as well. With `record_progress` on they are
-    // records, so sending them from here too would put every fragment on the wire twice - once
-    // numbered and once not - and a client assembling an answer out of both would read it double
+    // note: with `record_progress` on, fragments are already records in the log. Sending them here
+    // too puts every fragment on the wire twice - once numbered and once not - and a client
+    // assembling an answer from both reads it double
     let progress_recorded = kernel.config().record_progress;
 
-    // note: a connection says where it stands before it is told anything, and nothing else is
-    // accepted first. Streaming at a client that has not said what it already has is how a resume
-    // becomes a replay
+    // note: a connection says where it stands before anything else is accepted. Streaming at a
+    // client that has not said what it already has turns a resume into a replay
     let settled = match protocol::read::<Command>(frames).await? {
         None => return Ok(()),
         Some(attach @ Command::Attach { .. }) => {
@@ -105,10 +104,10 @@ where
 
     loop {
         tokio::select! {
-            // note: caught up first, so that a client replaced mid-turn has the records up to the
-            // moment it was let go of - what it does with them is its own business - and then
-            // named, so that it can tell being replaced from a drop. A client that read the close
-            // as a drop would come back and take the session from whoever has just taken it
+            // note: caught up first, so a client replaced mid-turn has the records up to the moment
+            // it was let go, then named so it can tell replacement from a drop. A client that reads
+            // the close as a drop would come back and take the session from whoever has just taken
+            // it
             () = replaced.notified() => {
                 flush(kernel, &mut last, write).await?;
 
@@ -123,9 +122,9 @@ where
             }
             command = protocol::read::<Command>(frames) => match command? {
                 None => return Ok(()),
-                // note: re-attaching on a live connection is allowed, and is the cheapest way for a
-                // client that has confused itself to start again: it asks for the projection and
-                // moves its own watermark to whatever that says
+                // note: re-attaching on a live connection is allowed. It is the cheapest way for a
+                // confused client to start again: it asks for the projection and moves its
+                // watermark to whatever that says
                 Some(attach @ Command::Attach { .. }) => {
                     let since = matches!(attach, Command::Attach { since: None, .. });
                     let settled = watermark(attach, kernel, asks, client, write).await;
@@ -150,23 +149,22 @@ where
                     }
                     flush(kernel, &mut last, write).await?;
                 }
-                // answered here rather than by the session loop: it needs a `Kernel` and nothing
-                // else, and the session has better things to be doing
+                // answered here rather than by the session loop because it needs a `Kernel` and
+                // nothing else.
                 //
-                // note: what an item says *now*, which is the kernel's. An earlier version is not
-                // - the viewer keeps those, and the viewer is the `App` - so a question about one
-                // falls through to the branch below and is answered where they are. Reading them
-                // here would mean the session holding what it has already given away
+                // note: what an item says now is the kernel's. The viewer keeps earlier versions,
+                // and the viewer is the `App`, so a question about one falls through to the branch
+                // below and is answered there. Reading them here would mean the session holding
+                // what it has already given away
                 Some(Command::Inspect {
                     id,
                     raw,
                     version: None,
                 }) => {
                     let message = match kernel.items().iter().find(|item| item.id == id) {
-                        // the item's own text where a client is about to put it in front of
-                        // somebody to edit, and the reading of it where somebody is going to read
-                        // it. `Kernel::replace` writes content, so the reading is the one thing
-                        // that must never come back as an edit
+                        // the item's own text for a client about to edit it, and the reading for a
+                        // reader. `Kernel::replace` writes content, so the reading must never come
+                        // back as an edit
                         Some(item) => Message::Item {
                             id,
                             body: match raw {

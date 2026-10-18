@@ -92,10 +92,10 @@ async fn main() -> Result<(), String> {
             None => String::new(),
         }
     );
-    // note: the conversation comes from *here* and can come from nowhere else. The records name
-    // things rather than carrying them - `context.added` says there is a user message of eleven
-    // tokens and not one word of what it says - so a client fed nothing but the stream can follow a
-    // turn as it arrives and cannot render a syllable of what happened before it connected
+    // note: the conversation comes from here and nowhere else. Records name things rather than
+    // carrying them: `context.added` says there is a user message of eleven tokens and not one word
+    // of what it says. A client fed nothing but the stream can follow a turn as it arrives, but
+    // cannot render what happened before it connected
     for line in &attached.conversation {
         // a line can arrive cut down, where the whole projection was too long for one frame; what
         // it says it lost goes on the end, and an `inspect` of its item is the rest of it

@@ -42,10 +42,10 @@ impl App {
             self.say(Speaker::Note, format!("requests go to {endpoint}"));
             return;
         }
-        // `URL MODEL`, because a model belongs to the address that serves it: switching
-        // one and keeping the other is how a session ends up asking the ollama on this
-        // machine for `gemini-3.6-flash`. Given no model the old name is kept, and the new
-        // endpoint is asked whether it has one by that name
+        // `URL MODEL`: a model belongs to the address that serves it. Switching one and keeping the
+        // other is how a session ends up asking the ollama on this machine for `gemini-3.6-flash`.
+        // Given no model, the old name is kept, and the new endpoint is asked whether it has one by
+        // that name
         let (url, model) = match rest.split_once(char::is_whitespace) {
             Some((url, model)) => (url.to_owned(), Some(model.trim().to_owned())),
             None => (rest.to_owned(), None),
@@ -158,10 +158,9 @@ impl App {
             };
             let mut params = self.kernel.params();
             match value {
-                // note: `null` takes a parameter away rather than sending one. An absent
-                // field leaves the choice to the endpoint, which is what a null asks for
-                // where one is taken at all, and without this nothing once set could be
-                // taken back short of `/restart`. Ahead of the refusal below, so that one
+                // note: `null` takes a parameter away rather than sending one. An absent field
+                // leaves the choice to the endpoint; without this, nothing once set could be taken
+                // back short of `/restart`. This arm sits ahead of the refusal below so a null
                 // arriving in a snapshot can be taken away too
                 serde_json::Value::Null => taken(&mut params, key),
                 _ if key
@@ -248,8 +247,8 @@ impl App {
             self.say(speaker, said);
         }
 
-        // a bound is worth saying of one that is set, too, since that is where it can be
-        // crossed; what becomes of a value over it is the endpoint's to say, not this
+        // a bound is worth saying of one that is set, too, since that is where it can be crossed.
+        // What becomes of a value over it is the endpoint's to say, not this
         for (name, set) in &set {
             let over = self.provider.published(name).maximum.filter(|most| {
                 matches!((set.as_f64(), most.as_f64()), (Some(set), Some(most)) if set > most)
@@ -408,9 +407,9 @@ impl App {
                     .iter()
                     .any(|(subject, _)| !offered.contains(subject))
                 {
-                    // said once, under the table, rather than argued on every marked row - and
-                    // true whichever rows are marked, since which tools a session is missing is
-                    // not something this sentence gets to assume
+                    // said once, under the table, rather than repeated on every marked row. It is
+                    // true whichever rows are marked, since which tools a session is missing is not
+                    // something this sentence assumes
                     true =>
                         " A row marked `not offered` is a limit held for something no tool here \
                          declares; it is in force the moment one does, and `/tools toggle` is \
@@ -597,10 +596,10 @@ fn at<'a>(params: &'a Params, key: &str) -> Option<&'a Value> {
 /// What is set, named the way `listed` names it: a parameter is read field by field where the
 /// listing names fields inside it, and whole where it does not.
 ///
-/// note: so that `generationConfig` set to `{"temperature": 3}` is checked as
-/// `generationConfig.temperature` against the most the listing publishes for it, and a field
-/// beside it the listing never names - `thinkingConfig` - is the one said to be unchecked, rather
-/// than the whole of `generationConfig`.
+/// note: so `generationConfig` set to `{"temperature": 3}` is checked as
+/// `generationConfig.temperature` against the most the listing publishes for it, and
+/// `thinkingConfig`, a field beside it that the listing never names, is unchecked rather than the
+/// whole of `generationConfig`.
 fn by_name(params: &Params, listed: &[String]) -> Vec<(String, Value)> {
     fn walk(prefix: String, value: &Value, listed: &[String], out: &mut Vec<(String, Value)>) {
         let inside = format!("{prefix}.");

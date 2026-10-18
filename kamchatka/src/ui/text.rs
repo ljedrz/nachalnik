@@ -18,16 +18,14 @@ use crate::app::text::thousands;
 
 /// How many terminal columns `text` occupies.
 ///
-/// note: the one place in this program that answers it, and everything deciding what fits goes
-/// through it. A character is not a column - a CJK character is given two cells and so is an
-/// emoji - so a row measured in characters holds twice what it is told it holds, and the overflow
-/// is clipped at the right edge by a `Paragraph` that does not wrap. That clipped end is not
-/// reachable by scrolling either, which is what makes it worse than a wrong count.
+/// note: it is the one place that answers this, and everything deciding what fits goes through it.
+/// A character is not a column: CJK characters and emojis take two cells, so a row measured in
+/// characters holds twice what it is told. A non-wrapping `Paragraph` clips overflow at the right
+/// edge, and the clipped end is not reachable by scrolling.
 ///
-/// note: it does not follow that everything counting characters here is wrong. A cut made *in*
-/// the text - the first ninety-six characters of a summary, a window into a long line - is about
-/// the text and stays in characters. What belongs here is every question of the form "will this
-/// fit", and the answer to that is columns.
+/// note: that does not make every character count wrong. A cut made in the text - the first
+/// ninety-six characters of a summary, a window into a long line - is about the text and stays in
+/// characters. This answers "will this fit" questions; the answer is columns.
 pub(super) fn columns(text: &str) -> usize {
     text.width()
 }
@@ -83,8 +81,8 @@ pub(super) fn rows_for(line: &str, width: usize) -> usize {
     closed + usize::from(started || closed == 0)
 }
 
-/// The longest prefix of `text` that fits in `width` columns, and never nothing - a grapheme
-/// wider than the whole box would otherwise loop forever.
+/// The longest prefix of `text` that fits in `width` columns. It never returns nothing: a grapheme
+/// wider than the box would otherwise loop forever.
 pub(super) fn prefix_within(text: &str, width: usize) -> usize {
     let mut end = 0;
     let mut filled = 0;
@@ -280,12 +278,11 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
 
     let mut out = Vec::new();
     let mut line = String::new();
-    // how wide `line` is, kept as it grows rather than measured again for every word: a frame
-    // folds every line of whatever it draws, the help is hundreds of them, and measuring is
-    // walking the text
+    // how wide `line` is, kept as it grows rather than measured again for every word. Measuring
+    // walks the text, and a frame folds every line of the hundreds in the help
     let mut filled = 0;
-    // a word can be the empty string - that is what a run of spaces is made of - so "have I
-    // put anything on this line yet" is its own question rather than `line.is_empty()`
+    // a word can be the empty string - a run of spaces is made of them - so whether anything is on
+    // the line is its own question, not `line.is_empty()`
     let mut fresh = true;
 
     for word in body.split(' ') {
@@ -453,9 +450,9 @@ mod tests {
         );
         assert!(rows.iter().all(|row| columns(row) <= 12), "{rows:?}");
 
-        // a word as wide as the row is a row of its own, and there is no blank row above it: a
-        // blank one is a line of nothing, and `wrapped` gives the first row a prefix rather than
-        // the hanging indent, so it moves a whole paragraph across by the width of a marker
+        // a word as wide as the row is a row of its own, with no blank row above it: a blank row is
+        // a line of nothing. `wrapped` gives the first row a prefix rather than a hanging indent,
+        // so it moves a whole paragraph across by the width of a marker
         assert_eq!(fold("aaaaaaaaaaaa bb", 12), ["aaaaaaaaaaaa", "bb"]);
         // two of them break at the room rather than run together and overflow it
         assert_eq!(
@@ -555,11 +552,11 @@ mod tests {
         );
     }
 
-    /// A pane is wrapped to the width it was given, not to the floor under it.
+    /// A pane is wrapped to the width it was given, not to the floor.
     ///
-    /// note: `width` is the pane and the prefix is drawn in front of the first row, so the floor
-    /// is the prefix's own width plus twelve - the width of the pane is never below it, and a
-    /// prefix of two cells and one of twenty are floored differently.
+    /// note: `width` is the pane and the prefix is drawn in front of the first row, so the floor is
+    /// the prefix's own width plus twelve. The pane width is never below the floor, and a prefix of
+    /// two cells and one of twenty are floored differently.
     #[test]
     fn a_narrow_pane_is_wrapped_to_its_own_width() {
         let said = "alpha bravo charlie delta echo foxtrot";
