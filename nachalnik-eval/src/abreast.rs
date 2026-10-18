@@ -35,11 +35,11 @@ use std::{
 use async_trait::async_trait;
 use nachalnik::{BoxError, DeltaSink, ModelInfo, ModelRequest, ModelResponse, Provider};
 use parking_lot::Mutex;
-// note: tokio's clock rather than `std::time::Instant`, and it has to be the same clock the sleep
-// below is measured on. With `std`'s, a test running on a paused clock ages nothing out of the
-// window - the sleeps return instantly on virtual time while the timestamps advance on real time
-// - and `admit` waits for room that never appears. Outside a test the two are the same clock, so
-// this costs nothing and buys a rate limiter that can be tested at all.
+// note: tokio's clock rather than `std::time::Instant`, and it must be the same clock the sleep
+// below is measured on. With `std`'s, a test on a paused clock ages nothing out of the window:
+// sleeps return instantly on virtual time while timestamps advance on real time, so `admit` waits
+// for room that never appears. Outside a test the two are the same clock, so this costs nothing and
+// buys a rate limiter that can be tested.
 use tokio::time::Instant;
 
 /// How many things may be in flight at once.
@@ -56,17 +56,17 @@ pub struct Permits {
 #[derive(Debug)]
 struct Inner {
     free: usize,
-    /// note: a queue, so that `Permits::release` wakes waiters in the order they arrived. It
-    /// wakes every one of them - see the note there - so the order decides who looks again first
-    /// rather than who is given the permit.
+    /// note: a queue, so `Permits::release` wakes waiters in the order they arrived. It wakes every
+    /// waiter - see the note there - so the order decides who looks again first rather than who is
+    /// given the permit.
     waiting: VecDeque<Waker>,
 }
 
 impl Permits {
     /// A ceiling of `at_once`, which is raised to one if it was zero.
     ///
-    /// note: zero would be a ceiling that admits nothing, which is a deadlock rather than a
-    /// setting. Treated as one, because the caller asking for "no concurrency" means sequential.
+    /// note: zero admits nothing, which deadlocks rather than being a setting. Treated as one,
+    /// because "no concurrency" means sequential.
     pub fn new(at_once: usize) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -94,10 +94,10 @@ impl Permits {
     fn release(&self) {
         let mut inner = self.inner.lock();
         inner.free += 1;
-        // note: every waiter rather than the first. A waker stays queued when the future that left
-        // it takes a permit on a later poll or is dropped, so the first in line can be somebody who
-        // no longer wants one, and waking only them leaves a real waiter asleep beside a free
-        // permit. Everyone woken looks again, and whoever finds none puts itself back
+        // note: every waiter rather than the first. A waker stays queued when its future takes a
+        // permit on a later poll or is dropped, so the first in line may no longer want one; waking
+        // only them leaves a real waiter asleep beside a free permit. Everyone woken looks again,
+        // and whoever finds none puts itself back
         let waiting = std::mem::take(&mut inner.waiting);
         // dropped before waking, so that a woken future does not immediately block on the lock
         // this thread is still holding
@@ -108,12 +108,12 @@ impl Permits {
     }
 }
 
-/// The future [`Permits::acquire`] hands back.
+/// The future [`Permits::acquire`] returns.
 ///
-/// note: re-exported with everything else here, so that a caller can hold one, put it in a struct
-/// or select over it rather than only await it where it was called. Keep it that way when adding
-/// to this module: an unnameable return type is legal, so the compiler says nothing, and it only
-/// shows up as a page missing from the documentation.
+/// note: re-exported with everything else here, so a caller can hold one, put it in a struct, or
+/// select over it rather than only await it where it was called. Keep it that way when adding to
+/// this module: an unnameable return type is legal, so the compiler says nothing, and it only shows
+/// up as a missing documentation page.
 #[derive(Debug)]
 pub struct Acquiring<'a> {
     permits: &'a Permits,
@@ -214,22 +214,22 @@ impl Pace {
     }
 }
 
-/// A sliding window over when requests were let through.
+/// A sliding window over when requests were admitted.
 ///
-/// note: a sliding window rather than a token bucket, because the limit being obeyed is worded as
-/// a sliding window - "20 per minute" refuses the twenty-first request that arrives within sixty
-/// seconds of the first, whatever the shape of the traffic. A bucket refilled at a steady rate
-/// permits a burst of its whole capacity after any quiet spell, which is the thing an endpoint
-/// counting requests in a window will reject.
+/// note: a sliding window rather than a token bucket, because the limit is worded as a sliding
+/// window: "20 per minute" refuses the twenty-first request that arrives within sixty seconds of
+/// the first, whatever the shape of the traffic. A token bucket refilled at a steady rate permits a
+/// burst of its whole capacity after any quiet spell, which an endpoint counting requests in a
+/// window rejects.
 ///
-/// note: and a minimum gap between admissions on top of the window, because the window alone
-/// permits the whole allowance at once - see [`Rate::spacing`]. The two are both enforced and
-/// neither subsumes the other: the window is the limit as the endpoint words it, the spacing is
-/// what stops a run from spending the whole allowance in a second and then idling.
+/// note: a minimum gap between admissions as well, because the window alone permits the whole
+/// allowance at once - see [`Rate::spacing`]. Both are enforced and neither subsumes the other: the
+/// window is the limit as the endpoint words it, the spacing stops a run spending the whole
+/// allowance in a second and then idling.
 ///
 /// note: what is recorded is when a request was *admitted*, not when it finished. A limit on how
-/// many may be started in a minute is not a limit on how many may be outstanding, and the two
-/// come apart badly on an endpoint that sometimes takes minutes to answer.
+/// many may be started in a minute is not a limit on how many may be outstanding, and the two come
+/// apart on an endpoint that sometimes takes minutes to answer.
 #[derive(Debug)]
 struct Rate {
     allowed: usize,
@@ -248,10 +248,10 @@ impl Rate {
 
     /// The least time that may pass between two admissions.
     ///
-    /// note: what makes the limit a pace rather than a quota. A window alone is obeyed perfectly
-    /// by firing every request it allows in the window's first instant and then sitting out the
-    /// rest, which is exactly the burst an endpoint's own limiter sees and rejects. Spacing them is
-    /// the difference between not exceeding a limit on average and not exceeding it at any moment.
+    /// note: this makes the limit a pace rather than a quota. A window alone is obeyed by firing
+    /// every request it allows in the window's first instant and then sitting out the rest, which
+    /// is the burst an endpoint's own limiter rejects. Spacing admissions means not exceeding the
+    /// limit at any moment, not only on average.
     fn spacing(&self) -> Duration {
         self.window / self.allowed as u32
     }
@@ -270,8 +270,8 @@ impl Rate {
                     admitted.pop_front();
                 }
 
-                // the oldest one in the window is the one whose leaving makes room, so this is
-                // exactly how long there is to wait rather than a guess at it
+                // the oldest entry in the window is the one whose leaving makes room, so this is
+                // the exact wait, not an estimate
                 let room = match admitted.len() < self.allowed {
                     true => Duration::ZERO,
                     false => admitted
@@ -305,16 +305,16 @@ impl Rate {
 /// Any [`Provider`], with a ceiling on how many requests it may have in flight.
 ///
 /// note: the ceiling goes here rather than around the loops that fan out, because this is the one
-/// place every request in a run passes through. A ceiling applied at a loop only governs that
-/// loop: one around the ablation sweep still lets every experiment put its live probes on the wire
-/// beside it. Wrapping the provider means an experiment cannot exceed the ceiling by making a
-/// request some other way, including an experiment this crate has never seen, and
+/// place every request in a run passes through. A ceiling on a loop governs only that loop: one
+/// around the ablation sweep still lets every experiment put its live probes on the wire beside it.
+/// Wrapping the provider means an experiment cannot exceed the ceiling by making a request some
+/// other way, including one this crate has never seen;
 /// `a_paced_run_goes_abreast_but_no_wider_than_it_was_told` holds it to that.
 ///
 /// note: it wraps rather than replaces, and forwards [`Provider::info`] untouched, so a subject
-/// still reports the model it is actually talking to. The copies an
-/// [`Ablation`](crate::Ablation) resumes inherit the wrapped provider from the subject they were
-/// forked from, which is what makes one of these cover the ablations as well as the conversation.
+/// still reports the model it is actually talking to. The copies an [`Ablation`](crate::Ablation)
+/// resumes inherit the wrapped provider from the subject they were forked from, so one of these
+/// covers the ablations as well as the conversation.
 pub struct Paced {
     inner: Arc<dyn Provider>,
     permits: Arc<Permits>,

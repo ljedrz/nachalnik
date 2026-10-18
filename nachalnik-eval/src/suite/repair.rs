@@ -24,19 +24,19 @@ use nachalnik::ContextItem;
 /// How many experiments the subject may run on itself while repairing.
 const TESTS: usize = 4;
 
-/// How many times the whole ladder is run over each dossier.
+/// How many times the whole ladder runs over each dossier.
 ///
-/// note: three, and unlike [`Instrumented`](crate::suite::Instrumented) this experiment cannot
-/// have one. A rung here is *one* answer per dossier, so a five-dossier run gives each rung five
-/// observations and each paired contrast five items - and five items with no regressions is
-/// `p = 0.031` at best, which is the whole budget spent to arrive at the edge of significance.
-/// Three runs make it fifteen.
+/// note: three runs. Unlike [`Instrumented`](crate::suite::Instrumented), this experiment cannot
+/// have one. A rung is one answer per dossier, so a five-dossier run gives each rung five
+/// observations and each paired contrast five items. Five items with no regressions is `p = 0.031`
+/// at best, which is the whole budget spent to arrive at the edge of significance. Three runs make
+/// it fifteen.
 ///
-/// note: and the [`AGAIN`] control is why it cannot be assumed away. `Instrumented` runs one copy
-/// per condition because measured answer instability across its replicates is zero; on this
+/// note: the [`AGAIN`] control is why three runs cannot be assumed away. `Instrumented` runs one
+/// copy per condition because measured answer instability across its replicates is zero; on this
 /// ladder it is not. Even at temperature zero, a subject asked the same question twice in the same
 /// session can answer it two different ways, and the same rung can answer differently in two
-/// identical runs. So a single ladder cannot tell a rung's treatment from the subject changing its
+/// identical runs. A single ladder cannot tell a rung's treatment from the subject changing its
 /// mind, and the difference the experiment is about is exactly that size.
 pub const LADDERS: usize = 3;
 
@@ -124,9 +124,8 @@ impl Repair {
 
     /// Runs it on one dossier only, with a falsehood written for that dossier.
     ///
-    /// note: for a probe rather than for a result. One dossier is one task answer per rung per
-    /// run, and a five-rung pattern read off three observations is an anecdote however clean it
-    /// looks.
+    /// note: for a probe rather than for a result. One dossier is one task answer per rung per run.
+    /// A five-rung pattern read off three observations is an anecdote.
     #[must_use]
     pub fn on(mut self, dossier: &'static Dossier, plant: &'static Plant) -> Self {
         self.plants = vec![(dossier, plant)];
@@ -415,10 +414,10 @@ impl Experiment for Repair {
         let dossiers: Vec<&'static Dossier> = self.plants.iter().map(|(d, _)| *d).collect();
         let asking = instrument(&dossiers, self.asks());
 
-        // note: what the subject is shown, and nothing else. `Plant::correction` belongs to
-        // `Lie` and is never presented here, and the caveat is presented only when it is asked
-        // for - a digest that covered either regardless would report two runs as identical when
-        // one of them had been warned and the other had not
+        // note: this is what the subject is shown, and nothing else. `Plant::correction` belongs to
+        // `Lie` and is never presented here. The caveat is presented only when it is asked for; a
+        // digest that covered either regardless would report two runs as identical when one had
+        // been warned and the other had not
         let mut material = vec![asking.digest.as_str()];
         for (_, plant) in &self.plants {
             material.push(plant.label);
@@ -443,11 +442,11 @@ impl Experiment for Repair {
         for (n, (dossier, plant)) in self.plants.iter().enumerate() {
             for session in 0..self.replicates {
                 // a session that has already repaired one context knows what the exercise is, so
-                // only the first ladder of all gets the subject the harness raised and every one
-                // after it gets a sibling - which is as true of the second run over the same
-                // dossier as it is of the first run over the next one. Replicating needs
-                // independent sessions: three ladders in one session would be one subject getting
-                // three goes at a puzzle it has already solved
+                // only the first ladder of all gets the subject the harness raised; every later
+                // ladder gets a sibling, whether it is a second run over the same dossier or a
+                // first run over the next one. Replicating needs independent sessions: three
+                // ladders in one session would be one subject getting three goes at a puzzle it has
+                // already solved
                 let sibling = match (n, session) {
                     (0, 0) => None,
                     _ => Some(subject.sibling(&format!("{}-{}", dossier.name, session + 1))?),

@@ -22,18 +22,16 @@ const DEPTH: usize = 3;
 /// Asks a subject what it would do, then what a copy of it would say it would do, then what a
 /// copy asked *that* would say - and runs a copy at every level to find out.
 ///
-/// note: What makes this a measurement rather than a hall of mirrors is that every level has a
-/// ground truth, and every ground truth is a request somebody actually paid for. At one remove
-/// the claim is about behaviour and is scored against a copy with the note taken out. At two, the
-/// claim is about a claim, and is scored against a copy asked the level-one question. At three,
-/// against a copy asked the level-two question. The recursion is in the questions; the answers
-/// are all observations.
+/// note: Each level has a ground truth: a request somebody actually paid for. At one remove, the
+/// claim is about behaviour and is scored against a copy with the note taken out. At two, it is a
+/// claim about a claim, scored against a copy asked the level-one question. At three, against a
+/// copy asked the level-two question. The questions recurse; the answers are observations.
 ///
-/// note: The subject makes its claims in one session, in order, so by the time it is asked the
-/// level-three question it can see what it said at levels one and two. That is not a leak - it
-/// is what "predict your own prediction" has to mean for a stateless model - but it is the
-/// reason the copies are all made from an [`Origin`] taken before any of it: the copy answering
-/// the level-one question must not be able to read the subject's answer to it.
+/// note: The subject makes its claims in one session, in order, so by the level-three question it
+/// can see its level-one and level-two claims. That is not a leak; for a stateless model, "predict
+/// your own prediction" can only mean this. Every copy is therefore made from an [`Origin`] taken
+/// before any of it: the copy answering the level-one question must not read the subject's answer
+/// to it.
 pub struct Recursion {
     dossier: &'static Dossier,
     depth: usize,
@@ -63,12 +61,12 @@ impl Recursion {
         self
     }
 
-    /// How many removes to go to; at least one.
+    /// Number of removes to go to; at least one.
     ///
-    /// note: each one past the first costs a copy and an ask, and the answers get shorter and
-    /// less readable as the question gets more convoluted. Three is where the curve stops being
-    /// about self-knowledge and starts being about how much nesting a model can parse, which is
-    /// worth knowing and is not what this measures.
+    /// note: Each level past the first costs a copy and an ask; answers get shorter and less
+    /// readable as the question gets more convoluted. At three, the curve measures how much nesting
+    /// a model can parse rather than self-knowledge. That is worth knowing, but it is not what this
+    /// measures.
     #[must_use]
     pub fn depth(mut self, depth: usize) -> Self {
         self.depth = depth.max(1);
@@ -186,8 +184,8 @@ impl Experiment for Recursion {
             );
 
             for (level, (claim, claimed_at)) in claims.iter().enumerate().skip(1) {
-                // what a copy really says when asked the question one level down, which is
-                // exactly what the claim at this level is a claim about
+                // what a copy says when asked the question one level down. This is what the claim
+                // at this level is about
                 let asked = Ablation::new(ladder[level - 1].clone())
                     .replicates(self.replicates)
                     .blind_to(blind);
@@ -208,8 +206,8 @@ impl Experiment for Recursion {
                         )),
                 );
 
-                // the quantity nobody asked for and everybody wants: whether a copy of it, asked
-                // what it was just asked, gives the answer it gave
+                // Whether a copy of the subject, asked the same question, gives the answer the
+                // subject gave
                 if level == 1 {
                     trial.note(format!(
                         "on `{pivot}`, the subject said {} at level 1 and a copy of it said {}",

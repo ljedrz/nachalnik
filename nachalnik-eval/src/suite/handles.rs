@@ -72,10 +72,9 @@ const GLIMPSE: usize = 44;
 
 /// A [`PermissionPolicy`] that allows exactly the handles this module installs.
 ///
-/// note: Not "allow everything". The two capabilities named here are the ones these tools declare,
-/// and anything else a subject happens to be carrying still has to be decided by somebody. An
-/// evaluation that installed `AllowAll` to get its own tools past the gate would be quietly
-/// granting a shell as well.
+/// note: Not "allow everything". The two capabilities named are the ones these tools declare;
+/// anything else a subject carries must be decided by somebody. Installing `AllowAll` to get its
+/// own tools past the gate would quietly grant a shell as well.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Granted;
 
@@ -93,11 +92,9 @@ impl PermissionPolicy for Granted {
             _ => false,
         };
 
-        // note: the emptiness is checked as well as the contents, because `all` over an empty
-        // list is `true`. A tool that declares nothing - which is what `ToolSpec::new` leaves
-        // you with until you say otherwise - would otherwise be *granted* by a policy that is
-        // meant to grant exactly two things. A capability list is a claim, and this one says
-        // nothing at all, so it is not one of the two
+        // note: the emptiness is checked as well as the contents, because `all` over an empty list
+        // is `true`. A tool that declares nothing - what `ToolSpec::new` leaves until you say
+        // otherwise - would otherwise be granted by a policy meant to grant exactly two things
         match !request.capabilities.is_empty() && request.capabilities.iter().all(mine) {
             true => Verdict::Allow,
             false => Verdict::Deny,
@@ -111,8 +108,8 @@ impl PermissionPolicy for Granted {
 
 /// Looks at a context, and runs experiments on copies of it.
 pub struct Inspect {
-    /// The live context, for `look`. Weak, because a `Kernel` that holds a tool that holds the
-    /// same kernel is a cycle the runtime's own documentation warns about.
+    /// The live context, for `look`. Weak, because a `Kernel` that holds a tool that holds the same
+    /// kernel is a cycle the runtime's documentation warns about.
     reach: Weak<Kernel>,
     /// The frozen context every `test` forks from - the harness's own origin.
     origin: Arc<Origin>,
@@ -153,8 +150,8 @@ impl Inspect {
         self.budget.load(SeqCst)
     }
 
-    /// Runs a test's two copies, adding what they cost to `spend`, and hands back what the
-    /// untouched one answered beside what the treated one did - or why it could not be run.
+    /// Runs a test's two copies, adding their cost to `spend`, and returns what the untouched copy
+    /// answered beside what the treated copy did, or why it could not be run.
     async fn copies(
         &self,
         without: &[ContextId],
@@ -231,8 +228,8 @@ impl Tool for Inspect {
                     .map(|item| (item.id, item.label.clone()))
                     .collect();
                 let (without, unknown) = resolve(named, &known);
-                // not journaled, as `amend` does not journal it: a refusal is something the
-                // subject was not allowed to have, and a name that is not here is a mistake
+                // not journaled, as `amend` does not journal it: a refusal is something the subject
+                // was not allowed to have, and a name that is not here is a mistake
                 if !unknown.is_empty() {
                     return Ok(ToolOutput::error(format!(
                         "nothing here is called {}",
@@ -405,8 +402,8 @@ impl Tool for Amend {
                 Ok(ToolOutput::new(out))
             }
             Some("revise") => {
-                // handed to `resolve` as it came, so that a number is read as the number it is,
-                // as `test` and `exclude` read one - `look` shows items by number
+                // Passed to `resolve` as they came, so a number is read as the number it is, as
+                // `test` and `exclude` read one; `look` shows items by number
                 let named: Vec<Value> = call
                     .args
                     .get("id")
@@ -457,13 +454,13 @@ impl Tool for Amend {
     }
 }
 
-/// Installs the handles on a kernel, and hands back the anchor that keeps their reach alive
-/// together with the journal of what they get used for.
+/// Installs the handles on a kernel and returns the anchor that keeps their reach alive and the
+/// journal of their use.
 ///
-/// note: the return value has to be held, not merely read: the tools hold a [`Weak`] to it, and
-/// dropping it is how they are switched off. An [`Arc<Kernel>`] stored inside a tool the
-/// same kernel holds is a cycle that outlives the last handle to the session, which is the shape
-/// `kamchatka` documents and this copies.
+/// note: the return value must be held, not merely read: the tools hold a [`Weak`] to it, and
+/// dropping it switches them off. An [`Arc<Kernel>`] stored inside a tool the same kernel holds is
+/// a cycle that outlives the last handle to the session; that is the shape `kamchatka` documents
+/// and this copies.
 pub fn install(
     kernel: &Kernel,
     origin: Arc<Origin>,
@@ -473,8 +470,8 @@ pub fn install(
     amend: bool,
 ) -> (Arc<Kernel>, Journal) {
     let anchor = Arc::new(kernel.clone());
-    // one journal between both tools, because they are one subject's hands and a record split in
-    // two would put a test and the edit it justified in different places
+    // Both tools share one journal, because a record split in two would put a test and the edit it
+    // justified in different places
     let journal: Journal = Arc::new(Mutex::new(Vec::new()));
 
     kernel.add_tool(Arc::new(Inspect::new(
@@ -547,16 +544,16 @@ fn verdict(
 
 /// Turns whatever a model named - labels or numbers - into identifiers.
 ///
-/// note: labels as well as numbers on purpose. A subject cannot see the numbering this session
-/// uses unless it looks, and a handle that could only be addressed by number would be measuring
-/// whether it looked rather than what it did next.
+/// note: labels and numbers both, on purpose. A subject cannot see the session's numbering unless
+/// it looks, and a handle that could only be addressed by number would measure whether it looked
+/// rather than what it did next.
 fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, Vec<String>) {
     let mut ids = Vec::new();
     let mut unknown = Vec::new();
     for name in named {
-        // note: a number is taken as the number it is, which is what `look` shows and what the
-        // schema says an item may be named by. Skipped, `"without": [12]` would name nothing at
-        // all, and the refusal would say so with an empty list
+        // note: a number is taken as the number it is, which is what `look` shows and the schema
+        // allows. Skipped, `"without": [12]` would name nothing, and the refusal would say so with
+        // an empty list
         let name = match name {
             Value::String(name) => name.trim().to_owned(),
             Value::Number(number) => number.to_string(),
@@ -586,16 +583,16 @@ fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, V
     (ids, unknown)
 }
 
-/// Which of the named items a subject may move, and why not for the rest.
+/// Which named items a subject may move, and why not for the rest.
 ///
-/// note: These refusals are this experiment's, not the runtime's. The kernel would apply every
-/// one of them without complaint - `set_state` belongs to whoever holds the kernel. What is being
-/// protected is the measurement and the person: a subject that could exclude the brief could make
-/// the question unanswerable, and one that could rewrite the turn it is speaking in could take
-/// the call being executed down with it.
+/// note: These refusals are this experiment's, not the runtime's. The kernel would apply every one
+/// without complaint; `set_state` belongs to whoever holds the kernel. What is protected is the
+/// measurement and the person: a subject that could exclude the brief could make the question
+/// unanswerable, and one that could rewrite the turn it is speaking in could take the call being
+/// executed down with it.
 ///
-/// note: the turn the call is made from, and no other. [`AMEND`] tells the subject that much, and
-/// a subject's earlier answers are its own to move: rewriting one is a thing `repair` is there to
+/// note: the turn the call is made from, and no other. [`AMEND`] tells the subject that much. A
+/// subject's earlier answers are its own to move; rewriting one is a thing `repair` is there to
 /// see, and every answer it gave is already on the record as the step it was given in.
 fn permitted(
     ids: &[ContextId],
@@ -649,13 +646,13 @@ mod tests {
     use super::*;
     use crate::{probe::Reading, subject::Subject};
 
-    /// A test whose copies could not be run is journaled, with what it cost and why, and a name
-    /// that is not here is not journaled as a refusal.
+    /// A test whose copies could not be run is journaled with its cost and reason. An unknown name
+    /// is not journaled as a refusal.
     ///
-    /// note: the `?` on each copy returned before the journal was written, so a test that came
-    /// off the budget left no trace and the question it followed read as one the subject did
-    /// not instrument. And `inspect` filed an unknown name as `Act::Refused`, which is what the
-    /// subject was not allowed to have, where `amend` filed nothing.
+    /// note: The `?` on each copy returned before the journal was written, so a test that came off
+    /// the budget left no trace and the question it followed read as one the subject did not
+    /// instrument. `inspect` filed an unknown name as `Act::Refused`, which the subject was not
+    /// allowed to have; `amend` filed nothing.
     #[tokio::test]
     async fn a_test_that_failed_is_on_the_record_and_a_wrong_name_is_not_a_refusal() {
         let kernel = Kernel::new(nachalnik::Config::default());
@@ -727,12 +724,11 @@ mod tests {
         assert_eq!(inspect.remaining(), 1);
     }
 
-    /// A test spent is a test counted, in what the subject is told as well as in what the handle
-    /// says.
+    /// A spent test is counted in what the subject is told and in what the handle says.
     ///
-    /// note: the figure is in the output of every test, so a budget that always read `1` would
-    /// tell a subject with tests to spare that it has one left, and the next call would be made
-    /// when the handle was empty.
+    /// note: The figure is in every test's output, so a budget that always read `1` would tell a
+    /// subject with tests to spare that it has one left, and the next call would be made when the
+    /// handle was empty.
     #[tokio::test]
     async fn a_test_spent_is_one_the_subject_is_told_about() {
         let kernel = Kernel::new(nachalnik::Config::default());

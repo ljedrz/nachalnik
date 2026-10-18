@@ -14,14 +14,14 @@ use crate::{
 
 /// The model under test, and the session it is being tested in.
 ///
-/// note: A thin thing on purpose. It owns a [`Kernel`] and adds one operation the kernel has no
-/// reason to have - put a question, wait for the turn to end, hand back what was said and what it
-/// cost - and everything else an experiment wants from a subject it gets from
-/// [`Subject::kernel`]. There is nothing about introspection in here.
+/// note: it owns a [`Kernel`] and adds one operation the kernel has no reason to have: put a
+/// question, wait for the turn to end, and hand back what was said and what it cost. Everything
+/// else an experiment wants from a subject comes from [`Subject::kernel`]. There is nothing about
+/// introspection in here.
 ///
-/// note: One subject per experiment. A session that has already been asked about itself has
-/// learnt that it is being measured, which is a difference between the first experiment and the
-/// second one that nothing in a score would show.
+/// note: one subject per experiment. A session that has already been asked about itself has learnt
+/// that it is being measured, which is a difference between the first experiment and the second
+/// that nothing in a score would show.
 pub struct Subject {
     kernel: Kernel,
     rounds: usize,
@@ -58,12 +58,12 @@ impl Subject {
 
     /// A second subject on the same provider and the same parameters, with an empty context.
     ///
-    /// note: What a ladder needs and a single session cannot supply. A stage that asks a subject
-    /// which has already committed to an answer measures deference to evidence; a stage that asks
-    /// one which never guessed measures instrumented accuracy with nothing to defend. The two are
-    /// different questions and neither is optional, so an experiment has to be able to raise a
-    /// sibling - on the same model, at the same temperature, or the comparison is between two
-    /// models rather than two conditions.
+    /// note: a ladder needs two conditions a single session cannot supply. A stage that asks a
+    /// subject which has already committed to an answer measures deference to evidence; a stage
+    /// that asks one which never guessed measures instrumented accuracy with nothing to defend.
+    /// Neither is optional, so an experiment has to be able to raise a sibling on the same model,
+    /// at the same temperature; otherwise the comparison is between two models rather than two
+    /// conditions.
     ///
     /// note: tools and policy are deliberately *not* carried across. A sibling starts with the
     /// context it is given and the handles the experiment chooses to grant it.
@@ -138,11 +138,11 @@ impl Subject {
     /// Puts a probe, and reads the answer.
     pub async fn probe(&self, probe: &Probe) -> Result<(Said, Answer)> {
         let said = self.ask(&probe.asked()).await?;
-        // note: an empty turn that stopped because it ran out of room is not a subject declining
-        // to commit - it is a question that never got an answer, and scoring it as a wrong claim
-        // would charge a model for the harness's token ceiling. A model that stops at the limit
-        // *having said something* is read normally: the reading takes the last tagged line, and
-        // whether one arrived is the subject's business
+        // note: an empty turn that stopped because it ran out of room is not a subject declining to
+        // commit; it is a question that never got an answer, and scoring it as a wrong claim would
+        // charge a model for the harness's token ceiling. A model that stops at the limit having
+        // said something is read normally: the reading takes the last tagged line, and whether one
+        // arrived is the subject's business
         let answer = match said.stop == StopReason::Length && said.text.trim().is_empty() {
             true => Answer::Cut,
             false => probe.read(&said.text),
@@ -183,13 +183,12 @@ pub struct Said {
     pub spend: Spend,
 }
 
-/// What a stretch of a session cost, as the provider counted it.
+/// The cost of a stretch of a session, as the provider counted it.
 ///
-/// note: The provider's figures, not the kernel's estimate. A `TokenCounter` is honest about
-/// being an estimate and the default one comes out low; a benchmark reporting what it cost to run
-/// should report what was actually charged, and that number only exists once a response has come
-/// back. Where a provider reports nothing, these stay at zero and [`Spend::requests`] still
-/// counts.
+/// note: the provider's figures, not the kernel's estimate. A `TokenCounter` is an estimate, and
+/// the default comes out low; a benchmark reporting what it cost to run should report what was
+/// actually charged, and that number exists only once a response has come back. Where a provider
+/// reports nothing, these stay at zero and [`Spend::requests`] still counts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Spend {
@@ -206,8 +205,8 @@ pub struct Spend {
 impl Spend {
     /// Adds up everything a kernel has spent since record `seq`.
     ///
-    /// note: read out of the session log rather than accumulated on the side, so that the figure
-    /// is the same one an auditor reading the log would arrive at. `0` is every record there is.
+    /// note: read from the session log, not accumulated on the side, so an auditor reading the log
+    /// arrives at the same figure. `0` means every record.
     pub fn since(kernel: &Kernel, seq: u64) -> Self {
         let mut spend = Self::default();
         kernel.with_history(|session| {
@@ -310,8 +309,7 @@ mod tests {
 
     /// A subject is filed under the model its provider says it is.
     ///
-    /// note: what a report is grouped by, so a record that did not carry it would leave every run
-    /// of a model reading as a run of no model at all.
+    /// note: reports are grouped by this, so a record without it reads as a run of no model at all.
     #[test]
     fn a_subject_says_what_its_provider_says_it_is() {
         let info = ModelInfo::new("openai", "qwen/qwen3-coder");
@@ -328,10 +326,9 @@ mod tests {
 
     /// A call waiting on a permission decision stops the question rather than being answered.
     ///
-    /// note: There is no user in an evaluation, and the policy is `AskAlways` unless an experiment
-    /// installs one that decides. Asked to go round again, `Kernel::turn` hands back the same
-    /// `Deciding` without transitioning, so a subject that waited would use up its rounds instead
-    /// of saying why it stopped.
+    /// note: an evaluation has no user, and the policy is `AskAlways` unless an experiment installs
+    /// one that decides. If `Kernel::turn` is asked again, it returns the same `Deciding` without
+    /// transitioning, so a waiting subject uses up its rounds instead of saying why it stopped.
     #[tokio::test]
     async fn a_call_nobody_can_answer_stops_the_question() {
         let kernel = Kernel::new(Config::default());
@@ -349,9 +346,9 @@ mod tests {
     /// A turn cut off before the subject said anything is read as a cut, and nothing else is.
     ///
     /// note: the other two are the same case read wrongly, and both would charge a model for the
-    /// harness's token ceiling. A model that stopped at the limit *having said something* is read
-    /// normally, and a turn that said nothing and ended of its own accord is the subject declining
-    /// to commit, which is scored rather than excluded.
+    /// harness's token ceiling. A model that stopped at the limit after saying something is read
+    /// normally; a turn that said nothing and ended on its own is the subject declining to commit,
+    /// which is scored rather than excluded.
     #[tokio::test]
     async fn only_a_turn_cut_off_empty_is_read_as_a_cut() {
         let probe = Probe::claim("Would your answer change?");
@@ -378,11 +375,11 @@ mod tests {
         assert_eq!(silence, Answer::Unreadable);
     }
 
-    /// Everything the session has spent is what the provider charged for, added up.
+    /// The session's spend is everything the provider charged for, added up.
     ///
-    /// note: the provider's figures and not the kernel's estimate, and each of the three counts
-    /// is its own. A session asked twice is the case that needs summing, and a figure that is one
-    /// response's rather than the session's is wrong by the whole of the second.
+    /// note: the provider's figures, not the kernel's estimate; each of the three counts is
+    /// separate. A session asked twice needs summing; a figure from one response is wrong by the
+    /// whole of the second.
     #[tokio::test]
     async fn the_spend_of_a_session_is_every_answer_the_provider_charged_for() {
         let subject = scripted([charging("first", 10, 3, 5), charging("second", 20, 4, 2)]);

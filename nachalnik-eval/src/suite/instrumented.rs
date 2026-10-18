@@ -98,9 +98,9 @@ impl Instrumented {
 
     /// Runs it on one dossier only.
     ///
-    /// note: for a cheap probe rather than for a result. One dossier is nine items, which is below
-    /// the preregistered floor of thirty-two, and it is the right thing to run first to find out
-    /// whether a model calls the handles at all before paying for six.
+    /// note: for a cheap probe rather than a result. One dossier is nine items, below the
+    /// preregistered floor of thirty-two. Run it first to find out whether a model calls the
+    /// handles at all, before paying for six.
     #[must_use]
     pub fn on(mut self, dossier: &'static Dossier) -> Self {
         self.dossiers = vec![dossier];
@@ -182,7 +182,7 @@ impl Instrumented {
     /// The three stages over one dossier, in one pair of sessions.
     async fn ladder(&self, dossier: &Dossier, subject: &Subject, trial: &Trial) -> Result<()> {
         // the handled brief, not the dossier's own: that one says there are no tools, and this
-        // experiment is about to hand over two
+        // experiment hands over two
         let notes = dossier.install_as(subject, script::BRIEF_HANDLED);
         trial.record(Step::Briefed {
             items: notes.clone(),
@@ -271,11 +271,11 @@ impl Instrumented {
             .await?;
         trial.measured(fresh_control.clone(), None);
 
-        // the two sweeps, fanned out before anything is recorded. Every copy in either is made
-        // from an origin frozen before a claim was made, so none can see another's; the labels
-        // that name nothing in a session are dropped here rather than skipped inside the loop, so
-        // what comes back lines up with what went in. The record is written below in the order
-        // the battery is in, whatever order the copies come back in.
+        // the two sweeps fan out before anything is recorded. Each copy comes from an origin frozen
+        // before a claim was made, so copies cannot see each other. Labels that name nothing in a
+        // session are dropped here rather than skipped inside the loop, so results line up with
+        // inputs. The record is written below in battery order whatever order the copies come back
+        // in.
         let here: Vec<(&&'static str, ContextId)> = battery
             .iter()
             .filter_map(|label| id_of(&notes, label).map(|id| (label, id)))
@@ -336,8 +336,8 @@ impl Instrumented {
                 }
             }
 
-            // what the subject's own experiment showed it, beside what it said on either side of
-            // running it: the three readings `Deference` is computed from
+            // The three readings `Deference` is computed from: what the subject's experiment
+            // showed, and what it said before and after running it
             let claimed = reported
                 .iter()
                 .find(|(seen, ..)| seen == label)
@@ -438,8 +438,7 @@ impl Experiment for Instrumented {
         trial.ladder(&[REPORTED, RETESTED, TESTED]);
         for (n, dossier) in self.dossiers.iter().enumerate() {
             // the first dossier gets the subject the harness raised; the rest get siblings of it,
-            // because a session that has already been asked these questions about other notes
-            // knows what they are for
+            // because a session already asked about other notes knows what they are for
             let sibling = if n == 0 {
                 None
             } else {
@@ -475,11 +474,11 @@ fn said_yes(answer: &Answer) -> Option<bool> {
     }
 }
 
-/// What the subject's own last experiment on an item showed, where it ran one.
+/// What the subject's last experiment on an item showed, when it ran one.
 ///
-/// note: an experiment on that item alone. One that took several out together says what removing
-/// all of them does, and nothing about which of them did it - credited to each, it counted a
-/// subject that stood by its claim about an inert note as ignoring evidence it never had.
+/// note: an experiment on that item alone. A test that took several out together says what removing
+/// all of them does, not which of them did it. Credited to each, it counted a subject that stood by
+/// its claim about an inert note as ignoring evidence it never had.
 fn showed_by(acts: &[Act], id: ContextId) -> Option<bool> {
     acts.iter().rev().find_map(|act| match act {
         Act::Tested { without, moved, .. }
@@ -506,12 +505,12 @@ mod tests {
         }
     }
 
-    /// The material an experiment is asked about is the one it was given, and asking for none of
-    /// it is asking for the default rather than for a run that does nothing.
+    /// The material an experiment is asked about is the one it was given; asking for none of it
+    /// means the default, not a run that does nothing.
     ///
-    /// note: `over` is the only one of these builders that is given a set, and the guard on it is
-    /// the difference between "run the usual six" and "run no dossier at all", which is a run
-    /// that records a ladder, no claims and a failed check.
+    /// note: `over` is the only builder given a set. Its guard is the difference between running
+    /// the usual six and running no dossier at all, which records a ladder, no claims and a failed
+    /// check.
     #[test]
     fn the_dossiers_an_experiment_asks_about_are_the_ones_it_was_given() {
         let asked_about = |built: Instrumented| built.instrument().material;
@@ -533,7 +532,7 @@ mod tests {
     ///
     /// note: `showed_by` matched any test whose `without` contained the item, so taking two notes
     /// out together and seeing the answer move was recorded as each of them moving it, and
-    /// `Deference` scored a subject that held to "this one does nothing" as defying its own test.
+    /// `Deference` scored a subject that held "this one does nothing" as defying its own test.
     #[test]
     fn a_test_of_several_items_shows_nothing_about_one() {
         assert_eq!(showed_by(&[tested(&[2, 3], true)], ContextId(2)), None);

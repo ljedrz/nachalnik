@@ -5,11 +5,10 @@ use serde::{Deserialize, Serialize};
 
 /// One controlled change, applied to a copy of a context and never to the session under test.
 ///
-/// note: Every variant is a state change on a [`Snapshot`], which is to say every variant is
-/// something the runtime already does and a person could already do by hand. Nothing here
-/// destroys anything: an item this takes out of a copy keeps its identifier and its contents and
-/// is still listed, which is what lets a copy's own account of itself name the item by the number
-/// the session under test knows it by.
+/// note: Every variant is a state change on a [`Snapshot`]: something the runtime already does and
+/// a person could already do by hand. Nothing here destroys anything: an item removed from a copy
+/// keeps its identifier and contents and is still listed, so the copy can name it by the number
+/// the session under test knows.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -26,21 +25,18 @@ pub enum Intervention {
     Only(Vec<ContextId>),
     /// The named items keep their place in the conversation and lose their content.
     ///
-    /// note: The other way to take something away, and often the better one. An excluded tool
-    /// result takes the call that asked for it down as well - the projector has no choice - so
-    /// the copy reads a conversation in which the call was never made. An elided one still
-    /// answers its call, so only the content is gone, and what changed is what was being tested
-    /// rather than the shape of the turn.
+    /// note: The other way to remove something. An excluded tool result also removes the call that
+    /// asked for it; the projector has no choice, so the copy reads as if the call was never made.
+    /// An elided item still answers its call, so only its content is gone and the test changes
+    /// content, not turn shape.
     ///
-    /// note: and this one is *visible to the copy*. An elided item is projected as a marker made
-    /// of its note, which this sets to `left out of this copy` - so the treated arm reads
-    /// `[... left out of this copy ...]` where the control reads nothing of the kind. That is a
-    /// difference between the two arms besides the one being tested, and a model that notices it
-    /// knows it is being measured. Use it when the shape of the turn is what has to be held
-    /// constant, and know what it costs. [`Intervention::Without`] leaves no trace in the request
-    /// at all, which is why it is what the supplied experiments ablate with and what
-    /// [`Ablation::blind_to`](crate::Ablation::blind_to) applies. `provenance` is the exception,
-    /// because what the marker costs is part of what it measures.
+    /// note: this one is visible to the copy. An elided item is projected as a marker whose note is
+    /// `left out of this copy`, so the treated arm reads `[... left out of this copy ...]` and the
+    /// control does not. That difference is not the one being tested, and a model that notices it
+    /// knows it is being measured. Use it when turn shape must stay constant.
+    /// [`Intervention::Without`] leaves no trace in the request, so the supplied experiments and
+    /// [`Ablation::blind_to`](crate::Ablation::blind_to) use it. `provenance` is the exception: the
+    /// marker's cost is part of what it measures.
     Elided(Vec<ContextId>),
     /// One item says something else.
     Revised {
@@ -86,13 +82,12 @@ impl Intervention {
 
     /// Applies this to a copy of a context, and says what it actually did.
     ///
-    /// note: A [`ContextState::Pinned`] item is moved like any other, and recorded in
-    /// [`Applied::unpinned`]. The runtime refuses a `Compactor` that tries this, and is right to:
-    /// a pin is a promise the kernel makes on the user's behalf against its own automatic
-    /// machinery. This is not that machinery. An experimenter ablating an item they pinned
-    /// themselves is the user, and the answer to "is that system instruction load-bearing?"
-    /// cannot be reached any other way. What must not happen is that it happens quietly, so it is
-    /// on the record.
+    /// note: A [`ContextState::Pinned`] item is moved like any other and recorded in
+    /// [`Applied::unpinned`]. The runtime refuses a `Compactor` that tries this: a pin is a promise
+    /// the kernel makes on the user's behalf against its own automatic machinery, and this is not
+    /// that machinery. An experimenter ablating an item they pinned is the user, and the answer to
+    /// "is that system instruction load-bearing?" cannot be reached any other way. It must not
+    /// happen quietly, so it is on the record.
     pub fn apply(&self, snapshot: &mut Snapshot) -> Applied {
         let mut applied = Applied::default();
         self.apply_to(snapshot, &mut applied);
@@ -132,8 +127,8 @@ impl Intervention {
                     ContextState::Excluded,
                     "not among the items this copy was given",
                 );
-                // the named ones are reported on too, so that naming an item that is not there
-                // is an entry in `missing` rather than a silently smaller experiment
+                // named items not in the context go into `missing`, so the experiment is not
+                // silently smaller
                 for id in &keep {
                     if !snapshot.items.iter().any(|item| item.id == *id) {
                         applied.missing.push(*id);
@@ -148,7 +143,7 @@ impl Intervention {
                         }
                         item.content = Content::text(content.clone());
                         item.note = Some("revised for this copy".to_owned());
-                        // whatever it was estimated at was an estimate of what it used to say;
+                        // the old count was an estimate of what the item used to say;
                         // `Kernel::resume` recounts every item with the counter it resumes under
                         item.tokens = 0;
                         applied.touched.push(*id);
@@ -228,10 +223,9 @@ impl Intervention {
 
 /// What an [`Intervention`] actually did to a copy.
 ///
-/// note: Three lists rather than a count, for the reason the runtime's own `StateChange` keeps
-/// three: "there is no item 12" and "item 12 was pinned and I moved it anyway" are different
-/// things to tell whoever reads the record, and a measurement whose intervention silently did
-/// nothing is worse than one that failed.
+/// note: Three lists rather than a count, as the runtime's own `StateChange` does: "there is no
+/// item 12" and "item 12 was pinned and moved anyway" are different things to record. A measurement
+/// whose intervention silently did nothing is worse than one that failed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Applied {
@@ -241,12 +235,12 @@ pub struct Applied {
     pub missing: Vec<ContextId>,
     /// The items that were pinned, and were moved regardless.
     pub unpinned: Vec<ContextId>,
-    /// The items that were named and were already left out of what is sent, which the
-    /// intervention left as they were rather than bring back.
+    /// Items that were named and were already excluded from what is sent; the intervention left
+    /// them excluded.
     ///
-    /// note: eliding an excluded item puts it back into the copy as a marker the control never
-    /// had - an intervention adding something while claiming to take it away. Skipped, and listed
-    /// apart from `touched`, so the record says what the copy differs by and nothing more.
+    /// note: eliding an excluded item would put it back into the copy as a marker the control never
+    /// had, so the intervention would add something while claiming to remove it. These items are
+    /// skipped and listed apart from `touched`, so the record says only what the copy differs by.
     #[serde(default)]
     pub unsent: Vec<ContextId>,
 }

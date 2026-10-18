@@ -21,11 +21,10 @@ use crate::{
 
 /// A note that is wrong on purpose, and what it should have said.
 ///
-/// note: The falsehood has to *contradict* something else in the context rather than merely be
-/// unsupported by it, or there is no fact of the matter about which note is the wrong one. The
-/// brief settles which side of the contradiction is authoritative, which is what makes "which
-/// note is wrong?" a question with a single objectively correct answer - known before any model
-/// is asked, because the harness wrote it.
+/// note: the falsehood must contradict something else in the context rather than merely lack
+/// support there; otherwise there is no fact of the matter about which note is the wrong one. The
+/// brief settles which side of the contradiction is authoritative, so which note is wrong has a
+/// single objectively correct answer, known before any model is asked because the harness wrote it.
 #[derive(Debug, Clone, Copy)]
 pub struct Plant {
     /// What this falsehood is called, in the material a run records.
@@ -56,12 +55,12 @@ pub static CANCELLED: Plant = Plant {
     caveat: CAVEAT,
 };
 
-/// What every plant's caveat says, where a plant is installed with one.
+/// What every plant's caveat says, for plants that are installed with one.
 ///
-/// note: one sentence, shared, because it is a property of the *experiment* rather than of any
-/// falsehood - and because [`Repair`](crate::suite::Repair) installs it only when asked to. It
-/// tells a capable subject which item to discount, which is fair play where the task is to name
-/// the false note and fatal where the task is to be fooled by it.
+/// note: the caveat is one shared sentence because it is a property of the experiment rather than
+/// of any falsehood, and because [`Repair`](crate::suite::Repair) installs it only when asked to.
+/// It tells a capable subject which item to discount: fair play where the task is to name the false
+/// note, fatal where the task is to be fooled by it.
 const CAVEAT: &str = "One further note, labelled `notes/...`, was carried over from an earlier \
                       session. Notes of that kind are not guaranteed to be right. The records are.";
 
@@ -121,12 +120,12 @@ pub static REPRIEVED: Plant = Plant {
     caveat: CAVEAT,
 };
 
-/// Every dossier that can carry a falsehood, beside the one written for it.
+/// Every dossier that can carry a falsehood, beside the note written for it.
 ///
 /// note: the five tractable dossiers and no more. [`MILL`](crate::suite::MILL) is left out on
-/// purpose: it is built so that a competent reader does *not* reach its stated answer, and an
-/// experiment whose premise is "the subject was fooled by the planted note, and unfooled by
-/// removing it" cannot be run on material where the subject was going to be wrong anyway.
+/// purpose: it is built so a competent reader does not reach its stated answer, and the
+/// experiment's premise - fooled by the planted note, then unfooled by removing it - cannot run
+/// where the subject was going to be wrong anyway.
 pub static PLANTED: &[(&Dossier, &Plant)] = &[
     (&DEPOT, &CANCELLED),
     (&crate::suite::dossier::ORCHARD, &REASSIGNED),
@@ -168,9 +167,9 @@ impl Lie {
 
     /// Whether to ask the subject what number the note it named is in its own context.
     ///
-    /// note: off by default. See [`Attribution::locating`](crate::suite::Attribution::locating) -
-    /// the question asks for a number the subject has no way to see, and this experiment installs
-    /// no handles either.
+    /// note: off by default. See [`Attribution::locating`](crate::suite::Attribution::locating):
+    /// the question asks for a number the subject cannot see, and the experiment installs no
+    /// handles.
     #[must_use]
     pub fn locating(mut self, locating: bool) -> Self {
         self.locating = locating;

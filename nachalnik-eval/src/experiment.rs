@@ -22,18 +22,16 @@ use crate::{
     trial::{Check, Resolution, Step, Trial, checks_of, faceds_of, resolutions_of, spend_of},
 };
 
-/// What identifies the material an experiment used, so that two runs are known to be comparable
-/// or known not to be.
+/// What identifies the material an experiment used, so that two runs are known to be comparable or
+/// known not to be.
 ///
 /// note: A question edited between two runs makes them two measurements, and nothing in a score
-/// shows it. That is the thing a benchmark of this kind most easily gets wrong, and why this is a
-/// field on every [`Outcome`] rather than a line in somebody's notes. The [`Instrument::digest`]
-/// is computed from the exact text the experiment says, so a bumped version is a claim anybody can
-/// check and a *forgotten* bump is caught anyway.
+/// shows it, which is why this is a field on every [`Outcome`] rather than a line in somebody's
+/// notes. The [`Instrument::digest`] is computed from the exact text the experiment says, so a
+/// bumped version is a claim anybody can check and a forgotten bump is caught anyway.
 ///
 /// note: An experiment that states nothing gets [`Instrument::unstated`], and the report says so
-/// rather than pretending. That is the honest answer for a third-party experiment this crate has
-/// never seen.
+/// rather than pretending.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Instrument {
@@ -48,11 +46,10 @@ pub struct Instrument {
 impl Instrument {
     /// Names a version and the material, and fingerprints every sentence of it.
     ///
-    /// note: FNV-1a, which is neither cryptographic nor meant to be: what is wanted is that a
-    /// changed question changes the number, deterministically, on every platform and every
-    /// compiler, forever. `DefaultHasher` is documented as giving none of those guarantees across
-    /// Rust versions, which would make a digest incomparable with one taken last year - the exact
-    /// failure the digest exists to prevent.
+    /// note: FNV-1a, which is not cryptographic and does not need to be. A changed question changes
+    /// the number, deterministically, on every platform and every compiler, forever.
+    /// `DefaultHasher` gives none of those guarantees across Rust versions, so a digest would be
+    /// incomparable with one taken last year - the failure the digest exists to prevent.
     pub fn of<'a>(
         version: impl Into<String>,
         material: impl IntoIterator<Item = &'a str>,
@@ -78,10 +75,10 @@ impl Instrument {
 
     /// The identity of an experiment that does not state one.
     ///
-    /// note: also the [`Default`], which is what lets a report written before this field existed
-    /// still be read back - see the `serde(default)` on [`Outcome::instrument`]. A record that
-    /// cannot be re-read is not a record, and that includes records written by an older version
-    /// of the thing reading them.
+    /// note: also the [`Default`], which lets a report written before this field existed still be
+    /// read back - see the `serde(default)` on [`Outcome::instrument`]. A record that cannot be
+    /// re-read is not a record, and that includes records written by an older version of the thing
+    /// reading them.
     pub fn unstated() -> Self {
         Self::default()
     }
@@ -94,9 +91,8 @@ impl Instrument {
 
 /// A count with its thousands marked, because these run to seven figures.
 ///
-/// note: an unmarked seven-figure count is a number nobody reads at a glance, and two of them are
-/// two nobody compares. The same figures are in the JSON for anything that wants to compute with
-/// them; this side of it is for a person.
+/// note: Nobody reads an unmarked seven-figure count at a glance, and nobody compares two of them.
+/// The same figures are in the JSON for computation; this formatting is for a person.
 fn thousands(n: impl fmt::Display) -> String {
     let digits = n.to_string();
     let mut out = String::new();
@@ -126,10 +122,10 @@ impl fmt::Display for Instrument {
 
 /// One measurement, from setting a subject up to filing the last comparison.
 ///
-/// note: An experiment is given a [`Subject`] and a [`Trial`] and nothing else: the subject is
-/// what it may ask, and the trial is where what it finds out goes. It returns no figures, because
-/// figures are computed from the record afterwards - an experiment that returned its own score
-/// could return one the record does not support.
+/// note: An experiment is given a [`Subject`] and a [`Trial`] and nothing else: the subject is what
+/// it may ask, and the trial is where what it finds out goes. It returns no figures; figures are
+/// computed from the record afterwards. An experiment that returned its own score could return one
+/// the record does not support.
 #[async_trait]
 pub trait Experiment: Send + Sync {
     /// What this experiment is called.
@@ -142,9 +138,9 @@ pub trait Experiment: Send + Sync {
 
     /// What identifies the material it asks with.
     ///
-    /// note: Defaulted to [`Instrument::unstated`] so that a third-party experiment compiles
-    /// without it, and reported as unstated rather than as nothing, because "these two runs may
-    /// or may not have been asked the same thing" is information.
+    /// note: Defaulted to [`Instrument::unstated`] so a third-party experiment compiles without it.
+    /// It is reported as unstated rather than nothing, because whether two runs were asked the same
+    /// thing is information.
     fn instrument(&self) -> Instrument {
         Instrument::unstated()
     }
@@ -152,9 +148,9 @@ pub trait Experiment: Send + Sync {
     /// The question templates it puts to a subject.
     ///
     /// note: the same list [`Experiment::instrument`] fingerprints, so the two cannot drift: a
-    /// template missing from here is missing from the digest, and the digest tests would catch
-    /// it. Declared separately because a question's *text* decides what a subject needs in order
-    /// to answer it, and that is checkable before a run rather than after - see
+    /// template missing from here is missing from the digest, and the digest tests would catch it.
+    /// Declared separately because a question's text decides what a subject needs to answer it, and
+    /// that is checkable before a run rather than after - see
     /// `a_question_that_needs_an_address_comes_with_a_way_to_look` in `tests/machinery/`.
     fn asks(&self) -> &'static [&'static str] {
         &[]
@@ -172,17 +168,16 @@ pub struct Outcome {
     pub experiment: String,
     /// What it asked with.
     ///
-    /// note: `serde(default)` so that a report written before instruments were recorded still
-    /// reads back, as an unstated one. That is the honest answer for it: nobody wrote down what
-    /// that run was asked, and a tool that guessed would be inventing the comparability this
-    /// field exists to establish.
+    /// note: `serde(default)` so that a report written before instruments were recorded still reads
+    /// back, as an unstated one. Nobody wrote down what that run was asked, and a tool that guessed
+    /// would invent the comparability this field exists to establish.
     #[serde(default)]
     pub instrument: Instrument,
-    /// Which rules its claims were resolved and scored by: [`RULES`] as it stood when it ran.
+    /// The rules its claims were resolved and scored by: [`RULES`] as it stood when it ran.
     ///
-    /// note: `serde(default)`, so a report from before the rules were numbered reads as `0`,
-    /// which is what it is. Its stored figures are the ones those rules gave; a figure a reader
-    /// recomputes from its steps, [`Report::surface`] among them, is under the rules of the reader.
+    /// note: `serde(default)`, so a report from before the rules were numbered reads as `0`. Its
+    /// stored figures are the ones those rules gave; a figure a reader recomputes from its steps,
+    /// [`Report::surface`] among them, is under the rules of the reader.
     #[serde(default)]
     pub rules: u32,
     /// The preconditions it tested rather than assumed.
@@ -242,9 +237,8 @@ pub struct Outcome {
     /// Why it stopped early, if it did.
     ///
     /// note: An experiment that fails partway keeps its steps and its scores, and says what went
-    /// wrong beside them. Thirty requests into a run is the wrong moment to discover that a
-    /// harness treats a timeout as a reason to throw the afternoon away - and a run of this kind
-    /// is nearly all requests to somebody else's API, so the timeout is not hypothetical.
+    /// wrong beside them, rather than throwing the run away on a timeout. A run is nearly all
+    /// requests to somebody else's API, so a timeout is not hypothetical.
     pub failed: Option<Failure>,
 }
 
@@ -502,12 +496,11 @@ pub struct Report {
 impl Report {
     /// Every comparison every experiment made, pooled.
     ///
-    /// note: Pooled, and worth being careful with, for two reasons. The experiments ask different
-    /// numbers of questions, so a pooled figure is weighted by how talkative each one is rather
-    /// than by how much each one is worth. And [`Scores::majority`] is taken over outcomes that
-    /// are not all of a kind - a yes-or-no from one experiment beside a note's label from
-    /// another - so the pooled baseline is a mixture rather than a baseline. Read the
-    /// per-experiment scores first; this is for a headline.
+    /// note: the experiments ask different numbers of questions, so a pooled figure is weighted by
+    /// how talkative each one is rather than by how much each one is worth. [`Scores::majority`] is
+    /// taken over outcomes that are not all of a kind - a yes-or-no from one experiment beside a
+    /// note's label from another - so the pooled baseline is a mixture rather than a baseline. Read
+    /// the per-experiment scores first; this is for a headline.
     pub fn scores(&self) -> Scores {
         Scores::over(self.resolutions())
     }
@@ -518,12 +511,12 @@ impl Report {
     /// note: one experiment's claims, because the endpoint counts one claim per note per model.
     /// `feedback`, `privilege`, `instrumented` and `recursion` ask again about notes `attribution`
     /// asks about, and pooling them counted one note several times in a denominator sized at one,
-    /// with the extra weight on whichever notes their batteries share. Each outcome's own
-    /// [`Outcome::surface`] is still worked out, as a description of that experiment, and a
-    /// report with no `attribution` in it has no endpoint.
+    /// with extra weight on whichever notes their batteries share. Each outcome's own
+    /// [`Outcome::surface`] is still worked out as a description of that experiment, and a report
+    /// with no `attribution` in it has no endpoint.
     ///
     /// note: over the claims made without handles in reach, as [`Outcome::surface`] is. A report
-    /// written before that rule is read under it too, since the stages and the grants it needs
+    /// written before that rule is read under it too, because the stages and the grants it needs
     /// are in the record.
     pub fn surface(&self) -> Surface {
         Surface::over(
@@ -535,23 +528,23 @@ impl Report {
         )
     }
 
-    /// What the run says it measured, where its outcomes agree about it.
+    /// The model the run says it measured, where its outcomes agree about it.
     ///
-    /// note: `None` when the outcomes disagree, which would mean a report holding two models -
-    /// something the runner cannot produce and a hand-edited file could.
+    /// note: `None` when the outcomes disagree, which would mean a report holding two models. The
+    /// runner cannot produce that; a hand-edited file could.
     ///
-    /// note: the model's name alone, and not the provider it was reached through, because this is
-    /// what [`per_model`] keys on and a model is the unit a sign test counts. The same weights
-    /// reached through two endpoints are one model measured twice, not two independent ones, and
-    /// keying on the pair would put both in one cohort. [`Report::served_by`] says which endpoint.
+    /// note: the model's name alone, not the provider it was reached through, because this is what
+    /// [`per_model`] keys on and a model is the unit a sign test counts. The same weights reached
+    /// through two endpoints are one model measured twice, not two independent ones, and keying on
+    /// the pair would put both in one cohort. [`Report::served_by`] says which endpoint.
     pub fn model(&self) -> Option<&str> {
         self.agreed(|model| model.model.as_str())
     }
 
     /// The provider the run reached its model through, where its outcomes agree about it.
     ///
-    /// note: a provider's own label, which is whatever the caller named it - `bench` names it by
-    /// its base URL. An aggregator is one provider here however many upstreams it routed to.
+    /// note: a provider's own label, whatever the caller named it. `bench` names it by its base
+    /// URL. An aggregator is one provider here however many upstreams it routed to.
     pub fn served_by(&self) -> Option<&str> {
         self.agreed(|model| model.provider.as_str())
     }
@@ -645,19 +638,18 @@ pub fn per_model<T>(reports: impl IntoIterator<Item = (Report, T)>) -> Vec<(Stri
         .collect()
 }
 
-/// Runs a set of experiments, each on a subject of its own, and collects what they found.
+/// Runs each experiment on its own subject and collects the results.
 ///
-/// note: `make` is called once per experiment rather than once per run, because a session that
-/// has already been asked about itself is not a clean subject: it has learnt that it is being
-/// measured, and nothing in a score would show the difference between the first experiment and
-/// the fourth. The name it is handed is the experiment's, so that the sessions can be told apart
-/// in a log.
+/// note: `make` is called once per experiment, not once per run. A session that has already been
+/// asked about itself is not a clean subject: it has learnt it is being measured, and a score would
+/// not show the difference between the first experiment and the fourth. The name passed to `make`
+/// is the experiment's, so sessions can be told apart in a log.
 ///
-/// note: Nothing here is run concurrently. Every request in an evaluation goes to the same
-/// endpoint, and a harness that fanned four experiments out at once would be measuring a rate
-/// limiter as much as a model. [`evaluate_with`] will do it anyway, under a ceiling and for a
-/// caller who has decided that is a trade worth making; this one stays the safe default, and the
-/// two are not interchangeable - see that function for what actually differs.
+/// note: this function runs nothing concurrently. Every request in an evaluation goes to the same
+/// endpoint, so running four experiments at once would measure the rate limiter as much as the
+/// model. [`evaluate_with`] does that under a ceiling for a caller who accepts the trade; this
+/// function stays the safe default. The two are not interchangeable; see [`evaluate_with`] for the
+/// differences.
 pub async fn evaluate(
     experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
     make: impl Fn(&str) -> Result<Subject>,
@@ -677,9 +669,9 @@ pub async fn evaluate(
             }
         };
 
-        // one at a time, which is what this function promises. An experiment that fans its
-        // independent work out gets a ceiling of one here, and so makes exactly the requests, in
-        // exactly the order, that a `for` loop over that work would
+        // Experiments run one at a time, as this function promises. An experiment that fans its
+        // independent work out gets a ceiling of one here, so it makes exactly the requests, in
+        // exactly the order, of a `for` loop over that work
         under(&subject, &governor);
 
         let trial = Trial::new(experiment.name(), &subject).asking(experiment.instrument());
@@ -694,35 +686,34 @@ pub async fn evaluate(
     Report { at, outcomes }
 }
 
-/// The same, with the experiments run at the same time under a shared ceiling on requests.
+/// The same as [`evaluate`], with the experiments run concurrently under a shared ceiling on
+/// requests.
 ///
-/// note: [`Pace::at_once`] counts *requests in flight*, not experiments. One number rather than
-/// two because the endpoint does not care which experiment a request came from, and because a
-/// ceiling is only a ceiling if it is collective: nine experiments each politely limiting
-/// themselves to eight is seventy-two requests arriving at one endpoint.
+/// note: [`Pace::at_once`] counts *requests in flight*, not experiments. One number rather than two
+/// because the endpoint does not care which experiment a request came from, and because a ceiling
+/// is only a ceiling if it is collective: nine experiments each limiting themselves to eight is
+/// seventy-two requests arriving at one endpoint.
 ///
-/// note: the scores are the scores either way. Every copy is still made from a frozen
+/// note: the scores are the same either way. Every copy is still made from a frozen
 /// [`Origin`](crate::Origin) and still answers one question, so nothing a figure is computed from
-/// depends on what else happened to be in flight beside it. What concurrency can do is make a run
-/// *fail* where a sequential one would have trickled through. A burst collects `429`s, the
-/// retries behind them eat the budget, and probes come back
-/// [`Unreadable`](crate::Answer::Unreadable); that is scored honestly as untested, and quietly
-/// turns a report into a page of nothing. This, rather than any threat to a score, is what
-/// [`evaluate`]'s note is about, and [`Pace`] is the knob that answers it: set it under what the
-/// endpoint allows and the failure does not arise.
+/// depends on what else was in flight beside it. What concurrency can do is make a run *fail* where
+/// a sequential one would have trickled through: a burst collects `429`s, the retries behind them
+/// eat the budget, and probes come back [`Unreadable`](crate::Answer::Unreadable), scored honestly
+/// as untested, which can leave a report with nothing tested in it. That, rather than any threat to
+/// a score, is what [`evaluate`]'s note is about, and [`Pace`] is how you answer it: set it under
+/// what the endpoint allows and the failure does not arise.
 ///
 /// note: [`Pace::per_minute`] spaces what it starts rather than letting the whole minute's
 /// allowance go in its first instant, because a run inside its rate on average can still take an
-/// endpoint down by arriving all at once. What catches whatever gets past [`Pace`] is the
+/// endpoint down by arriving all at once. Whatever gets past [`Pace`] is caught by the
 /// `Retry-After` handling in whichever [`Provider`](nachalnik::Provider) the caller supplied.
 ///
 /// note: `landed` is handed each outcome the moment that experiment finishes, in the order they
-/// finish rather than the order they were given. It is what lets a caller run the whole suite at
-/// once and still show progress, and, more to the point, still write the record of an experiment
-/// that has finished before the ones beside it have. Without it a concurrent run is
-/// all-or-nothing: nothing at all until the last experiment returns, which is the failure the
-/// checkpointing in the `bench` example exists to prevent. The [`Report`] this returns still lists
-/// them in the order they were given.
+/// finish rather than the order they were given. It lets a caller run the whole suite at once and
+/// still show progress, and still write the record of an experiment that has finished before the
+/// ones beside it have. Without it a concurrent run is all-or-nothing: nothing at all until the
+/// last experiment returns, the failure the checkpointing in the `bench` example exists to prevent.
+/// The [`Report`] this returns still lists them in the order they were given.
 pub async fn evaluate_with(
     experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
     make: impl Fn(&str) -> Result<Subject>,
@@ -733,8 +724,8 @@ pub async fn evaluate_with(
     let at = now();
     let governor = Governor::new(pace);
 
-    // built before anything runs, because `make` is the caller's and there is no reason to hold a
-    // lock on it or to call it from several futures at once
+    // built before anything runs: `make` is the caller's, and there is no reason to hold a lock on
+    // it or call it from several futures at once
     let prepared: Vec<_> = experiments
         .into_iter()
         .map(|experiment| {

@@ -12,11 +12,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Things that can stop a measurement.
 ///
-/// note: Deliberately short, and none of it is a *finding*. A subject that answers unreadably, a
-/// copy that says nothing, a claim that turns out to be false: those are results, and they are
-/// recorded as results. What is here is only the conditions under which there is nothing to
-/// record. Even those do not end a run, because [`evaluate`] catches an [`Experiment`]'s error
-/// and keeps the steps it had already taken.
+/// note: none of these is a finding. A subject that answers unreadably, a copy that says nothing,
+/// and a claim that turns out to be false are recorded as results. This enum holds only the
+/// conditions under which there is nothing to record. Even these do not end a run: [`evaluate`]
+/// catches an [`Experiment`]'s error and keeps the steps already taken.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -26,15 +25,15 @@ pub enum Error {
     Silent,
     /// A tool call is waiting on a permission decision, and there is nobody here to ask.
     ///
-    /// note: An evaluation has no user to put the question to, and answering on their behalf is
-    /// the one thing this workspace exists not to do. Give the subject's kernel a policy that
-    /// decides for itself - `nachalnik::test::AllowAll` is one - or no tools.
+    /// note: an evaluation has no user to put the question to, and this workspace must not answer
+    /// on their behalf. Give the subject's kernel a policy that decides for itself
+    /// (`nachalnik::test::AllowAll` is one) or no tools.
     Undecided,
     /// The subject used up its request budget without ending its turn.
     ///
-    /// note: See `Config::max_requests_per_turn` and [`Subject::rounds`]: between them they
-    /// bound how long one question may run for, and a subject that keeps calling tools instead
-    /// of answering hits that bound rather than the harness waiting for it forever.
+    /// note: `Config::max_requests_per_turn` and [`Subject::rounds`] bound how long one question
+    /// may run. A subject that keeps calling tools instead of answering hits that bound, so the
+    /// harness does not wait for it forever.
     Exhausted,
     /// An experiment could not set itself up, and says why.
     Setup(String),

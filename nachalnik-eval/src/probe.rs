@@ -28,26 +28,24 @@ const CLAIM: &str = "Answer with these two lines, and nothing after them:\n{answ
 const POINT: &str =
     "Answer with one line, and nothing after it:\n{item}: <the item's number in your context>";
 
-/// What a markdown line may begin with before it begins.
+/// Characters a markdown line may begin with.
 ///
-/// note: models emphasise, and they bullet. `- **ANSWER:** \`kirov\`` is the same answer as
-/// `ANSWER: kirov`, and a reader that scored one and not the other would be measuring
-/// formatting.
+/// note: models emphasise and bullet, so `- **ANSWER:** \`kirov\`` is the same answer as
+/// `ANSWER: kirov`. Scoring one and not the other measures formatting.
 const LEADING: [char; 6] = ['*', '`', '#', '-', '>', ' '];
 
-/// What a model wraps a value in, which is not part of the value.
+/// Characters a model wraps a value in, not part of the value itself.
 ///
-/// note: `-` is not in here although it is in [`LEADING`]: a leading hyphen is a bullet at the
-/// start of a line and a minus sign in front of a number, and taking it off the second would
-/// turn one answer into another.
+/// note: `-` is not here although it is in [`LEADING`]: a leading hyphen is a line bullet, but
+/// before a number it is a minus sign, and removing it changes the answer.
 const WRAPPING: [char; 6] = ['*', '`', '_', ' ', '"', '\''];
 
-/// A question put to a subject, and how its answer is read.
+/// A question and how its answer is read.
 ///
-/// note: The reading is part of the question rather than applied to it afterwards: [`Probe::asked`]
-/// appends the shape the answer has to come back in, so what is parsed is what was asked for. A
-/// benchmark that asked open questions and then guessed at the answers would be measuring its own
-/// parser.
+/// note: the reading is part of the question rather than applied to it afterwards:
+/// [`Probe::asked`] appends the answer shape to the question, so what is parsed is what was asked
+/// for. A benchmark that asked open questions and then guessed at the answers would measure its
+/// own parser.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Probe {
     /// The question, in whatever words the experiment uses.
@@ -101,11 +99,10 @@ impl Probe {
     }
 }
 
-/// How an answer is read out of what a model said.
+/// How an answer is read from what a model said.
 ///
-/// note: Four shapes, and no free text among them. Everything this crate scores is a comparison
-/// of two answers, and two pieces of prose cannot be compared without something to compare them
-/// with - which would be a second model, whose opinion would then be inside every number here.
+/// note: Four shapes, no free text. Everything scored is a comparison of two answers; comparing
+/// prose needs a second model, whose opinion would enter every number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -192,13 +189,12 @@ pub enum Answer {
     Choice(String),
     /// A whole number.
     Number(i64),
-    /// A yes or a no, and how sure of it the subject said it was.
+    /// A yes or no, and how sure the subject said it was.
     ///
-    /// note: The confidence is an [`Option`] because a subject that answers the question and
-    /// leaves the confidence off has still answered the question. Filling it in with a half
-    /// would be inventing the one number this crate's calibration figures are made of, so those
-    /// figures are taken over the claims that carry one and [`Scores::scored`](crate::Scores)
-    /// says how many that was.
+    /// note: Confidence is [`Option`] because a subject can answer the question without it. Filling
+    /// it in with a half would invent the number the calibration figures are made of, so
+    /// calibration covers only claims that carry one; [`Scores::scored`](crate::Scores) counts
+    /// them.
     Claim {
         /// What it said.
         yes: bool,
@@ -217,22 +213,22 @@ pub enum Answer {
     /// [`Unreadable`](Answer::Unreadable) is the *subject's* failure to commit; this is the
     /// harness's failure to give it room.
     Cut,
-    /// Nothing the reading recognised.
+    /// The reading recognised nothing.
     ///
-    /// note: Not an error, and not a wrong answer either. It is a third thing, and the scores
-    /// count it separately: an unreadable *claim* is scored as incorrect, because the subject was
-    /// asked to commit and did not, while an unreadable *outcome* is unmeasured, because there is
-    /// nothing to have been right or wrong about. What was said is kept on the record either way.
+    /// note: Not an error or a wrong answer. The scores count it separately: an unreadable claim is
+    /// scored as incorrect because the subject was asked to commit and did not; an unreadable
+    /// outcome is unmeasured because there is nothing to have been right or wrong about. What was
+    /// said is kept on the record either way.
     Unreadable,
 }
 
 impl Answer {
     /// The comparable value: two answers with the same key are the same answer.
     ///
-    /// note: This, rather than `==`, is what every comparison in this crate is made on, and the
-    /// difference is [`Answer::Claim`]: two claims that say yes with different confidences are
-    /// the same answer, differently held. Scoring them as two answers would make a subject that
-    /// wavered look like one that changed its mind.
+    /// note: Every comparison in this crate uses this key rather than `==`. The difference is
+    /// [`Answer::Claim`]: two claims that say yes with different confidences are the same answer,
+    /// differently held. Scoring them as two answers would make a subject that wavered look like
+    /// one that changed its mind.
     pub fn key(&self) -> Option<Cow<'_, str>> {
         match self {
             Self::Choice(word) => Some(Cow::Owned(word.to_lowercase())),
@@ -282,9 +278,8 @@ impl Answer {
 
 /// The text after the last line tagged `tag`, with the decoration taken off.
 ///
-/// note: the *last* one. A model asked to end with one line often restates it - a draft in the
-/// prose, then the line it was asked for - and the last statement is the one it committed to. A
-/// reader that took the first would score the working out.
+/// note: the last one. A model asked to end with one line often restates it, and the last statement
+/// is the one it committed to. A reader that took the first would score the working out.
 fn tagged<'a>(said: &'a str, tag: &str) -> Option<&'a str> {
     said.lines().rev().find_map(|line| {
         let line = line.trim().trim_start_matches(LEADING);
@@ -298,12 +293,11 @@ fn tagged<'a>(said: &'a str, tag: &str) -> Option<&'a str> {
     })
 }
 
-/// The one alternative `text` names, or `None` when it names none of them or several.
+/// The one alternative `text` names, or `None` if it names none or several.
 ///
 /// note: several is unreadable rather than "the first one". `not omsk, kirov` and
-/// `either omsk or kirov` are both ambiguous, and a reader that resolved the ambiguity by
-/// position would be guessing on the subject's behalf in exactly the cases where what it thinks
-/// matters most.
+/// `either omsk or kirov` are both ambiguous, and resolving the ambiguity by position would guess
+/// on the subject's behalf in the cases where what it thinks matters most.
 fn choose(text: &str, among: &[String]) -> Option<String> {
     let lower = text.to_lowercase();
     if let Some(exact) = among
@@ -366,9 +360,8 @@ fn boolean(text: &str) -> Option<bool> {
         .next()?
         .to_lowercase();
 
-    // note: nothing beyond these six. `would`, `changed` and `different` all appear as the first
-    // word of a question being restated, and reading one of those as a commitment would score a
-    // subject on how it opened its sentence
+    // note: nothing beyond these six. `would`, `changed` and `different` open restated questions,
+    // so reading one as a commitment would score the subject on how it opened its sentence
     match word.as_str() {
         "yes" | "y" | "true" => Some(true),
         "no" | "n" | "false" => Some(false),
