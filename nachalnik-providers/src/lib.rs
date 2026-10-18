@@ -1,9 +1,8 @@
 //! Providers for the [`nachalnik`] agent runtime: somebody else's HTTP API, read carefully.
 //!
-//! The runtime ships no provider and never will - it has no network in it, and a kernel that
-//! opened a socket would be a kernel with an opinion about who you talk to. That leaves every
-//! adopter writing the same streamed HTTP client before they can ask a model anything, and this
-//! crate is that client.
+//! The runtime ships no provider and never will: it has no network, and a kernel that opened a
+//! socket would have an opinion about who you talk to. Without this crate every adopter would write
+//! the same streamed HTTP client before asking a model anything.
 //!
 //! Everything in here is an [`Endpoint`]: an address, a key, a model identifier, a listing, and
 //! something to say when the server is slow. What splits the crate in two is whether the model
@@ -13,14 +12,14 @@
 //! session is what comes out. There are three, each behind the feature of the same name, and
 //! `openai` is on by default:
 //!
-//! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from
-//!   fragments. What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak.
-//!   With [`OpenAiCompatible::responses`], OpenAI's Responses API instead: ordered items, and a
+//! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments.
+//!   What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak. With
+//!   [`OpenAiCompatible::responses`], OpenAI's Responses API instead: ordered items, and a
 //!   reasoning model's thinking sealed and sent back rather than redone every turn.
 //! - [`gemini`] - Google's own `generateContent`: `candidates[].content.parts`, whole calls, and
 //!   ordered `thought` parts, which is the dialect [`nachalnik::Content::Blocks`] was built for.
-//! - [`anthropic`] - Anthropic's Messages API: typed blocks, whole calls whose arguments stream
-//!   in fragments, and signed thinking that has to go back as it came. OpenRouter speaks it too.
+//! - [`anthropic`] - Anthropic's Messages API: typed blocks, whole calls whose arguments stream in
+//!   fragments, and signed thinking that has to go back as it came. OpenRouter speaks it too.
 //!
 //! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
 //! kernel in its path at all:
@@ -50,16 +49,14 @@
 //! # }
 //! ```
 //!
-//! note: nothing in this crate reads the environment. Where the requests go, which key pays for
-//! them and what limit to measure against are the caller's to decide and its business to say out
-//! loud: a library that quietly picked up `OPENAI_API_KEY` would be spending somebody's money on
-//! the strength of a variable they exported for another reason. [`OpenAiCompatible::new`] takes
-//! the address and the key, and [`OpenAiCompatible::with_context_limit`] a limit to measure
-//! against in place of the one the endpoint advertises.
+//! note: nothing in this crate reads the environment. Where requests go, which key pays and what
+//! limit to measure against are the caller's to decide and say: a library that quietly picked up
+//! `OPENAI_API_KEY` would spend somebody's money on a variable exported for another reason.
+//! [`OpenAiCompatible::new`] takes the address and the key, and
+//! [`OpenAiCompatible::with_context_limit`] a limit to use instead of the advertised one.
 //!
-//! note: every dialect reports fragments through a [`nachalnik::DeltaSink`] and print nothing.
-//! The screen belongs to whoever owns it, and a provider writing to it would be drawing over
-//! somebody's frame.
+//! note: every dialect reports fragments through a [`nachalnik::DeltaSink`] and prints nothing: the
+//! screen belongs to whoever owns it.
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
@@ -467,12 +464,11 @@ pub(crate) fn recorded(url: &str) -> String {
 
 /// Installs the `rustls` cryptographic provider, and does nothing if already installed.
 ///
-/// note: reqwest is built with `rustls-no-provider`, so there is no default provider. A client
+/// note: reqwest is built with `rustls-no-provider`, so there is no default provider, and a client
 /// built without one fails at the first `https://` with "no process-level CryptoProvider
-/// available". Every constructor in this crate calls it, so a test or example that builds a
-/// provider and never reaches `main` is not the one that finds out. It is public because a caller
-/// building its own [`reqwest::Client`] needs it, and because a program installing a different
-/// provider wants to do so before any of this runs.
+/// available". Every constructor here calls this, so a test or example that never reaches `main`
+/// does not find out. It is public for a caller building its own [`reqwest::Client`], and for a
+/// program that installs a different provider before any of this runs.
 pub fn install_crypto() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }

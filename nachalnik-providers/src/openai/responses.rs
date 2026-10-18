@@ -1,25 +1,23 @@
 //! OpenAI's Responses API: the same endpoint as chat completions, asked at `/responses`, where a
 //! turn is an ordered list of typed items rather than a message with slots.
 //!
-//! note: a mode of [`OpenAiCompatible`] rather than a dialect of its own, because everything about
-//! *where* the requests go is the same - the key, the listing, the attribution, the probe, ollama's
-//! loaded limit - and only what a request says and what an answer means differ. Those are here.
+//! note: a mode of [`OpenAiCompatible`] rather than a dialect, because where requests go (the key,
+//! the listing, the attribution, the probe, ollama's loaded limit) is the same; only what a request
+//! says and what an answer means differ, and those are here.
 //!
-//! note: what makes it worth having is the reasoning. A reasoning model's thinking comes back as a
-//! `reasoning` item whose `encrypted_content` is the thinking itself, sealed, and the chat
-//! completions dialect has nowhere to put it - so every turn there starts thinking from nothing,
-//! and pays to. Sent back, it is read again rather than redone: measured through OpenRouter on
-//! `gpt-5-nano`, the request that carried a call's result back spent no reasoning tokens with the
-//! item and 64 without it.
+//! note: the reasoning makes it worth having. A reasoning model's thinking comes back as a
+//! `reasoning` item whose `encrypted_content` is the thinking, sealed, which chat completions has
+//! nowhere to keep, so every turn there thinks from nothing and pays for it. Sent back, it is read
+//! again rather than redone.
 //!
-//! note: asked with `store: false`, so nothing is kept on the server between requests and the
-//! encrypted reasoning is the only way the thinking survives one - which is why `include` always
-//! asks for it. The whole conversation goes every time, as in the other dialects: the context is
-//! the session's, not the server's.
+//! note: asked with `store: false`, so the server keeps nothing between requests and the encrypted
+//! reasoning is how the thinking survives, which is why `include` always asks for it. The whole
+//! conversation goes every time, as in the other dialects: the context is the session's, not the
+//! server's.
 //!
-//! note: only the fields this API defines go back on an item, as in the Anthropic dialect. An item
-//! that came through OpenRouter carries a `format` and an id of OpenRouter's own (`fc_tmp_...`),
-//! and a session that started elsewhere carries other providers' fields on its blocks.
+//! note: as in the Anthropic dialect, only the fields this API defines go back on an item: one that
+//! came through OpenRouter carries a `format` and an id of OpenRouter's own (`fc_tmp_...`), and a
+//! session started elsewhere carries other providers' fields on its blocks.
 
 use nachalnik::{
     Block, BoxError, Content, DeltaSink, Message, ModelRequest, ModelResponse, Part, Role,

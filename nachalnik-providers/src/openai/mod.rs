@@ -23,14 +23,13 @@ mod wire;
 /// Parameters that stop a stream being a stream, and what each one does instead.
 ///
 /// note: a stream in this dialect is text arriving in order, and every client appends. Inception's
-/// `diffusing` sends the whole answer again in `delta.content` at each denoising step. Appended,
-/// the answer becomes every draft end to end: in the answer, the context, the token count, and
-/// whatever the client wrote down.
+/// `diffusing` sends the whole answer again in `delta.content` at each denoising step, so appended,
+/// the answer becomes every draft end to end, in the context, the token count and wherever the
+/// client writes it.
 ///
-/// note: a list to warn from, not a refusal or a reader that tries to cope. Parameters are the
-/// caller's to set and are carried to the provider verbatim; that is the runtime's rule, and a
-/// provider does not get to break it. Nothing on the wire marks a snapshot, so a reader coping
-/// would be guessing. A client can say so before the request, which is what this is for.
+/// note: a list to warn from, not a refusal or a reader that copes: parameters are the caller's and
+/// are carried verbatim, which is the runtime's rule, and nothing on the wire marks a snapshot, so
+/// coping would be guessing. A client can warn before the request.
 pub const NOT_A_STREAM: [(&str, &str); 1] = [(
     "diffusing",
     "sends the whole answer again at each denoising step, and a stream is read here as text \
@@ -55,9 +54,9 @@ pub struct OpenAiCompatible {
     /// The limit the caller set by hand, if any. Changing model or endpoint puts it back rather
     /// than dropping it.
     ///
-    /// note: separate from [`Self::context_limit`], which is what [`Self::probe`] discovered. The
-    /// limit is about the session, not whichever model the session asks. A `set_model` that quietly
-    /// replaced it with whatever the endpoint advertises would overrule the caller.
+    /// note: separate from [`Self::context_limit`], which [`Self::probe`] discovered: the caller's
+    /// limit is about the session, not the model, and a `set_model` that replaced it with what the
+    /// endpoint advertises would overrule the caller.
     configured: Option<usize>,
     /// How many HTTP requests this has made in its life, retries counted separately. Never reset:
     /// it answers "what did this cost", which a run wants at the end.
@@ -74,9 +73,9 @@ pub struct OpenAiCompatible {
     /// Who these requests are on behalf of, where the endpoint asks. Set once at construction: a
     /// property of the program making the request, not of the session.
     ///
-    /// note: one value rather than a field per header, so builder method call order does not decide
-    /// what goes out. A category set before the app was named is kept, and sent once there is a URL
-    /// to send it with. See [`Attribution`].
+    /// note: one value rather than a field per header, so the order of builder calls does not
+    /// decide what goes out: a category set before the app was named is kept, and sent once there
+    /// is a URL to send it with. See [`Attribution`].
     app: Attribution,
     /// What this endpoint is called, as [`nachalnik::ModelInfo::provider`] reports it.
     ///
@@ -138,24 +137,21 @@ impl OpenAiCompatible {
         }
     }
 
-    /// A client with the timeout a slow endpoint wants, which reqwest's own default is not:
-    /// [`reqwest::ClientBuilder::timeout`] is unset unless somebody sets it, so the client
-    /// [`OpenAiCompatible::new`] builds for itself has none at all.
+    /// A client with the timeout a slow endpoint needs. reqwest leaves
+    /// [`reqwest::ClientBuilder::timeout`] unset, so the client [`OpenAiCompatible::new`] builds
+    /// for itself would otherwise have none.
     ///
-    /// note: also where the cryptography `rustls` will use is installed, for a caller that builds
-    /// its own client and would otherwise find out at the first `https://`. See
-    /// [`crate::install_crypto`].
+    /// note: also installs the cryptography `rustls` uses, for a caller that builds its own client
+    /// and would otherwise find out at the first `https://`; see [`crate::install_crypto`].
     ///
-    /// note: worth choosing deliberately, because reqwest's timeout covers the *whole* request -
-    /// connect, generate and body - so it is an upper bound on how long a model may think and not
-    /// only on how long a dead socket may hang. Set it below what the work takes and every long
-    /// answer arrives as `error decoding response body`, which looks like a network fault and is
-    /// not one. The default here is ten minutes for that reason.
+    /// note: choose it deliberately: reqwest's timeout covers the whole request (connect, generate
+    /// and body), so it bounds how long a model may think, not only how long a dead socket hangs.
+    /// Set below what the work takes, every long answer arrives as `error decoding response body`,
+    /// which looks like a network fault and is not. The default is ten minutes for that reason.
     ///
-    /// note: a provider with no timeout is not a provider with no patience, which is why the
-    /// default client is usable rather than a trap. What catches a socket with nobody on the other
-    /// end is the silence watch - counted by this crate rather than told by the transport - and it
-    /// ends a request that has said nothing whether or not anything else would have.
+    /// note: without a timeout a provider still has patience, so the default client is usable
+    /// rather than a trap: the silence watch, counted by this crate rather than the transport, ends
+    /// a request that has said nothing.
     pub fn client() -> reqwest::Client {
         Self::client_with(WHOLE_ANSWER)
     }
@@ -172,11 +168,10 @@ impl OpenAiCompatible {
     /// Sends through the caller's own client, so several models on one host share a connection pool
     /// and the timeout is the caller's to set.
     ///
-    /// note: a caller's own client may be built before any constructor in this crate has run, so
-    /// call [`crate::install_crypto`] first or `reqwest::ClientBuilder::build` panics, recommending
-    /// `aws_lc_rs`, which is reqwest's suggestion and not this crate's provider.
-    /// [`Self::client_with`] is the way round it when only a different timeout is wanted, because
-    /// it installs the cryptography itself.
+    /// note: a caller's own client may be built before any constructor here has run, so call
+    /// [`crate::install_crypto`] first, or `reqwest::ClientBuilder::build` panics recommending
+    /// `aws_lc_rs` (reqwest's suggestion, not this crate's provider). [`Self::client_with`]
+    /// installs the cryptography itself, for when only a different timeout is wanted.
     #[must_use]
     pub fn with_client(mut self, client: reqwest::Client) -> Self {
         self.client = client;
@@ -192,37 +187,36 @@ impl OpenAiCompatible {
 
     /// Whether to ask for a streamed answer. On unless turned off.
     ///
-    /// note: a whole answer is worth having when nothing watches it arrive - a benchmark, a batch,
-    /// a test - and it is the only way to reach some endpoints' non-streaming paths, which may
-    /// differ from their streaming code. It costs every [`nachalnik::DeltaSink`] fragment and
-    /// anything from a turn stopped partway: an interrupt still ends the wait, but comes back empty
-    /// because a one-piece answer has no middle to keep.
+    /// note: a whole answer suits a benchmark, a batch or a test, where nothing watches it arrive,
+    /// and reaches some endpoints' non-streaming paths, which can differ from their streaming code.
+    /// It costs every [`nachalnik::DeltaSink`] fragment and anything from a turn stopped partway:
+    /// an interrupt still ends the wait but returns nothing, since a one-piece answer has no
+    /// middle.
     #[must_use]
     pub fn streaming(mut self, stream: bool) -> Self {
         self.stream = stream;
         self
     }
 
-    /// Whether to take thinking a model wrote into its own content back out of it. On unless
-    /// turned off.
+    /// Whether to take thinking a model wrote into its own content back out of it. On unless turned
+    /// off.
     ///
-    /// note: this dialect carries the thinking in `reasoning`, beside the content and not in it -
-    /// but a model whose chat template ends the prompt *inside* a thinking block never writes the
-    /// `<think>` that opened it, and an endpoint serving that model with no reasoning parser of
-    /// its own passes the whole thing through as content. What arrives is an answer with its own
-    /// thinking on the front and a bare `</think>` in the middle of it. From
-    /// `poolside/laguna-xs-2.1:free`, left alone, the tag goes into the context, the transcript and
+    /// note: this dialect carries thinking in `reasoning`, beside the content, but a model whose
+    /// chat template ends the prompt inside a thinking block never writes the opening `<think>`,
+    /// and an endpoint with no reasoning parser of its own passes everything through as content: an
+    /// answer with its thinking in front and a bare `</think>` in the middle. From
+    /// `poolside/laguna-xs-2.1:free`, left alone, the tag reaches the context, the transcript and
     /// the log, and `reasoning` is `None` while the reasoning sits in the text.
     ///
-    /// So a `</think>` in the content is read as what it is, the thinking in front of it becomes
+    /// So a `</think>` in the content is read as what it is: the thinking before it becomes
     /// [`nachalnik::ModelResponse::reasoning`], and what follows is the answer. Only where the
-    /// endpoint reported no reasoning of its own: one that fills the field properly is one whose
-    /// content is content, and is not touched. The whole response is on
-    /// [`nachalnik::ModelResponse::raw`] either way, so nothing here is destroyed.
+    /// endpoint reported no reasoning of its own, since one that fills the field has content that
+    /// is content. The whole response stays on [`nachalnik::ModelResponse::raw`], so nothing is
+    /// destroyed.
     ///
-    /// note: worth turning off where a model may write `</think>` as text and mean it - a
-    /// conversation about these tags is the obvious one, and it would lose whatever came before
-    /// the first of them to the reasoning channel.
+    /// note: turn it off where a model may write `</think>` as text and mean it, as in a
+    /// conversation about these tags, which would otherwise lose whatever came before the first one
+    /// to the reasoning channel.
     #[must_use]
     pub fn thinking_in_content(mut self, on: bool) -> Self {
         self.thinking_in_content = on;
@@ -232,19 +226,19 @@ impl OpenAiCompatible {
     /// Whether to send an assistant turn's thinking back with it, as `reasoning` beside its
     /// content. Off unless turned on.
     ///
-    /// note: for a model that refuses a request whose tool-calling turns come back without the
-    /// thinking that produced them, and answers `400` to every request after the first call. Off by
-    /// default because most endpoints speaking this dialect reject a message carrying a field they
-    /// do not know, and because the thinking costs its tokens on every request. `reasoning` is
-    /// OpenRouter's name for it and the one this dialect reads first; an endpoint that wants
-    /// `reasoning_content` back does not get it from this.
+    /// note: for a model that answers `400` to every request after its first tool call unless its
+    /// tool-calling turns come back with the thinking that produced them. Off by default because
+    /// most endpoints of this dialect reject a message with a field they do not know, and because
+    /// the thinking costs its tokens on every request. `reasoning` is OpenRouter's name and the one
+    /// this dialect reads first; an endpoint that wants `reasoning_content` back does not get it
+    /// from this.
     ///
     /// note: [`Dialect::projection`] follows it, so the budget counts the thinking exactly when it
-    /// is sent. A turn the projector elided goes without its thinking either way, and a turn whose
-    /// thinking is empty goes without the field.
+    /// is sent. A turn the projector elided goes without its thinking either way, and a turn with
+    /// empty thinking goes without the field.
     ///
-    /// note: does not apply with [`Self::responses`], which sends back the sealed thinking that API
-    /// hands out and nothing else.
+    /// note: not with [`Self::responses`], which sends back only the sealed thinking that API hands
+    /// out.
     #[must_use]
     pub fn send_reasoning(mut self, on: bool) -> Self {
         self.send_reasoning = on;
@@ -254,21 +248,20 @@ impl OpenAiCompatible {
     /// Whether to ask OpenAI's Responses API, at `/responses`, rather than chat completions. Off
     /// unless turned on.
     ///
-    /// note: the same endpoint, key and listing, and a different conversation. A turn comes back as
-    /// ordered items - reasoning, a message, calls - and goes back out the same way, the reasoning
-    /// sealed in the `encrypted_content` this API hands out for it. Chat completions has nowhere to
-    /// put that, so a reasoning model asked through it starts every turn's thinking from nothing.
-    /// OpenAI's own API answers it, and so does OpenRouter. Most of the rest of this dialect's
-    /// servers do not, which is why it is not the default.
+    /// note: the same endpoint, key and listing, and a different conversation: a turn comes back as
+    /// ordered items (reasoning, a message, calls) and goes back the same way, the reasoning sealed
+    /// in the `encrypted_content` this API hands out. Chat completions has nowhere to put that, so
+    /// a reasoning model asked through it starts every turn's thinking from nothing. OpenAI's own
+    /// API and OpenRouter answer it; most other servers of this dialect do not, so it is not the
+    /// default.
     ///
-    /// note: the requests are made with `store: false`, so the server keeps nothing between them,
-    /// and with `reasoning.encrypted_content` added to `include`, which is what makes the thinking
-    /// something that can be sent back. Both are the caller's to change in the parameters; the
-    /// second is added again to an `include` they set, unless they asked the server to `store` the
-    /// conversation instead.
+    /// note: requests are made with `store: false`, so the server keeps nothing between them, and
+    /// with `reasoning.encrypted_content` in `include`, which is what makes the thinking
+    /// returnable. Both are the caller's to change in the parameters; the second is added back to
+    /// an `include` they set unless they asked the server to `store` the conversation instead.
     ///
-    /// note: [`Self::thinking_in_content`] does not apply. This API keeps the thinking in items of
-    /// its own, and a `</think>` in what the model said is a word it said.
+    /// note: [`Self::thinking_in_content`] does not apply: this API keeps thinking in items of its
+    /// own, so a `</think>` in what the model said is a word it said.
     #[must_use]
     pub fn responses(mut self, on: bool) -> Self {
         self.responses = on;
@@ -334,10 +327,9 @@ impl OpenAiCompatible {
 
     /// Says what kind of program it is, in the categories the endpoint files apps under.
     ///
-    /// note: does nothing on its own. It is sent beside [`Self::on_behalf_of`] or not at all, and
-    /// to the same one endpoint. The page is built against the URL, so a category with no URL
-    /// beside it describes nothing and buys the caller nothing. See [`Attribution::filed_under`]
-    /// for what is and is not checked.
+    /// note: does nothing alone: it is sent with [`Self::on_behalf_of`] or not at all, to the same
+    /// endpoint, because the endpoint's page is built against the URL and a category without one
+    /// describes nothing. See [`Attribution::filed_under`] for what is and is not checked.
     #[must_use]
     pub fn filed_under<C: Into<String>>(mut self, categories: impl IntoIterator<Item = C>) -> Self {
         self.app = std::mem::take(&mut self.app).filed_under(categories);
@@ -363,12 +355,12 @@ impl OpenAiCompatible {
     /// Measures against this limit rather than against whatever the endpoint advertises.
     ///
     /// note: for the two cases [`probe`](Self::probe) cannot settle: an endpoint that publishes no
-    /// context length, and one whose published length is not what the model is actually served
-    /// with. It is sticky: [`set_model`](Self::set_model) and [`set_endpoint`](Self::set_endpoint)
-    /// put it back, because it is a decision about what to measure, not a fact about one model.
+    /// context length, and one whose published length is not what the model is served with. It is
+    /// kept across [`set_model`](Self::set_model) and [`set_endpoint`](Self::set_endpoint), because
+    /// it is a decision about what to measure, not a fact about one model.
     ///
-    /// note: `None` means "ask the endpoint", which is the default, not "no limit". A caller can
-    /// pass the `Option` straight through from its own configuration.
+    /// note: `None` means ask the endpoint (the default), not no limit, so a caller can pass its
+    /// own configuration's `Option` straight through.
     pub fn with_context_limit(mut self, limit: Option<usize>) -> Self {
         self.configured = limit;
         *self.context_limit.get_mut() = limit;
@@ -402,14 +394,14 @@ impl OpenAiCompatible {
 
     /// Sends the requests somewhere else from now on, and asks the new place what it can hold.
     ///
-    /// note: the model goes with it, because a model belongs to the address it is served at. Given
-    /// none, the old name is kept - a name right at both addresses is the ordinary case - and the
-    /// new endpoint is then asked whether it has one by that name, a notice rather than a 404 on
-    /// the next request.
+    /// note: the model goes with it, because a model belongs to the address that serves it. Given
+    /// none, the old name is kept (a name right at both addresses is the ordinary case) and the new
+    /// endpoint is asked whether it has it, so a missing one is a notice rather than a 404 on the
+    /// next request.
     ///
-    /// note: the key is not changed with it. It is given once, at construction; a key typed at the
-    /// prompt would be in the transcript. This is for endpoints that need no key or the same one: a
-    /// local model, a proxy, a second base URL on the same account.
+    /// note: the key does not change: it is given once, at construction, since a key typed at the
+    /// prompt would land in the transcript. This is for endpoints that need no key or the same one:
+    /// a local model, a proxy, a second base URL on the same account.
     pub async fn set_endpoint(&self, url: impl Into<String>, model: Option<String>) {
         *self.base_url.lock() = crate::address(url);
         if let Some(model) = model {
@@ -482,12 +474,11 @@ impl OpenAiCompatible {
 
     /// Sets a notice if the model is not one the endpoint lists, and clears it if it is.
     ///
-    /// note: the alternative is finding out on the next request, as a 404. Switching address and
-    /// model are two commands, and it is easy to do one without the other.
+    /// note: otherwise the next request finds out, as a 404. Switching address and model are two
+    /// commands, and it is easy to do one without the other.
     ///
-    /// note: a switch that finds its model still clears the slot, because what is waiting there is
-    /// older than the switch, and a client that reads it afterwards would blame the model it has
-    /// just moved away from.
+    /// note: a switch that finds its model still clears the notice, because what is waiting there
+    /// predates the switch, and a client reading it afterwards would blame the model it just left.
     fn say_if_the_model_is_not_there(&self, listed: &[String]) {
         let model = self.model.lock().clone();
         *self.notice.lock() = crate::unlisted(&model, listed);
@@ -608,10 +599,10 @@ impl OpenAiCompatible {
 
     /// Whether this address is an ollama, asked of the version it reports.
     ///
-    /// note: ollama's `/api/version` answers `{"version":"…"}` and needs no key, and it is the one
-    /// question the two probes can put to any `/v1` address without loading a model or waiting for
-    /// a generation. What matters is only that something answers: a proxy in front of a model
-    /// server will not say so, and is then measured against the limit it declares.
+    /// note: ollama's `/api/version` answers `{"version":"…"}` without a key, the one question both
+    /// probes can put to any `/v1` address without loading a model or waiting for a generation.
+    /// Only that something answers matters: a proxy in front of a model server will not say so, and
+    /// is then measured against the limit it declares.
     async fn answers_like_ollama(&self, root: &str) -> bool {
         // note: bounded by a timeout on the request rather than the client's own, which is unset -
         // an address that takes the connection and says nothing is the case this whole question

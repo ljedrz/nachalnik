@@ -1,23 +1,20 @@
 //! Google's dialect: an assistant turn is an ordered list of parts.
 //!
-//! note: this exists because the OpenAI-compatible shim in [`openai`](crate::openai) cannot say
-//! what the model actually did. Gemini answers with `content.parts[]` - a thinking part, a
-//! sentence, a `functionCall`, in the order produced - and the shim flattens that into a `content`
-//! string beside a `tool_calls` array because the imitated dialect has no order to report.
-//! Everything downstream reads a rearranged turn. This dialect reports the order as
+//! note: the OpenAI-compatible shim in [`openai`](crate::openai) cannot say what the model did:
+//! Gemini answers with `content.parts[]` (a thinking part, a sentence, a `functionCall`, in the
+//! order produced), and the shim flattens that into a `content` string beside a `tool_calls` array,
+//! so everything downstream reads a rearranged turn. This dialect reports the order as
 //! [`Content::Blocks`] and sends it back the same way.
 //!
-//! note: a second provider rather than a flag on the first because they are two wire formats, not
-//! two settings: different paths, different auth header, different names for every field,
-//! `functionResponse` parts inside a user turn instead of a `tool` role. They share the trait the
-//! kernel talks through.
+//! note: a second provider rather than a flag, because these are two wire formats: different paths,
+//! auth header and field names, and `functionResponse` parts inside a user turn instead of a `tool`
+//! role. They share the trait the kernel talks through.
 //!
-//! note: signatures are the reason to bother beyond tidiness. Gemini signs the parts of a turn and
-//! answers `400 Function call is missing a thought_signature` when one comes back without its
-//! signature; the shim reports a call's signature and drops the one on a text part because a
-//! message has nowhere to keep it. Here every part's extra fields ride on the block they belong
-//! to - [`Part::extra`] and [`ToolCall::extra`] - and go back out attached to the same part,
-//! uninterpreted.
+//! note: signatures make it necessary. Gemini signs the parts of a turn and answers
+//! `400 Function call is missing a thought_signature` when one comes back without its signature,
+//! and the shim keeps a call's signature but drops a text part's, having nowhere to put it. Here
+//! each part's extra fields ride on its block ([`Part::extra`], [`ToolCall::extra`]) and go back
+//! out on the same part, uninterpreted.
 
 use std::sync::{
     Arc,
@@ -276,13 +273,11 @@ impl Gemini {
 
         let text = part["text"].as_str().unwrap_or_default();
         if text.is_empty() {
-            // a part with no text and no call is either a signature arriving on its own - which
-            // belongs to whatever it came after rather than to nothing - or a kind of part this
-            // provider does not speak: `inlineData`, `executableCode`, `fileData`. The second is
-            // dropped rather than reattached, because attaching an image to the text before it
-            // would send it back out as a field of that text and quietly corrupt the turn. What
-            // is dropped is still in `ModelResponse::raw`, which is as much as a provider can
-            // honestly offer about a shape it has no variant for
+            // a part with no text and no call is either a signature arriving alone, which belongs
+            // to whatever came before it, or a kind of part this provider does not speak
+            // (`inlineData`, `executableCode`, `fileData`). The second is dropped rather than
+            // reattached, since attaching an image to the text before it would send it back as a
+            // field of that text and corrupt the turn; it is still in `ModelResponse::raw`
             let metadata = extra
                 .as_object()
                 .is_some_and(|fields| fields.keys().all(|key| key == "thoughtSignature"));
@@ -549,14 +544,13 @@ impl Provider for Gemini {
             }]);
         }
 
-        // note: asked for, because a provider whose reason to exist is the order of a turn's
-        // thinking would be a poor one if it never asked to be told any. It is a default and not
-        // a decision: `generationConfig` in the parameters is merged over this, so
-        // `{"thinkingConfig": {"includeThoughts": false}}` turns it off and says so on the
-        // `/params` line where somebody can read it back
+        // note: asked for by default, since this dialect exists for the order of a turn's thinking.
+        // `generationConfig` in the parameters is merged over it, so
+        // `{"thinkingConfig": {"includeThoughts": false}}` turns it off, visibly on the `/params`
+        // line
         //
-        // note: merged all the way down, so that `{"thinkingConfig": {"thinkingBudget": 1024}}`
-        // sets a budget without also taking away the thoughts it is a budget for
+        // note: merged all the way down, so `{"thinkingConfig": {"thinkingBudget": 1024}}` sets a
+        // budget without taking away the thoughts it budgets
         body["generationConfig"] = json!({ "thinkingConfig": { "includeThoughts": true } });
         //
         // note: the three fields built from the request are not replaced: a parameter is carried
@@ -903,22 +897,19 @@ impl Dialect for Gemini {
 
 /// Puts a boundary between two text parts that are about to become one turn.
 ///
-/// note: this API concatenates the text parts of a turn with nothing between them, so two merged
-/// items are read as one run of words: a note ending `…the codename is kotelnaya` followed by
-/// `what is the codename?` reaches the model as `kotelnayawhat is the codename?`, and the model
-/// reads the codename as `kotelnayawhat`. Every reference `kamchatka` sends is one of these - a
-/// file put in with `-f`, an `/attach`, a `/note` - and the message after it is the question about
-/// it.
+/// note: this API joins a turn's text parts with nothing between them, so two merged items run
+/// together: a note ending `…the codename is kotelnaya` followed by `what is the codename?` reaches
+/// the model as `kotelnayawhat is the codename?`. Every reference `kamchatka` sends (a file from
+/// `-f`, an `/attach`, a `/note`) is followed by the question about it.
 ///
-/// note: the other dialect gets this for free by keeping one message per item. Here the parts of a
-/// turn are merged, so the separator has to live inside the text, and this is the last place that
-/// knows there were two items.
+/// note: the other dialect keeps one message per item and needs none of this. Here parts are
+/// merged, so the separator goes inside the text, and this is the last place that knows there were
+/// two items.
 ///
-/// note: text against text only. A `functionResponse` is a field of its own and reads as one
-/// whatever precedes it, and a blob is `inline_data`; neither runs into a neighbour. The boundary
-/// is normalised rather than appended to: trailing newlines are trimmed, then exactly one blank
-/// line is left, so a file ending in three newlines and one ending in none are separated the same
-/// way, and rendering the same request twice produces the same bytes.
+/// note: text against text only: a `functionResponse` is a field of its own and a blob is
+/// `inline_data`, so neither runs into a neighbour. The boundary is normalised (trailing newlines
+/// trimmed, then exactly one blank line), so a file ending in three newlines or in none is
+/// separated the same way and one request always renders to the same bytes.
 fn separate(existing: &mut [Value], coming: &[Value]) {
     let (Some(last), Some(next)) = (existing.last_mut(), coming.first()) else {
         return;

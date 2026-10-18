@@ -25,9 +25,9 @@ use crate::{
 
 /// The longest a server may ask to be left alone before this stops waiting and says so.
 ///
-/// note: for the difference between a busy server and one that has said no until tomorrow. A
-/// per-minute limit answers `Retry-After: 5`; a spent daily quota answers with the seconds until
-/// midnight, and sitting through three doublings to discover that wastes the turn and the wait.
+/// note: to tell a busy server from one that has said no until tomorrow: a per-minute limit answers
+/// `Retry-After: 5`, a spent daily quota the seconds until midnight, and three doublings to
+/// discover that waste the turn and the wait.
 pub(crate) const LINGER: Duration = Duration::from_secs(60);
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
@@ -54,9 +54,9 @@ pub(crate) const WHOLE_ANSWER: Duration = Duration::from_secs(600);
 /// The most of one response this reads before it stops: a line of a stream with no end to it, or a
 /// whole body.
 ///
-/// note: a bound because nothing else is one. The silence watch is reset by every byte, so a body
-/// that trickles without ever ending a line is read for as long as it trickles, and all of it is
-/// held. Far past anything a model answers with, and near nothing to a machine.
+/// note: nothing else bounds it: the silence watch resets on every byte, so a body that trickles
+/// without ever ending a line would be read, and held, for as long as it trickles. Far past any
+/// model's answer, and small to a machine.
 pub(crate) const LARGEST: usize = 64 << 20;
 
 /// The error for a response past [`LARGEST`].
@@ -80,10 +80,9 @@ pub(crate) enum Silence {
 
 /// Watches the gap since the last byte of a stream.
 ///
-/// note: [`HEARTBEAT`] only makes a stalled request interruptible: it wakes, checks for escape, and
-/// waits again. A server that answers and then goes quiet - exactly what an overloaded one does -
-/// would leave the status line reading `asking` for ever, indistinguishable from a model thinking
-/// hard. This part says so, and eventually stops.
+/// note: [`HEARTBEAT`] only makes a stalled request interruptible. A server that answers and then
+/// goes quiet, as an overloaded one does, would leave the status reading `asking` for ever, like a
+/// model thinking hard; this says so, and eventually stops.
 pub(crate) struct Vigil {
     /// When something last arrived.
     last: Instant,
@@ -240,10 +239,9 @@ pub(crate) fn not_answered(model: &str, seconds: u64) -> String {
 
 /// A model that started answering and then stopped.
 ///
-/// note: distinct from [`not_answered`] because they are different news. Nothing yet means the
-/// server may never have received the request; a stream that stops halfway took it and is in
-/// trouble. A turn that uses a tool makes two requests, so the second is what "it hangs whenever it
-/// uses a tool" really looks like.
+/// note: distinct from [`not_answered`]: nothing yet means the server may never have received the
+/// request, while a stream that stops halfway took it and is in trouble. A turn that uses a tool
+/// makes two requests, so the second failing is what "it hangs whenever it uses a tool" looks like.
 pub(crate) fn gone_quiet(model: &str, seconds: u64) -> String {
     format!("{model} has said nothing for {seconds}s; {GIVES_UP}")
 }
@@ -306,17 +304,17 @@ enum Busy {
 
 /// Sends a request, retrying while the server is busy, and returns what came of it.
 ///
-/// note: retrying is the provider's business. A free tier often answers busy, so not retrying looks
-/// broken when it is not. The kernel must not silently send a request twice behind a caller's back.
-/// The count is per request; its limit is [`Asking::tries`]; see [`RETRIES`](crate::RETRIES).
+/// note: retrying is the provider's business: a free tier often answers busy, and not retrying
+/// looks broken when it is not, while the kernel must never send a request twice behind a caller's
+/// back. The count is per request, limited by [`Asking::tries`]; see [`RETRIES`](crate::RETRIES).
 ///
-/// note: `request` builds a fresh request for each attempt because a sent one is spent. It covers
-/// what dialects do differently here: a path, a header, a body.
+/// note: `request` builds a fresh request for each attempt, because a sent one is spent, and
+/// carries what dialects do differently: a path, a header, a body.
 ///
-/// note: a whole answer is read here, not by the caller: the OpenAI dialect's other way of saying
-/// 429 is an `error` object inside a 200, and a limit reported that way is worth waiting out like a
-/// status. A stream is read here for the same reason: its error is the first event, and `events` is
-/// untouched by an attempt that ended that way.
+/// note: a whole answer is read here, not by the caller, because the OpenAI dialect's other 429 is
+/// an `error` object inside a 200, worth waiting out like a status. A stream is read here for the
+/// same reason: its error is the first event, and `events` is untouched by an attempt that ended
+/// that way.
 pub(crate) async fn sent(
     asking: &Asking<'_>,
     attempts: &AtomicUsize,
@@ -340,16 +338,16 @@ pub(crate) async fn sent(
         let busy = match watched(request().send(), asking, patience).await {
             // nobody is owed an error for being obeyed
             Err(Unsent::Interrupted) => return Ok(Sent::Interrupted),
-            // a connection that timed out is a busy server wearing different clothes. A refused
-            // connection is *not* this - it is a definite answer, usually an address with nothing
-            // behind it, and making a typo take three doublings to report helps nobody
+            // a timed-out connection is a busy server by another name. A refused connection is not:
+            // it is a definite answer, usually an address with nothing behind it, and three
+            // doublings to report a typo help nobody
             //
-            // note: and an answer that has not started is not this either, unless it never
-            // reached the server. A whole answer's headers come with its last token, so none yet
-            // means the model is still writing it; and a stream's may come only with its first,
-            // as ollama's do while it loads the model. Sending either again would pay for it
-            // again, four times over, and fail anyway once the last attempt ran as long as the
-            // first - so what is sent again is a request that never made its connection
+            // note: nor is an answer that has not started, unless it never reached the server. A
+            // whole answer's headers come with its last token, so none yet means the model is still
+            // writing, and a stream's may come with its first, as ollama's do while it loads the
+            // model. Sending either again would pay for it again, four times over, and still fail
+            // once the last attempt ran as long as the first, so only a request that never
+            // connected is sent again
             Err(reason) if reason.worth_waiting_out() && !reason.may_have_been_heard() => {
                 Busy::Unsent(reason)
             }
@@ -475,11 +473,10 @@ pub(crate) async fn sent(
 /// Returns how long a `Retry-After` value asks to be left: a number of seconds, or a date to wait
 /// until.
 ///
-/// note: dates are parsed in the one shape HTTP sends, `Sun, 06 Nov 1994 08:49:37 GMT`, not the two
-/// obsolete shapes a recipient is also asked to read. Parsing seconds alone made a date fall
-/// through to the doubling used when a server says nothing, so the request was sent again before
-/// the named time. A past date means no wait. The caller caps a date too far off at [`LINGER`], and
-/// caps a seconds value the same way.
+/// note: dates in the one shape HTTP sends, `Sun, 06 Nov 1994 08:49:37 GMT`, not the two obsolete
+/// ones. Parsing seconds alone let a date fall through to the doubling used when a server says
+/// nothing, so the request went out before the named time. A past date means no wait; the caller
+/// caps a date too far off, like a seconds value, at [`LINGER`].
 ///
 /// note: `now` is a parameter so dates can be checked against a fixed clock.
 fn retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
@@ -617,11 +614,10 @@ pub(crate) fn stalled(model: &str, waited: Duration) -> BoxError {
 
 /// Waits for a request to be answered, watching the wait the way the stream itself is watched.
 ///
-/// note: take `&mut sending`, not `sending`. Handing the future itself to `timeout` would drop it
-/// after 120ms and cancel the request that had just been made. Borrowing it stops polling for that
-/// round and leaves the connection standing. The loop is the one the stream runs, so the wait
-/// before the first byte gets the same three things: it hears an interrupt, reports silence, and
-/// ends.
+/// note: takes `&mut sending`, not `sending`: handing the future to `timeout` would drop it after
+/// 120ms and cancel the request just made, while borrowing it only stops polling for that round.
+/// The loop is the stream's, so the wait for the first byte also hears an interrupt, reports
+/// silence, and ends.
 async fn watched(
     sending: impl Future<Output = reqwest::Result<reqwest::Response>>,
     asking: &Asking<'_>,
@@ -649,10 +645,9 @@ async fn watched(
 
 /// Waits out a backoff and returns whether it ran to the end.
 ///
-/// note: wait in heartbeats rather than one sleep, because a request that has been asked to stop
-/// must not be sent again. A single sleep keeps a stopped turn waiting for as long as the server
-/// asked - a minute for `Retry-After: 60` - and then sends the request anyway, so it is answered
-/// and billed.
+/// note: in heartbeats rather than one sleep, because a request asked to stop must not be sent
+/// again: one sleep would keep a stopped turn waiting as long as the server asked (a minute for
+/// `Retry-After: 60`) and then send it anyway, to be answered and billed.
 async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
     let until = Instant::now() + wait;
     loop {
@@ -669,10 +664,10 @@ async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
 
 /// Whether a request that never got an answer is worth sending again.
 ///
-/// note: a timeout only. Everything else a transport can fail with is either a decision - nothing
-/// listening on that address, a name that does not resolve - or a bug in what was built, and
-/// neither improves by being repeated. `is_timeout` walks the source chain, so a stall reported
-/// as hyper's `Io(TimedOut)` several layers down still counts.
+/// note: a timeout only. Every other transport failure is a decision (nothing listening on the
+/// address, a name that does not resolve) or a bug in the request, and repeating improves neither.
+/// `is_timeout` walks the source chain, so a stall reported as hyper's `Io(TimedOut)` several
+/// layers down still counts.
 pub(crate) fn worth_waiting_out(e: &reqwest::Error) -> bool {
     e.is_timeout()
 }

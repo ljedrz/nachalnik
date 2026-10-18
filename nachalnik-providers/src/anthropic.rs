@@ -1,19 +1,19 @@
 //! Anthropic's Messages API dialect: an assistant turn is an ordered list of typed blocks.
 //!
-//! note: a third wire format, not a setting on either of the others, for the reasons the Gemini
-//! dialect gives: a different path, a different auth header, instructions outside the conversation,
-//! tool results as blocks inside a user turn, and a stream of named events for a block opening, its
-//! fragments and its closing, rather than chunks of a message.
+//! note: a third wire format rather than a setting on another, for the reasons the Gemini dialect
+//! gives: a different path and auth header, instructions outside the conversation, tool results as
+//! blocks inside a user turn, and a stream of named events for a block's opening, fragments and
+//! closing rather than chunks of a message.
 //!
-//! note: the thinking is what makes it worth having. A thinking block carries a `signature`; a turn
-//! that used tools must send its thinking back with that signature or the next request is refused.
-//! The OpenAI dialect has nowhere to keep one. Here a block's own fields are kept on the block -
-//! [`Part::extra`], [`ToolCall::extra`] - and go back out on the same block.
+//! note: thinking is what makes it worth having: a thinking block carries a `signature`, and a turn
+//! that used tools must send its thinking back with it or the next request is refused. The OpenAI
+//! dialect has nowhere to keep one; here a block's own fields stay on the block ([`Part::extra`],
+//! [`ToolCall::extra`]) and go back out on it.
 //!
-//! note: only what this API defines for each kind of block goes back out, not whatever is in
-//! `extra`. A session that started against Gemini carries `thoughtSignature` on its parts, and a
-//! field this API does not know is a 400. Thinking with no signature at all, any other provider's,
-//! cannot be sent either, so it is left out rather than sent and refused.
+//! note: only the fields this API defines for each kind of block go back out, not everything in
+//! `extra`: a session that started against Gemini carries `thoughtSignature` on its parts, and an
+//! unknown field is a 400. Thinking with no signature, from any other provider, cannot be sent
+//! either, so it is left out rather than refused.
 //!
 //! note: OpenRouter answers this dialect too, at `/api/v1/messages`, and adds a `provider`, a
 //! `cost`, ids of its own, and a `[DONE]` after `message_stop`. All of it is read past.
@@ -204,12 +204,12 @@ impl Anthropic {
 
     /// Asks the endpoint what the model takes in and how much it may generate.
     ///
-    /// note: two questions, because two kinds of endpoint use this dialect. Anthropic's describes
-    /// one model at `/models/{id}`. OpenRouter has no such path for an id with a `/` in it and
+    /// note: two questions, because two kinds of endpoint speak this dialect: Anthropic's describes
+    /// one model at `/models/{id}`, while OpenRouter has no such path for an id containing `/` and
     /// answers only the listing, in this dialect's shape when asked with its headers, twenty to a
-    /// page unless asked for more. `/models/{id}` is asked first, and the listing only where it
-    /// said nothing. OpenRouter's own shape, `context_length` and
-    /// `top_provider.max_completion_tokens`, is read as well, for a proxy that answers with it.
+    /// page unless asked for more. `/models/{id}` is asked first and the listing only where it said
+    /// nothing. OpenRouter's own fields, `context_length` and `top_provider.max_completion_tokens`,
+    /// are read too, for a proxy that answers with them.
     pub async fn probe(&self) {
         let (base, model) = (self.endpoint(), self.model());
         let mut entry = self.get(format!("{base}/models/{model}")).await;
@@ -806,11 +806,11 @@ impl Spent {
 
     /// The figures as `Usage` defines them.
     ///
-    /// note: this API's `input_tokens` is only the part of the prompt that was neither read from
-    /// the cache nor written to it, and `Usage::input_tokens` is the whole prompt with the cached
-    /// part inside it, so the three are added. Reported as they stand, a conversation served from
-    /// the cache would read as a few tokens long, and any figure calibrated on it would be wrong.
-    /// `output_tokens` already counts the thinking, as `Usage` requires.
+    /// note: this API's `input_tokens` is only the part of the prompt neither read from nor written
+    /// to the cache, while `Usage::input_tokens` is the whole prompt with the cached part inside
+    /// it, so the three are added. As reported, a conversation served from the cache would read as
+    /// a few tokens long, and anything calibrated on it would be wrong. `output_tokens` already
+    /// counts the thinking, as `Usage` requires.
     fn usage(&self) -> Option<Usage> {
         let input = match (self.input, self.cache_written, self.cache_read) {
             (None, None, None) => None,

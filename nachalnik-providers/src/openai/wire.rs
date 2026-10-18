@@ -1,11 +1,11 @@
 //! What goes out on the wire, and what a stream of fragments adds up to.
 //!
-//! note: the [`Provider`] half of [`OpenAiCompatible`] and the readers it needs, in a separate file
-//! because the type next door is about where requests go and this is about what happens when one
-//! does. Every function here is private; callers get [`Provider::respond`].
+//! note: the [`Provider`] half of [`OpenAiCompatible`] and the readers it needs, kept apart from
+//! the type next door, which is about where requests go. Every function here is private; callers
+//! get [`Provider::respond`].
 //!
-//! note: this is what this dialect's events say. Sending, waiting and getting events off the socket
-//! are the same for both dialects, and are `waiting` and `reading`.
+//! note: what this dialect's events say. Sending, waiting and reading events off the socket are the
+//! same for both dialects, in `waiting` and `reading`.
 
 use std::borrow::Cow;
 
@@ -38,26 +38,21 @@ struct PartialCall {
 
 /// Reads a whole summary of the thinking off a chunk, where the endpoint sends one that way.
 ///
-/// note: the other half of `delta.reasoning`, and a different shape rather than a second name for
-/// the same one. That field is a *fragment* of the thinking, pushed as it is generated; this one
-/// is a finished summary of it, `{"content": ..., "status": "complete"}` on the chunk itself
-/// rather than in the delta, and it arrives after the answer it explains. Inception's endpoint
-/// sends it, given `reasoning_summary: true` in the parameters. It sends more than one over a
-/// turn, each a summary of the reasoning done since the last, so they are appended rather than
-/// replaced: the same endpoint's *non*-streamed field is those same summaries joined.
+/// note: not a second name for `delta.reasoning`, which is a fragment of the thinking pushed as it
+/// is generated: this is a finished summary, `{"content": ..., "status": "complete"}` on the chunk
+/// rather than in the delta, arriving after the answer it explains. Inception's endpoint sends it
+/// given `reasoning_summary: true`, one per stretch of reasoning, so they are appended rather than
+/// replaced; the same endpoint's non-streamed field is them joined.
 ///
 /// note: a summary already held is not appended again, and held means among the summaries: the
-/// thinking streamed beside them may say the same words, and a shorter summary may be part of a
-/// longer one, and neither is the same summary arriving twice. The status is not read for anything: a
-/// summary with words in it has arrived whichever word is beside it, and `unavailable` and
-/// `skipped` both carry no content, so the content alone decides. What it must not do is put the
-/// word `unavailable` on the screen as if the model had thought it.
+/// streamed thinking may say the same words, and a shorter summary may be part of a longer one, and
+/// neither is the same summary twice. The status is not read: a summary with words has arrived
+/// whatever the status, and `unavailable` and `skipped` carry no content. What must not happen is
+/// the word `unavailable` shown as if the model had thought it.
 ///
-/// note: what a caller has to ask for, since the reading is only half of it: `reasoning_summary:
-/// true` among the parameters, *and* `reasoning_summary_wait: true` beside it whenever the request
-/// is streamed. Without the wait, `mercury-2` ends the stream before any summary exists. A client
-/// that sets the first and not the second has asked for thinking that cannot then be sent to it,
-/// and this has nothing to read.
+/// note: a caller has to ask for `reasoning_summary: true` and, whenever the request is streamed,
+/// `reasoning_summary_wait: true` as well: without the wait, `mercury-2` ends the stream before any
+/// summary exists, and there is nothing here to read.
 fn summarised(chunk: &Value, reasoning: &mut String, held: &mut Vec<String>, deltas: &DeltaSink) {
     let Some(summary) = chunk["reasoning_summary"]["content"]
         .as_str()
@@ -86,10 +81,10 @@ const BUILT: [&str; 3] = ["model", "messages", "tools"];
 #[async_trait]
 impl Provider for OpenAiCompatible {
     fn info(&self) -> ModelInfo {
-        // note: one lock to a statement, here and in `respond`. A guard lives to the end of the
-        // statement that took it, so a struct literal reading three fields holds all three at once
-        // - and this runs on whatever draws the model's name every frame while `respond` runs on
-        // the turn. Held together in two orders, `context_limit` then `model` here and the reverse
+        // note: one lock per statement, here and in `respond`. A guard lives to the end of its
+        // statement, so a struct literal reading three fields holds all three at once, and this
+        // runs on whatever draws the model's name each frame while `respond` runs on the turn.
+        // Taken together in opposite orders, `context_limit` then `model` here and the reverse
         // there, the two threads waited on each other for ever at the start of a request
         let context_limit = *self.context_limit.lock();
         let (parameters, max_output_tokens) = {
@@ -145,27 +140,27 @@ impl Provider for OpenAiCompatible {
                     .collect(),
             );
         }
-        // Copies only user-set parameters; neither the kernel nor this provider invents any. This
-        // runs last so user parameters, including `stream`, decide their values.
+        // Copies only user-set parameters; neither the kernel nor this provider invents any. It
+        // runs last, so user parameters, `stream` included, decide their values.
         //
-        // note: except the three fields built from the request itself. A parameter is carried
-        // beside the conversation, not in place of it: `messages` set here went out instead of
-        // the context, under a `model.requested` naming items that were never sent, and `model`
-        // asked somebody the record does not name
+        // note: except the three fields built from the request itself. A parameter goes beside the
+        // conversation, not in place of it: `messages` set here once went out instead of the
+        // context, under a `model.requested` naming items never sent, and `model` asked a model the
+        // record does not name
         for (key, value) in &request.params {
             if !BUILT.contains(&key.as_str()) {
                 body[key] = value.clone();
             }
         }
 
-        // note: after the parameters rather than beside `stream` above, because it has to follow
-        // whatever they settled on, and it is wrong in both directions if it does not. Sent to an
-        // endpoint that was asked for a whole answer it is a 400 about a field nobody set; left
-        // off a request whose parameters turned streaming *on* it costs the usage report, and the
-        // turn goes into the record with its cost unknown
+        // note: after the parameters rather than beside `stream` above, because it must follow
+        // whatever they settled, and is wrong in both directions otherwise: sent to an endpoint
+        // asked for a whole answer it is a 400 about a field nobody set, and left off a request
+        // whose parameters turned streaming on it loses the usage report, so the turn is recorded
+        // with its cost unknown
         //
-        // note: added to options somebody set rather than put in place of them, since the rest of
-        // what they asked for is theirs
+        // note: added to options somebody set rather than replacing them, since the rest of what
+        // they asked for is theirs
         match body["stream"] == json!(true) {
             true => match body["stream_options"].as_object_mut() {
                 Some(options) => {
@@ -240,16 +235,15 @@ impl Provider for OpenAiCompatible {
             Sent::Whole(payload) => Err(not_a_completion(&payload)),
             Sent::Streamed(Read::Events(events, stopped)) => {
                 // note: a stream with no choice is the same refusal a whole body gets, in the same
-                // words. Read as an answer, it ends the turn with nothing said and the session
-                // normally: the run looked like it worked, the model said nothing, the body is only
-                // in `raw`, and the notice blames the stream rather than the answer. A server that
-                // says the turn is over and carries no choice has not answered either; both ways a
-                // stream can say that mean the same thing.
+                // words. Read as an answer, it would end the turn with nothing said and the session
+                // normally, the body only in `raw` and the notice blaming the stream. A server that
+                // says the turn is over without a choice has not answered either; both ways a
+                // stream can say that mean the same.
                 //
                 // note: never where something was answered. A stream that carried a choice and was
-                // then cut off is what `reading` exists to keep - it was generated and billed for -
-                // and refusing it here would cause what that reader calls the worst outcome. An
-                // interrupt nobody pressed is the same.
+                // then cut off is what `reading` keeps, since it was generated and billed for, and
+                // refusing it here would be what that reader calls the worst outcome. An interrupt
+                // nobody pressed is the same.
                 match never_answered(streamed.answered, events.is_empty()) {
                     true => Err(not_a_completion(&events[0])),
                     false => Ok(self.answer(streamed, events, stopped)),
@@ -284,14 +278,13 @@ struct Streamed {
     finish: Option<String>,
     /// Whether any event so far carried a choice: an array with nothing in it is not one.
     ///
-    /// note: what tells a finished turn from a body that was never an answer. `{"choices":[]}`
-    /// is the array and no answer, and so is the usage that arrives with an empty one beside it,
-    /// which every endpoint that reports a cost sends as the last event of a turn - so, read as
-    /// answers, a stream of nothing but those would end as a turn that said nothing, and a session
-    /// that ended normally.
+    /// note: what tells a finished turn from a body that was never an answer. `{"choices":[]}` is
+    /// the array and no answer, and so is the usage every cost-reporting endpoint sends with an
+    /// empty one as the last event of a turn; read as answers, a stream of only those would end as
+    /// a turn that said nothing, in a session that ended normally.
     ///
-    /// note: read on the array rather than on `choices[0]`, which is `null` for an event with
-    /// nothing in it and would be a choice that is not there.
+    /// note: read on the array rather than `choices[0]`, which is `null` for an empty event and
+    /// would be a choice that is not there.
     answered: bool,
     /// What the request cost, where the server reported it.
     usage: Option<Usage>,
@@ -362,19 +355,19 @@ impl OpenAiCompatible {
                 .is_none_or(|content| content.to_text().trim().is_empty());
 
         match stopped {
-            // note: the server's end of the stream is the end of the turn, and the only thing that
-            // says so when no `finish_reason` came with it. Filling it in here keeps apart a turn
-            // the server finished on purpose and a turn cut off before it said anything: both lack
-            // `finish_reason` and must not get the same word. `unreported` is for that, below.
+            // note: the server's end of the stream ends the turn, and is the only sign of that when
+            // no `finish_reason` came. Filling it in here separates a turn the server finished on
+            // purpose from one cut off before it said anything: both lack `finish_reason` and must
+            // not get the same word, and `unreported` below is for the second.
             //
-            // note: except a turn that said nothing and called nothing, which is a cut-off the
-            // marker hides, not a turn ended on purpose. An upstream failing mid-answer can end the
-            // stream on `[DONE]` after the reasoning alone; read as an end of the turn, that is a
-            // finished turn with nothing in it, which nothing offers to carry on.
+            // note: except a turn that said and called nothing, which is a cut-off the marker
+            // hides: an upstream failing mid-answer can end the stream on `[DONE]` after the
+            // reasoning alone, and read as finished that is an empty turn nothing offers to
+            // continue.
             //
-            // note: a finish that was reported is not overwritten. Some endpoints send the marker
-            // and then nothing; some send a reason and the marker both. Where the server named the
-            // reason, it is more precise than what the marker implies.
+            // note: a reported finish is not overwritten. Some endpoints send the marker and
+            // nothing else, some a reason and the marker; a reason the server named is more precise
+            // than the marker.
             Stopped::Done if finish.is_none() && said_nothing => {
                 finish = Some("cut off".to_owned());
             }
@@ -405,11 +398,10 @@ impl OpenAiCompatible {
 
 /// The calls being assembled, and which call a fragment that names nothing belongs to.
 ///
-/// note: a struct rather than a bare `Vec`, for `latest` alone. A fragment carrying neither an
-/// index nor an identifier is a continuation, and it continues whatever was last being written -
-/// not the last call in the list once a second call has been announced but not begun. Read as the
-/// last in the list, such a fragment lands on the new call and is missing from the old one, so one
-/// misfiled brace breaks two calls rather than none.
+/// note: a struct rather than a bare `Vec` for `latest` alone. A fragment with neither an index nor
+/// an identifier continues whatever was last written to, which is not the last call in the list
+/// once a second call has been announced but not begun. Read as the last in the list, it lands on
+/// the new call and is missing from the old one, so one misfiled brace breaks two calls.
 #[derive(Default)]
 struct Gathering {
     /// The calls, in the order they were first seen.
@@ -422,19 +414,19 @@ impl Gathering {
     /// Folds one `tool_calls` fragment into the calls gathered so far, and streams whatever
     /// arguments came with it.
     ///
-    /// note: OpenAI numbers calls in a message and streams each call's arguments in fragments, so
-    /// the index says which call a fragment belongs to. Google's compatible endpoint sends no
-    /// index: one whole call per chunk, each with its own identifier. Taking a missing index as
-    /// zero folds parallel calls into one, joining names into `writewritewrite` and telling the
-    /// model there is no such tool. So the identifier decides when there is no index, and a
-    /// fragment with neither continues whatever was last written to.
+    /// note: OpenAI numbers calls within a message and streams each call's arguments in fragments,
+    /// so the index says which call a fragment belongs to. Google's compatible endpoint sends no
+    /// index, one whole call per chunk with its own identifier, and taking a missing index as zero
+    /// folds parallel calls into one (`writewritewrite`, a tool that does not exist). So the
+    /// identifier decides when there is no index, and a fragment with neither continues whatever
+    /// was last written to.
     fn fold(&mut self, requested: &Value, deltas: &DeltaSink) {
         let at = match requested["index"].as_u64() {
-            // note: the index says which call a fragment belongs to, not its position in the list.
-            // minimax numbers calls from one, so using the index as a slot leaves an unfilled call
-            // at zero, which the kernel reports as a repaired identifier and a tool with no name -
-            // a wasted round trip and an error the model has to read. So an index is looked up, and
-            // a number never seen before starts a new call at the end
+            // note: the index names a call, not a position: minimax numbers calls from one, and
+            // using the index as a slot left an empty call at zero, which the kernel reports as a
+            // repaired identifier and a nameless tool, costing a round trip and an error the model
+            // must read. So an index is looked up, and one never seen before starts a new call at
+            // the end
             Some(index) => match self.calls.iter().position(|call| call.slot == Some(index)) {
                 Some(at) => at,
                 None => {
@@ -633,26 +625,24 @@ fn not_a_completion(body: &Value) -> BoxError {
 /// Whether a stream is a body that was never an answer: nothing in it carried a choice, and there
 /// is an event to quote for the refusal.
 ///
-/// note: based on having carried no choice, not on how it stopped. A server that sends
-/// `{"choices":[]}` and closes has not answered. One that sends it and then `[DONE]` has not
-/// answered either; the server ended the stream on purpose, the same fault by another route. The
-/// stop reason is not the news; the empty array is.
+/// note: decided by carrying no choice, not by how the stream stopped: a server that sends
+/// `{"choices":[]}` and closes has not answered, and nor has one that sends it and then `[DONE]`,
+/// ending the stream on purpose. The empty array is the news, not the stop.
 ///
 /// note: never where something was answered. A stream that carried a choice and was cut off is
-/// kept, since it was generated and billed for. An event with no choice afterwards is the usage
-/// report every cost-reporting endpoint sends last. A guard that looked at the whole stream would
-/// throw away the answer of every turn that reported its cost.
+/// kept, since it was generated and billed for, and an event with no choice afterwards is the usage
+/// report every cost-reporting endpoint sends last; a guard over the whole stream would throw away
+/// the answer of every such turn.
 fn never_answered(answered: bool, empty: bool) -> bool {
     !answered && !empty
 }
 
 /// Reads one JSON body, no fragments, into a turn.
 ///
-/// note: the streamed path assembles the same thing from `delta` objects a piece at a time; this
-/// one is handed `message` finished. They must agree on a model whose arguments will not parse, a
-/// usage report whose reasoning must be inferred, and thinking written into the content. The last
-/// two go through the same readers on both paths, `usage_of` and `said_and_thought`; the first gets
-/// the same [`crate::called`] on both.
+/// note: the streamed path builds the same turn from `delta` objects a piece at a time; this is
+/// handed `message` finished. The two must agree on arguments that will not parse, usage whose
+/// reasoning is inferred, and thinking written into the content: the first goes through
+/// [`crate::called`] on both paths, the other two through `usage_of` and `said_and_thought`.
 fn whole(body: Value, inline: bool) -> ModelResponse {
     let choice = &body["choices"][0];
     let message = &choice["message"];
@@ -679,13 +669,12 @@ fn whole(body: Value, inline: bool) -> ModelResponse {
             .into_iter()
             .flatten()
             .map(|call| {
-                // a model that produces invalid JSON gets to see that it did - the same answer
-                // the streamed path gives. Handing it `{}` instead would be a call with no
-                // arguments and nothing anywhere to say why. An object sent as an object is taken
-                // as it is, which some servers do where the dialect says a string, and so is
-                // anything else that is not a string: a number or a list read as
-                // `arguments_of("")`, which is a call to a tool that takes no arguments, and the
-                // model was told that rather than shown what it wrote
+                // a model that produces invalid JSON is shown that it did, as on the streamed path;
+                // handing it `{}` would be a call with no arguments and nothing saying why. An
+                // object sent as an object, which some servers do where the dialect says a string,
+                // is taken as it is, and so is anything else that is not a string: a number or a
+                // list read as `arguments_of("")` was a call to a tool that takes no arguments, and
+                // the model was told that rather than shown what it wrote
                 let (id, name) = (
                     call["id"].as_str().unwrap_or_default(),
                     call["function"]["name"].as_str().unwrap_or_default(),
@@ -709,19 +698,16 @@ fn whole(body: Value, inline: bool) -> ModelResponse {
 
 /// What a turn cost, as this dialect reports it.
 ///
-/// note: the two branches disagree about containment, and the difference has to be settled here or
-/// it is settled wrongly by whoever reads the result. A reported
-/// `completion_tokens_details.reasoning_tokens` is inside `completion_tokens`; a residual is
-/// outside it, what the total has left after the prompt and completion are taken off.
-/// [`Usage::output_tokens`] is everything generated, so the residual is added to it and the
-/// reported one is not.
+/// note: the branches disagree about containment, and this is where it is settled: a reported
+/// `completion_tokens_details.reasoning_tokens` is inside `completion_tokens`, while a residual,
+/// what the total leaves after the prompt and completion, is outside it. [`Usage::output_tokens`]
+/// is everything generated, so the residual is added to it and the reported figure is not.
 ///
-/// note: the residual is worth inferring because an endpoint that bills for reasoning and reports
-/// none by name would otherwise make a turn's cost invisible.
+/// note: the residual is inferred because an endpoint that bills reasoning without naming it would
+/// otherwise hide part of a turn's cost.
 ///
-/// note: inferred only from all three figures. A prompt count left out, read as `0`, made the whole
-/// prompt a residual and billed it as generated output, a count that could not reach something
-/// returning a number anyway.
+/// note: inferred only from all three figures: a missing prompt count, read as `0`, once made the
+/// whole prompt a residual billed as generated output.
 fn usage_of(reported: &Value) -> Usage {
     let input = reported["prompt_tokens"].as_u64();
     let output = reported["completion_tokens"].as_u64();
@@ -739,10 +725,10 @@ fn usage_of(reported: &Value) -> Usage {
             (output, None) => output,
             (output, Some(extra)) => Some(output.unwrap_or_default() + extra),
         },
-        // note: a zero is dropped from the residual, where it is no evidence of thinking at all, and
-        // kept where the endpoint said it by name - the model was asked to think, or is one that
-        // does not, and either is worth showing to somebody who may not know which they picked.
-        // Gemini's dialect keeps a reported `thoughtsTokenCount` of zero the same way
+        // note: a zero residual is no evidence of thinking and is dropped; a zero the endpoint
+        // reports by name is kept, because it says the model was not asked to think or does not,
+        // which the person may not know. Gemini's dialect keeps a reported `thoughtsTokenCount` of
+        // zero the same way
         reasoning_tokens: reported_reasoning.or(inferred.filter(|tokens| *tokens > 0)),
         cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"].as_u64(),
     }
@@ -764,21 +750,18 @@ fn stop_reason(finish: Option<&str>) -> StopReason {
 /// A message's content as this dialect's list of typed parts, where a plain string cannot carry
 /// what is in it.
 ///
-/// note: `None` unless there is a blob somewhere. A plain string is what every endpoint speaking
-/// this dialect accepts and some of the smaller ones accept nothing else, so a turn of text has to
-/// go out as a plain string.
+/// note: `None` unless a blob is present: every endpoint of this dialect takes a plain string and
+/// some smaller ones take nothing else, so a text turn goes out as a string.
 ///
-/// note: [`Content::Blocks`] is the shape a turn takes when it is *both* - a sentence and the
-/// screenshot it is about - and it is the one a caller building a multimodal client reaches for.
-/// The blocks are read through [`Block::said`], so a turn's thinking and its calls stay where
-/// they belong, which is the `tool_calls` array below and nowhere at all.
+/// note: [`Content::Blocks`] is the shape of a turn that is both, a sentence and the screenshot it
+/// is about, and the one a multimodal client builds. Blocks are read through [`Block::said`], so a
+/// turn's thinking and calls stay out of the content: calls go in the `tool_calls` array below, and
+/// thinking nowhere.
 ///
-/// note: four shapes for a blob, picked by media type - `image_url` for a picture, `input_audio`
-/// for a recording this dialect names, `video_url` for a film, and `file` for a document or
-/// anything this dialect has no part of its own for. The split is the dialect's and not this
-/// crate's opinion: `image_url` means an image and a PDF sent through it is a 400, and a
-/// recording in the `file` part is not refused either - it is dropped, and the model answers a
-/// question about bytes it never received.
+/// note: four shapes for a blob, by media type: `image_url` for a picture, `input_audio` for a
+/// recording this dialect names, `video_url` for a film, and `file` for a document or anything
+/// else. The split is the dialect's: a PDF through `image_url` is a 400, and a recording in a
+/// `file` part is not refused but dropped, so the model answers about bytes it never received.
 fn parts_of(content: &Content) -> Option<Value> {
     fn part(content: &Content) -> Value {
         let data = |blob: &Blob| format!("data:{};base64,{}", blob.media_type, blob.data);
@@ -830,16 +813,14 @@ fn parts_of(content: &Content) -> Option<Value> {
 
 /// What `input_audio` calls the two containers it names, by media type.
 ///
-/// note: that field takes the container and the codec as one word where everything else here takes
-/// a media type, so the mapping is a table and not a rule: a media type is a claim the producer
-/// made, and reading `audio/wav` as `wav` and `audio/mpeg` as `mp3` is this dialect's
-/// vocabulary, not a fact about the media types. A type with no word here goes out as a `file`,
-/// where a document is wanted anyway, and the endpoint refusing it is better than a guess.
+/// note: that field takes container and codec as one word where everything else takes a media type,
+/// so this is a table rather than a rule: `audio/wav` as `wav` and `audio/mpeg` as `mp3` is this
+/// dialect's vocabulary, not a fact about media types. A type with no word here goes out as a
+/// `file`, and the endpoint refusing it beats a guess.
 ///
-/// note: `audio/mp3` and `audio/x-wav` beside the two are the spellings a producer reaches for
-/// when the producer is a person, and they are the same containers. `audio/flac` and `audio/ogg`
-/// are not in the table, because what this dialect names them is not settled here and a `file`
-/// part is where a document is looked for.
+/// note: `audio/mp3` and `audio/x-wav` are the spellings a person reaches for, for the same
+/// containers. `audio/flac` and `audio/ogg` are left out, because this dialect's names for them are
+/// not settled here.
 const AUDIO: &[(&str, &str)] = &[
     ("audio/wav", "wav"),
     ("audio/x-wav", "wav"),
@@ -857,14 +838,12 @@ fn audio(media_type: &str) -> Option<&'static str> {
 /// What to call a payload that is not a picture. This dialect's `file` part will not go out without
 /// a name.
 ///
-/// note: `meta["name"]` first, the producer saying what the file was called. The kernel never reads
-/// [`Blob::meta`], and neither does anything else here. It is a free-form value for facts a byte
-/// length cannot reach, including which file this was. A client that already has the path, as
-/// `kamchatka`'s `/attach` does, costs nothing to fill it in.
+/// note: `meta["name"]` first: the producer saying what the file was called, in [`Blob::meta`],
+/// which the kernel never reads. A client that has the path, as `kamchatka`'s `/attach` does, fills
+/// it in for free.
 ///
-/// note: a derived name when nobody supplied one, rather than no field at all. The endpoint refuses
-/// the part without it. `file.pdf` is a worse label than `quarterly-results.pdf` and a far better
-/// one than a 400. The media type is where it comes from, because it is the same string the
+/// note: otherwise a name derived from the media type rather than none, because the endpoint
+/// refuses the part without one, and `file.pdf` beats a 400. The media type is the one the
 /// `file_data` URI declares, so the two cannot disagree.
 pub(super) fn filename(blob: &Blob) -> String {
     match blob.meta.get("name").and_then(Value::as_str) {
@@ -1076,14 +1055,14 @@ mod tests {
 
     /// Arguments that are neither a string nor an object are shown as they came, not as none.
     ///
-    /// note: `unwrap_or_default()` on the `as_str()` of a number, a `null` or a list made the empty
-    /// string, and `arguments_of("")` is deliberately a call to a tool that takes no arguments -
-    /// so a model that wrote `42` was told it had called `fs` with no arguments, and the tool was
-    /// run on that. Streamed, the same value contributed no fragment at all: a call whose
-    /// arguments arrived as `42` and *then* as `{"op":"read"}` kept the second half only.
+    /// note: `unwrap_or_default()` on the `as_str()` of a number, a `null` or a list gave the empty
+    /// string, which `arguments_of("")` deliberately reads as a call with no arguments, so a model
+    /// that wrote `42` was told it had called `fs` with none, and the tool ran on that. Streamed,
+    /// such a value contributed no fragment at all: arguments that arrived as `42` and then as
+    /// `{"op":"read"}` kept only the second half.
     ///
-    /// note: `null` is the exception: a field present and empty is a call to a tool that takes no
-    /// arguments, which is how this dialect spells it.
+    /// note: `null` is the exception: a field present and empty is how this dialect spells a call
+    /// with no arguments.
     #[test]
     fn arguments_that_are_neither_a_string_nor_an_object_are_what_the_model_wrote() {
         // the whole-answer path
@@ -1138,12 +1117,11 @@ mod tests {
     /// A stream that carried no choice is the same refusal a whole body with none gets, and an
     /// answer that ended on the server's own marker is a turn with a reason.
     ///
-    /// note: `completion()` refuses a whole body whose `choices` is empty, and the streamed path
-    /// was checked by neither it nor anything else - so the same events that are an error in one
-    /// request became a turn that finished with nothing said and a session that ended normally.
-    /// The usage event belongs in the fixture: an endpoint that reports a turn's cost sends
-    /// `choices: []` beside it as the last event, so the reading has to be of the stream as a
-    /// whole rather than of whichever event came last.
+    /// note: `completion()` refuses a whole body whose `choices` is empty, but nothing checked the
+    /// streamed path, so events that were an error in one request became a turn that said nothing
+    /// in a session that ended normally. The usage event belongs in the fixture: a cost-reporting
+    /// endpoint sends `choices: []` beside it last, so the stream must be read as a whole, not by
+    /// its last event.
     #[test]
     fn a_stream_with_no_choice_in_it_is_not_an_answer() {
         let deltas = DeltaSink::disconnected();
@@ -1302,11 +1280,11 @@ mod tests {
     /// When the total equals the prompt plus the completion, `reasoning_tokens` is `None`. A
     /// `reasoning_tokens` of `0` reported by the endpoint is a zero, not absence.
     ///
-    /// note: the residual is what the total has left once the prompt and the completion are taken
-    /// off, and a total that is exactly the two of them is evidence of no thinking - not of a
-    /// thinking that cost nothing. A `reasoning_tokens` of `0` is the endpoint saying so, and was
-    /// read as it not having said - which `Usage::reasoning_tokens` is documented as not being the
-    /// same as zero, and which Gemini's dialect, keeping its own reported zero, did not do.
+    /// note: the residual is what the total leaves after the prompt and the completion, and a total
+    /// of exactly those two is evidence of no thinking, not of thinking that cost nothing. A
+    /// reported `reasoning_tokens` of `0` is the endpoint saying so, and was once read as it saying
+    /// nothing, though `Usage::reasoning_tokens` documents that absence is not zero and Gemini's
+    /// dialect already kept its own reported zero.
     #[test]
     fn a_residual_of_nothing_is_no_reasoning() {
         let left_over =
