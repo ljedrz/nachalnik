@@ -341,10 +341,10 @@ pub trait PermissionPolicy: Send + Sync {
 
 /// A [`PermissionPolicy`] that asks about everything.
 ///
-/// note: This is the kernel's default, and the only policy it ships: it grants nothing
-/// implicitly, which is the only honest starting point for a runtime that has no idea what
-/// tools it has been given. Real policies - a capability table, an allowlist of commands, a
-/// policy that consults a person - are userland; see the `test` feature and the examples.
+/// note: the kernel's default and only policy; it grants nothing implicitly because the runtime
+/// does not know what tools it has been given. Real policies such as a capability table, an
+/// allowlist of commands, or a policy that consults a person are userland; see the `test` feature
+/// and the examples.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AskAlways;
 

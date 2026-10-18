@@ -281,9 +281,9 @@ pub enum Event {
     },
     /// The payload a provider rendered for a request, exactly as it will be sent.
     ///
-    /// note: Emitted only when [`Config::record_payloads`] is on, and only by a provider that
-    /// implements [`Provider::render`]. It is the provider's own account of what it sends - the
-    /// kernel has no wire format to check it against - and it is the body, never the headers.
+    /// note: Emitted only when [`Config::record_payloads`] is on and only by a provider that
+    /// implements [`Provider::render`]. It is the provider's account of what it sends; the kernel
+    /// has no wire format to check it against. It is the body, never the headers.
     #[serde(rename = "model.payload")]
     ModelPayload {
         /// The payload.
@@ -317,11 +317,10 @@ pub enum Event {
         error: String,
         /// How long the request was, where the failure was the model refusing to read it.
         ///
-        /// note: the numbers as well as the sentence, because this is the one failure a session
-        /// can act on rather than only report - and the one measurement of a request in the
-        /// units its limit is enforced in. The counter is told before this is emitted, unless
-        /// something in the request went unpriced, so a client redrawing on this event draws the
-        /// corrected figure.
+        /// note: the numbers and the sentence because this is the one failure a session can act on
+        /// rather than only report, and the one measurement of a request in the units its limit is
+        /// enforced in. The counter is told before this is emitted unless something in the request
+        /// went unpriced, so a client redrawing on this event draws the corrected figure.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         overrun: Option<Overrun>,
     },
@@ -707,9 +706,9 @@ impl DeltaSink {
 
 /// The channel a [`Tool`](crate::Tool) reports its progress through while it is still running.
 ///
-/// note: Without this, a tool that takes a minute is invisible until it returns, which would
-/// make "observable invocation" a half-truth. A sink knows which call it belongs to, so a tool
-/// cannot report output as somebody else.
+/// note: Without this, a tool that takes a minute is invisible until it returns, so "observable
+/// invocation" would be a half-truth. A sink knows which call it belongs to, so a tool cannot
+/// report output as somebody else.
 #[derive(Clone)]
 pub struct OutputSink(Option<(Kernel, ToolCallId, String)>);
 

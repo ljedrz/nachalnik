@@ -200,8 +200,7 @@ pub trait Compactor: Send + Sync {
 
     /// Returns what to do about the current context, or `None` to leave it alone.
     ///
-    /// note: The items arrive in insertion order, with their states, labels, sizes and
-    /// metadata - everything needed to make an informed choice, and nothing hidden.
+    /// note: The items arrive in insertion order, with their states, labels, sizes and metadata.
     async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan>;
 
     /// What this is, for a client that wants to say which one is installed.

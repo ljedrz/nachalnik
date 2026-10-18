@@ -239,8 +239,8 @@ async fn ask(contenders: &[Contender], sequential: bool) -> Vec<Answer> {
         running.spawn(async move { (index, one(kernel).await) });
     }
 
-    // every task is waited for: stopping at one that panicked would drop the set and abort the
-    // ones still asking, which would then be reported as not having finished
+    // every task is waited for. Stopping at a panic would drop the set and abort the remaining
+    // tasks, which would then be reported as not finished
     let mut answers: HashMap<usize, Answer> = HashMap::new();
     while let Some(joined) = running.join_next().await {
         if let Ok((index, answer)) = joined {
@@ -361,8 +361,8 @@ async fn main() -> Result<(), BoxError> {
         bail("name at least two models with -m");
     }
 
-    // no tools are offered here, so one request is the whole turn; the cap is a backstop against
-    // a model that invents a tool call anyway
+    // no tools are offered, so one request is the whole turn. The cap is a backstop against a model
+    // that invents a tool call
     let config = Config {
         max_requests_per_turn: Some(2),
         ..Default::default()

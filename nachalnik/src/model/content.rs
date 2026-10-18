@@ -13,17 +13,16 @@ use super::{Message, ModelResponse, Provider};
 #[cfg(doc)]
 use crate::{Context, Kernel, Projector, TokenCounter};
 
-/// A piece of content: plain text, structured data, or an ordered sequence of [`Block`]s.
+/// A piece of content is plain text, structured data, or an ordered sequence of [`Block`]s.
 ///
-/// note: The kernel does not interpret content; it counts it (via a [`TokenCounter`]), moves it
+/// note: The kernel does not interpret content. It counts it (via a [`TokenCounter`]), moves it
 /// around, and hands it to a [`Provider`], which decides how a [`Content::Json`] payload is
 /// rendered for its wire format.
 ///
 /// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than a
-/// copy. That is what makes the rest of the design affordable: an item is copied on every state
-/// change (the undo snapshot keeps the old one) and again into a message on every request, so
-/// copying a 4 MiB tool output each time would make excluding cost more the more there was to
-/// exclude.
+/// copy. An item is copied on every state change (the undo snapshot keeps the old one) and again
+/// into a message on every request. Copying a 4 MiB tool output each time would make excluding cost
+/// more the more there was to exclude.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -254,8 +253,8 @@ impl Content {
         match self {
             Self::Text(s) => s.len(),
             Self::Json(v) => json_len(v),
-            // all of them, including the thinking and the calls: what this answers is what the
-            // turn costs, which is not what `to_text` answers
+            // all of them, including the thinking and the calls: it answers what the turn costs,
+            // not what `to_text` answers
             Self::Blocks(blocks) => blocks.iter().map(Block::byte_len).sum(),
             // the base64 and the media type, because both go out and neither is free. It is not
             // what the *model* charges for a picture - that is a count no byte length can reach,
@@ -374,9 +373,9 @@ impl Content {
             return self.truncate_to(limit);
         }
 
-        // the text before the first block that does not fit goes as it is; that block is cut, with
-        // the note counting everything that went, and the text after it goes with it. The
-        // pictures stay where they were
+        // the text before the first block that does not fit stays as it is. That block is cut, and
+        // the note counts everything that went. The text after it goes with it. Pictures stay where
+        // they were
         let mut shown = Vec::with_capacity(blocks.len());
         let (mut room, mut dropped) = (limit, None);
         for (at, block) in blocks.iter().enumerate() {
@@ -479,17 +478,16 @@ impl fmt::Display for Content {
 
 /// Something the model produced, and whatever the provider attached to it.
 ///
-/// note: this is [`ToolCall::extra`] for the parts of a turn that are not calls, and it exists
-/// for the same reason. Some APIs sign each piece of an assistant turn rather than the turn as a
-/// whole - Gemini's `thoughtSignature` rides on a text part as readily as on a call - and a
-/// request that returns one altered is rejected or answered worse. The kernel never looks inside
-/// it, never separates it from the block it belongs to, and a provider that has nothing to attach
-/// pays a null.
+/// note: this is [`ToolCall::extra`] for the parts of a turn that are not calls, and exists for the
+/// same reason. Some APIs sign each piece of an assistant turn rather than the turn as a whole;
+/// Gemini's `thoughtSignature` rides on a text part as readily as on a call, and a request that
+/// returns one altered is rejected or answered worse. The kernel never looks inside it, never
+/// separates it from the block it belongs to, and a provider with nothing to attach sends a null.
 ///
-/// note: bound to the block rather than kept in a list beside it, so that whatever removes the
-/// block removes the signature of the thing that is no longer there. An elided turn is the case
-/// that makes it matter: the marker replacing the words is not the words, and it must not go out
-/// signed as if it were.
+/// note: bound to the block rather than kept in a list beside it, so whatever removes the block
+/// removes the signature of the thing that is no longer there. An elided turn is the case that
+/// makes it matter: the marker replacing the words is not the words, and it must not go out signed
+/// as if it were.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Part {
     /// What the model produced.

@@ -38,8 +38,8 @@ impl Kernel {
         // installed by the time the answer arrives: one swapped in meanwhile never counted this
         let counter = self.counter();
 
-        // a step that gets this far and then cannot proceed says why, rather than showing up on
-        // the stream as a pair of state changes with nothing between them
+        // a step that gets this far and cannot proceed reports why instead of appearing on the
+        // stream as two state changes with nothing between them
         let prepared = self
             .provider()
             .ok_or(Error::NoProvider)

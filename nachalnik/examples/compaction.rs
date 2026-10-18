@@ -74,8 +74,8 @@ impl Compactor for Summarizer {
             .collect();
         candidates.sort_by_key(|item| std::cmp::Reverse(item.tokens));
 
-        // note: elided rather than removed, which is what `CompactionPlan::remove` asks of anything
-        // a tool call answers. A removed result takes its call down with it, and the model reads a
+        // note: elided rather than removed, as `CompactionPlan::remove` asks of anything a tool
+        // call answers. A removed result takes its call down with it, and the model reads a
         // conversation in which the call was never made beside a summary saying it was
         let mut used = budget.used();
         let mut elide = Vec::new();
@@ -354,8 +354,8 @@ async fn main() -> Result<(), BoxError> {
         println!("{line}");
     }
 
-    // a session that has been running for a while: the model asked for two tools, both answered
-    // at length, and one of the answers has been pinned by the user
+    // a long-running session: the model called two tools, both answered at length, and the user
+    // pinned one answer
     stage(
         1,
         "THE SESSION SO FAR",
