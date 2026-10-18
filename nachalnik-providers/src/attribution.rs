@@ -87,12 +87,12 @@ impl Attribution {
         self
     }
 
-    /// Adds the app headers to a request for `address`, if there is an app to name and the
-    /// address is one that keeps a ranking of them.
+    /// Adds the app headers to a request for `address` if an app is named and the address is
+    /// OpenRouter.
     ///
     /// note: the address test is [`crate::is_openrouter`], the same one the request paths and
-    /// `kamchatka`'s key rule use. An engine of one's own keeps no ranking of the apps calling it,
-    /// so a client pointed at one has nothing to send and must not send it.
+    /// `kamchatka`'s key rule use. An engine you run yourself keeps no ranking of the apps calling
+    /// it, so a client pointed at one has nothing to send and must not send it.
     pub(crate) fn sign(
         &self,
         request: reqwest::RequestBuilder,
@@ -110,8 +110,8 @@ impl Attribution {
             true => request,
             false => request.header("X-OpenRouter-Categories", self.categories.join(",")),
         };
-        // and nothing at all for the public case, which is the default and has no value of its
-        // own: `hidden` or the absence of the header, there is no third thing to say
+        // The public case is the default and sends no header. The only values are `hidden` and no
+        // header
         match self.unlisted {
             true => request.header("X-OpenRouter-App-Visibility", "hidden"),
             false => request,

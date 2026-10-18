@@ -72,7 +72,7 @@ use nachalnik::{Overrun, TooLong};
 
 mod endpoint;
 
-/// How many times a request is sent when the server keeps saying it is busy, the first included.
+/// How many times a request is sent when the server says it is busy, including the first attempt.
 ///
 /// note: counted per request, not on the provider. A counter every request draws from and any of
 /// them resets gives concurrent requests against a busy endpoint one allowance between them, so a
@@ -88,14 +88,13 @@ mod endpoint;
 ))]
 pub(crate) const RETRIES: usize = 4;
 
-/// How long a question *about* an endpoint is given: a listing of its models, or a probe for a
+/// How long a question about an endpoint is given: a listing of its models, or a probe for a
 /// model's context limit.
 ///
 /// note: its own bound, because none of these is a turn. A turn is watched for silence and stopped
-/// by an interrupt; these are awaited by a startup, a `/model` or a `/models` with nothing watching,
-/// on a client that may have no timeout - and an endpoint that takes the connection and never
-/// answers would hold whatever is waiting on it for ever. What a question that times out answers
-/// is what it answers when the endpoint cannot say: nothing, or no limit.
+/// by an interrupt. A startup, a `/model` or a `/models` awaits these with nothing watching, on a
+/// client that may have no timeout. An endpoint that takes the connection and never answers would
+/// hold whatever is waiting on it for ever. A timed-out question answers nothing, or no limit.
 #[cfg(any(feature = "anthropic", feature = "openai", feature = "gemini"))]
 pub(crate) const ASKING: std::time::Duration = std::time::Duration::from_secs(15);
 #[cfg(any(
@@ -136,13 +135,13 @@ pub use crate::openai::OpenAiCompatible;
 #[cfg(feature = "system1")]
 pub use crate::system1::SystemOne;
 
-/// A transport's failure, with every cause under it.
+/// A transport failure, with every cause under it.
 ///
-/// note: the error's own line is only its category and the URL - `error sending request for url
+/// note: the error's own line shows only its category and the URL - `error sending request for url
 /// (…)`, or `builder error` - and the part a person can act on, `Connection refused` or `relative
-/// URL without a base`, is further down the chain. The kernel records an error as its `Display`,
-/// so a cause left in the chain is a cause nobody is shown. A layer that already repeats the one
-/// under it is not repeated again.
+/// URL without a base`, is further down the chain. The kernel records an error as its `Display`, so
+/// a cause left in the chain is not shown. A layer that already repeats the one under it is not
+/// repeated again.
 #[cfg(any(
     feature = "anthropic",
     feature = "gemini",
@@ -164,24 +163,24 @@ pub(crate) fn with_causes(e: &(dyn std::error::Error + 'static)) -> String {
     said
 }
 
-/// Whether an error means an account is out of free requests for the day, rather than having hit
-/// a momentary upstream limit.
+/// Whether an error means an account is out of free requests for the day, rather than having hit a
+/// momentary upstream limit.
 ///
-/// note: the two are the same HTTP status and the difference matters to whoever is deciding what
-/// to do next. The first is worth skipping over - it will still be true in a minute - and the
-/// second is worth waiting out. A provider here already refuses to sit through a `Retry-After`
-/// longer than a minute for the same reason; this is for a caller reading the error afterwards
-/// and deciding whether the rest of a run is worth attempting.
+/// note: both are the same HTTP status, and the difference matters to whoever is deciding what to
+/// do next. The first is worth skipping over - it will still be true in a minute - and the second
+/// is worth waiting out. A provider here already refuses to sit through a `Retry-After` longer than
+/// a minute for the same reason; this is for a caller reading the error afterwards and deciding
+/// whether the rest of a run is worth attempting.
 pub fn out_of_quota(error: &str) -> bool {
     error.contains("per-day") || error.contains("daily")
 }
 
-/// Reads a server's complaint that a request was longer than the model takes, where it is one,
-/// against what the caller already knows the model takes.
+/// Reads a server's complaint that a request was longer than the model takes, against what the
+/// caller already knows the model takes.
 ///
 /// note: the wordings differ per vendor and the arithmetic does not, so this reads the numbers
-/// rather than the sentence, and it reads exactly one of them: the request, which is the largest
-/// token count a complaint of this kind can name. The limit is *not* taken from the prose. In
+/// rather than the sentence, and reads exactly one of them: the request, the largest token count a
+/// complaint of this kind can name. The limit is not taken from the prose. In
 /// `you requested about 92674 tokens (92174 of text input, 500 in the output)`, against a model
 /// that takes 65536, the second-largest number is neither of the two, and the difference is what
 /// somebody would be told to free.
@@ -189,17 +188,17 @@ pub fn out_of_quota(error: &str) -> bool {
 /// note: `limit` is what makes the reading safe: a refusal for length names a request larger than
 /// the model takes, and nothing else in the sentence is larger than the limit. Without one, a
 /// message naming a single number is left alone, because that number could be the request or the
-/// limit, and reading it the wrong way round calibrates a counter *down* on its way to a refusal.
+/// limit, and reading it the wrong way round calibrates a counter down on its way to a refusal.
 ///
-/// note: and the sentence has to *name* that limit, which is the one thing that says it is
-/// counting in the same units as the session reading it. An aggregator normalises token counts
-/// into its own tokenizer and enforces its own window, but the model behind it refuses in its
-/// native one, and both refusals arrive from the same address for the same model id. The
-/// aggregator's names the limit the session measures against and a request close to the
-/// session's own count, which is a correction worth having. The upstream's names neither, because
-/// it is another tokenizer's count of the same bytes. Reading it would tell somebody to free
-/// tokens that were never there, and would teach the counter a scale this session is not held
-/// to. An unread refusal is still the server's own sentence, which names the problem in words.
+/// note: the sentence has to name the limit, which is the one thing that says it counts in the same
+/// units as the session reading it. An aggregator normalises token counts into its own tokenizer
+/// and enforces its own window, but the model behind it refuses in its native one, and both
+/// refusals arrive from the same address for the same model id. The aggregator's refusal names the
+/// limit the session measures against and a request close to the session's own count, which is a
+/// correction worth having. The upstream's refusal names neither, because it is another tokenizer's
+/// count of the same bytes. Reading it would tell somebody to free tokens that were never there,
+/// and teach the counter a scale this session is not held to. An unread refusal is still the
+/// server's own sentence, which names the problem in words.
 pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
     /// What names this kind of refusal, whoever phrased it.
     const COMPLAINTS: [&str; 5] = [
@@ -247,10 +246,9 @@ pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
 
 /// The error a refused request becomes, reading a complaint about its length as one.
 ///
-/// note: every dialect here ends at the same line - a sentence from a server, boxed and returned -
-/// and this is that line, so that the one refusal a session can *act* on arrives as [`TooLong`]
-/// rather than as prose somebody has to read twice. The sentence survives either way: `TooLong`
-/// prints what the server said and nothing else.
+/// note: every dialect here ends at the same line: a sentence from a server, boxed and returned.
+/// This is that line, so the one refusal a session can act on arrives as [`TooLong`] rather than as
+/// prose. `TooLong` prints what the server said and nothing else.
 #[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn refused(said: String, limit: Option<usize>) -> BoxError {
     match too_long(&said, limit.map(|limit| limit as u64)) {
@@ -261,12 +259,12 @@ pub(crate) fn refused(said: String, limit: Option<usize>) -> BoxError {
 
 /// A call, from the text the model wrote for its arguments.
 ///
-/// note: nothing written is no arguments, which is how a server spells a call to a tool that takes
-/// none - read as JSON, it failed, and the model was told its arguments were invalid and sent the
-/// same correct call again. Text that is not a JSON object is kept as it was written, on
+/// note: nothing written means no arguments, which is how a server spells a call to a tool that
+/// takes none. Read as JSON it failed, so the model was told its arguments were invalid and sent
+/// the same correct call again. Text that is not a JSON object is kept as written on
 /// [`ToolCall::unparsed`](nachalnik::ToolCall::unparsed): the kernel answers the call saying so,
 /// rather than a tool running on nothing, and the call goes back to the model empty rather than
-/// wrapped in a shape of ours it would copy.
+/// wrapped in a shape of ours that it would copy.
 #[cfg(any(feature = "anthropic", feature = "openai"))]
 pub(crate) fn called(
     id: impl Into<nachalnik::ToolCallId>,
@@ -282,8 +280,8 @@ pub(crate) fn called(
     }
 }
 
-/// Whether a listed identifier names the model being asked about, allowing for the decorations
-/// listings put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.
+/// Whether a listed identifier names the model being asked about, allowing for the decorations a
+/// listing adds: Google's `models/` prefix and ollama's implicit `:latest` tag.
 pub fn same_model(listed: &str, model: &str) -> bool {
     listed == model
         || listed.strip_prefix("models/") == Some(model)
@@ -330,19 +328,18 @@ pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
 
 /// Whether an address is OpenRouter's. Takes a whole URL or a bare authority.
 ///
-/// note: one rule, in one place, because more than one thing in this workspace needs it and each
-/// one is a decision about somebody's credentials or about somebody's data: whether to send the
-/// app headers that put a program in a public ranking, and, in `kamchatka`, whether a session's
-/// own key may be spent on advice. Two copies of a host test can drift apart and still be read as
-/// the same rule.
+/// note: one rule, in one place, because more than one thing in this workspace needs it, and each
+/// is a decision about a user's credentials or data: whether to send the app headers that put a
+/// program in a public ranking, and, in `kamchatka`, whether a session's own key may be spent on
+/// advice. Two copies of a host test can drift apart and still be read as the same rule.
 ///
 /// note: on the authority alone, so a path, a port and a regional subdomain all still count, and
-/// `openrouter.ai.example.com` does not. A `contains` would match that last one, which is why
+/// `openrouter.ai.example.com` does not. A `contains` check would match that last one, which is why
 /// this is not one.
 ///
-/// note: and on the host *after* any `user:password@`, which a request is sent with and not to:
-/// `https://openrouter.ai:x@example.com` goes to `example.com`, and read up to its first `:` it
-/// was OpenRouter's, so the key a caller keeps for OpenRouter went there too.
+/// note: and on the host after any `user:password@`, which a request is sent with and not to.
+/// `https://openrouter.ai:x@example.com` goes to `example.com`; read up to its first `:`, it was
+/// OpenRouter's, so a key kept for OpenRouter went there too.
 pub fn is_openrouter(address: &str) -> bool {
     let host = host_of(
         address
@@ -390,12 +387,11 @@ pub(crate) fn address(url: impl Into<String>) -> String {
     url
 }
 
-/// A request carrying a key, or carrying none where the key is empty.
+/// A request carrying a key, or none when the key is empty.
 ///
-/// note: empty is how a caller says it has no key, which is what a model served on the machine in
-/// front of you wants: ollama, llama.cpp and vLLM check nothing unless they were started with a
-/// key of their own. Sent anyway, an empty key is an `Authorization: Bearer ` with nothing after
-/// it, which a server that checks nothing ignores and a proxy in front of one may well refuse.
+/// note: an empty key is how a caller says it has no key. ollama, llama.cpp and vLLM check nothing
+/// unless started with their own key. Sent anyway, an empty key is `Authorization: Bearer ` with
+/// nothing after it; a server that checks nothing ignores it, and a proxy in front may refuse.
 #[cfg(any(
     feature = "anthropic",
     feature = "gemini",
@@ -446,13 +442,12 @@ impl Keyed for reqwest::RequestBuilder {
     }
 }
 
-/// A base URL as it may be written down: what [`ModelInfo::endpoint`](nachalnik::ModelInfo) says,
-/// which goes into every record of a session.
+/// A base URL as [`ModelInfo::endpoint`](nachalnik::ModelInfo) records it, which goes into every
+/// record of a session.
 ///
-/// note: without whatever in it is a credential. A `user:password@` before the host, or a key in
-/// the query string, is a way some endpoints take one - and a record is a file that is kept,
-/// shared and pasted into bug reports, where an address belongs and a key does not. The scheme,
-/// the host and the path are what says where a session was talking.
+/// note: credentials are removed. A `user:password@` before the host, or a key in the query string,
+/// is how some endpoints take one. A record is kept, shared and pasted into bug reports, where an
+/// address belongs and a key does not. The scheme, host and path say where a session was talking.
 #[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn recorded(url: &str) -> String {
     let url = url.split(['?', '#']).next().unwrap_or_default();
@@ -471,14 +466,14 @@ pub(crate) fn recorded(url: &str) -> String {
     }
 }
 
-/// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
+/// Installs the `rustls` cryptographic provider, and does nothing if already installed.
 ///
-/// note: reqwest is built here with `rustls-no-provider`, so there is no default waiting behind
-/// this - a client built without it fails at the first `https://` with "no process-level
-/// CryptoProvider available". Every constructor in this crate calls it, so that a test or an
-/// example that builds a provider and never goes near `main` is not the one that finds out. It is
-/// public because a caller building its own [`reqwest::Client`] needs the same thing, and because
-/// a program that installs a different provider wants to do so before any of this runs.
+/// note: reqwest is built with `rustls-no-provider`, so there is no default provider. A client
+/// built without one fails at the first `https://` with "no process-level CryptoProvider
+/// available". Every constructor in this crate calls it, so a test or example that builds a
+/// provider and never reaches `main` is not the one that finds out. It is public because a caller
+/// building its own [`reqwest::Client`] needs it, and because a program installing a different
+/// provider wants to do so before any of this runs.
 pub fn install_crypto() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
@@ -529,11 +524,11 @@ mod tests {
         );
     }
 
-    /// A listed name is the model under either decoration a listing puts on it, each on its own.
+    /// A listed name is the model under either decoration a listing puts on it.
     ///
-    /// note: each decoration is the whole difference for one kind of endpoint - Google lists every
-    /// model under `models/`, and ollama tags a name the session holds bare with `:latest` - so a
-    /// match that needed both would tell every such session its model is not served.
+    /// note: each decoration is the whole difference for one kind of endpoint. Google lists every
+    /// model under `models/`, and ollama tags a bare name with `:latest`. A match that needed both
+    /// would tell every such session its model is not served.
     #[test]
     fn a_listed_name_is_the_model_under_either_decoration() {
         for listed in ["resident", "models/resident", "resident:latest"] {
@@ -544,15 +539,15 @@ mod tests {
         }
     }
 
-    /// Whose address it is, from either a whole URL or a bare authority.
+    /// Whose address it is, from a whole URL or a bare authority.
     ///
-    /// note: two things turn this into a decision - app attribution, and whether `kamchatka` may
-    /// spend a session's key on advice - and the second is the reason the URL forms are here:
-    /// `Attribution::sign` passes a bare host, and `kamchatka` passes the whole address.
+    /// note: it decides app attribution, and whether `kamchatka` may spend a session's key on
+    /// advice. The second is why both URL forms are tested. `Attribution::sign` passes a bare host,
+    /// and `kamchatka` passes the whole address.
     ///
-    /// note: `openrouter.ai.example.com` decides the shape of the function. A `contains` or a
-    /// suffix test over the raw address would match it, and the callers would then name a program
-    /// and spend a key against a host that merely put somebody else's name in front of its own.
+    /// note: `openrouter.ai.example.com` decides the shape of the function. A `contains` or suffix
+    /// test on the raw address would match it, and callers would name a program and spend a key
+    /// against a host that merely put somebody else's name in front of its own.
     #[test]
     fn an_address_is_openrouters_by_its_authority_and_nothing_else() {
         for theirs in [
@@ -583,13 +578,12 @@ mod tests {
         }
     }
 
-    /// Every vendor writes the same complaint differently, and the arithmetic is the same in all
-    /// of them.
+    /// Vendors phrase the same complaint differently; the arithmetic is the same.
     ///
-    /// note: each of these is a sentence an endpoint sent. The first carries a status code, which
-    /// is a number in the message and not a token count; the second carries three of them, of
-    /// which the second-largest is neither the request nor the limit - which is why what is read
-    /// out of the prose is the request alone.
+    /// note: each is a sentence an endpoint sent. The first carries a status code, which is a
+    /// number in the message and not a token count. The second carries three numbers, of which the
+    /// second-largest is neither the request nor the limit. What is read from the prose is the
+    /// request alone.
     #[test]
     fn a_refusal_for_length_is_read_whoever_phrased_it() {
         let shapes = [
@@ -668,9 +662,9 @@ mod tests {
                 "401 Unauthorized: key 12345678 is not valid for model 4096",
                 Some(8_192),
             ),
-            // about length, and naming only what the model takes. With a limit to check it
-            // against it fails the check; without one, a lone number could be either of the two
-            // and reading it as the wrong one is worse than not reading it
+            // about length, naming only what the model takes. With a limit, it fails the check.
+            // Without one, a lone number could be either value, and reading it wrong is worse than
+            // not reading it
             ("This model's maximum context length is 8192 tokens.", None),
             (
                 "This model's maximum context length is 8192 tokens.",

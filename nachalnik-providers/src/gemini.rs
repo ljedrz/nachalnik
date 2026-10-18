@@ -1,23 +1,23 @@
-//! Google's own dialect, in which an assistant turn is an ordered list of parts.
+//! Google's dialect: an assistant turn is an ordered list of parts.
 //!
-//! note: this exists because the OpenAI-compatible shim in [`openai`](crate::openai) cannot
-//! say what the model actually did. Gemini answers with `content.parts[]` - a thinking part, a
-//! sentence, a `functionCall`, in the order they were produced - and the shim flattens that into
-//! a `content` string beside a `tool_calls` array, because the dialect it is imitating has no
-//! order to report. Everything downstream then reads a turn that has been rearranged. This one
-//! reports the order, as [`Content::Blocks`], and sends it back the same way.
+//! note: this exists because the OpenAI-compatible shim in [`openai`](crate::openai) cannot say
+//! what the model actually did. Gemini answers with `content.parts[]` - a thinking part, a
+//! sentence, a `functionCall`, in the order produced - and the shim flattens that into a `content`
+//! string beside a `tool_calls` array because the imitated dialect has no order to report.
+//! Everything downstream reads a rearranged turn. This dialect reports the order as
+//! [`Content::Blocks`] and sends it back the same way.
 //!
-//! note: it is a second provider rather than a flag on the first because they are two wire
-//! formats, not two settings: different paths, different auth header, different names for every
-//! field, `functionResponse` parts inside a user turn instead of a `tool` role. What they share is
-//! the trait the kernel talks through.
+//! note: a second provider rather than a flag on the first because they are two wire formats, not
+//! two settings: different paths, different auth header, different names for every field,
+//! `functionResponse` parts inside a user turn instead of a `tool` role. They share the trait the
+//! kernel talks through.
 //!
 //! note: signatures are the reason to bother beyond tidiness. Gemini signs the parts of a turn and
 //! answers `400 Function call is missing a thought_signature` when one comes back without its
-//! signature; the shim reports a call's signature and drops the one on a text part, because a
-//! message has nowhere to keep it. Here every part's own extra fields ride on the block they
-//! belong to - [`Part::extra`] and [`ToolCall::extra`] - and go back out attached to the same
-//! part, uninterpreted.
+//! signature; the shim reports a call's signature and drops the one on a text part because a
+//! message has nowhere to keep it. Here every part's extra fields ride on the block they belong
+//! to - [`Part::extra`] and [`ToolCall::extra`] - and go back out attached to the same part,
+//! uninterpreted.
 
 use std::sync::{
     Arc,
@@ -67,9 +67,9 @@ pub struct Gemini {
 /// What a model's entry in the listing says about its parameters.
 ///
 /// note: the figures are about fields of `generationConfig` - `temperature`, `topP`, `topK` and
-/// the `outputTokenLimit` that bounds `maxOutputTokens` - so they are named by their path into
-/// it, which is what a caller setting one writes. One lock for all of it, learnt from one entry
-/// and forgotten on one switch, for the reason the other dialect's `Entry` gives.
+/// `outputTokenLimit`, which bounds `maxOutputTokens` - so they are named by their path into it, as
+/// a caller setting one writes. One lock for all of it, learnt from one entry and forgotten on one
+/// switch, for the reason the other dialect's `Entry` gives.
 #[derive(Default)]
 struct Listed {
     /// The paths of the parameters the entry published a figure for, in a fixed order.
@@ -84,8 +84,8 @@ impl Listed {
     /// Reads a model's entry, as `GET /models/{model}` answers it.
     fn read(entry: &Value) -> Self {
         let mut listed = Self::default();
-        // what the listing calls it, the field of `generationConfig` it is about, and whether
-        // the figure is the field's default or its most
+        // what the listing calls it, the `generationConfig` field it is about, and whether the
+        // figure is the field's default or its most
         let figures = [
             ("outputTokenLimit", "maxOutputTokens", false),
             ("temperature", "temperature", true),
@@ -111,10 +111,10 @@ impl Listed {
     }
 }
 
-/// A run of parts of one kind, being assembled from the stream.
+/// A run of parts of one kind, assembled from the stream.
 ///
-/// note: a long answer arrives as a part per chunk, and they are one block rather than forty. The
-/// text is accumulated in a `String` and made into a [`Content`] once, because appending to an
+/// note: a long answer arrives as a part per chunk and becomes one block rather than forty. The
+/// text is accumulated in a `String` and made into a [`Content`] once because appending to an
 /// `Arc<str>` rebuilds it every time and a streamed paragraph would be quadratic.
 enum Partial {
     Text(String, Value),
@@ -161,8 +161,8 @@ impl Gemini {
         self.attempts.load(Ordering::SeqCst)
     }
 
-    /// Waits this long for a stream that says nothing before giving the request up, rather than
-    /// the two and a half minutes it waits unless told; see [`Dialect::set_patience`].
+    /// Waits this long for a silent stream before giving up on the request, rather than the default
+    /// two and a half minutes; see [`Dialect::set_patience`].
     #[must_use]
     pub fn with_patience(self, patience: std::time::Duration) -> Self {
         *self.patience.lock() = patience;
@@ -171,21 +171,21 @@ impl Gemini {
 
     /// Measures against this limit rather than against whatever the endpoint advertises.
     ///
-    /// note: sticky across [`Endpoint::set_model`] and [`Endpoint::set_endpoint`], because it is
-    /// a decision about what to measure and not a fact about one model. `None` means "ask the
-    /// endpoint", which is the default.
+    /// note: sticky across [`Endpoint::set_model`] and [`Endpoint::set_endpoint`] because it is a
+    /// decision about what to measure, not a fact about one model. `None` means "ask the endpoint",
+    /// the default.
     pub fn with_context_limit(mut self, limit: Option<usize>) -> Self {
         self.configured = limit;
         *self.context_limit.get_mut() = limit;
         self
     }
 
-    /// Asks the endpoint what the model's context limit is, and what it publishes about the
+    /// Asks the endpoint what the model's context limit is and what it publishes about the
     /// parameters it takes.
     ///
-    /// note: the native listing carries the limit - `inputTokenLimit` - which the
-    /// OpenAI-compatible one does not, so this is one round trip rather than the two that one
-    /// needs. It is asked even where the limit was set by hand, because the parameters are not.
+    /// note: the native listing carries the limit, `inputTokenLimit`, which the OpenAI-compatible
+    /// one does not, so this is one round trip rather than two. It is asked even where the limit
+    /// was set by hand because the parameters are not.
     pub async fn probe(&self) {
         let (base, model) = (self.endpoint(), self.model.lock().clone());
         let Ok(response) = self
@@ -208,27 +208,24 @@ impl Gemini {
         *self.listed.lock() = Listed::read(&body);
     }
 
-    /// Puts a notice up if the model is not one the endpoint lists.
+    /// Sets a notice if the model is not listed by the endpoint.
     ///
-    /// note: the alternative is finding out on the next request, as a 404 with a paragraph of
-    /// somebody's API prose in it. Switching address and model are two commands and it is easy to
-    /// do one of them - which is why this is asked after an address changes as well as after a
-    /// name does, the same as the other dialect.
+    /// note: otherwise the first bad request returns a 404 with the API's prose in it. Address and
+    /// model are separate commands, so this runs after either changes, as in the other dialect.
     ///
-    /// note: an empty listing is "it did not say" rather than "it has none", so it buys silence -
-    /// and silence clears a notice still waiting, for the reason the other dialect's gives.
+    /// note: an empty listing means "it did not say", not "it has none", so it sets no notice, and
+    /// clears one still waiting, for the reason the other dialect's gives.
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model.lock().clone();
         let listed = self.models().await;
         *self.notice.lock() = crate::unlisted(&model, &listed);
     }
 
-    /// Everything in a part except the fields this provider understands.
+    /// All of a part except the fields this provider understands.
     ///
-    /// note: not just `thoughtSignature`, though that is the one that matters. Whatever Google
-    /// puts beside the text next is carried back unread, which is the same bargain
-    /// [`ToolCall::extra`] makes and the only one a provider can make honestly about a field it
-    /// has never heard of.
+    /// note: not just `thoughtSignature`, though that is the one that matters. Whatever Google puts
+    /// beside the text is carried back unread, the same bargain [`ToolCall::extra`] makes and the
+    /// only honest one for a field a provider has never heard of.
     fn attached(part: &Value) -> Value {
         let Some(fields) = part.as_object() else {
             return Value::Null;
@@ -330,9 +327,8 @@ impl Gemini {
     /// The parts an assistant turn goes back out as.
     ///
     /// note: a turn recorded as blocks goes back in the order it arrived in, each part carrying
-    /// what was attached to it. One recorded the conventional way - by a session that started
-    /// against another provider, or by a projector told not to send blocks - is assembled into
-    /// the order this API expects: the thinking, then what was said, then the calls.
+    /// what was attached to it. A turn recorded the conventional way is assembled into the order
+    /// this API expects: thinking, then what was said, then the calls.
     fn turn(message: &Message) -> Vec<Value> {
         let Some(blocks) = message.blocks() else {
             let mut parts = Vec::new();
@@ -360,8 +356,8 @@ impl Gemini {
                     &part.extra,
                 ),
                 Block::Call(call) => Self::asking(call),
-                // `Block` is `#[non_exhaustive]`: a variant this provider has never heard of is
-                // dropped rather than guessed at, and the turn is still valid without it
+                // `Block` is `#[non_exhaustive]`: an unknown variant is dropped rather than guessed
+                // at, and the turn remains valid without it
                 _ => Value::Null,
             })
             .filter(|part| !part.is_null())
@@ -370,8 +366,8 @@ impl Gemini {
 
     /// One piece of content, as the part this API carries it in.
     ///
-    /// note: text in a `text` part and bytes in an `inline_data` one. The payload is already
-    /// base64, which is the form this field takes, so nothing is encoded on the way out.
+    /// note: text goes in a `text` part and bytes in an `inline_data` part. The payload is already
+    /// base64, the form this field takes, so nothing is encoded on the way out.
     fn part_of(content: &Content) -> Value {
         match content.as_blob() {
             Some(blob) => json!({
@@ -389,9 +385,8 @@ impl Gemini {
     /// One tool call, as a part.
     fn asking(call: &ToolCall) -> Value {
         let mut asked = json!({ "name": call.tool, "args": *call.args });
-        // the identifier is what pairs the call with its answer, and this API takes one of its
-        // own making; where the kernel had to repair one, the repaired identifier is what both
-        // halves of the pair carry
+        // the identifier pairs the call with its answer, and this API supplies its own. Where the
+        // kernel repaired one, the repaired identifier is what both halves of the pair carry
         if !call.id.0.is_empty() {
             asked["id"] = json!(call.id.0);
         }
@@ -401,11 +396,10 @@ impl Gemini {
 
     /// One tool result, as a part of the user turn that answers the model's.
     ///
-    /// note: a picture the tool returned goes in the `functionResponse`'s own `parts`, as
-    /// `inlineData`, and the text around it in `response` - the one place this API takes a
-    /// picture as part of a result rather than as something the person said after it. Named
-    /// instead, as the other dialect has to, the model is left to guess: asked the colour of a
-    /// red square it was only told about, `gemini-3.5-flash-lite` answers "blue".
+    /// note: a picture the tool returned goes in the `functionResponse`'s own `parts` as
+    /// `inlineData`, and the text around it in `response` - the one place this API takes a picture
+    /// as part of a result rather than as something the person said after it. Named instead, as the
+    /// other dialect has to, the model is left to guess.
     fn answering(message: &Message) -> Value {
         let said = message.content.clone().unwrap_or_default();
         let pictures: Vec<Value> = match &said {
@@ -454,9 +448,8 @@ impl Gemini {
 #[async_trait]
 impl Provider for Gemini {
     fn info(&self) -> ModelInfo {
-        // note: one lock to a statement, for the reason the OpenAI dialect's `info` gives: a
-        // struct literal holds every guard it takes until it is done, and `respond` takes the same
-        // two in the other order on another thread
+        // note: one lock to a statement: a struct literal holds every guard it takes until it is
+        // done, and `respond` takes the same two in the other order on another thread
         let context_limit = *self.context_limit.lock();
         let model = self.model.lock().clone();
         let endpoint = crate::recorded(&self.base_url.lock());
@@ -521,7 +514,7 @@ impl Provider for Gemini {
             }
 
             // turns alternate here, so three tool results are three parts of one turn rather than
-            // three turns. Sending them separately is the shape this API is least forgiving about
+            // three turns. The API is least forgiving of sending them separately
             match contents.last_mut() {
                 Some(last) if last["role"] == role => {
                     if let Some(existing) = last["parts"].as_array_mut() {
@@ -566,10 +559,9 @@ impl Provider for Gemini {
         // sets a budget without also taking away the thoughts it is a budget for
         body["generationConfig"] = json!({ "thinkingConfig": { "includeThoughts": true } });
         //
-        // note: the three fields built from the request itself are not replaced, for the reason
-        // the other dialect gives: a parameter is carried beside the conversation, not in place
-        // of it. Nor is the model put in: it is in the address, and in the body it is a field
-        // `generateContent` does not define, beside the model the address asks for
+        // note: the three fields built from the request are not replaced: a parameter is carried
+        // beside the conversation, not in place of it. The model is not put in the body: it is in
+        // the address, and `generateContent` does not define it as a body field
         for (key, value) in &request.params {
             match key.as_str() {
                 "generationConfig" => merge(&mut body["generationConfig"], value),
@@ -625,8 +617,8 @@ impl Provider for Gemini {
 
 /// A stream, read: the turn as the parts left it.
 ///
-/// note: `partial` is the turn in the order it was produced, which is why this dialect gathers
-/// parts where the other one gathers three slots.
+/// note: `partial` is the turn in the order it was produced, so this dialect gathers parts where
+/// the other one gathers three slots.
 #[derive(Default)]
 struct Streamed {
     /// The turn so far, in the order the model produced it.
@@ -646,12 +638,11 @@ impl Events for Streamed {
             .is_some_and(|candidates| !candidates.is_empty())
             || chunk["promptFeedback"]["blockReason"].is_string();
         if let Some(reported) = chunk.get("usageMetadata").filter(|u| !u.is_null()) {
-            // note: the thoughts are added in, because `Usage::output_tokens` is everything
-            // generated and this dialect reports the two apart. Google's own `totalTokenCount` is
-            // defined as the prompt plus the thoughts plus the candidates, so the sum is that
-            // definition rather than this crate's invention - and without it a thinking turn's
-            // cost is the answer alone. `thoughtsTokenCount` still says how much of it was
-            // thinking, one field along
+            // note: thoughts are added to `Usage::output_tokens` because that field is everything
+            // generated and this dialect reports thoughts and candidates apart. Google defines
+            // `totalTokenCount` as the prompt plus the thoughts plus the candidates, so the sum
+            // matches that definition. Without it, a thinking turn's cost is the answer alone.
+            // `thoughtsTokenCount` still reports how much of the output was thinking
             let thoughts = reported["thoughtsTokenCount"].as_u64();
             let candidates = reported["candidatesTokenCount"].as_u64();
             self.usage = Some(Usage {
@@ -669,8 +660,8 @@ impl Events for Streamed {
             });
         }
 
-        // a prompt the API will not answer at all comes back with no candidate and the reason
-        // beside it - which is a refusal whatever it names
+        // a prompt the API will not answer comes back with no candidate and the reason beside it;
+        // that is a refusal whatever the reason says
         if let Some(reason) = chunk["promptFeedback"]["blockReason"].as_str() {
             self.finish = Some(format!("blocked: {reason}"));
         }
@@ -739,9 +730,9 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
         ..
     } = streamed;
     match stopped {
-        // note: this dialect's own end of the stream, which is an end of the turn. A stream the
-        // server ended on purpose and reported no `finishReason` for is not a turn whose reason
-        // nobody gave, and the marker is the only thing that said so
+        // note: this dialect's own end of the stream is an end of the turn. A stream the server
+        // ended on purpose with no `finishReason` is not a turn whose reason nobody gave; the
+        // end-of-stream marker is the only thing that said so
         Stopped::Done if finish.is_none() => finish = Some("STOP".to_owned()),
         Stopped::Done => {}
         Stopped::Interrupted => finish = Some("interrupted".to_owned()),
@@ -765,9 +756,9 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
         content: (!blocks.is_empty()).then(|| Content::blocks(blocks)),
         reasoning: None,
         tool_calls: Vec::new(),
-        // note: derived from the parts, not from `finishReason`, which says `STOP` for a turn
-        // that asked for three tools. What ends a turn here is running out of things to say,
-        // and a call is not that
+        // note: `stop` is derived from the parts, not from `finishReason`, which says `STOP` for a
+        // turn that asked for three tools. A turn ends by running out of things to say, and a call
+        // is not that
         stop: match finish.as_deref() {
             Some("interrupted") => StopReason::Other("interrupted".to_owned()),
             // note: ahead of `asked`, for the reason `interrupted` is ahead of it. That the
@@ -776,8 +767,8 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
             // from the calls rather than from this, so saying so costs the turn nothing
             Some("cut off") => StopReason::Other("cut off".to_owned()),
             Some(blocked) if blocked.starts_with("blocked: ") => StopReason::Refusal,
-            // and so is running out of room, which is said nowhere else either, and which the
-            // OpenAI dialect reports as `Length` whether or not the turn asked for anything
+            // ahead of `asked` too: running out of room is reported nowhere else either, and the
+            // OpenAI dialect reports it as `Length` whether or not the turn asked for anything
             Some("MAX_TOKENS") => StopReason::Length,
             _ if asked => StopReason::ToolUse,
             Some("STOP") => StopReason::EndTurn,
@@ -899,10 +890,10 @@ impl Dialect for Gemini {
             )
     }
 
-    /// Both of the things the conventional dialect cannot take. In this one the shape of a turn
-    /// is an order, and flattening it into three slots on the way out would undo, one request
-    /// later, the ordering that was recorded on the way in; and it takes a turn's thinking back as
-    /// a part marked `thought`, which for a signed one it has to.
+    /// The conventional dialect cannot take either of these. In this dialect the shape of a turn is
+    /// an order; flattening it into three slots on the way out would undo, one request later, the
+    /// ordering recorded on the way in. It takes a turn's thinking back as a part marked `thought`,
+    /// which a signed thought requires.
     fn projection(&self) -> LinearProjector {
         LinearProjector {
             send_blocks: true,
@@ -913,21 +904,21 @@ impl Dialect for Gemini {
 
 /// Puts a boundary between two text parts that are about to become one turn.
 ///
-/// note: this API concatenates the text parts of a turn with *nothing* between them, so two items
-/// merged above are read as one run of words: a note ending `…the codename is kotelnaya` followed
-/// by a question beginning `what is the codename?` reaches the model as `kotelnayawhat is the
-/// codename?`, and the model reads the codename as `kotelnayawhat`. Every reference `kamchatka`
-/// sends is one of these - a file put in with `-f`, an `/attach`, a `/note` - and the message
-/// after it is the question about it, which is the commonest shape there is.
+/// note: this API concatenates the text parts of a turn with nothing between them, so two merged
+/// items are read as one run of words: a note ending `…the codename is kotelnaya` followed by
+/// `what is the codename?` reaches the model as `kotelnayawhat is the codename?`, and the model
+/// reads the codename as `kotelnayawhat`. Every reference `kamchatka` sends is one of these - a
+/// file put in with `-f`, an `/attach`, a `/note` - and the message after it is the question about
+/// it.
 ///
-/// note: the other dialect gets this for free by keeping one message per item. Here the parts of
-/// a turn are the merge, so the separator has to live inside the text, and this is the last place
-/// that knows there were two of them.
+/// note: the other dialect gets this for free by keeping one message per item. Here the parts of a
+/// turn are merged, so the separator has to live inside the text, and this is the last place that
+/// knows there were two items.
 ///
 /// note: text against text only. A `functionResponse` is a field of its own and reads as one
 /// whatever precedes it, and a blob is `inline_data`; neither runs into a neighbour. The boundary
-/// is normalised rather than appended to - trailing newlines trimmed, then exactly one blank
-/// line - so that a file ending in three of them and one ending in none are separated the same
+/// is normalised rather than appended to: trailing newlines are trimmed, then exactly one blank
+/// line is left, so a file ending in three newlines and one ending in none are separated the same
 /// way, and rendering the same request twice produces the same bytes.
 fn separate(existing: &mut [Value], coming: &[Value]) {
     let (Some(last), Some(next)) = (existing.last_mut(), coming.first()) else {

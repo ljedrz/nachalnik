@@ -1,7 +1,7 @@
 //! The words out of a body that is not JSON.
 //!
 //! note: a module of its own rather than a function in `reading`, because the System One client
-//! reads a refusal too and is built without either chat dialect.
+//! also reads refusals and is built without either chat dialect.
 
 /// The words out of a body that is not JSON, with any markup around them taken off.
 ///
@@ -62,8 +62,8 @@ pub(crate) fn unmarked(body: &str) -> String {
 
 /// The start of `text`, as much of it as an error quotes.
 ///
-/// note: one bound for every error this crate quotes a body in, so that a refusal reads the same
-/// length whichever path found it.
+/// note: one bound for every error that quotes a body, so refusals are the same length whichever
+/// path finds them.
 pub(crate) fn quoted(text: &str) -> String {
     text.chars().take(QUOTED).collect()
 }
@@ -90,9 +90,9 @@ fn closing(text: &str, element: &str) -> Option<usize> {
         .find(|&at| bytes[at..].starts_with(b"</") && names(&bytes[at + 2..], element.as_bytes()))
 }
 
-/// Whether a tag's name, at the start of `tag`, is `element`, in any case.
+/// Whether the name at the start of `tag` is `element`, in any case.
 ///
-/// note: the whole name, so that `<stylesheet-error>` is a tag like any other rather than a
+/// note: the whole name, so `<stylesheet-error>` is treated as any other tag rather than as a
 /// stylesheet whose contents are skipped.
 fn names(tag: &[u8], element: &[u8]) -> bool {
     tag.get(..element.len())

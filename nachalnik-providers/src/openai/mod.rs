@@ -1,9 +1,8 @@
-//! A [`Provider`](nachalnik::Provider) that speaks the OpenAI chat-completions dialect over
-//! HTTP, streamed.
+//! A [`Provider`](nachalnik::Provider) that speaks the OpenAI chat-completions dialect over HTTP,
+//! streamed.
 //!
-//! note: there is nothing kernel-specific in here and nothing client-specific either - it is the
-//! HTTP that every one of these APIs happens to agree on, and each oddity below is one a server
-//! really sent.
+//! note: nothing in here is kernel-specific or client-specific: it is the HTTP every one of these
+//! APIs agrees on, and each oddity below is one a server really sent.
 
 use std::{
     sync::atomic::{AtomicUsize, Ordering},
@@ -23,19 +22,15 @@ mod wire;
 
 /// Parameters that stop a stream being a stream, and what each one does instead.
 ///
-/// note: a stream in this dialect is text arriving in order, and every client of it appends. One
-/// parameter breaks that, and it is not a fringe one: Inception's `diffusing`, documented as
-/// "show the diffusion effect in the streamed response", sends the *whole answer again* in
-/// `delta.content` at each denoising step. From `mercury-2.5` the early fragments are noise -
-/// `ThR rMmchatka tYS>rf5Ta in Russia` - and the last is the finished paragraph. Appended, as this
-/// crate and every other OpenAI-dialect client appends them, the answer becomes every draft end to
-/// end - in the answer, in the context, in the token count and in whatever the client wrote down.
+/// note: a stream in this dialect is text arriving in order, and every client appends. Inception's
+/// `diffusing` sends the whole answer again in `delta.content` at each denoising step. Appended,
+/// the answer becomes every draft end to end: in the answer, the context, the token count, and
+/// whatever the client wrote down.
 ///
-/// note: a list to warn from rather than a refusal, and rather than a reader that tries to cope.
-/// Parameters are the caller's to set and are carried to the provider verbatim - that is the
-/// runtime's rule and a provider does not get to break it - and there is nothing on the wire that
-/// marks a snapshot as one, so a reader coping would be a reader guessing. What a client can do
-/// is say so before the request, which is what this is for.
+/// note: a list to warn from, not a refusal or a reader that tries to cope. Parameters are the
+/// caller's to set and are carried to the provider verbatim; that is the runtime's rule, and a
+/// provider does not get to break it. Nothing on the wire marks a snapshot, so a reader coping
+/// would be guessing. A client can say so before the request, which is what this is for.
 pub const NOT_A_STREAM: [(&str, &str); 1] = [(
     "diffusing",
     "sends the whole answer again at each denoising step, and a stream is read here as text \
@@ -45,29 +40,27 @@ pub const NOT_A_STREAM: [(&str, &str); 1] = [(
 /// Any server that speaks the OpenAI chat-completions dialect, streamed.
 pub struct OpenAiCompatible {
     client: reqwest::Client,
-    /// Where the requests go, which is a thing somebody changes mid-session.
+    /// Where the requests go. Somebody can change it mid-session.
     ///
-    /// note: behind a lock for the same reason the model is. Comparing two models usually means
-    /// one endpoint and two names, but comparing a hosted model with the one on the machine in
-    /// front of you means two endpoints - and having to restart to do it makes the session, which
-    /// is the thing being compared, part of what changed.
+    /// note: behind a lock for the same reason the model is. Comparing two models usually means one
+    /// endpoint and two names. Comparing a hosted model with a local one means two endpoints, and
+    /// restarting to do it makes the session part of what changed.
     base_url: Mutex<String>,
     api_key: String,
     model: Mutex<String>,
     context_limit: Mutex<Option<usize>>,
-    /// What the listing said about this model beyond its context limit, learnt from the same
-    /// entry the limit comes from, which is already being fetched and read.
+    /// What the listing said about this model beyond its context limit, learnt from the same entry
+    /// the limit comes from.
     listed: Mutex<Entry>,
-    /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
-    /// puts it back rather than dropping it.
+    /// The limit the caller set by hand, if any. Changing model or endpoint puts it back rather
+    /// than dropping it.
     ///
-    /// note: separate from [`Self::context_limit`], which is what [`Self::probe`] discovered.
-    /// Somebody who has decided what to measure against has decided it about the session, not
-    /// about whichever model the session happens to be asking, and a `set_model` that quietly
-    /// replaced it with whatever the endpoint advertises would be overruling them.
+    /// note: separate from [`Self::context_limit`], which is what [`Self::probe`] discovered. The
+    /// limit is about the session, not whichever model the session asks. A `set_model` that quietly
+    /// replaced it with whatever the endpoint advertises would overrule the caller.
     configured: Option<usize>,
     /// How many HTTP requests this has made in its life, retries counted separately. Never reset:
-    /// what it answers is "what did this cost", which a run wants at the end of it.
+    /// it answers "what did this cost", which a run wants at the end.
     attempts: AtomicUsize,
     /// How many times a request is sent while the server is busy, the first included; see
     /// [`Dialect::set_tries`].
@@ -75,21 +68,21 @@ pub struct OpenAiCompatible {
     /// How long a stream may say nothing before the request is given up on; see
     /// [`Dialect::set_patience`].
     patience: Mutex<std::time::Duration>,
-    /// What the last retry was about, taken by [`Endpoint::take_notice`], for a client that has
+    /// What the last retry was about, taken by [`Endpoint::take_notice`], for a client with
     /// somewhere to put it and no stderr to spare.
     notice: Mutex<Option<String>>,
-    /// Who to say these requests are on behalf of, where the endpoint asks. Set once, at
-    /// construction: it is a property of the program making the request, not of the session.
+    /// Who these requests are on behalf of, where the endpoint asks. Set once at construction: a
+    /// property of the program making the request, not of the session.
     ///
-    /// note: one value rather than a field per header, so that the order the builder methods are
-    /// called in does not decide what goes out - a category set before the app was named is
-    /// kept, and sent once there is a URL to send it with. See [`Attribution`].
+    /// note: one value rather than a field per header, so builder method call order does not decide
+    /// what goes out. A category set before the app was named is kept, and sent once there is a URL
+    /// to send it with. See [`Attribution`].
     app: Attribution,
     /// What this endpoint is called, as [`nachalnik::ModelInfo::provider`] reports it.
     ///
-    /// note: worth setting when there are several. Without it a panel comparing models through
-    /// three endpoints has three providers whose `info()` all say `openai-compatible`, which tells
-    /// the reader nothing about which is which.
+    /// note: worth setting when there are several. Without it, a panel comparing models through
+    /// three endpoints has three providers whose `info()` all say `openai-compatible`, so the
+    /// reader cannot tell which is which.
     label: String,
     /// Whether to ask for a streamed answer at all; see [`Self::streaming`].
     stream: bool,
@@ -104,10 +97,9 @@ pub struct OpenAiCompatible {
     requests: Mutex<Vec<ModelRequest>>,
     /// Whether to keep them.
     ///
-    /// note: off by default, and it has to be: a session that runs all afternoon would hold every
-    /// request it ever made, which is the context several times over. What it is for is a test or
-    /// a run that wants to assert on what actually went out rather than on what it believes went
-    /// out, and those know they want it.
+    /// note: off by default: a session running all afternoon would hold every request it ever made,
+    /// which is the context several times over. It is for a test or run that asserts on what
+    /// actually went out, not on what it believes went out.
     recording: bool,
 }
 
@@ -177,14 +169,14 @@ impl OpenAiCompatible {
             .expect("a default client is buildable")
     }
 
-    /// Sends through a client of the caller's own, so that several models on one host share a
-    /// connection pool - and so that the timeout is the caller's to set.
+    /// Sends through the caller's own client, so several models on one host share a connection pool
+    /// and the timeout is the caller's to set.
     ///
     /// note: a caller's own client may be built before any constructor in this crate has run, so
-    /// call [`crate::install_crypto`] first or `reqwest::ClientBuilder::build` panics - and it
-    /// panics recommending `aws_lc_rs`, which is reqwest's suggestion and not the provider this
-    /// crate uses. [`Self::client_with`] is the way round it where the only thing wanted is a
-    /// different timeout, because it installs the cryptography itself.
+    /// call [`crate::install_crypto`] first or `reqwest::ClientBuilder::build` panics, recommending
+    /// `aws_lc_rs`, which is reqwest's suggestion and not this crate's provider.
+    /// [`Self::client_with`] is the way round it when only a different timeout is wanted, because
+    /// it installs the cryptography itself.
     #[must_use]
     pub fn with_client(mut self, client: reqwest::Client) -> Self {
         self.client = client;
@@ -198,14 +190,13 @@ impl OpenAiCompatible {
         self
     }
 
-    /// Whether to ask for a streamed answer at all. On unless turned off.
+    /// Whether to ask for a streamed answer. On unless turned off.
     ///
-    /// note: a whole answer is worth having where nothing is watching one arrive - a benchmark
-    /// run, a batch, a test - and it is the only way to reach some endpoints' non-streaming
-    /// paths, which are not always the same code as their streaming ones. What it costs is every
-    /// [`nachalnik::DeltaSink`] fragment and, with them, anything to keep from a turn stopped
-    /// partway: an interrupt still ends the wait, but it comes back empty, because an answer that
-    /// arrives in one piece has no middle to keep.
+    /// note: a whole answer is worth having when nothing watches it arrive - a benchmark, a batch,
+    /// a test - and it is the only way to reach some endpoints' non-streaming paths, which may
+    /// differ from their streaming code. It costs every [`nachalnik::DeltaSink`] fragment and
+    /// anything from a turn stopped partway: an interrupt still ends the wait, but comes back empty
+    /// because a one-piece answer has no middle to keep.
     #[must_use]
     pub fn streaming(mut self, stream: bool) -> Self {
         self.stream = stream;
@@ -242,18 +233,18 @@ impl OpenAiCompatible {
     /// content. Off unless turned on.
     ///
     /// note: for a model that refuses a request whose tool-calling turns come back without the
-    /// thinking that produced them, and answers `400` to every request after the first call.
-    /// Off by default because most endpoints speaking this dialect reject a message carrying a
-    /// field they do not know, and because the thinking then costs its tokens on every request.
-    /// `reasoning` is OpenRouter's name for it and the one this dialect reads first; an endpoint
-    /// that wants `reasoning_content` back does not get it from this.
+    /// thinking that produced them, and answers `400` to every request after the first call. Off by
+    /// default because most endpoints speaking this dialect reject a message carrying a field they
+    /// do not know, and because the thinking costs its tokens on every request. `reasoning` is
+    /// OpenRouter's name for it and the one this dialect reads first; an endpoint that wants
+    /// `reasoning_content` back does not get it from this.
     ///
     /// note: [`Dialect::projection`] follows it, so the budget counts the thinking exactly when it
     /// is sent. A turn the projector elided goes without its thinking either way, and a turn whose
     /// thinking is empty goes without the field.
     ///
-    /// note: does not apply with [`Self::responses`], which sends back the sealed thinking that
-    /// API hands out and nothing else.
+    /// note: does not apply with [`Self::responses`], which sends back the sealed thinking that API
+    /// hands out and nothing else.
     #[must_use]
     pub fn send_reasoning(mut self, on: bool) -> Self {
         self.send_reasoning = on;
@@ -265,7 +256,7 @@ impl OpenAiCompatible {
     ///
     /// note: the same endpoint, key and listing, and a different conversation. A turn comes back as
     /// ordered items - reasoning, a message, calls - and goes back out the same way, the reasoning
-    /// sealed in the `encrypted_content` this API hands out for it; chat completions has nowhere to
+    /// sealed in the `encrypted_content` this API hands out for it. Chat completions has nowhere to
     /// put that, so a reasoning model asked through it starts every turn's thinking from nothing.
     /// OpenAI's own API answers it, and so does OpenRouter. Most of the rest of this dialect's
     /// servers do not, which is why it is not the default.
@@ -273,8 +264,8 @@ impl OpenAiCompatible {
     /// note: the requests are made with `store: false`, so the server keeps nothing between them,
     /// and with `reasoning.encrypted_content` added to `include`, which is what makes the thinking
     /// something that can be sent back. Both are the caller's to change in the parameters; the
-    /// second is added again to an `include` they set, unless they asked the server to `store`
-    /// the conversation instead.
+    /// second is added again to an `include` they set, unless they asked the server to `store` the
+    /// conversation instead.
     ///
     /// note: [`Self::thinking_in_content`] does not apply. This API keeps the thinking in items of
     /// its own, and a `</think>` in what the model said is a word it said.
@@ -344,9 +335,9 @@ impl OpenAiCompatible {
     /// Says what kind of program it is, in the categories the endpoint files apps under.
     ///
     /// note: does nothing on its own. It is sent beside [`Self::on_behalf_of`] or not at all, and
-    /// to the same one endpoint - the page is built against the URL, so a category with no URL
-    /// beside it describes nothing and is a header that buys the caller nothing. See
-    /// [`Attribution::filed_under`] for what is and is not checked.
+    /// to the same one endpoint. The page is built against the URL, so a category with no URL
+    /// beside it describes nothing and buys the caller nothing. See [`Attribution::filed_under`]
+    /// for what is and is not checked.
     #[must_use]
     pub fn filed_under<C: Into<String>>(mut self, categories: impl IntoIterator<Item = C>) -> Self {
         self.app = std::mem::take(&mut self.app).filed_under(categories);
@@ -371,14 +362,13 @@ impl OpenAiCompatible {
 
     /// Measures against this limit rather than against whatever the endpoint advertises.
     ///
-    /// note: for the two cases [`probe`](Self::probe) cannot settle - an endpoint that publishes
-    /// no context length at all, and one whose published length is not what the model is actually
-    /// being served with. It is sticky: [`set_model`](Self::set_model) and
-    /// [`set_endpoint`](Self::set_endpoint) put it back, because it is a decision about what to
-    /// measure, not a fact about one model.
+    /// note: for the two cases [`probe`](Self::probe) cannot settle: an endpoint that publishes no
+    /// context length, and one whose published length is not what the model is actually served
+    /// with. It is sticky: [`set_model`](Self::set_model) and [`set_endpoint`](Self::set_endpoint)
+    /// put it back, because it is a decision about what to measure, not a fact about one model.
     ///
-    /// note: `None` is not "no limit", it is "ask the endpoint", which is the default. A caller
-    /// reading this out of its own configuration can pass the `Option` straight through.
+    /// note: `None` means "ask the endpoint", which is the default, not "no limit". A caller can
+    /// pass the `Option` straight through from its own configuration.
     pub fn with_context_limit(mut self, limit: Option<usize>) -> Self {
         self.configured = limit;
         *self.context_limit.get_mut() = limit;
@@ -400,45 +390,42 @@ impl OpenAiCompatible {
         self.model.lock().clone()
     }
 
-    /// Just the authority of [`Self::endpoint`] - `openrouter.ai`, `localhost:11434` - for the
-    /// status line, which has no room for the rest of it.
+    /// Just the authority of [`Self::endpoint`] (`openrouter.ai`, `localhost:11434`) for the status
+    /// line.
     ///
-    /// note: the parsing lives on [`Endpoint::host`], where the other dialect can share it; this
-    /// is here so that a caller holding the concrete type does not have to import a trait to ask
-    /// an obvious question.
+    /// note: the parsing lives on [`Endpoint::host`], where the other dialect can share it; this is
+    /// here so a caller holding the concrete type does not have to import a trait to ask an obvious
+    /// question.
     pub fn host(&self) -> String {
         Endpoint::host(self)
     }
 
     /// Sends the requests somewhere else from now on, and asks the new place what it can hold.
     ///
-    /// note: the model goes with it, because a model belongs to the address it is served at and
-    /// carrying the old name over is how a session ends up asking a local ollama for
-    /// `gemini-3.6-flash`. Given none, the old name is kept - a name that is right at both
-    /// addresses is the ordinary case, and refusing to keep it would be a nuisance - and the new
-    /// endpoint is then asked whether it has one by that name, which is a notice rather than a
-    /// 404 on the next request.
+    /// note: the model goes with it, because a model belongs to the address it is served at. Given
+    /// none, the old name is kept - a name right at both addresses is the ordinary case - and the
+    /// new endpoint is then asked whether it has one by that name, a notice rather than a 404 on
+    /// the next request.
     ///
-    /// note: the key is not changed with it. It is given once, at construction, and a key typed at
-    /// the prompt would be a key in the transcript - so what this is for is the endpoints that need
-    /// no key or the same one: a local model, a proxy, a second base URL on the same account.
+    /// note: the key is not changed with it. It is given once, at construction; a key typed at the
+    /// prompt would be in the transcript. This is for endpoints that need no key or the same one: a
+    /// local model, a proxy, a second base URL on the same account.
     pub async fn set_endpoint(&self, url: impl Into<String>, model: Option<String>) {
         *self.base_url.lock() = crate::address(url);
         if let Some(model) = model {
             *self.model.lock() = model;
         }
         *self.context_limit.lock() = self.configured;
-        // what the last address said its model takes is not something this one said, and `probe`
-        // only overwrites the list where the new listing has one of its own
+        // `probe` only overwrites the list where the new listing has one of its own. What the last
+        // address said its model takes is not something this one said
         *self.listed.lock() = Entry::default();
         self.switched().await;
     }
 
     /// Every model this endpoint says it serves, if it will say.
     ///
-    /// note: an empty answer means "it did not say" rather than "it has none". A gateway or a
-    /// proxy may serve no listing at all, and treating a silence as a denial would be inventing a
-    /// restriction nobody stated.
+    /// note: an empty answer means "it did not say", not "it has none". A gateway or proxy may
+    /// serve no listing at all; treating silence as denial invents a restriction nobody stated.
     pub async fn models(&self) -> Vec<String> {
         let mut listings = self.listings().await;
         self.models_in(&mut listings).await
@@ -460,8 +447,8 @@ impl OpenAiCompatible {
             .unwrap_or_default()
     }
 
-    /// What a switch of model or address asks the new one: its limit, and whether it serves the
-    /// model at all - from one read of each listing, which answers both.
+    /// A switch of model or address asks the new one its limit and whether it serves the model,
+    /// from one read of each listing.
     async fn switched(&self) {
         let mut listings = self.listings().await;
         self.probe_in(&mut listings).await;
@@ -493,16 +480,14 @@ impl OpenAiCompatible {
         listings.native.as_ref()?.as_ref()
     }
 
-    /// Puts a notice up if the model is not one the endpoint lists, and takes down whatever notice
-    /// was waiting if it is.
+    /// Sets a notice if the model is not one the endpoint lists, and clears it if it is.
     ///
-    /// note: the alternative is finding out on the next request, as a 404 with a paragraph of
-    /// somebody's API prose in it. Switching address and model are two commands and it is easy to
-    /// do one of them.
+    /// note: the alternative is finding out on the next request, as a 404. Switching address and
+    /// model are two commands, and it is easy to do one without the other.
     ///
     /// note: a switch that finds its model still clears the slot, because what is waiting there is
-    /// older than the switch - usually the last switch's own complaint - and a client that reads
-    /// it afterwards would blame the model it has just moved away from.
+    /// older than the switch, and a client that reads it afterwards would blame the model it has
+    /// just moved away from.
     fn say_if_the_model_is_not_there(&self, listed: &[String]) {
         let model = self.model.lock().clone();
         *self.notice.lock() = crate::unlisted(&model, listed);
@@ -530,10 +515,10 @@ impl OpenAiCompatible {
 
     /// Switches models, and forgets the context limit that belonged to the old one.
     ///
-    /// note: the limit somebody set for themselves is not the old model's, and is put back rather
-    /// than forgotten. Replacing an explicit [`with_context_limit`](Self::with_context_limit) with
-    /// whatever the endpoint advertises would measure against the number the caller had already
-    /// decided not to.
+    /// note: a limit the caller set is not the old model's, so it is put back rather than
+    /// forgotten. Replacing an explicit [`with_context_limit`](Self::with_context_limit) with the
+    /// endpoint's advertised limit would measure against a number the caller already decided not to
+    /// use.
     pub async fn set_model(&self, model: impl Into<String>) {
         *self.model.lock() = model.into();
         *self.context_limit.lock() = self.configured;
@@ -549,9 +534,9 @@ impl OpenAiCompatible {
     /// Asks the provider what it knows about the model, so that the context limit the kernel
     /// reports is the real one rather than a guess.
     ///
-    /// note: worth the round trip, because every figure the status line shows about how full the
-    /// context is is measured against this number. An unknown limit is reported as unknown rather
-    /// than guessed at, which is the honest answer but not a useful one.
+    /// note: The round trip is worth it because every figure the status line shows about how full
+    /// the context is is measured against this number. An unknown limit is reported as unknown
+    /// rather than guessed at.
     pub async fn probe(&self) {
         let mut listings = self.listings().await;
         self.probe_in(&mut listings).await;
@@ -559,9 +544,9 @@ impl OpenAiCompatible {
 
     /// [`Self::probe`], out of what has already been read.
     async fn probe_in(&self, listings: &mut Listings) {
-        // a limit somebody set for themselves is a decision about what to measure against; it is
-        // not a statement about which parameters the model takes, so the listing is still worth
-        // reading. Only the limit is left alone
+        // a limit the caller set is a decision about what to measure against, not a statement about
+        // which parameters the model takes, so the listing is still worth reading. Only the limit
+        // is left alone
         let settled = self.context_limit.lock().is_some();
 
         let base = self.endpoint();
@@ -607,12 +592,11 @@ impl OpenAiCompatible {
             return Some(limit);
         }
 
-        // only a *loaded* model reports one, and this one is cold. Asking for it with an empty
-        // prompt loads it and generates nothing, which is a side effect worth having: it is the
-        // model this session is about to talk to anyway
+        // only a loaded model reports one, and this one is cold. Asking for it with an empty prompt
+        // loads it and generates nothing: it is the model this session is about to talk to.
         //
-        // note: given longer than a listing, because loading is what it is for and a large model
-        // takes a while to load - but a bound all the same, for the reason `ASKING` has one
+        // note: given longer than a listing because loading is what it is for and a large model
+        // takes a while to load, but still bounded, for the reason `ASKING` has one
         self.client
             .post(format!("{root}/api/generate"))
             .json(&json!({ "model": *self.model.lock(), "prompt": "" }))
@@ -626,12 +610,10 @@ impl OpenAiCompatible {
 
     /// Whether this address is an ollama, asked of the version it reports.
     ///
-    /// note: ollama's `/api/version` answers `{"version":"…"}` to a server no key is needed for,
-    /// and it is the one question the two probes can put to any `/v1` address without loading a
-    /// model or waiting out a generation. What the address says is not what the probes need, only
-    /// that there is something behind them that will answer: a proxy in front of a model server
-    /// will not say so, and is then measured against the limit it declares, which is what a
-    /// listing that said one would have been.
+    /// note: ollama's `/api/version` answers `{"version":"…"}` and needs no key, and it is the one
+    /// question the two probes can put to any `/v1` address without loading a model or waiting for
+    /// a generation. What matters is only that something answers: a proxy in front of a model
+    /// server will not say so, and is then measured against the limit it declares.
     async fn answers_like_ollama(&self, root: &str) -> bool {
         // note: bounded by a timeout on the request rather than the client's own, which is unset -
         // an address that takes the connection and says nothing is the case this whole question
@@ -834,10 +816,10 @@ impl Dialect for OpenAiCompatible {
     }
 }
 
-/// What a listing's entry said about the model beyond its context limit.
+/// What a listing's entry says about the model beyond its context limit.
 ///
-/// note: one lock for all of it, because it is learnt from one entry and forgotten on one switch,
-/// and a part of it a switch forgot to forget is the last model's answer given for this one.
+/// note: one lock for all of it because it is learnt from one entry and forgotten on one switch; a
+/// part a switch forgot to forget is the last model's answer given for this one.
 struct Entry {
     /// The parameter names it said the model takes, where it said anything.
     parameters: Vec<String>,
@@ -864,8 +846,8 @@ impl Default for Entry {
 /// What an address lists, read once for everything one question of it needs.
 ///
 /// note: the native listing is kept because a limit and a list of names both fall back to it on
-/// Google's compatible endpoint, and a switch asks for both - each reading it for itself was the
-/// same request twice on every `/model` and `/endpoint`.
+/// Google's compatible endpoint, and a switch asks for both; reading it separately each time was
+/// the same request twice on every `/model` and `/endpoint`.
 struct Listings {
     conventional: Option<Value>,
     /// `None` until asked for; then what the native listing answered, if anything.
@@ -898,12 +880,11 @@ mod tests {
         assert_eq!(named.info().provider, "ours");
     }
 
-    /// The client this crate offers gives up on a silent server when a whole answer's time is up,
-    /// and not before.
+    /// The client gives up on a silent server when a whole answer's time is up, not before.
     ///
-    /// note: reqwest's own default waits for ever, and a caller sharing one client between several
-    /// models is taking this one's word for the bound. On a paused clock, against a listener that
-    /// never answers, so only a timer can end the wait and timers fire in order.
+    /// note: reqwest's default waits for ever, and a caller sharing one client between several
+    /// models takes this one's word for the bound. On a paused clock against a listener that never
+    /// answers, only a timer can end the wait, and timers fire in order.
     #[tokio::test(start_paused = true)]
     async fn the_offered_client_gives_up_when_a_whole_answer_would() {
         let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -923,11 +904,11 @@ mod tests {
         assert!(late.is_timeout(), "{late:?}");
     }
 
-    /// Serves each path its own body and `{}` to any other, and keeps every path it was asked
-    /// for, so what comes back says which address was read and what else was wanted.
+    /// Serves each path its own body and `{}` to any other, and keeps every path it was asked for,
+    /// so the response says which address was read and what else was wanted.
     ///
-    /// note: named against the provider's own [`OpenAiCompatible::recording`], which keeps the
-    /// requests it sent rather than the paths a server was asked for.
+    /// note: named against [`OpenAiCompatible::recording`], which keeps the requests it sent rather
+    /// than the paths a server was asked for.
     async fn watching(
         routes: &[(&'static str, &'static str)],
     ) -> (String, Arc<Mutex<Vec<String>>>) {
@@ -960,9 +941,9 @@ mod tests {
                 // kept before the answer goes out, so a client that has been answered has been
                 // recorded
                 keeping.lock().push(path.to_owned());
-                // note: `Connection: close`, since every connection is closed after one answer. Left
-                // unsaid, the client pools it, and a request that goes out on it before the close
-                // has been read fails at once, and the probe comes back with nothing
+                // note: `Connection: close` because every connection is closed after one answer.
+                // Otherwise the client pools the connection, and a request sent on it before the
+                // close is read fails at once, so the probe comes back with nothing
                 let _ = socket
                     .write_all(
                         format!(
@@ -985,9 +966,9 @@ mod tests {
         watching(routes).await.0
     }
 
-    /// note: the two shapes are quoted from what the two endpoints really answer, trimmed to the
-    /// fields being read. The Inception one publishes only the sampling list, and left unread it
-    /// leaves `/params` with nothing to say about a parameter `mercury-2.5` ignores.
+    /// note: the two shapes are quoted from the real endpoints, trimmed to the fields read. The
+    /// Inception one publishes only the sampling list, and left unread it leaves `/params` with
+    /// nothing to say about a parameter `mercury-2.5` ignores.
     #[tokio::test]
     async fn a_listing_is_read_under_either_name_for_what_the_model_takes() {
         let openrouter = r#"{"data":[{"id":"m","context_length":128000,
@@ -1045,8 +1026,8 @@ mod tests {
         assert_eq!(provider.info().max_output_tokens, Some(32768));
     }
 
-    /// An endpoint that publishes neither name says nothing, and silence is not a claim that the
-    /// model refuses everything - ollama and a bare proxy both answer this way.
+    /// An endpoint that publishes no parameter names lists none. Silence is not a claim that the
+    /// model refuses everything; ollama and a bare proxy both answer this way.
     #[tokio::test]
     async fn a_listing_that_names_no_parameters_leaves_the_list_empty() {
         let bare = r#"{"data":[{"id":"m","context_length":4096}]}"#;
@@ -1060,8 +1041,8 @@ mod tests {
 
     /// A listing that gives a limit of nothing has given no limit.
     ///
-    /// note: reported as the limit, `0` was the window every client showed and measured a budget
-    /// against, while the kernel itself declined to refuse anything by it.
+    /// note: `0` was reported as the limit; clients measured a budget against it, but the kernel
+    /// refused nothing by it.
     #[tokio::test]
     async fn a_listed_limit_of_nothing_is_no_limit() {
         for (body, limit) in [
@@ -1079,12 +1060,12 @@ mod tests {
         }
     }
 
-    /// An ollama is measured against the context length its running model is served with, read
-    /// off `/api/ps`, since its listing publishes none - and only an ollama's, which is what the
-    /// version is asked first for.
+    /// An ollama is measured against the context length its running model is served with, read off
+    /// `/api/ps`, because its listing publishes none. `/api/version` is asked first, and only an
+    /// ollama is measured this way.
     ///
-    /// note: its `/api/show` advertises the architecture's maximum instead, and measured against
-    /// that nothing would ever look full while the server dropped the front of the conversation.
+    /// note: `/api/show` advertises the architecture's maximum instead; measured against that,
+    /// nothing would ever look full while the server dropped the front of the conversation.
     #[tokio::test]
     async fn an_ollama_is_measured_by_what_its_running_model_is_served_with() {
         let (at, asked) = watching(&[
@@ -1202,8 +1183,8 @@ mod tests {
         assert_eq!(provider.info().context_limit, None);
     }
 
-    /// A switch to an address whose conventional listing says nothing asks the native one once,
-    /// for the limit and the names both.
+    /// A switch to an address whose conventional listing says nothing asks the native listing once,
+    /// for the limit and the names.
     #[tokio::test]
     async fn a_switch_asks_for_the_native_listing_once() {
         let (at, asked) = watching(&[(
@@ -1225,7 +1206,7 @@ mod tests {
     }
 
     /// Where the conventional listing says nothing, a base ending in `/openai` is asked one path
-    /// up, which is where Google keeps its native listing.
+    /// up, where Google keeps its native listing.
     #[tokio::test]
     async fn a_listing_that_says_nothing_is_asked_for_one_path_up() {
         let at = routed(&[("/models", r#"{"models":[{"name":"models/gemini-x"}]}"#)]).await;

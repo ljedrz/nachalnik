@@ -1,9 +1,8 @@
-//! Waiting on a server that is slow, silent or busy - and knowing which of the three it is.
+//! Waiting on a slow, silent or busy server, and telling which it is.
 //!
-//! note: shared by both dialects rather than written twice, which is why it is `pub(crate)` and
-//! why it names nothing dialect-specific. A stream that has gone quiet, a request that was refused
-//! with a `Retry-After`, and one somebody pressed escape on are three different answers to "send
-//! it again?", and getting them wrong costs either a turn or somebody's money.
+//! note: shared by both dialects, so it is `pub(crate)` and names nothing dialect-specific. A quiet
+//! stream, a `Retry-After` refusal, and an escape are three different answers to "send it again?",
+//! and getting them wrong costs a turn or somebody's money.
 
 use std::{
     future::Future,
@@ -11,8 +10,7 @@ use std::{
     time::Duration,
 };
 
-// tokio's rather than `std`'s, so that the silences are counted on the clock the waits between
-// them are slept on - which is the same clock at run time, and one a test can pause
+// tokio's `Instant`, not `std`'s, so silences and waits use the same clock, which a test can pause
 use tokio::time::Instant;
 
 use nachalnik::{BoxError, DeltaSink, ModelResponse, StopReason};
@@ -48,10 +46,9 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
 
 /// The same, for an answer that is not streamed at all.
 ///
-/// note: ten minutes, and it has to be minutes rather than the two and a half above, because
-/// nothing arrives until the whole answer does: a model asked for a long answer says nothing for
-/// as long as it takes to write one, and there is no fragment to reset the watch. A stream is
-/// different, and 150s of silence in the middle of one really is a stall.
+/// note: ten minutes rather than the two and a half above, because nothing arrives until the whole
+/// answer does and there is no fragment to reset the watch. A model may be silent for as long as it
+/// takes to write a long answer; 150s of silence in a stream is a stall.
 pub(crate) const WHOLE_ANSWER: Duration = Duration::from_secs(600);
 
 /// The most of one response this reads before it stops: a line of a stream with no end to it, or a
@@ -83,11 +80,10 @@ pub(crate) enum Silence {
 
 /// Watches the gap since the last byte of a stream.
 ///
-/// note: [`HEARTBEAT`] only makes a stalled request *interruptible*. It wakes up, checks whether
-/// escape was pressed, and goes back to waiting - so a server that answers the connection and
-/// then goes quiet, which is exactly what an overloaded one does, would leave the status line
-/// reading `asking` for ever with nothing to tell it apart from a model that is thinking hard.
-/// This is the part that says so, and eventually the part that stops.
+/// note: [`HEARTBEAT`] only makes a stalled request interruptible: it wakes, checks for escape, and
+/// waits again. A server that answers and then goes quiet - exactly what an overloaded one does -
+/// would leave the status line reading `asking` for ever, indistinguishable from a model thinking
+/// hard. This part says so, and eventually stops.
 pub(crate) struct Vigil {
     /// When something last arrived.
     last: Instant,
@@ -122,10 +118,10 @@ impl Vigil {
         self.judge(self.last.elapsed())
     }
 
-    /// The same, for a silence of a given length.
+    /// Judges a silence of a given length.
     ///
-    /// note: split out so that the rule can be tested without a socket and a wall clock. What is
-    /// left in `waited` is the clock reading, which has nothing in it to get wrong.
+    /// note: split out so the rule can be tested without a socket and a wall clock. `waited` holds
+    /// the clock reading, which cannot go wrong.
     fn judge(&mut self, silent: Duration) -> Silence {
         if silent >= self.patience {
             return Silence::Enough;
@@ -151,8 +147,8 @@ impl Vigil {
 pub(crate) enum Unsent {
     /// The transport gave up on it.
     Transport(reqwest::Error),
-    /// Nothing came back at all, for this long - [`PATIENCE`], or [`WHOLE_ANSWER`] where the
-    /// answer was never going to arrive in pieces.
+    /// Nothing came back at all: [`PATIENCE`] for a stream, [`WHOLE_ANSWER`] when the answer was
+    /// never going to arrive in pieces.
     Silent(Duration),
     /// Somebody pressed escape before the answer had started.
     Interrupted,
@@ -163,18 +159,18 @@ impl Unsent {
     pub(crate) fn worth_waiting_out(&self) -> bool {
         match self {
             Self::Transport(e) => worth_waiting_out(e),
-            // the same thing the transport's own timeout means, arrived at by counting rather
-            // than by being told: a server that took the connection and went quiet is busy - and
-            // may be busy with this, which is `may_have_been_heard`'s to say
+            // It means the same as the transport's own timeout, counted rather than reported. A
+            // server that took the connection and went quiet is busy, and may be busy with this
+            // request. `may_have_been_heard` reports it
             Self::Silent(_) => true,
             Self::Interrupted => false,
         }
     }
 
-    /// Whether the server may have started on it, so that sending it again could pay for it twice.
+    /// Whether the server may have started on it, so resending it could pay for it twice.
     ///
-    /// note: only a connection that was never made is certain not to have reached anybody. A
-    /// silence, or a timeout after connecting, is a request the server may be working on.
+    /// note: only a connection that was never made is certain not to have reached anybody. Silence
+    /// or a timeout after connecting means the server may be working on the request.
     fn may_have_been_heard(&self) -> bool {
         match self {
             Self::Transport(e) => !e.is_connect(),
@@ -216,10 +212,9 @@ impl Unsent {
     }
 }
 
-/// The answer to a request that was stopped before it had one.
+/// The answer to a request stopped before it had an answer.
 ///
-/// note: not an error. Somebody asked for this, and a red line on the screen for doing as asked
-/// reads as a bug in the program rather than as an answer to the key that was pressed.
+/// note: not an error. The user asked for this, so a red line reads as a bug rather than an answer.
 pub(crate) fn interrupted() -> ModelResponse {
     ModelResponse {
         content: None,
@@ -231,14 +226,11 @@ pub(crate) fn interrupted() -> ModelResponse {
     }
 }
 
-/// What every notice about a silence ends with.
+/// What every silence notice ends with.
 ///
-/// note: a constant because it is the part that must not drift, and because it is the part this
-/// crate is entitled to say. What it is handed is a [`DeltaSink`], and what it asks is whether
-/// that has been interrupted; how a caller decides to set it is none of its business. So it names
-/// no key: a key is true of one client and advice nobody can take in another - a headless run
-/// prints this down a pipe, where it would tell whoever reads it to press a key at a program that
-/// has no keyboard.
+/// note: a constant because it must not drift and is the crate's to say. It takes a [`DeltaSink`]
+/// and asks whether it has been interrupted; how a caller sets it is not its business. It names no
+/// key: a key suits one client only, and headless output has no keyboard to press.
 const GIVES_UP: &str = "an interrupt gives up on it";
 
 /// A model that has not said anything at all yet.
@@ -248,18 +240,18 @@ pub(crate) fn not_answered(model: &str, seconds: u64) -> String {
 
 /// A model that started answering and then stopped.
 ///
-/// note: told apart from [`not_answered`] because the two are different news. Nothing at all yet
-/// is a server that may never have got the request; a stream that stops halfway is one that took
-/// it and is in trouble - and a turn that asks for a tool makes two requests, so the second is
-/// the shape "it hangs whenever it uses a tool" really has.
+/// note: distinct from [`not_answered`] because they are different news. Nothing yet means the
+/// server may never have received the request; a stream that stops halfway took it and is in
+/// trouble. A turn that uses a tool makes two requests, so the second is what "it hangs whenever it
+/// uses a tool" really looks like.
 pub(crate) fn gone_quiet(model: &str, seconds: u64) -> String {
     format!("{model} has said nothing for {seconds}s; {GIVES_UP}")
 }
 
-/// Whose answer is being waited for, and where to say how the wait is going.
+/// The model being waited on, and where to report the wait's progress.
 ///
-/// note: the model is read once per request and used for every line said about it: a name that
-/// changed halfway through would make one wait look like two.
+/// note: the model is read once per request and used for every line about it; a name that changed
+/// halfway would make one wait look like two.
 pub(crate) struct Asking<'a> {
     /// The model being asked, as every notice about this request names it.
     pub(crate) model: &'a str,
@@ -312,21 +304,19 @@ enum Busy {
     },
 }
 
-/// Sends a request, waiting out a server that is merely busy, and hands back what came of it.
+/// Sends a request, retrying while the server is busy, and returns what came of it.
 ///
-/// note: waiting and trying again is the *provider's* business. A free tier answers "busy" often
-/// enough that not retrying makes the whole thing look broken when it is not - and the kernel
-/// must not silently send a request twice behind a caller's back. The count is this request's
-/// and nobody else's, and how many it gets is [`Asking::tries`]; see [`RETRIES`](crate::RETRIES).
+/// note: retrying is the provider's business. A free tier often answers busy, so not retrying looks
+/// broken when it is not. The kernel must not silently send a request twice behind a caller's back.
+/// The count is per request; its limit is [`Asking::tries`]; see [`RETRIES`](crate::RETRIES).
 ///
-/// note: `request` builds the request afresh for each attempt, because a sent one is spent. It is
-/// also everything the dialects do differently here: a path, a header, a body.
+/// note: `request` builds a fresh request for each attempt because a sent one is spent. It covers
+/// what dialects do differently here: a path, a header, a body.
 ///
-/// note: a whole answer is read *here* rather than by the caller, because the OpenAI dialect's
-/// other way of saying 429 is an `error` object inside a perfectly good 200 - and a limit
-/// reported that way is exactly as worth waiting out as one reported as a status. A stream is
-/// read here for the same reason: its way of saying it is an `error` as its first event, and
-/// `events` is untouched by an attempt that ended that way.
+/// note: a whole answer is read here, not by the caller: the OpenAI dialect's other way of saying
+/// 429 is an `error` object inside a 200, and a limit reported that way is worth waiting out like a
+/// status. A stream is read here for the same reason: its error is the first event, and `events` is
+/// untouched by an attempt that ended that way.
 pub(crate) async fn sent(
     asking: &Asking<'_>,
     attempts: &AtomicUsize,
@@ -422,10 +412,9 @@ pub(crate) async fn sent(
                     // one in a minute
                     false => Busy::Refused {
                         code: status.as_u16().into(),
-                        // note: a 404 names where it was asked, because it is the answer to an
-                        // address that is wrong - a base URL missing its `/v1`, or one that is a
-                        // web site - and what such a server sends back is its own "Not Found",
-                        // which says nothing about which address that was
+                        // note: a 404 names where it was asked because the server's own "Not Found"
+                        // does not say which address - for example a base URL missing `/v1`, or one
+                        // that is a web site
                         said: match status == reqwest::StatusCode::NOT_FOUND {
                             true => format!("{} - asked at {url}", complaint(status, &body)),
                             false => complaint(status, &body),
@@ -437,9 +426,9 @@ pub(crate) async fn sent(
             }
         };
 
-        // note: held to `LINGER`, which only a caller asking for more than `RETRIES` tries ever
-        // reaches. A doubling past it would be read below as a server asking to be left longer
-        // than this waits, and end the tries it was given at the sixth
+        // note: `doubling` is held to `LINGER`, which only a caller asking for more than `RETRIES`
+        // tries reaches. A longer doubling would be read as the server asking to wait longer than
+        // this waits, ending the tries at the sixth
         let doubling = Duration::from_secs(1 << tried.min(6)).min(LINGER);
         let (wait, what) = match busy {
             Busy::Unsent(reason) if tried >= asking.tries => {
@@ -483,15 +472,16 @@ pub(crate) async fn sent(
     }
 }
 
-/// How long a `Retry-After` asks to be left: a number of seconds, or the date to come back at.
+/// Returns how long a `Retry-After` value asks to be left: a number of seconds, or a date to wait
+/// until.
 ///
-/// note: the date in the one shape HTTP sends it in, `Sun, 06 Nov 1994 08:49:37 GMT`, rather than
-/// the two obsolete ones a recipient is asked to read as well. Read as seconds alone, a date fell
-/// through to the doubling a server that said nothing gets, and was asked again before the time it
-/// had named. One already past is no wait at all, and one too far off is held to [`LINGER`] by the
-/// caller, as a number of seconds is.
+/// note: dates are parsed in the one shape HTTP sends, `Sun, 06 Nov 1994 08:49:37 GMT`, not the two
+/// obsolete shapes a recipient is also asked to read. Parsing seconds alone made a date fall
+/// through to the doubling used when a server says nothing, so the request was sent again before
+/// the named time. A past date means no wait. The caller caps a date too far off at [`LINGER`], and
+/// caps a seconds value the same way.
 ///
-/// note: `now` is a parameter so that the dates can be checked against a clock that stands still.
+/// note: `now` is a parameter so dates can be checked against a fixed clock.
 fn retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
     let value = value.trim();
     if let Ok(seconds) = value.parse::<u64>() {
@@ -532,8 +522,8 @@ fn retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
         return None;
     }
 
-    // days since 1970-01-01 of a date in the proleptic Gregorian calendar, after Howard Hinnant's
-    // `days_from_civil`: a year that starts in March puts the leap day last
+    // days since 1970-01-01 for a proleptic Gregorian date, using Howard Hinnant's
+    // `days_from_civil`. The year starts in March, so the leap day is last
     let (y, m) = match month <= 2 {
         true => (year - 1, month + 9),
         false => (year, month - 3),
@@ -551,11 +541,11 @@ fn retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
     Some(Duration::from_secs(u64::try_from(at - now).unwrap_or(0)))
 }
 
-/// Whether a status - or the code in an error object - is one that goes away by itself.
+/// Returns whether a status code, or the code in an error object, goes away by itself.
 ///
-/// note: not the whole of the 500s. `501 Not Implemented` and `505 HTTP Version Not Supported` are
-/// a server saying what it does not do - the first is what a plain file server answers a `POST`
-/// with - and asking again only spends the doublings before saying so.
+/// note: not every 500 code qualifies. `501 Not Implemented` and `505 HTTP Version Not Supported`
+/// mean the server does not support the request; a plain file server answers a `POST` with `501`.
+/// Retrying them only spends the doublings before the same answer.
 fn passing(code: u64) -> bool {
     code == 429 || ((500..600).contains(&code) && !matches!(code, 501 | 505))
 }
@@ -627,11 +617,11 @@ pub(crate) fn stalled(model: &str, waited: Duration) -> BoxError {
 
 /// Waits for a request to be answered, watching the wait the way the stream itself is watched.
 ///
-/// note: `&mut sending` rather than `sending`. Handing `timeout` the future itself would drop it
-/// 120ms later and cancel the request that had just been made; borrowing it stops polling for
-/// that round and leaves the connection standing. The loop is the one the stream runs, so that the
-/// wait before the first byte gets the same three things: an interrupt is heard, the silence is
-/// said out loud, and it ends.
+/// note: take `&mut sending`, not `sending`. Handing the future itself to `timeout` would drop it
+/// after 120ms and cancel the request that had just been made. Borrowing it stops polling for that
+/// round and leaves the connection standing. The loop is the one the stream runs, so the wait
+/// before the first byte gets the same three things: it hears an interrupt, reports silence, and
+/// ends.
 async fn watched(
     sending: impl Future<Output = reqwest::Result<reqwest::Response>>,
     asking: &Asking<'_>,
@@ -657,11 +647,11 @@ async fn watched(
     }
 }
 
-/// Waits out a backoff, and says whether it was let run to the end.
+/// Waits out a backoff and returns whether it ran to the end.
 ///
-/// note: in heartbeats rather than one sleep, because a request somebody has asked to stop is not
-/// one to send again. A single sleep keeps a stopped turn waiting for as long as the server
-/// asked - a minute, for a `Retry-After: 60` - and then sends the request anyway, to be answered
+/// note: wait in heartbeats rather than one sleep, because a request that has been asked to stop
+/// must not be sent again. A single sleep keeps a stopped turn waiting for as long as the server
+/// asked - a minute for `Retry-After: 60` - and then sends the request anyway, so it is answered
 /// and billed.
 async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
     let until = Instant::now() + wait;
@@ -793,8 +783,8 @@ mod tests {
         assert_eq!(judged(&mut vigil, QUIET.as_secs()), "said");
     }
 
-    /// A socket that accepts and then says nothing, so a request to it stalls the way a loaded
-    /// upstream does rather than being refused.
+    /// A socket that accepts and then says nothing, so a request to it stalls like a loaded
+    /// upstream instead of being refused.
     async fn black_hole() -> std::net::SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -812,13 +802,12 @@ mod tests {
         at
     }
 
-    /// An address on which nothing is listening, and which says so.
+    /// An address where nothing is listening, which refuses connections.
     ///
-    /// note: bound and then dropped rather than a well-known port assumed to be free. A firewall
-    /// that *drops* packets to a reserved port such as discard, `127.0.0.1:9`, instead of refusing
-    /// them turns "nothing is listening" into a timeout, which is the one answer this half of the
-    /// test needs it not to give. A port the OS has just handed out and taken back is refused
-    /// rather than filtered.
+    /// note: bound and then dropped instead of assuming a well-known port is free. A firewall that
+    /// drops packets to a reserved port such as `127.0.0.1:9` instead of refusing them turns
+    /// "nothing is listening" into a timeout, which this test must not get. A port the OS just
+    /// handed out and took back is refused rather than filtered.
     async fn nobody_home() -> std::net::SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -849,10 +838,9 @@ mod tests {
             "a stall is a busy server, and this is the error a busy one produces: {stalled:?}"
         );
 
-        // note: its own client, with room to spare. A refusal comes back in microseconds, so the
-        // only thing a long timeout changes is whether a loaded machine can turn one into a
-        // timeout before it arrives - and a timeout is precisely the answer that would make this
-        // assertion mean the opposite of what it says
+        // note: its own client, with time to spare. A refusal arrives in microseconds, so a long
+        // timeout only changes whether a loaded machine turns it into a timeout first - and that
+        // would invert this assertion
         let patient = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
@@ -872,22 +860,22 @@ mod tests {
             "an address with nothing behind it is an answer, not a delay: {refused:?}"
         );
 
-        // counting the silence ourselves has to mean what the transport's own timeout means,
-        // because it is usually the thing that notices first
+        // counting the silence ourselves must mean what the transport's own timeout means, because
+        // the transport usually notices first
         assert!(
             Unsent::Silent(PATIENCE).worth_waiting_out(),
             "a server that took the request and said nothing is a busy one"
         );
 
-        // and the one failure that must never be retried: resending a request somebody cancelled
-        // spends their money on an answer they asked not to have
+        // Never retry a cancelled request: resending a request somebody cancelled spends their
+        // money on an answer they asked not to have
         assert!(
             !Unsent::Interrupted.worth_waiting_out(),
             "an interrupt is a decision, not a delay"
         );
 
-        // and the notice before the retry says which of the two it is waiting out: a transport
-        // that gave up, or a server that took the request and never said a word
+        // The notice before a retry says which it waited out: a transport that gave up, or a server
+        // that took the request and never replied
         let hung_up = Unsent::Transport(stalled).what_happened();
         let never_spoke = Unsent::Silent(PATIENCE).what_happened();
         assert!(!hung_up.is_empty() && !never_spoke.is_empty());
