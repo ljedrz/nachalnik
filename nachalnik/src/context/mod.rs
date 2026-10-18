@@ -19,14 +19,14 @@ pub use item::{ContextId, ContextItem, ContextKind, ContextState};
 
 /// The set of context items, in the order they were added.
 ///
-/// note: The state a model request is derived from, not the request itself. Nothing is silently
-/// dropped: removal is a state change, so a removed item can be listed, inspected and restored.
+/// note: the state a request is derived from, not the request. Nothing is silently dropped: removal
+/// is a state change, so a removed item can still be listed, inspected and restored.
 ///
-/// note: Mutating operations are `pub(crate)` because they all go through [`Kernel`], which turns
-/// them into [`Event`]s. Reading is unrestricted.
+/// note: mutating operations are `pub(crate)` because they all go through [`Kernel`], which turns
+/// them into [`Event`]s; reading is unrestricted.
 ///
-/// note: Items are in insertion order, which is also identifier order because identifiers are
-/// handed out in that order and never reused. [`Context::item`] relies on it.
+/// note: insertion order is identifier order, because identifiers are handed out in order and never
+/// reused; [`Context::item`] relies on it.
 #[derive(Debug, Clone)]
 pub struct Context {
     items: Vec<Arc<ContextItem>>,
@@ -72,9 +72,9 @@ impl Context {
 
     /// Returns the position of the item with the given identifier.
     ///
-    /// note: Identifiers are handed out in insertion order and never reused, so the items are
-    /// sorted by identifier and this is a binary search. A compaction plan naming a thousand
-    /// items would otherwise be a thousand scans of the whole context.
+    /// note: items are sorted by identifier, which is handed out in insertion order and never
+    /// reused, so this is a binary search; a compaction plan naming a thousand items would
+    /// otherwise be a thousand scans.
     fn index_of(&self, id: ContextId) -> Option<usize> {
         self.items.binary_search_by_key(&id, |item| item.id).ok()
     }
@@ -147,9 +147,8 @@ impl Context {
 
     /// Returns whether moving an item to this state with this note would change anything.
     ///
-    /// note: The note counts: 'excluded because it was enormous' and 'excluded because the user
-    /// said so' are different facts about the same item. One quietly overwriting the other is the
-    /// unannounced edit this crate exists not to make.
+    /// note: the note counts: "excluded because it was enormous" and "excluded because the user
+    /// said so" are different facts, and one silently replacing the other is an unannounced edit.
     pub(crate) fn would_change(
         &self,
         id: ContextId,
@@ -201,14 +200,13 @@ impl Context {
 
     /// Replaces the contents with the items of a [`Snapshot`](crate::Snapshot), recounting them.
     ///
-    /// note: Items are sorted by identifier and the next identifier is past the highest, so a
-    /// hand-edited snapshot cannot break the ordering lookups depend on or hand out an identifier
-    /// already in use.
+    /// note: items are sorted by identifier and the next identifier is placed past the highest, so
+    /// a hand-edited snapshot cannot break the ordering lookups rely on or reuse an identifier.
     ///
-    /// note: An identifier shared by two items, or the `0` meaning none, gets the next free one;
-    /// the first to hold a number keeps it. A lookup by identifier finds one of two at random, and
-    /// an operation on it moves whichever that was. This repairs a snapshot that should not exist;
-    /// `Snapshot::problems` refuses one instead.
+    /// note: an identifier shared by two items, or `0`, which means none, gets the next free one,
+    /// and the first to hold a number keeps it; otherwise a lookup would find one of the two at
+    /// random. This repairs a snapshot that should not exist; `Snapshot::problems` lets a caller
+    /// refuse one instead.
     pub(crate) fn restore(
         &mut self,
         mut items: Vec<ContextItem>,
@@ -245,10 +243,9 @@ impl Context {
 
     /// Replaces an item's metadata, returning what it was if it changed.
     ///
-    /// note: no checkpoint, because metadata rides with the operation it describes - a client
-    /// that rewrites an item and records who did it wants one `undo` for the two. But it is new
-    /// work all the same, so the redone future goes: a redo that reached across it would put the
-    /// old metadata back.
+    /// note: no checkpoint, because metadata goes with the operation it describes: a client that
+    /// rewrites an item and records who did it wants one `undo` for both. It is still new work, so
+    /// the redo stack is cleared; a redo across it would put the old metadata back.
     pub(crate) fn annotate(&mut self, id: ContextId, meta: Value) -> Option<Value> {
         let index = self.index_of(id)?;
         if self.items[index].meta == meta {
@@ -262,9 +259,9 @@ impl Context {
 
     /// Recounts every item's tokens.
     ///
-    /// note: Priced before it is touched, because `Arc::make_mut` copies an item the undo history
-    /// shares, and a copy is what [`Kernel::undo`](crate::Kernel::undo) reads as a change. A
-    /// recount that moves no figure is not one. Returns whether any figure moved.
+    /// note: each item is priced before it is touched, because `Arc::make_mut` copies an item the
+    /// undo history shares, and [`Kernel::undo`](crate::Kernel::undo) reads a copy as a change; a
+    /// recount that moves no figure must not be one. Returns whether any figure moved.
     pub(crate) fn recount(&mut self, counter: &dyn TokenCounter) -> bool {
         let mut moved = false;
         for item in &mut self.items {
@@ -345,15 +342,15 @@ impl Context {
     /// Makes every checkpoint taken after the one numbered `taken` part of that one, so one undo
     /// takes back everything since.
     ///
-    /// note: A batch groups results when something else lands between them: a tool that changed the
-    /// context while it ran, or a client. As separate checkpoints, the first undo would take back
-    /// the change and later results, leaving the earlier ones and a turn half answered. The kernel
-    /// refuses an undo during a batch, so nothing is popped between the two numbers but what was
-    /// pushed.
+    /// note: a batch groups results when something else lands between them, such as a tool that
+    /// changed the context while running, or a client. As separate checkpoints, the first undo
+    /// would take back the change and the later results but leave the earlier ones, a turn half
+    /// answered. The kernel refuses an undo during a batch, so only what was pushed lies between
+    /// the two numbers.
     ///
-    /// note: If more was checkpointed than the undo depth holds, the batch's checkpoint went with
-    /// the oldest, so folding leaves nothing of the batch to undo to instead of a point in the
-    /// middle of it.
+    /// note: if more was checkpointed than the undo depth holds, the batch's checkpoint went with
+    /// the oldest, so folding leaves nothing of the batch to undo rather than a point in its
+    /// middle.
     pub(crate) fn fold_since(&mut self, taken: u64) {
         for _ in 0..self.taken.saturating_sub(taken) {
             if self.undo.pop_back().is_none() {
@@ -368,9 +365,8 @@ impl Context {
 /// not price.
 ///
 /// note: one function for every path that counts an item, because `tokens` and `uncounted` must
-/// move together and the type system does not enforce it. A stale `uncounted` after a `tokens`
-/// recount is worse than no field: it reads as "everything here is priced" while the tokens beside
-/// it were rewritten by another counter.
+/// move together and the types do not enforce it: a stale `uncounted` beside recounted `tokens`
+/// would read as everything priced when another counter wrote the figure.
 fn measure(item: &mut ContextItem, counter: &dyn TokenCounter) {
     (item.tokens, item.uncounted) = figures(item, counter);
 }

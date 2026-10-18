@@ -21,9 +21,8 @@ use crate::context::{ContextId, ContextItem, ContextKind, ContextState};
 
 /// Which of the matching items a [`Selector::Tool`] refers to.
 ///
-/// note: `#[non_exhaustive]`, like [`Selector`] itself, because both name a syntax that grows. A
-/// client still writes `Which::Latest`, since the attribute closes exhaustive matching and not
-/// construction.
+/// note: `#[non_exhaustive]`, like [`Selector`], because both name a syntax that grows. A client
+/// can still write `Which::Latest`: the attribute stops exhaustive matching, not construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Which {
@@ -190,8 +189,8 @@ impl Selector {
 
     /// Returns whether the selector matches a single item.
     ///
-    /// note: `first` and `latest` are not answered here, because they are about a list and one item
-    /// cannot say where it stands in it: `tool:grep:latest` matches every `grep` result.
+    /// note: `first` and `latest` are not applied here, because they are about a position in a list
+    /// that one item cannot know: `tool:grep:latest` matches every `grep` result.
     /// [`Selector::matches`] applies them.
     pub fn matches_item(&self, item: &ContextItem) -> bool {
         match self {

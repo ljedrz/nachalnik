@@ -1,10 +1,10 @@
 //! Who may run what: the capabilities a tool declares, the policy asked about a call, and the
 //! answer it gives.
 //!
-//! note: a decision point with a paper trail, not a boundary. Exactly one thing is enforced: a
-//! refused call is never handed to [`Tool::invoke`](crate::Tool::invoke). Every type below is a
-//! label the kernel compares and reports, not a property it can check. Containment belongs inside a
-//! tool or around the whole process.
+//! note: a decision point with a record, not a boundary. One thing is enforced: a refused call is
+//! never handed to [`Tool::invoke`](crate::Tool::invoke). Every type below is a label the kernel
+//! compares and reports, not a property it can check; containment belongs inside a tool or around
+//! the whole process.
 
 use std::{fmt, sync::Arc};
 
@@ -17,10 +17,9 @@ use crate::{Kernel, Tool};
 
 /// The family of side effect an operation belongs to: what a rule is written about.
 ///
-/// note: the runtime can name three domains, and everything else arrives by its own name.
-/// `nachalnik` ships no tools, so it can vouch for the domains any agent has - a filesystem, a
-/// process, a socket - but cannot know that a client has one of its own, such as `context`. Those
-/// arrive as [`Domain::Other`], and the client that invented them names them.
+/// note: the runtime names the three domains every agent has (a filesystem, processes, sockets);
+/// anything else, such as a client's own `context`, arrives as [`Domain::Other`], named by whoever
+/// invented it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum Domain {
@@ -32,9 +31,9 @@ pub enum Domain {
     Net,
     /// Anything else, named by whoever brought it.
     ///
-    /// note: not `fs`, `exec` or `net`, which nothing here prevents. Those names are read back as
-    /// the variants above, so an `Other("fs")` is not equal to [`Domain::Fs`], and written out and
-    /// read back it becomes it. [`Domain::from`] gives the right one for any name.
+    /// note: `fs`, `exec` and `net` are not prevented here, but they read back as the variants
+    /// above, so an `Other("fs")` is not equal to [`Domain::Fs`] until it is written out and read
+    /// back. [`Domain::from`] gives the right one for any name.
     Other(String),
 }
 
@@ -62,30 +61,27 @@ impl From<&str> for Domain {
 
 /// What a [`Tool`] does, as one operation in one domain: `fs:read`, `context:revise`.
 ///
-/// note: two levels and no more. A domain is a thing acted on; an operation is an act on it, so a
-/// rule is either about the thing (`fs`) or about one act (`fs:read`). A flat list of tool-shaped
-/// names - `read` the capability, declared by `read` the tool - reads as a tautology and makes a
-/// tool's granularity the granularity a rule can have.
+/// note: two levels and no more: a domain is a thing acted on and an operation an act on it, so a
+/// rule is about the thing (`fs`) or about one act (`fs:read`). A flat list of tool-shaped names
+/// (`read` the capability, declared by `read` the tool) reads as a tautology and ties a rule's
+/// granularity to a tool's.
 ///
-/// note: these are labels the kernel compares and reports; it cannot verify them. A tool that
-/// declares `fs:read` and then opens a socket is lying, and the only defence is that the user chose
-/// to register it.
+/// note: labels the kernel compares and reports but cannot verify. A tool that declares `fs:read`
+/// and opens a socket is lying, and the only defence is that the user chose to register it.
 ///
-/// note: `exec:run` subsumes every other capability, and a list of capabilities is not a list of
-/// boundaries. A command can read, write, and reach the network, so a policy that allows `exec` has
-/// allowed all of it, whatever it answers about the rest; that is what a shell is, not a flaw in
-/// the labels. A client that showed `exec: allow` beside `net: deny` without saying so would report
-/// a restriction that does not exist. The arguments close the gap: a [`PermissionPolicy`] is handed
-/// the call the model actually made ([`PermissionRequest::args`]), so it can judge `curl https://…`
-/// against whatever it thinks of the network. See `kamchatka`'s `Careful` for one that does, and
-/// its `reaches_the_network` for what a heuristic over a command line is and is not worth.
+/// note: `exec:run` subsumes every other capability. A command can read, write and reach the
+/// network, so a policy that allows `exec` has allowed all of it, whatever it answers about the
+/// rest; that is what a shell is. A client showing `exec: allow` beside `net: deny` without saying
+/// so would report a restriction that does not exist. The arguments close the gap: a
+/// [`PermissionPolicy`] is handed the call the model made ([`PermissionRequest::args`]), so it can
+/// judge `curl https://…` against its view of the network. `kamchatka`'s `Careful` does, and its
+/// `reaches_the_network` shows what a heuristic over a command line is and is not worth.
 ///
-/// note: `net` still earns its place, though a session that also has a shell can reach the network
-/// through it whatever this says. The objection is not about the domain: `fs:read` is exactly as
-/// unverifiable, and every one of these is a label rather than a boundary. Where there is no
-/// shell - an agent whose tools all come from MCP servers, an editor integration that reads,
-/// writes and fetches - refusing `net` refuses every way the registered tools have of reaching
-/// the network.
+/// note: `net` still earns its place. That a session with a shell can reach the network anyway is
+/// no objection to this domain in particular: `fs:read` is just as unverifiable. Where there is no
+/// shell - an agent whose tools all come from MCP servers, an editor integration that reads, writes
+/// and fetches - refusing `net` refuses every way the registered tools have of reaching the
+/// network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 #[non_exhaustive]
@@ -100,11 +96,11 @@ impl Capability {
     /// One, from a domain and an operation in it.
     ///
     /// note: neither half may hold a colon, and nothing here enforces it. A capability is written
-    /// as `domain:op` - by [`fmt::Display`], and by serde, which is declared `into = "String"` -
-    /// and [`Capability::parse`] reads exactly one colon back. So `Capability::of(Domain::Fs,
-    /// "read:all")` serializes to text that its own deserializer refuses, and a log record carrying
-    /// it cannot be read back. The operation is a client's own vocabulary and the constructor does
-    /// not police it; a name with a colon in it is naming two things.
+    /// as `domain:op` (by [`fmt::Display`], and by serde, declared `into = "String"`) and
+    /// [`Capability::parse`] reads exactly one colon back, so
+    /// `Capability::of(Domain::Fs, "read:all")` serializes to text its own deserializer refuses,
+    /// and a log record carrying it cannot be read back. The operation is the client's vocabulary
+    /// and is not policed; a name with a colon in it names two things.
     pub fn of(domain: Domain, op: impl Into<String>) -> Self {
         Self {
             domain,
@@ -114,10 +110,8 @@ impl Capability {
 
     /// One in [`Domain::Fs`]: `read`, `glob`, `grep`, `write`, `edit`.
     ///
-    /// note: three of these for the three domains this crate can name, because they are what
-    /// every agent has and writing `Capability::of(Domain::Fs, "read")` at each of them buys
-    /// nothing. The operation is still a string, because what the acts on a filesystem *are* is
-    /// the client's vocabulary, not this crate's.
+    /// note: one constructor for each domain this crate can name, since every agent has them. The
+    /// operation stays a string, because which acts a filesystem has is the client's vocabulary.
     pub fn fs(op: impl Into<String>) -> Self {
         Self::of(Domain::Fs, op)
     }
@@ -134,10 +128,9 @@ impl Capability {
 
     /// Reads one back from `domain:op`, or says what is wrong with the text.
     ///
-    /// note: the inverse of [`fmt::Display`], which is what makes a rule spelled on a command
-    /// line or read off a screen the same rule. Exactly one colon, and neither half empty: the
-    /// two ways to write a subject that names no operation are `fs` (a domain, and a different
-    /// kind of rule) and `fs:`, which is a typo.
+    /// note: the inverse of [`fmt::Display`], so a rule spelled on a command line and one read off
+    /// a screen are the same rule. Exactly one colon and neither half empty: `fs` is a domain, a
+    /// different kind of rule, and `fs:` is a typo.
     pub fn parse(text: &str) -> Result<Self, String> {
         let Some((domain, op)) = text.split_once(':') else {
             return Err(format!(
@@ -283,46 +276,40 @@ impl PermissionRequest {
 
 /// Decides whether a tool call may run.
 ///
-/// note: The policy is deliberately independent of the model: nothing in a model's output can
-/// reach it except the tool name and the arguments, both of which are data. A model asking
-/// nicely - or insisting that it has already been granted permission - has no effect.
+/// note: independent of the model: nothing in a model's output reaches it except the tool name and
+/// the arguments, as data. A model asking nicely, or claiming it was already granted permission,
+/// has no effect.
 #[async_trait::async_trait]
 pub trait PermissionPolicy: Send + Sync {
     /// Returns the verdict for the given call.
     ///
-    /// note: This is `async` so that an interactive policy can do the asking itself and return
-    /// [`Verdict::Allow`] or [`Verdict::Deny`]. Returning [`Verdict::Ask`] instead pushes the
-    /// question up to whoever is driving the kernel, which is usually what a client wants.
+    /// note: `async` so an interactive policy can ask itself and return [`Verdict::Allow`] or
+    /// [`Verdict::Deny`]. Returning [`Verdict::Ask`] pushes the question to whoever drives the
+    /// kernel, which is usually what a client wants.
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict;
 
-    /// Why this policy refused a call, in words the model can act on; `None` when it has nothing
-    /// to add beyond the refusal itself.
+    /// Why this policy refused a call, in words the model can act on; `None` when it has nothing to
+    /// add beyond the refusal itself.
     ///
-    /// note: the kernel calls this only for a call *this policy's own verdict* refused, and puts
-    /// what comes back into the tool result the model reads. A call the policy left to
-    /// [`Kernel::decide`] and a person then refused is not asked about: whoever answered had
-    /// their own reason, the standing rules are not what stopped it, and a policy's account of a
-    /// decision it did not make would be read by the model as the rule to work around.
-    /// Defaulted, because a policy with nothing to say should implement nothing: the kernel still
-    /// reports whether a refusal was a standing rule or an answer to this one call, which is the
-    /// part it knows on its own.
+    /// note: called only for a call this policy's own verdict refused, and what it returns goes
+    /// into the tool result the model reads. A call the policy left to [`Kernel::decide`] and a
+    /// person then refused is not asked about: the person had their own reason, and the policy's
+    /// account of a decision it did not make would read to the model as the rule to work around.
+    /// The default is `None`; the kernel still reports whether a refusal was a standing rule or an
+    /// answer to this one call, which it knows on its own.
     ///
-    /// note: the reason itself is not the kernel's. It is made of a policy's own
-    /// vocabulary - which capability, which path rule, which of several subjects actually did it
-    /// - and a kernel that invented one would be guessing at somebody else's decision. This is
-    /// the question, not the answer.
+    /// note: the reason is the policy's, in its own vocabulary (which capability, which path rule,
+    /// which of several subjects decided it); a kernel that invented one would be guessing at
+    /// somebody else's decision.
     ///
-    /// note: what a refused agent most needs to know is whether trying again is worth anything.
-    /// Without this, the answer is on the person's screen and nowhere else, and a policy that
-    /// knows exactly why has no way to say so.
+    /// note: what a refused agent most needs to know is whether trying again is worth anything;
+    /// without this, only the person's screen says why.
     ///
-    /// note: the argument is the whole of the [`PermissionRequest`] [`Self::evaluate`] was asked
-    /// about, and it is the same value rather than one built again to answer this - the kernel is
-    /// holding it either way. The two methods are halves of one question, *what do you say about
-    /// this call* and *why did you say it*. Asked the second with only an identifier, a policy
-    /// whose reason is a function of the arguments would have to remember what it decided a
-    /// moment earlier, keyed by call. Remembering means bounding, and a bound means the reason
-    /// can have fallen out of it by the time the kernel asks.
+    /// note: it receives the same [`PermissionRequest`] [`Self::evaluate`] was asked about, not one
+    /// rebuilt from an identifier, since the two methods are halves of one question. With only an
+    /// identifier, a policy whose reason depends on the arguments would have to remember its
+    /// decision keyed by call, and any bound on that memory could drop the reason before the kernel
+    /// asks.
     fn why(&self, request: &PermissionRequest) -> Option<String> {
         let _ = request;
 
@@ -331,9 +318,8 @@ pub trait PermissionPolicy: Send + Sync {
 
     /// The policy's name, for a client that wants to say which one is installed.
     ///
-    /// note: the default is the implementing type's own path, so an implementor writes nothing and
-    /// the result is usually good enough. Override it to say something friendlier. It is for
-    /// showing a person, not for matching on: `type_name` makes no stability promise.
+    /// note: the default is the implementing type's path; override it to say something friendlier.
+    /// It is for showing a person, not for matching on: `type_name` makes no stability promise.
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }

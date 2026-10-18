@@ -1,10 +1,9 @@
 //! Turns context items into the messages of a request.
 //!
-//! note: the trait is one method because a real API may disagree with the default shape, and a
-//! projector that disagrees replaces the whole shape rather than overriding a piece of it. The
-//! default makes three private passes: match calls to results, build a message per item, and put
-//! them in the order the wire needs. [`Projection`] is what is about to be sent, available before
-//! anything is; [`Skipped`] lists the items left out of it and why.
+//! note: the trait is one method, so a projector that disagrees with the default replaces the whole
+//! shape rather than overriding a piece of it. The default's three passes (pair calls with results,
+//! build a message per item, order them for the wire) are private. [`Projection`] is what will be
+//! sent, available before anything is; [`Skipped`] lists what was left out and why.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -41,35 +40,30 @@ pub struct Projection {
     pub included: Vec<ContextId>,
     /// The items that did not, and why.
     pub skipped: Vec<Skipped>,
-    /// What the projector took out to keep the request valid: a call whose result is missing, a
-    /// result whose call is missing, an ordered turn a flat shape cannot carry.
+    /// What the projector took out to keep the request valid: a call without its result, a result
+    /// without its call, an ordered turn a flat shape cannot carry.
     ///
-    /// note: each is content the model would have had and will not, so they are put in front of
-    /// somebody rather than left on a page they would have to open. See [`Projection::reordered`]
-    /// for the adjustments that are not.
+    /// note: each is content the model will not see, so it is reported here rather than only in a
+    /// log. Moves that lose nothing are in [`Projection::reordered`].
     pub repairs: Vec<String>,
-    /// What it had to **move**, in plain words. Nothing is lost by one of these.
+    /// What the projector moved, in plain words; a move loses nothing.
     ///
-    /// note: a separate list from [`Projection::repairs`] because it is a different piece of news.
-    /// A tool result has to reach the wire immediately after the call it answers, so an item
-    /// pushed between the two sends it down the list and the projector puts it back - the layout
-    /// rule working, not a fault. A tool that writes to the context, such as `kamchatka`'s
-    /// `context: note`, does this on every call, because its item is written while the call that
-    /// writes it is still in flight. The order really is not the context's order, and saying so
-    /// belongs in a request preview; it does not belong in a line that reads like something went
-    /// wrong, and that stays in the conversation for the rest of the session.
+    /// note: separate from [`Projection::repairs`] because a move is not a fault. A tool result
+    /// must follow its call on the wire, so an item written between them (as `kamchatka`'s
+    /// `context: note` is, on every call) makes the projector put the result back after the call. A
+    /// request preview should show that; a repair line, which stays in the conversation for the
+    /// rest of the session, should not.
     pub reordered: Vec<String>,
 }
 
 /// Turns context items into the messages of a request.
 ///
-/// note: The kernel has no opinion about whether content goes in a user message, system message,
-/// or preamble; the projector decides.
+/// note: the kernel has no opinion about whether content goes in a user message, a system message
+/// or a preamble; the projector decides.
 ///
-/// [`LinearProjector`] speaks the dialect in which a tool result is a message of its own. Not
-/// every API agrees - some want tool results as blocks inside a user turn, some keep
-/// thinking-only turns, some take a single string - and none of that belongs in a kernel. A whole
-/// projector is one method:
+/// [`LinearProjector`] speaks the dialect in which a tool result is a message of its own. An API
+/// that wants tool results as blocks in a user turn, keeps thinking-only turns, or takes a single
+/// string needs its own projector, which is one method:
 ///
 /// ```
 /// use std::sync::Arc;
@@ -104,11 +98,10 @@ pub struct Projection {
 /// }
 /// ```
 ///
-/// note: A projector also decides which of two shapes an assistant turn goes out in: a content
-/// slot, a reasoning slot and a flat list of calls, or an ordered sequence of [`Block`]s where
-/// the order is part of the message. [`LinearProjector::send_blocks`] picks. What no projector
-/// can do is recover an order that was never recorded, which is why the order is a property of
-/// [`Content`] rather than of the projection.
+/// note: a projector also decides whether an assistant turn goes out as three slots (content,
+/// reasoning, calls) or as an ordered sequence of [`Block`]s; see [`LinearProjector::send_blocks`].
+/// No projector can recover an order that was never recorded, which is why the order belongs to
+/// [`Content`] rather than to the projection.
 pub trait Projector: Send + Sync {
     /// Projects all items, in insertion order whatever their state, into the messages of a request.
     ///
@@ -127,14 +120,13 @@ pub trait Projector: Send + Sync {
 
 /// Puts several blocks into the one slot a conventional message has.
 ///
-/// note: one block is carried through untouched: a [`Content::Json`] thinking block is how a signed
-/// or encrypted one travels, and a provider that received it as a string of its own serialization
-/// could not send it back. Several blocks can only be joined as text, which is why
-/// [`LinearProjector::send_blocks`] exists and why joining is reported.
+/// note: a single block passes through untouched, because a [`Content::Json`] thinking block is how
+/// a signed or encrypted one travels and a provider handed its own serialization as a string could
+/// not send it back. Several blocks can only be joined as text; joining is reported, and
+/// [`LinearProjector::send_blocks`] avoids it.
 ///
-/// note: [`Part::extra`] cannot survive either way: a conventional message has a [`Content`] in
-/// each slot and nowhere to put what a provider attached to it. The caller reports it instead,
-/// because a repair reads better naming the item it happened to.
+/// note: [`Part::extra`] is lost either way, since a conventional message has nowhere to put it.
+/// The caller reports that, so the repair names the item.
 fn join(parts: Vec<&Part>) -> Option<Content> {
     match parts.len() {
         0 => None,
@@ -161,13 +153,9 @@ fn join(parts: Vec<&Part>) -> Option<Content> {
 /// | [`ContextKind::ToolResult`] | [`Role::Tool`], carrying its call identifier |
 /// | [`ContextKind::Reference`] | [`Role::User`] |
 ///
-/// note: The flags below are the only judgement calls this projector makes, and every one of them
-/// can be turned off.
-///
-/// note: This projector speaks the dialect where a tool result is its own message and an assistant
-/// message must carry content. A provider whose format disagrees - tool results as blocks in a user
-/// turn, thinking-only turns that must be echoed - wants its own projector, which is why this is a
-/// trait.
+/// note: the flags below are its only judgement calls, and each can be turned off. It speaks the
+/// dialect in which a tool result is its own message and an assistant message must carry content; a
+/// provider whose format differs needs its own projector.
 #[derive(Debug, Clone, Copy)]
 pub struct LinearProjector {
     /// Whether a reference's label is prepended to its text, as `label:\n<content>`.
@@ -178,58 +166,45 @@ pub struct LinearProjector {
     /// Whether tool calls and tool results whose counterpart is not in the projection are dropped
     /// from it.
     ///
-    /// note: This makes excluding safe. Most providers reject a request where an assistant turn
-    /// asks for a tool with no result (or vice versa), so dropping one half of a pair would cause a
-    /// request error. Every drop is listed in [`Projection::repairs`].
+    /// note: this is what makes excluding safe: most providers reject a call without its result or
+    /// a result without its call. Every drop is listed in [`Projection::repairs`].
     ///
-    /// note: Calls are paired to results one for one, in order, not by set membership. Call
-    /// identifiers are meant to be unique - the kernel enforces it for everything a provider
-    /// produces (see [`Event::ToolCallRepaired`](crate::Event::ToolCallRepaired)) - but a context
-    /// assembled by hand or restored from elsewhere can repeat one. Counting keeps calls and
-    /// results equal even then.
+    /// note: pairing is one for one, in order, by count rather than by set membership, so it stays
+    /// right when a context assembled by hand or restored from elsewhere repeats a call identifier.
+    /// The kernel never lets a provider repeat one; see
+    /// [`Event::ToolCallRepaired`](crate::Event::ToolCallRepaired).
     pub repair_orphans: bool,
     /// What a [`ContextState::Elided`](crate::ContextState::Elided) item is shown as when it
     /// carries no note of its own.
     ///
-    /// note: The words are the item's `note` where it has one: whoever elided it knows why, and
-    /// this projector does not. All this supplies is the brackets around it and this fallback. It
-    /// reads like [`Content::truncate_to`](crate::Content::truncate_to)'s marker on purpose - the
-    /// same promise to the model at two different limits, so a model that has learnt to read one
-    /// reads the other.
+    /// note: the item's own `note` is used where it has one, since whoever elided it knows why;
+    /// this supplies the brackets and the fallback. It matches
+    /// [`Content::truncate_to`](crate::Content::truncate_to)'s marker on purpose, so a model that
+    /// has learnt one reads the other.
     pub elision: &'static str,
-    /// Whether an assistant turn is projected as an ordered sequence of
-    /// [`Block`](crate::Block)s rather than as a content slot, a reasoning slot and a list of
-    /// calls.
+    /// Whether an assistant turn is projected as an ordered sequence of [`Block`](crate::Block)s
+    /// rather than as a content slot, a reasoning slot and a list of calls.
     ///
-    /// note: off by default, because this projector speaks the dialect in which a turn *is* those
-    /// three slots, and that is what every provider built against it reads. Turn it on for an API
-    /// whose assistant turn is a list of typed blocks - thinking, text, a tool call, more thinking
-    /// before the next one - where the order is part of the message.
+    /// note: off by default, because every provider built against this projector reads the three
+    /// slots. Turn it on for an API whose assistant turn is an ordered list of typed blocks. It
+    /// then applies to every assistant turn: a conventional one is assembled as thinking, text,
+    /// calls, so a mixed context projects to one shape.
     ///
-    /// note: it applies to every assistant turn, not only to the ones that were recorded as
-    /// blocks. A turn recorded the conventional way is assembled into the conventional order -
-    /// thinking, then what was said, then what was asked for - which is the order a provider was
-    /// assuming anyway; so a context holding some of each projects to one shape rather than two.
-    ///
-    /// note: with it off, a turn recorded as blocks is flattened back into the three slots, and
-    /// where that loses something - two thinking blocks joined into one, a sentence that came
-    /// *after* a call - it says so in [`Projection::repairs`] rather than doing it quietly. The
-    /// flag exists because for a signed thinking block that is not good enough.
+    /// note: with it off, a turn recorded as blocks is flattened, and whatever that loses (thinking
+    /// blocks joined, a sentence that came after a call) is reported in [`Projection::repairs`].
+    /// For a signed thinking block, reporting the loss is not enough; that is what this flag is
+    /// for.
     pub send_blocks: bool,
     /// Whether an assistant turn's reasoning is carried back into
     /// [`Message::reasoning`](crate::Message::reasoning).
     ///
-    /// note: on by default. A provider that does not want the field ignores it. A provider that
-    /// needs it, such as a reasoning model whose API verifies a signed thinking block against the
-    /// turn it belongs to, cannot invent it. Turn it off to keep reasoning in the record without
-    /// sending it on every subsequent request.
+    /// note: on by default. A provider that does not want the field ignores it; one whose API
+    /// verifies a signed thinking block against its turn cannot invent it. Turn it off to keep
+    /// reasoning in the record without resending it on every request.
     ///
-    /// note: an elided turn's thinking is dropped whatever this says. Eliding means the user or a
-    /// [`Compactor`](crate::Compactor) says the turn is no longer to be read. A marker that still
-    /// carried every token the model had thought would make
-    /// [`ContextState::Elided`](crate::ContextState::Elided) free nothing. The signature gives a
-    /// stricter rule: a thinking block verified against the words it was produced with must not be
-    /// sent beside a marker that replaced them.
+    /// note: an elided turn's thinking is dropped regardless. Otherwise eliding a turn would free
+    /// none of its thinking tokens, and a signed thinking block would go out beside a marker that
+    /// replaced the words it was signed over.
     pub send_reasoning: bool,
 }
 
@@ -255,10 +230,9 @@ impl Projector for LinearProjector {
             reordered: Vec::new(),
         };
 
-        // three passes. The middle pass is the only place a decision about an item is made.
-        // Counting gives that pass what it cannot work out as it goes: whether a call has a result
-        // is a fact about the whole projection, not the item in hand. Ordering answers the same
-        // kind of question for the wire.
+        // three passes, and only the middle one decides anything about an item. Counting first
+        // tells it whether a call has a result, which depends on the whole projection rather than
+        // the item in hand; ordering last does the same for the wire
         let (mut answers, mut calls) = pairings(items);
         let built = self.build(items, &mut answers, &mut calls, &mut projection);
         for (id, message) in in_wire_order(built, &mut projection.reordered) {
@@ -272,11 +246,10 @@ impl Projector for LinearProjector {
     /// The type's path and the two switches a provider sets, as
     /// `nachalnik::projection::LinearProjector (blocks, no reasoning)`.
     ///
-    /// note: the switches are included because the type alone cannot tell a change from no change.
-    /// Every provider ships one of these, and the kernel starts with the default - so a session
-    /// announced `LinearProjector → LinearProjector` while the shape of every assistant turn on the
-    /// wire changed. The other fields stay out: nothing sets them, and a name listing them all
-    /// would be a debug print.
+    /// note: the switches are included because the type alone cannot tell a change from no change:
+    /// every shipped provider installs a `LinearProjector`, so a session once announced
+    /// `LinearProjector → LinearProjector` while the wire shape of every assistant turn changed.
+    /// Nothing sets the other fields.
     fn name(&self) -> &'static str {
         match (self.send_blocks, self.send_reasoning) {
             (false, true) => concat!(module_path!(), "::LinearProjector"),
@@ -315,11 +288,10 @@ impl LinearProjector {
                 continue;
             }
 
-            // an elided item goes in as a marker in place of what it says, and nothing else about
-            // the message changes: same role, and a tool result still answers its call. It differs
-            // from excluding it: the turn keeps its shape, so the repair never has to take the call
-            // down and rewrite history as if the call was never made. The words are the item's own
-            // note; this only supplies the brackets
+            // an elided item goes in as a marker in place of its content, with the same role, and a
+            // tool result still answers its call. Unlike exclusion, the turn keeps its shape, so no
+            // call has to be repaired away. The words are the item's own note; this supplies the
+            // brackets
             let said = match item.state.is_elided() {
                 true => Content::text(format!(
                     "[... {} ...]",
@@ -349,13 +321,11 @@ impl LinearProjector {
                 },
                 ContextKind::ToolResult { call, tool, .. } => {
                     if self.repair_orphans && !claim(calls, call) {
-                        // note: the two ways to fail to claim a call need different messages. A
-                        // call this projection does not carry is an orphan. A call it carries that
-                        // already has a result is a second result for it: restoring the whole of a
-                        // truncated output beside the copy the model was shown produces that second
-                        // result, and the pairing is working as intended, not failing. The
-                        // missing-call message would send whoever just produced that second result
-                        // looking for a call that is on their screen
+                        // note: two failures, two messages. A call this projection does not carry
+                        // is an orphan. A call that already has a result is getting a second one,
+                        // which is what restoring the whole of a truncated output beside the
+                        // model's copy does, and is working as intended; the orphan's message would
+                        // send its author looking for a call that is on their screen
                         let answered = calls.contains_key(call);
                         let why = match answered {
                             true => format!("the call `{call}` already has a result"),
@@ -400,9 +370,9 @@ impl LinearProjector {
     ) -> Option<Message> {
         let elided = item.state.is_elided();
 
-        // the turn as one ordered sequence, however recorded. For a conventional turn, that is what
-        // every provider assumes: thought, words, calls. Flattening reproduces the input. For one
-        // recorded as blocks, it is the model's actual order
+        // the turn as one ordered sequence, however it was recorded. For a conventional turn that
+        // is the order every provider assumes (thinking, text, calls), so flattening it back
+        // reproduces what came in; for one recorded as blocks it is the order the model produced
         let recorded: Vec<Block> = match item.content.as_blocks() {
             Some(blocks) => blocks.to_vec(),
             None => {
@@ -434,11 +404,10 @@ impl LinearProjector {
                         ));
                     }
                 }
-                // an elided turn's thinking goes with its words. Keeping it would mean a turn whose
-                // content is a one-line marker still costing every token it ever thought, so
-                // eliding a turn would free nothing and a compactor would watch the total refuse to
-                // move and elide it again. Worse under `send_blocks`: a signed thinking block would
-                // go out beside a marker that is not the words it was signed over
+                // an elided turn's thinking goes with its words. Kept, it would make eliding free
+                // nothing (a compactor would see no change and elide again), and under
+                // `send_blocks` a signed thinking block would go out beside a marker that is not
+                // the words it was signed over
                 Block::Reasoning(_) if elided || !self.send_reasoning => {}
                 // an elided turn loses its text and keeps everything else: the calls still answer
                 // their results, so the turn keeps its shape
@@ -460,10 +429,9 @@ impl LinearProjector {
         let spoke: Vec<&Part> = kept.iter().filter_map(Block::said).collect();
 
         if spoke.is_empty() && calls.is_empty() {
-            // note: a turn that is *nothing but* reasoning goes too, because this projector speaks
-            // the dialect in which an assistant message with no content is rejected. A provider
-            // whose API keeps thinking-only turns - and some do - wants a projector of its own; the
-            // reasoning is still in the context either way, which is why this says so out loud
+            // note: a turn that is only reasoning is dropped too, because this dialect rejects an
+            // assistant message with no content; a provider whose API keeps such turns needs its
+            // own projector. The reason says so because the reasoning is still in the context
             let reason = match kept.is_empty() {
                 false => {
                     "an assistant turn with no content and no answered calls, so its reasoning \
@@ -504,13 +472,11 @@ impl LinearProjector {
 /// thinking blocks joined into one destroys a signature, a sentence after a call arrives before it,
 /// and thinking after a sentence arrives before that.
 ///
-/// note: only for a turn recorded as blocks. A conventional turn is put back into the shape it
-/// arrived in, so nothing is lost or reported. A turn with one of everything, in slot order, loses
-/// nothing.
+/// note: only for a turn recorded as blocks; a conventional turn, or one with one of everything in
+/// slot order, loses nothing.
 ///
-/// note: a signature on text or thinking has nowhere to go in a conventional message, and losing it
-/// is the most important thing reported. An API rejects the next request over it, and it was lost
-/// because this projector was asked for a shape that cannot hold it.
+/// note: a lost signature is the most important thing reported: it has nowhere to go in a
+/// conventional message, and the API rejects the next request over it.
 fn flattening_lost(item: &ContextItem, kept: &[Block], spoke: usize) -> Option<String> {
     // only a turn that was recorded as blocks has an order to lose
     item.content.as_blocks()?;
@@ -593,18 +559,14 @@ fn claim(remaining: &mut HashMap<ToolCallId, usize>, id: &ToolCallId) -> bool {
 /// and a strict endpoint refuses the whole request, naming the unanswered `tool_call_id`. Each
 /// turn's results are gathered to it; everything else keeps the order the context had.
 ///
-/// note: a strict endpoint, not every endpoint. Inception Labs' `mercury-2.5` accepts the malformed
-/// order without complaint, so a test that only checks acceptance passes on the broken order there.
-/// The property in `tests/invariants.rs` asserts adjacency itself rather than trusting a provider
-/// to complain, and the live test asserts the result's position, not merely that the request went
-/// through.
+/// note: only a strict endpoint refuses it; Inception Labs' `mercury-2.5` accepts the wrong order.
+/// So `tests/invariants.rs` asserts adjacency itself, and the live test asserts the result's
+/// position rather than only that the request went through.
 ///
-/// note: a separate pass rather than bookkeeping in the `build` loop. Bookkeeping there means a
-/// count of what the current turn is waiting for, reset on the next turn: a result recorded after a
-/// later turn has nothing anchoring it and goes out several messages away from its call, and any
-/// result can decrement the count, including one answering somebody else. Reading the whole list at
-/// once costs one walk and gets neither wrong: a result goes where its own call is, and a call is a
-/// place in a list rather than a number to keep.
+/// note: a separate pass, because counting in the `build` loop what the current turn waits for goes
+/// wrong twice: a result recorded after a later turn has nothing anchoring it, and any result can
+/// decrement the count, including one answering another call. Reading the whole list puts each
+/// result where its own call is.
 fn in_wire_order(
     built: Vec<(ContextId, Message)>,
     reordered: &mut Vec<String>,
@@ -615,9 +577,9 @@ fn in_wire_order(
             results.entry(answers).or_default().push(at);
         }
     }
-    // the calls this request actually makes, which decides whether a result has somebody to wait
-    // for. `results` cannot answer that: it is built from every result's identifier, so it says yes
-    // for all of them, and the branch that keeps an unasked-for result where it was would never run
+    // the calls this request actually makes, which decide whether a result has a call to wait for.
+    // `results` cannot answer that: it holds every result's identifier, so it would say yes for all
+    // of them and the branch that leaves an unasked-for result in place would never run
     let asked: HashSet<&ToolCallId> = built
         .iter()
         .flat_map(|(_, message)| message.calls())
@@ -627,9 +589,9 @@ fn in_wire_order(
     let mut placed = vec![false; built.len()];
     let mut order: Vec<usize> = Vec::with_capacity(built.len());
     for (at, (_, message)) in built.iter().enumerate() {
-        // a result waits for the call it answers to place it, unless nothing in the request asks
-        // for it. `repair_orphans` normally handles that, and a caller can turn it off; then the
-        // result keeps its place rather than being lost
+        // a result waits for its call to place it, unless nothing in the request asks for it.
+        // `repair_orphans` normally drops such a result; with it turned off, the result keeps its
+        // place rather than being lost
         let deferred = message
             .tool_call_id
             .as_ref()
@@ -645,12 +607,10 @@ fn in_wire_order(
         // its content, and the repair above may have taken some down
         let mut adjacent = at + 1;
         for call in message.calls() {
-            // Use one result per call, the next unplaced one. `build` claims calls and results one
-            // for one, in order, not by set membership. Taking every result that shares an
-            // identifier would break that pairing for two calls carrying one identifier, the case
-            // `repair_orphans` counts for. Both answers would go behind the first call, the second
-            // would be sent with nothing after it, and there would be no report because nothing was
-            // dropped
+            // one result per call, the next unplaced one, as `build` pairs them one for one in
+            // order. Taking every result with the call's identifier would, for two calls sharing
+            // one (the case `repair_orphans` counts for), put both answers behind the first call
+            // and send the second with nothing after it, unreported because nothing was dropped
             let answer = results
                 .get(&call.id)
                 .into_iter()
@@ -673,9 +633,9 @@ fn in_wire_order(
             adjacent += 1;
         }
     }
-    // nothing is dropped to achieve an order. A result whose call is in the request is placed by
-    // that call above; one that got here another way keeps its place at the end instead of going
-    // missing. `Projection::included` is read for that guarantee
+    // nothing is dropped to achieve an order. A result whose call is in the request was placed by
+    // that call above; one that got here another way keeps its place at the end, which
+    // `Projection::included` relies on
     order.extend((0..built.len()).filter(|at| !placed[*at]));
 
     // taken rather than cloned: a projection is built for every budget and every preview, and an

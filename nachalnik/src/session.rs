@@ -1,17 +1,15 @@
 //! An append-only log of what happened, and a snapshot of where it ended up.
 //!
-//! note: the two are here together so that the difference between them is read in one place. A
-//! [`Record`] says what happened and survives changes to the client, the model, and this crate's
-//! internals. A [`Snapshot`] says what there is now, which is what resuming needs. The log names
-//! items rather than copying them, so a log cannot rebuild a context.
+//! note: the two are together so their difference is read in one place. A [`Record`] says what
+//! happened, and survives changes to the client, the model and this crate's internals; a
+//! [`Snapshot`] says what there is now, which is what resuming needs. The log names items rather
+//! than copying them, so it cannot rebuild a context.
 //!
-//! note: that rule has one standing exception. [`Event::ContextReplaced`] carries the text an item
-//! used to hold, because a replacement is the only operation that overwrites an item's content.
-//! Once the change falls out of the undo window, that text exists in no snapshot and in no other
-//! record, so enforcing the rule would destroy the only account of an overwrite. Two [`Config`]
-//! settings add more content on request: [`Config::record_payloads`] keeps the rendered request and
-//! [`Config::record_progress`] keeps streaming fragments. Both are off by default, so what a log
-//! holds unasked is the names, plus what an overwrite took.
+//! note: one standing exception: [`Event::ContextReplaced`] carries the text an item used to hold,
+//! because a replacement is the only operation that overwrites content, and once out of the undo
+//! window that text is in no snapshot or other record. [`Config::record_payloads`] (the rendered
+//! request) and [`Config::record_progress`] (streaming fragments) add more on request; both are off
+//! by default, so unasked a log holds names plus what overwrites took.
 
 use std::{
     collections::VecDeque,
@@ -32,20 +30,19 @@ use crate::{
 /// The format the log and the snapshot are written in, which [`Snapshot::format`] and
 /// [`Record::format`] carry.
 ///
-/// note: a number that moves when something already written would be read differently, and not
-/// when something is added: a new event and a new field with a `serde(default)` leave it where it
-/// is, because a reader of this format reads them already - an event it does not know as
-/// [`Event::Unknown`], a field it does not know not at all. A new
-/// [`ContextState`](crate::ContextState) is not one of those: it has no catch-all, so a reader that
-/// does not know it cannot read an item in it or a change to it, and adding one moves the number.
-/// `0` is what a record or a snapshot written before formats were numbered reads as.
+/// note: the number moves when something already written would be read differently, not when
+/// something is added. A new event, or a new field with `serde(default)`, leaves it alone, since a
+/// reader of this format already reads them: an unknown event as [`Event::Unknown`], an unknown
+/// field not at all. A new [`ContextState`](crate::ContextState) does move it: there is no
+/// catch-all, so a reader that does not know it cannot read an item in it. `0` is what a record or
+/// snapshot from before formats were numbered reads as.
 pub const FORMAT: u32 = 1;
 
 /// A single entry in a session's history.
 ///
-/// note: `#[non_exhaustive]` because the log is written here and read everywhere else. Readers
-/// deserialize these rather than build them, which the attribute does not affect. Something else
-/// worth recording beside an event is then a patch rather than a break.
+/// note: `#[non_exhaustive]` because the log is written here and read everywhere else, by
+/// deserializing, which the attribute does not affect; something new recorded beside an event is
+/// then a patch rather than a break.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Record {
@@ -53,10 +50,9 @@ pub struct Record {
     /// [`Event::SessionStarted`] or [`Event::SessionResumed`] - and on no other.
     ///
     /// note: on those two because a log begins with one of them, and a log carried on across a
-    /// resume has the second where it was carried on, so a reader meets the format before
-    /// anything written in it. Not a line of its own ahead of the records, which a reader that
-    /// takes every line for a record could not read, and not on every record, where it would be the
-    /// same number a million times.
+    /// resume has the second where it continues, so a reader meets the format before anything
+    /// written in it. Not a line of its own, which a reader taking every line for a record could
+    /// not read, and not on every record, as a million copies of one number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<u32>,
     /// The entry's sequence number, starting at 1 and never reused.
@@ -72,20 +68,18 @@ pub struct Record {
 
 /// An append-only history of everything that happened in a session.
 ///
-/// note: this is not serialized application state. It is a list of events, so a session survives
-/// changes to the client, the model, and the kernel's own internals. Exporting it is a
-/// `serde_json::to_string` per [`Record`].
+/// note: not serialized application state but a list of events, so a session survives changes to
+/// the client, the model and the kernel's internals. Exporting it is a `serde_json::to_string` per
+/// [`Record`].
 ///
-/// note: the log is unbounded and stays that way, because a capped append-only log is not one.
-/// Streaming fragments are the only events kept out of it by default (see
-/// [`Config::record_progress`]). If a session outgrows memory, subscribe with
-/// [`Kernel::subscribe`], persist elsewhere, and start a new kernel.
+/// note: unbounded, because a capped append-only log is not one. Only streaming fragments are kept
+/// out by default (see [`Config::record_progress`]). A session that outgrows memory can subscribe
+/// with [`Kernel::subscribe`], persist elsewhere and start a new kernel.
 ///
-/// note: a caller reaches one through [`Kernel::with_history`], the mirror of
-/// [`Kernel::with_context`], which copies nothing. It is named for what it holds rather than for
-/// the type, so a search for "session" on the kernel finds only [`Kernel::session_name`].
-/// [`Kernel::history`] and [`Kernel::history_since`] hand back copies for when a closure is the
-/// wrong shape.
+/// note: reached through [`Kernel::with_history`], the mirror of [`Kernel::with_context`], which
+/// copies nothing; it is named for what it holds so that a search for "session" on the kernel finds
+/// only [`Kernel::session_name`]. [`Kernel::history`] and [`Kernel::history_since`] return copies
+/// where a closure is the wrong shape.
 #[derive(Debug, Clone)]
 pub struct Session {
     name: String,
@@ -125,11 +119,10 @@ impl Session {
 
     /// Returns the highest sequence number handed out; `0` before anything has been recorded.
     ///
-    /// note: this is the highest handed out rather than the highest still here, which is the
-    /// difference [`Kernel::drain_history`](crate::Kernel::drain_history) makes: a drained log
-    /// holds no records and this still answers what the last of them was numbered. `last_seq`, then
-    /// [`Session::since`], reads what arrived in between, even if the records were drained. Numbers
-    /// are never reused, so the two cannot disagree.
+    /// note: the highest handed out, not the highest still here: after
+    /// [`Kernel::drain_history`](crate::Kernel::drain_history) a log holds no records but this
+    /// still answers the last number. `last_seq`, then [`Session::since`], reads what arrived in
+    /// between, drained or not, and numbers are never reused, so the two cannot disagree.
     pub fn last_seq(&self) -> u64 {
         self.seq
     }
@@ -183,22 +176,21 @@ impl Session {
 
 /// Everything a new [`Kernel`] needs in order to carry on where another left off.
 ///
-/// note: this is not the event log, and the two are not interchangeable. The log says what
-/// happened; a snapshot says where things ended up. A log cannot rebuild a context, because an
-/// event names an item rather than carrying its contents, which keeps the log small enough to keep
-/// forever. Persist both: the snapshot to resume from, the log to answer "how did it get like
-/// this?".
+/// note: not the event log, and not interchangeable with it. The log says what happened, a snapshot
+/// where things ended up; the log cannot rebuild a context because its events name items rather
+/// than carry them, which keeps it small enough to keep forever. Persist both: the snapshot to
+/// resume from, the log to answer how it got like this.
 ///
-/// note: a snapshot plus every [`Event::ContextReplaced`] since it was taken is enough to wind an
-/// item back through its overwrites, which neither can do alone. See the module note.
+/// note: a snapshot plus every [`Event::ContextReplaced`] since it was taken can wind an item back
+/// through its overwrites, which neither can alone; see the module note.
 ///
 /// note: nothing transient is here. A resumed kernel starts [`State::Idle`](crate::State) with
-/// nothing pending, because a permission that nobody is around to answer is not worth restoring. A
-/// tool call left without a result is repaired out of the next request by the
-/// [`Projector`](crate::Projector), and says so.
+/// nothing pending, since a permission nobody is there to answer is not worth restoring; a tool
+/// call left without a result is repaired out of the next request by the
+/// [`Projector`](crate::Projector), which says so.
 ///
-/// note: `#[non_exhaustive]`, because [`Kernel::snapshot`] is what makes one and nothing outside
-/// this crate has to, so a field added here is not a break. One is read back with `serde`.
+/// note: `#[non_exhaustive]` because only [`Kernel::snapshot`] makes one, so a new field is not a
+/// break; one is read back with `serde`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Snapshot {
@@ -250,14 +242,12 @@ pub struct Snapshot {
     pub next_permission: u64,
     /// What the [`TokenCounter`](crate::TokenCounter) learned, if it learns at all.
     ///
-    /// note: the one piece of a seam's own state a snapshot carries, and it is here for the same
-    /// reason as everything else: it is easy to lose and nothing else can recover it. A session
-    /// long enough to resume has already told its counter what several requests cost; resuming at
-    /// `1.0` would spend the next few requests relearning it, and report a budget that disagreed
-    /// with the one the session closed on.
+    /// note: the one piece of a seam's own state a snapshot carries, because it is easy to lose and
+    /// nothing else can recover it. A session long enough to resume has told its counter what
+    /// several requests cost; resuming at `1.0` would spend the next requests relearning it and
+    /// report a budget different from the one the session closed on.
     ///
-    /// note: `serde(default)`, so a snapshot written before this existed still resumes, with
-    /// nothing learned.
+    /// note: `serde(default)`, so an older snapshot resumes with nothing learned.
     #[serde(default)]
     pub calibration: Option<Calibration>,
 }

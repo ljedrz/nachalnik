@@ -13,16 +13,16 @@ use super::{Message, ModelResponse, Provider};
 #[cfg(doc)]
 use crate::{Context, Kernel, Projector, TokenCounter};
 
-/// A piece of content is plain text, structured data, or an ordered sequence of [`Block`]s.
+/// A piece of content: plain text, structured data, bytes, or an ordered sequence of [`Block`]s.
 ///
-/// note: The kernel does not interpret content. It counts it (via a [`TokenCounter`]), moves it
+/// note: the kernel does not interpret content. It counts it (via a [`TokenCounter`]), moves it
 /// around, and hands it to a [`Provider`], which decides how a [`Content::Json`] payload is
 /// rendered for its wire format.
 ///
-/// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than a
-/// copy. An item is copied on every state change (the undo snapshot keeps the old one) and again
-/// into a message on every request. Copying a 4 MiB tool output each time would make excluding cost
-/// more the more there was to exclude.
+/// note: every variant is behind an [`Arc`], so cloning content is a refcount bump, not a copy. An
+/// item is copied on every state change (the undo snapshot keeps the old one) and into a message on
+/// every request, so copying a 4 MiB tool output each time would make excluding cost more the more
+/// there was to exclude.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -33,44 +33,41 @@ pub enum Content {
     Json(Arc<Value>),
     /// An ordered sequence of typed [`Block`]s.
     ///
-    /// note: in a dialect where the *order* is part of the message, an assistant turn is written
-    /// this way - thinking, a sentence, a tool call, more thinking, another call. The order is here
-    /// rather than on [`Message`] because content is the one thing a [`ModelResponse`], a
-    /// [`ContextItem`](crate::ContextItem) and a [`Message`] all carry, so the order travels the
-    /// whole way from the wire to the context and back. A field on `Message` would be a shape the
-    /// context could not hold and no projector could project.
+    /// note: a dialect in which the order is part of the message writes an assistant turn this way:
+    /// thinking, a sentence, a tool call, more thinking, another call. The order is here rather
+    /// than on [`Message`] because content is what a [`ModelResponse`], a
+    /// [`ContextItem`](crate::ContextItem) and a [`Message`] all carry, so it survives from the
+    /// wire into the context and back; a field on `Message` is a shape the context could not hold.
     ///
-    /// note: an assistant turn is recorded *either* this way *or* the conventional way - content
-    /// here, reasoning and calls in their own slots - and never both, so there is never a second
-    /// account of the same turn. [`Message::calls`], [`ModelResponse::calls`] and
+    /// note: an assistant turn is recorded either this way or the conventional way (content here,
+    /// reasoning and calls in their own slots), never both, so there is no second account of a
+    /// turn. [`Message::calls`], [`ModelResponse::calls`] and
     /// [`ContextItem::calls`](crate::ContextItem::calls) read whichever is in use, and the kernel,
-    /// the projector and a provider should use them.
+    /// projectors and providers should use them.
     ///
-    /// note: a [`Block`] holds a [`Content`], so this nests and nothing here stops it. Nothing
-    /// produces a nested one (a turn is a flat sequence in every dialect) and everything in this
-    /// crate treats it as flat. A sequence deep enough to matter would recurse through
-    /// [`Content::to_text`] and through `Drop`, and that is on whoever hand-wrote the snapshot.
+    /// note: a [`Block`] holds a [`Content`], so this can nest, and nothing stops it. Nothing
+    /// produces a nested one (a turn is flat in every dialect) and this crate treats it as flat; a
+    /// sequence deep enough to matter would recurse through [`Content::to_text`] and `Drop`, and
+    /// that is on whoever hand-wrote the snapshot.
     Blocks(Arc<[Block]>),
     /// Bytes that are not text: an image, a document, a recording.
     ///
     /// note: the runtime does not look inside it. It carries it, counts it and hands it to a
-    /// [`Provider`] like everything else here, and *names* it wherever it has to be turned into
-    /// text, because a gap where a picture was is worse than a sentence saying there was one.
+    /// [`Provider`], and names it wherever it has to become text, because a sentence saying there
+    /// was a picture is better than a gap.
     Blob(Arc<Blob>),
 }
 
 /// Bytes that are not text, in the form every one of these APIs wants them.
 ///
-/// note: the payload is already base64, because that is the form the wire takes in both dialects
-/// this workspace speaks - a `data:` URI in one, `inline_data` in the other. Holding it this way
-/// means nothing is encoded on the way out, [`Content::byte_len`] really is the size in the form
-/// it would be sent in, and a session log is the base64 string and not a JSON array of a number
-/// per byte. It also keeps a base64 codec out of a crate that has five dependencies and a rule
-/// about growing a sixth.
+/// note: the payload is already base64, because that is how both dialects this workspace speaks
+/// send it, as a `data:` URI or as `inline_data`. So nothing is encoded on the way out,
+/// [`Content::byte_len`] is the size as sent, a session log holds the base64 string rather than an
+/// array of numbers, and the crate needs no base64 codec as a dependency.
 ///
-/// note: nothing here validates it. A caller that hands over a string which is not base64 has
-/// built a request the endpoint will refuse, and it will say so; a runtime that checked would be
-/// deciding what a media type means, which is the thing this crate does not do.
+/// note: nothing here validates it. A string that is not base64 builds a request the endpoint
+/// refuses, and it says so; checking would mean deciding what a media type means, which this crate
+/// does not do.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Blob {
     /// What the payload is, as an IANA media type: `image/png`, `application/pdf`.
@@ -80,22 +77,20 @@ pub struct Blob {
     /// Whatever the producer knows about the payload that a byte length does not say.
     ///
     /// note: the kernel never reads this. Like [`ContextItem::meta`](crate::ContextItem::meta), it
-    /// is a place for a fact the runtime does not interpret. The fact that matters here is what a
-    /// [`TokenCounter`](crate::TokenCounter) needs to price a payload, which a byte length cannot
-    /// reach: `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document,
-    /// `{"seconds": 184, "fps": 30}` for a recording. Each vendor prices from figures like these,
-    /// and each differently, so the crate carries no formula, only the place to put its inputs.
+    /// holds facts the runtime does not interpret; here, what a
+    /// [`TokenCounter`](crate::TokenCounter) needs to price a payload: `{"w": 1024, "h": 768}` for
+    /// a picture, `{"pages": 12}` for a document, `{"seconds": 184, "fps": 30}` for a recording.
+    /// Each vendor prices from figures like these differently, so the crate carries no formula,
+    /// only the place for its inputs.
     ///
-    /// note: on the blob rather than on the item because a budget is counted over the *projected
-    /// messages*, and a [`Message`] carries an item's [`Content`] and not its metadata. A fact left
-    /// on `ContextItem::meta` reaches [`TokenCounter::count_item`](crate::TokenCounter::count_item)
-    /// but never the figure a [`Compactor`](crate::Compactor) acts on.
+    /// note: on the blob rather than the item because a budget is counted over the projected
+    /// messages, and a [`Message`] carries an item's [`Content`], not its metadata; a fact on
+    /// `ContextItem::meta` would never reach the figure a [`Compactor`](crate::Compactor) acts on.
     ///
-    /// note: a counter is the reason this exists, not the only reader. A [`Provider`] may read it,
-    /// and one does: the conventional dialect's attachment part needs a filename, so
-    /// `nachalnik-providers` reads `name` here and derives one from the media type when it is
-    /// unset. That is a convention between caller and provider; no key here has a meaning the
-    /// kernel knows.
+    /// note: a [`Provider`] may read it too: `nachalnik-providers` reads `name` here for the
+    /// conventional dialect's attachment filename, deriving one from the media type when it is
+    /// unset. That is a convention between caller and provider; no key has a meaning the kernel
+    /// knows.
     #[serde(default = "null", skip_serializing_if = "is_null")]
     pub meta: Arc<Value>,
 }
@@ -124,10 +119,9 @@ impl Blob {
 
     /// How large the whole blob is on the wire: the payload and the media type.
     ///
-    /// note: [`Blob::meta`] is not counted, because it is not sent. A dialect may read a key and
-    /// derive a field of its own, as `nachalnik-providers` does with `name` for the attachment
-    /// filename, but what a dialect wraps around the payload is the dialect's to count, as is the
-    /// envelope of the message carrying the blob.
+    /// note: [`Blob::meta`] is not counted, because it is not sent. A dialect may derive a field of
+    /// its own from it, as `nachalnik-providers` does with `name`, but whatever a dialect wraps
+    /// around the payload, and the envelope of the message carrying it, is the dialect's to count.
     pub fn wire_len(&self) -> usize {
         self.byte_len() + self.media_type.len()
     }
@@ -136,8 +130,8 @@ impl Blob {
 impl fmt::Display for Blob {
     /// The blob as text, for the places something has to be text.
     ///
-    /// note: bracketed, as `nachalnik-mcp` names a tool result it could not carry, and giving the
-    /// two facts useful in its place: what it was, and how much of it there was.
+    /// note: bracketed, as `nachalnik-mcp` names a tool result it could not carry, with the two
+    /// useful facts: what it was, and how big.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}, {}]", self.media_type, sized(self.byte_len()))
     }
@@ -145,13 +139,12 @@ impl fmt::Display for Blob {
 
 /// A byte count in the unit a person reads it in, rather than as a row of digits.
 ///
-/// note: `292.47kB` and not `292468 bytes`. This string lands in a terminal's narrowest column,
-/// in a model's context, and in a sentence standing where a payload was - and in all three the
-/// digits past the third are noise. Two decimals keep it a *measurement*: `1.05MB` and `1.10MB`
-/// are different files, where `1MB` and `1MB` are not.
+/// note: `292.47kB`, not `292468 bytes`: it lands in a narrow column, in a model's context and in a
+/// sentence standing in for a payload, and digits past the third are noise. Two decimals keep it a
+/// measurement, so `1.05MB` and `1.10MB` are told apart.
 ///
-/// note: thousands, not 1024, and `kB` rather than `KiB`. What these figures get compared against
-/// is an API's documented limit, and those are quoted in the decimal unit.
+/// note: thousands rather than 1024, and `kB` rather than `KiB`, because it is compared against API
+/// limits, which are quoted in decimal units.
 pub(super) fn sized(bytes: usize) -> String {
     const UNITS: [&str; 4] = ["B", "kB", "MB", "GB"];
 
@@ -217,16 +210,15 @@ impl Content {
 
     /// Returns the content as text, serializing it first if it is [`Content::Json`].
     ///
-    /// note: for [`Content::Blocks`] this is what the turn said - the text blocks joined with a
-    /// newline - not what it costs to send. Thinking and tool calls are left out: a provider that
-    /// put them in a `content` field would send the model its own reasoning as if it had said it
-    /// out loud. [`Content::byte_len`] counts all of them. The newline is there because two text
-    /// blocks were separated by something - a call, a thought - and running them together would
-    /// form a word that was never in the output.
+    /// note: for [`Content::Blocks`] this is what the turn said, the text blocks joined with a
+    /// newline, not what it costs to send. Thinking and tool calls are left out: a provider that
+    /// put them in a `content` field would send the model its own reasoning as if it had said it.
+    /// [`Content::byte_len`] counts them all. The newline stands for whatever separated two text
+    /// blocks (a call, a thought); running them together could form a word that was never written.
     ///
-    /// note: for [`Content::Blob`] there is no faithful answer, so this names it:
-    /// `[image/png, 12.05kB]`. An empty string would make a picture vanish from a transcript with
-    /// nothing to say it was there. Anything that wants the payload asks [`Content::as_blob`].
+    /// note: for [`Content::Blob`] there is no faithful answer, so this names it, as in
+    /// `[image/png, 12.05kB]`, rather than letting a picture vanish from a transcript. The payload
+    /// is [`Content::as_blob`].
     pub fn to_text(&self) -> Cow<'_, str> {
         match self {
             Self::Text(s) => Cow::Borrowed(s),
@@ -256,24 +248,21 @@ impl Content {
             // all of them, including the thinking and the calls: it answers what the turn costs,
             // not what `to_text` answers
             Self::Blocks(blocks) => blocks.iter().map(Block::byte_len).sum(),
-            // the base64 and the media type, because both go out and neither is free. It is not
-            // what the *model* charges for a picture - that is a count no byte length can reach,
-            // and see `TokenCounter` for what this crate does and does not claim about it
+            // the base64 and the media type, because both are sent. This is not what the model
+            // charges for a picture, which no byte length can reach; see `TokenCounter`
             Self::Blob(blob) => blob.wire_len(),
         }
     }
 
-    /// Collects every [`Blob`] in the content, including any nested in a [`Content::Blocks`]
-    /// turn.
+    /// Collects every [`Blob`] in the content, including any nested in a [`Content::Blocks`] turn.
     ///
-    /// note: this is the seam a [`TokenCounter`](crate::TokenCounter) needs and could not build for
-    /// itself, because of the nesting. A turn that is a sentence and a screenshot is a
-    /// `Blocks` holding a `Blob` one level down, which is the shape both dialects send - so a
-    /// counter matching only on `Content::Blob` sees a plain picture and misses every picture a
-    /// model was actually shown.
+    /// note: a [`TokenCounter`](crate::TokenCounter) needs this and cannot build it, because of the
+    /// nesting: a turn of a sentence and a screenshot, the shape both dialects send, is a `Blocks`
+    /// holding a `Blob`, so a counter matching only on `Content::Blob` misses every picture a model
+    /// was actually shown.
     ///
-    /// note: it allocates only when there is something to put in the vector, which is what makes it
-    /// affordable on a path that runs for every item on every recount.
+    /// note: it allocates only when there is something to collect, since it runs for every item on
+    /// every recount.
     pub fn blobs(&self) -> Vec<&Blob> {
         let mut found = Vec::new();
         self.collect_blobs(&mut found);
@@ -300,25 +289,22 @@ impl Content {
     /// Truncates the content to at most `limit` bytes, appending a note stating how much was
     /// dropped; returns the number of bytes dropped, or `None` if nothing was.
     ///
-    /// note: the note names no crate and no program. What reads it is a model, which has never
-    /// heard of either, and the useful facts are that something was cut and that there is more
-    /// where it came from - both of which tell it to ask for less next time.
+    /// note: the note names no crate or program, because a model reads it. It says that something
+    /// was cut and that there is more, which tells the model to ask for less next time.
     ///
-    /// note: The note counts against the limit, so the result really is at most `limit` bytes -
-    /// a limit that is not one would be a poor foundation for a budget. Where the note alone
-    /// does not fit, the content is cut to the limit without one, and the truncation is reported
-    /// by the return value and by [`Event::ToolFinished`](crate::Event::ToolFinished) as usual.
+    /// note: the note counts against the limit, so the result is at most `limit` bytes. Where the
+    /// note alone does not fit, the content is cut to the limit without one, and the truncation is
+    /// still reported by the return value and by
+    /// [`Event::ToolFinished`](crate::Event::ToolFinished).
     ///
-    /// note: Truncating [`Content::Json`], [`Content::Blocks`] or [`Content::Blob`] turns it into
-    /// [`Content::Text`] - a truncated JSON document is not JSON, a cut string is not an ordered
-    /// sequence of blocks, and half a PNG is not a picture. Pretending otherwise would hide the
-    /// truncation. A blob over the limit therefore arrives as the sentence naming it and the
-    /// count of what went, which is the whole payload.
+    /// note: truncating a [`Content::Json`], [`Content::Blocks`] or [`Content::Blob`] turns it into
+    /// a [`Content::Text`], because a truncated JSON document is not JSON, a cut string is not an
+    /// ordered sequence of blocks, and half a PNG is not a picture. A blob over the limit therefore
+    /// becomes the sentence naming it and a count of what went, which is the whole payload.
     ///
-    /// note: what has to fit is [`Content::byte_len`] and what is cut is [`Content::to_text`],
-    /// which are the same string for text and for JSON and are not for blocks: a turn whose
-    /// words fit but whose tool calls do not is over the limit, and the number reported counts
-    /// everything that went.
+    /// note: what has to fit is [`Content::byte_len`] and what is cut is [`Content::to_text`]. They
+    /// are the same string for text and JSON but not for blocks: a turn whose words fit but whose
+    /// tool calls do not is over the limit, and the number reported counts everything that went.
     pub fn truncate_to(&mut self, limit: usize) -> Option<usize> {
         let whole = self.byte_len();
         if whole <= limit {
@@ -333,17 +319,17 @@ impl Content {
     /// Truncates as [`Content::truncate_to`] does, except that a picture of at most `pictures`
     /// bytes is kept whole and not measured against `limit`: only the text around it is cut.
     ///
-    /// note: for a tool that returns a picture beside some text, as an MCP server's screenshot
-    /// tool does. Measured with the rest, a picture is over any limit a tool's text is held to, and
-    /// [`Content::truncate_to`] turns the whole of it into a sentence naming it - so the model is
-    /// never shown the one thing it asked for. A picture is not text the model reads by the byte,
-    /// and [`TokenCounter`] does not price it by its length either; what bounds it is `pictures`,
-    /// which a caller sets to what the APIs it talks to take. One over that is named, as before.
+    /// note: for a tool that returns a picture beside text, as an MCP server's screenshot tool
+    /// does. Measured with the rest, a picture exceeds any limit for text, and
+    /// [`Content::truncate_to`] would replace it with a sentence naming it, so the model would
+    /// never see what it asked for. A picture is not read by the byte and [`TokenCounter`] does not
+    /// price it by length, so `pictures`, set by the caller to what its APIs accept, bounds it
+    /// instead. A larger one is named, as before.
     ///
     /// note: only a picture that is the content, or a text block of a [`Content::Blocks`], is kept,
     /// which is how a tool result carries one. Where something other than plain text would have to
-    /// be cut to fit, the whole is truncated as [`Content::truncate_to`] does it, because cutting a
-    /// turn's calls or its reasoning is not cutting text.
+    /// be cut to fit, the whole is truncated as [`Content::truncate_to`] does, because cutting a
+    /// turn's calls or reasoning is not cutting text.
     pub fn truncate_around_pictures(&mut self, limit: usize, pictures: usize) -> Option<usize> {
         let kept = |block: &Block| match block {
             Block::Text(part) => {
@@ -373,8 +359,8 @@ impl Content {
             return self.truncate_to(limit);
         }
 
-        // the text before the first block that does not fit stays as it is. That block is cut, and
-        // the note counts everything that went. The text after it goes with it. Pictures stay where
+        // the text before the first block that does not fit is kept as it is; that block is cut,
+        // the text after it goes, and the note counts everything that went. Pictures stay where
         // they were
         let mut shown = Vec::with_capacity(blocks.len());
         let (mut room, mut dropped) = (limit, None);
@@ -410,11 +396,11 @@ impl Content {
 /// Cuts `text` to at most `limit` bytes with a note saying how much went, where `whole` is what it
 /// stood for - so what went is `whole` less what is kept, which counts what was never in `text`.
 ///
-/// note: the note's own length depends on the number it reports, so a cut that fits is settled
-/// before committing to one. The limit is a measure of `byte_len` and the cut is an index into
-/// `to_text`, and for a blob or a turn of blocks those are two different strings - a 4 MB picture
-/// is over any limit and names itself in nineteen characters. Starting at the limit would walk down
-/// a character boundary at a time from a number the text never reaches.
+/// note: the note's length depends on the number it reports, so a cut that fits is found before
+/// committing to one. The limit measures `byte_len` and the cut indexes `to_text`, which for a blob
+/// or a turn of blocks are different strings: a 4 MB picture is over any limit and names itself in
+/// nineteen characters, so starting at the limit would walk down from a number the text never
+/// reaches.
 fn cut(text: &str, limit: usize, whole: usize) -> (String, usize) {
     let mut cut = limit.min(text.len());
     loop {
@@ -478,16 +464,15 @@ impl fmt::Display for Content {
 
 /// Something the model produced, and whatever the provider attached to it.
 ///
-/// note: this is [`ToolCall::extra`] for the parts of a turn that are not calls, and exists for the
-/// same reason. Some APIs sign each piece of an assistant turn rather than the turn as a whole;
-/// Gemini's `thoughtSignature` rides on a text part as readily as on a call, and a request that
-/// returns one altered is rejected or answered worse. The kernel never looks inside it, never
-/// separates it from the block it belongs to, and a provider with nothing to attach sends a null.
+/// note: [`ToolCall::extra`] for the parts of a turn that are not calls, for the same reason. Some
+/// APIs sign each piece of an assistant turn rather than the whole turn (Gemini's
+/// `thoughtSignature` rides on a text part as readily as on a call), and a request that returns one
+/// altered is rejected or answered worse. The kernel never looks inside it or separates it from its
+/// block; a provider with nothing to attach sends a null.
 ///
-/// note: bound to the block rather than kept in a list beside it, so whatever removes the block
-/// removes the signature of the thing that is no longer there. An elided turn is the case that
-/// makes it matter: the marker replacing the words is not the words, and it must not go out signed
-/// as if it were.
+/// note: bound to the block rather than listed beside it, so whatever removes the block removes its
+/// signature. An elided turn is why that matters: the marker replacing the words is not the words,
+/// and must not go out signed as if it were.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Part {
     /// What the model produced.
@@ -531,15 +516,13 @@ impl<C: Into<Content>> From<C> for Part {
 
 /// One piece of an assistant turn, in the order the model produced it.
 ///
-/// note: there are three variants because a turn interleaves what the model thought, what it said,
-/// and what it asked for. Some dialects keep that order: Anthropic's content blocks, Gemini's
-/// `parts`, and a reasoning model that thinks again between two calls. A message with one content
-/// slot, one reasoning slot, and a flat list of calls cannot express that order, no matter how it
-/// is projected. The order carries information; this enum stores it.
+/// note: three variants because a turn interleaves what the model thought, said and asked for, and
+/// some dialects keep that order: Anthropic's content blocks, Gemini's `parts`, a reasoning model
+/// thinking again between two calls. One content slot, one reasoning slot and a flat list of calls
+/// cannot express it, however they are projected.
 ///
-/// note: this adds no new state. A [`Block::Call`] is the same [`ToolCall`] a conventional turn
-/// carries, with the same `extra`. A [`Part`] is that `extra` for the two variants that are not
-/// calls. What is new is the ordered list.
+/// note: no new state: a [`Block::Call`] is the same [`ToolCall`] a conventional turn carries, and
+/// a [`Part`] is that `extra` for the other two variants. Only the ordered list is new.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -582,9 +565,8 @@ impl Block {
 
     /// Returns what the model uttered, if this is [`Block::Text`].
     ///
-    /// note: it does not return [`Block::Reasoning`], which is what the model did not say out loud.
-    /// This distinction keeps [`Content::to_text`] from sending a provider the model's own thinking
-    /// as content.
+    /// note: not [`Block::Reasoning`], which the model did not say out loud; this keeps
+    /// [`Content::to_text`] from sending a provider the model's own thinking as content.
     pub fn said(&self) -> Option<&Part> {
         match self {
             Self::Text(part) => Some(part),
