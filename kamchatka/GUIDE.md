@@ -27,10 +27,10 @@ Next is the model and its address, because the same model name at a different ad
 model. A session started without `-m` shows `no model` there: nothing is sent until `/model` picks
 one, and `/models` lists what the endpoint offers.
 
-After that is the budget: the estimated cost of the next request, marked `~` because it's an
-estimate, as a percentage of the model's limit, with the limit next to it. It's green, then yellow
-from 70%, then red from 90%. Once a request has been sent, the provider's actual count follows, and
-then how much the context is holding back from the request.
+The budget shows the estimated cost of the next request, marked `~` because it is an estimate, as a
+percentage of the model's limit with the limit beside it. It is green, then yellow from 70%, then
+red from 90%. After a request is sent, the provider's actual count follows, then how much the
+context holds back from the request.
 
 **chat** is the conversation. It shows which parts are still being sent to the model, and shows each
 turn as it currently is rather than as it originally arrived. Both come from the context, so if
@@ -38,9 +38,8 @@ turn as it currently is rather than as it originally arrived. Both come from the
 colour: **green** for success, **red** for failure, **yellow** if it never reported one (stopped,
 killed, or unreadable).
 
-**context** is the main point of `kamchatka`. It isn't a summary or a debug view: it's the list of
-items the runtime holds, in order, one row each, with what each costs, whether it's going into the
-next request, and, most importantly, what the model will actually read of it.
+**context** is the list of items the runtime holds, in order, one row each, with each item's cost,
+whether it goes into the next request, and what the model will actually read of it.
 
 | column | what it says |
 | --- | --- |
@@ -61,8 +60,8 @@ next request, and, most importantly, what the model will actually read of it.
 The bottom line counts the items and how many are not sent in full, including elided ones; when the
 request is over the limit, it says by how much.
 
-A `+` after a figure in **sending** means part of the item couldn't be priced (a PDF, for example),
-so the figure is a **minimum**.
+A `+` after a figure in **sending** means part of the item could not be priced, so the figure is a
+**minimum**.
 
 For most rows **sending** is the whole item and **held** is blank. Where they differ: an elided
 result costs only its placeholder, an excluded item costs nothing, and an assistant turn sends what
@@ -72,11 +71,10 @@ status line shows that estimate until the first answer; after that it starts fro
 count for the last request and adds what has changed since, and `/budget` shows both figures. An
 excluded or elided row explains why in its note.
 
-Pinning is most useful *before* compaction, which is what `/compact` is for: it lists every item
-the compactor would remove and waits for <kbd>y</kbd> or <kbd>n</kbd> in place of the prompt. The
-question doesn't block the screen, so while it's waiting you can switch here, <kbd>p</kbd> the
-items that should stay, go back and answer. Answering yes recalculates the compaction, so the items
-you just pinned are left out of it.
+Pinning is most useful *before* compaction. `/compact` lists every item the compactor would remove
+and waits for <kbd>y</kbd> or <kbd>n</kbd> in place of the prompt. It does not block the screen, so
+while waiting you can switch here, <kbd>p</kbd> the items that should stay, go back and answer.
+Answering yes recalculates the compaction and leaves the pinned items out.
 
 An **elided** item keeps a one-line placeholder instead of its content, so the tool call it answers
 still has an answer. Excluding a result would make the projector remove its call too. The
@@ -287,18 +285,18 @@ for all of it, including calls already queued behind this one. <kbd>y</kbd> is f
 Arguments too long for the box scroll with <kbd>pgup</kbd> and <kbd>pgdn</kbd> while the answers
 stay in place.
 
-A shell command is shown as code, wrapped at spaces, with the `|`, `&&`, `||` and `;` between its
-stages coloured, unless it can't be parsed to the end (an unclosed quote, for example), in which
-case nothing is highlighted. <kbd>i</kbd> shows it byte for byte. An `edit` is shown as a diff,
-`old` in red and `new` in green.
+A shell command is shown as code, wrapped at spaces, with `|`, `&&`, `||` and `;` between its stages
+coloured, unless it cannot be parsed to the end (for example, an unclosed quote), in which case
+nothing is highlighted. <kbd>i</kbd> shows it byte for byte. An `edit` is shown as a diff, `old` in
+red and `new` in green.
 
 With `--rate-shell-commands` (in a `shell-advisor` build), an extra line in the header shows the
-advisor's rating of the command (green, yellow or red) and how confident it was. It doesn't decide
+advisor's rating of the command (green, yellow or red) and its confidence. It does not decide
 anything. [RUNNING.md](RUNNING.md#what-the-colour-says) explains the ratings and what is sent.
 
 ### a command that reaches for the network
 
-Where the network is gated, a command isn't judged by its name. It runs, and the moment it opens an
+Where the network is gated, a command is not judged by its name. It runs, and when it opens an
 internet socket (DNS lookups included), the call is paused and a question appears in place of the
 prompt, headed `a command wants the network`, with the command below it:
 
@@ -438,14 +436,13 @@ misleading you, with `without` naming the items the copy does not get. A fork th
 says so, so its answer is not mistaken for an ablation. Nothing a fork does affects this session's
 context or log.
 
-**`log`** reads the session's own record: what an item *used* to say, which permissions were
-answered and how, which tools were added and removed. Called with no arguments, it returns only
-counts: how many records there are, what reading them would cost, how many of each kind. `take` (at
-most 64), `ids`, `since` and `kinds` ask for specific records, and **every answer starts with the
-true total**, then how many matched where `ids`, `since` or `kinds` narrowed them, and how many
-are shown, so a short answer never looks like *nothing happened*. It reports, without interpreting.
-In a resumed session it reads the session's whole record, from before the resume as well, as one
-log.
+**`log`** reads the session's record: what an item used to say, which permissions were answered and
+how, which tools were added and removed. With no arguments, it returns only counts: how many records
+there are, what reading them would cost, how many of each kind. `take` (at most 64), `ids`, `since`
+and `kinds` ask for specific records. **Every answer starts with the true total**, then how many
+matched where `ids`, `since` or `kinds` narrowed them, and how many are shown, so a short answer
+does not look as if nothing happened. It reports without interpreting. In a resumed session it reads
+the whole record, from before the resume as well, as one log.
 
 **`setup`** shows what the session is running *with*:
 

@@ -31,14 +31,13 @@ Since there's no prompt to ask questions at, answers are given in advance:
 | `--auto-deny fs:write,.env*` | the same, refused; the strictest matching rule still wins |
 | `--on-ask deny` | what to do with questions not answered in advance; `deny` is the default |
 
-A path rule is a file name where `*` matches any characters, a name starting with a dot such as
-`.env`, or a directory name followed by a slash, which matches that directory anywhere in a path.
-It's matched against the *last* name in a path, so a rule about a file is just that file's name:
-`--auto-deny 'b.txt*'` is a rule about `b.txt`, but `--auto-deny b.txt` isn't, because a bare name
-is read as a domain. It isn't the glob syntax `fs`'s `glob` argument uses, and a pattern that looks
-like one (`src/**`) stops the session with an explanation of how to write the rule. So does an allow
-for a name a broader rule still asks about or refuses: `--auto-allow .env` beside the default
-`.env*` would change nothing, so it's refused, naming `.env*` as the rule to allow instead.
+A path rule is a file name where `*` matches any characters, a dot name such as `.env`, or a
+directory name followed by a slash, matching that directory anywhere in a path. It is matched
+against the last name in a path, so `--auto-deny 'b.txt*'` is a rule about `b.txt`, but
+`--auto-deny b.txt` is not: a bare name is read as a domain. It is not `fs`'s glob syntax; `src/**`
+stops the session with an explanation of how to write the rule. An allow for a name a broader rule
+still asks about or refuses is refused too: `--auto-allow .env` beside the default `.env*` would
+change nothing, so `.env*` is named as the rule to allow instead.
 
 `--on-ask deny` is the default, because an unattended run should only do what someone has allowed.
 The model is told that the refusal is a standing rule and which rule would have asked. The run
@@ -46,12 +45,12 @@ refuses that call and every other call the same rule asks about for as long as t
 model neither retries it nor tries another call the rule covers.
 
 MCP servers are allowed the same way, and which server a tool came from is a separate permission.
-`--mcp files=… --auto-allow-server files` is all it takes to allow one server: the same rule the
-permissions tab records when someone answers **always** at the prompt. Without it, the tools are
-offered but every call is refused, because naming a server on the command line doesn't mean
-trusting it to run. An allow for a server this run doesn't start is taken and said at startup, so a
-settings file can allow your usual servers; a deny for one stops the run instead, since it is most
-likely a misspelling that leaves the server it meant unrefused.
+`--mcp files=… --auto-allow-server files` allows one server: the same rule the permissions tab
+records for **always**. Without it, the tools are offered but every call is refused, because naming
+a server on the command line does not mean trusting it to run. An allow for a server this run does
+not start is taken and said at startup, so a settings file can allow your usual servers; a deny for
+one stops the run instead, since it is most likely a misspelling that leaves the server it meant
+unrefused.
 
 `--max-run-seconds 300` interrupts whatever is running and exits normally: what arrived is kept and
 the session is saved, which would not happen if the process were killed. <kbd>ctrl+c</kbd> does the
@@ -62,19 +61,18 @@ limit for `--max-spend-tokens` and `--max-requests-per-turn`.
 given up on: before its first word, or between two. The default is 150. A free endpoint under load
 can hold a request in its queue for longer than that and then answer it normally.
 
-`--max-spend-tokens 50000` also stops a run, because a model stuck in a loop will stay within any
-deadline you were willing to give it. The unit is tokens (`input + output`, as the provider reports
-them, including `fork`s); there are no prices here. It's a stopping point rather than a hard cap,
-since a response's cost is only known once it arrives. When the session stops, the remaining lines
-are still read: commands run, and messages are skipped without being sent. `/spend` shows what has
-been spent and against what limit, `/spend N` raises the limit, and `/spend 0` removes it. It
-belongs to the session, so the screen, a piped script and [an embedding program](#-embedding-it) all
-use the same limit.
+`--max-spend-tokens 50000` stops a run, because a model stuck in a loop stays within any deadline.
+The unit is tokens (`input + output`, as the provider reports them, including `fork`s); there are no
+prices. It is a stopping point rather than a hard cap, because a response's cost is known only once
+it arrives. When the session stops, the remaining lines are still read: commands run, and messages
+are skipped without being sent. `/spend` shows what has been spent and against what limit,
+`/spend N` raises the limit, and `/spend 0` removes it. It belongs to the session, so the screen, a
+piped script and [an embedding program](#-embedding-it) all use the same limit.
 
 The total starts from zero in every process. `-r` carries over a session's context and what its
-token counter learned, but not what it spent, since the snapshot is the runtime's record and this
-figure is `kamchatka`'s. So a limit given to a resumed run applies to that run, not the whole
-session since it began, and `/restart` starts a session with a fresh total.
+token counter learned, but not what it spent, because the snapshot is the runtime's record and this
+figure is `kamchatka`'s. A limit given to a resumed run applies to that run, not the whole session
+since it began, and `/restart` starts a session with a fresh total.
 
 An endpoint that reports no usage at all is mentioned once, instead of silently keeping a limit that
 can never be reached, since someone who set a limit expects the run to be limited.
@@ -85,12 +83,12 @@ it needs no restart. The new limit holds from the next request, including in a t
 running. `/requests 0` removes it, as `--max-requests-per-turn 0` does. A `/restart` or a resumed
 session starts from `--max-requests-per-turn` again.
 
-`--max-run-seconds` counts from program start, so it also covers an endpoint that never answers and
-an MCP server that never finishes starting, and `/restart` doesn't reset it. It can't interrupt a
+`--max-run-seconds` counts from program start, so it covers an endpoint that never answers and an
+MCP server that never finishes starting, and `/restart` does not reset it. It cannot interrupt a
 `/model` or `/endpoint` switch, which always finishes first. A call to an MCP server's tool is given
 up on after ten minutes without an answer, saying which server; `--mcp-timeout-seconds SECONDS`
 changes that, and `--mcp-timeout-seconds 0` waits as long as the server takes. Starting a server has
-no such limit, since the first `npx -y` can take minutes to download its package.
+no such limit, because the first `npx -y` can take minutes to download its package.
 
 A busy endpoint (a `429`, a `503`, or a connection that timed out) is asked again after waits that
 double from two seconds. A session with a screen gives up after four tries, because someone watching
@@ -98,12 +96,12 @@ would rather be told. A headless run tries ten times, with the waits capped at a
 minutes in all. An endpoint that asks to be left for longer than a minute is reported at once either
 way, because that is a spent quota rather than a busy server.
 
-A background job started by a command (`sleep 300 &`, a server, or something detached with
-`setsid`) outlives its call, and is stopped when the session ends: `SIGTERM`, then `SIGKILL` two
-seconds later for anything still running, with a line naming the command each came from. They're
-found through `KAMCHATKA_CALL`, an environment variable every command runs with and passes on, so
-anything that clears its environment (`env -i`) isn't found. `--leave-running` leaves them running,
-for servers you started on purpose, and still lists them.
+A background job started by a command (`sleep 300 &`, a server, or something detached with `setsid`)
+outlives its call, and is stopped when the session ends: `SIGTERM`, then `SIGKILL` two seconds later
+for anything still running, with a line naming the command each came from. They are found through
+`KAMCHATKA_CALL`, an environment variable every command runs with and passes on, so anything that
+clears its environment (`env -i`) is not found. `--leave-running` leaves them running, for servers
+started on purpose, and still lists them.
 
 A program that stops itself (with `SIGSTOP`, or a `SIGTSTP` with no terminal to give back to) is
 waited on by the command that ran it, and so is the call: it doesn't end, and nothing says it's
@@ -124,7 +122,7 @@ script can tell a completed session from a stopped one:
 | `124` | ran out of `--max-run-seconds`, whether or not the session had started (as `timeout` does) |
 | `129`, `130`, `143` | ended by `SIGHUP`, <kbd>ctrl+c</kbd> or `SIGTERM`: `128` plus the signal |
 
-A deadline or a signal decides the status even when the last turn had failed before it, since it's
+A deadline or a signal decides the status even when the last turn failed before it, because it is
 what ended the run; the failure is still said on stderr and is in the record.
 
 If more than one applies, the first is reported. A served session without a screen exits the same
@@ -342,10 +340,10 @@ each API) are refused.
 
 `--flat-tool-arguments` (`"flat-tool-arguments": true` in a settings file) offers this program's own
 tools with every argument at the top level of a call, beside `action`, rather than inside one `call`
-object. Some models whose own call format is a flat list of keys and values slip back into it
-partway through the nested object, and the call can't be read; offered flat, they don't. The cost is
-that the schema can no longer say which arguments belong to which operation except in their
-descriptions, so it's off by default. Tools from an MCP server are offered as the server wrote them.
+object. Some models use a flat list of keys and values; given a nested object they slip back to the
+flat format partway through, and the call cannot be read. Offered flat, they do not. The schema can
+no longer say which arguments belong to which operation except in their descriptions, so it's off by
+default. Tools from an MCP server are offered as the server wrote them.
 
 `--send-reasoning` (`"send-reasoning": true` in a settings file) sends each of the model's turns
 back with the thinking that produced it, as `reasoning`, with `--api chat-completions`. Some models
@@ -356,19 +354,19 @@ APIs sealed or signed, and aren't changed by it.
 
 ## 📏 the number in the status line is an estimate, and says which kind
 
-`kamchatka` doesn't have the model's tokenizer, so the main figure in the status line is an
-estimate, shown as `~2,460`. The percentage next to it says what total it's a percentage of
-(`1.9% (128k)`), since a percentage of an unknown number isn't useful, and it turns yellow above
-70% and red above 90%. After that comes what the provider actually charged for the last request.
-`/budget` shows all of it in detail: the next request, split into context and tool definitions; the
-same request based on the last response; the limit and how much of it the next request would use;
-what the last request really cost, as the provider counted it; and what the counter has learned.
+`kamchatka` does not have the model's tokenizer, so the main figure in the status line is an
+estimate, shown as `~2,460`. The percentage next to it names the total it is a percentage of
+(`1.9% (128k)`), since a percentage of an unknown number is not useful, and turns yellow above 70%
+and red above 90%. Next comes what the provider charged for the last request. `/budget` shows all of
+it in detail: the next request, split into context and tool definitions; the same request based on
+the last response; the limit and how much of it the next request would use; what the last request
+really cost, as the provider counted it; and what the counter has learned.
 
-Once there has been a response, the status line shows the response-based figure: what the provider
-charged for the last request, plus an estimate of only what has changed since. Unchanged items
-contribute their measured cost exactly, so the error is a few percent of the change rather than of
-the whole context, and per-message overhead, tool schemas and anything the counter can't price are
-already included in the provider's figure.
+After a response, the status line shows the response-based figure: what the provider charged for the
+last request, plus an estimate of only what changed since. Unchanged items contribute their measured
+cost exactly, so the error is a few percent of the change rather than of the whole context.
+Per-message overhead, tool schemas and anything the counter cannot price are already included in the
+provider's figure.
 
 The counter adjusts from every response to a request it could fully price, and from every "too long"
 refusal that states the limit, which is even more useful, since it measures the request in the same
@@ -392,19 +390,18 @@ of the total was the advisor's.
 
 The compactor removes what the conversation no longer needs, using two rules. The first runs before
 every request: a tool result from a finished turn is replaced by a placeholder, as is an image or
-document the model was shown in a finished exchange, unless the placeholder would be bigger than the
-original. The second only applies when space runs out: once the context goes past the
-`--compact-context-at` threshold (0.8 of the limit by default), the oldest exchanges are removed
-entirely until it gets down to the target, the second number in `--compact-context-at 0.8,0.6`. If
-the target isn't given, it's twenty percentage points below the threshold or half of it, whichever
-is higher, so removals happen in batches instead of changing the cached start of the request every
-turn.
+document shown in a finished exchange, unless the placeholder would be bigger than the original. The
+second applies only when space runs out: once the context passes the `--compact-context-at`
+threshold (0.8 of the limit by default), the oldest exchanges are removed entirely until it reaches
+the target, the second number in `--compact-context-at 0.8,0.6`. If the target is not given, it is
+twenty percentage points below the threshold or half of it, whichever is higher, so removals happen
+in batches instead of changing the cached start of the request every turn.
 
 Neither rule touches the turn in progress, pinned items, or notes the model wrote for itself, and
 neither summarizes anything. Every item is still on the context tab: an elided one is a
-<kbd>space</kbd> away from coming back, a removed one a `/restore` away. A result you bring back
-by hand isn't elided again by the first rule. The placeholder says the content has been read, and
-content the model hasn't seen yet is never removed to make a request fit.
+<kbd>space</kbd> away from coming back, a removed one a `/restore` away. A result you bring back by
+hand is not elided again by the first rule. The placeholder says the content has been read, and
+content the model has not seen is never removed to make a request fit.
 
 `/compact` runs the same compactor manually, and shows what it would do before doing anything:
 every item it would remove, with its id, what it is and what it contains. It then waits for
@@ -755,9 +752,9 @@ The same goes for `~/.nvm`, `~/.pyenv`, `~/.rbenv` and the rest. Both flags take
 list and can be repeated: `--sandbox-write /srv/repo,/tmp/work`.
 
 **Daemons you talk to over a socket need access too**, on Linux 7.1 and later. A sandboxed command
-can only connect to a unix socket where it could have created one, so the session bus, the
-compositor and container daemons all return `Permission denied`, since each would run requests
-outside the sandbox. Allow the socket itself rather than its directory:
+can only connect to a unix socket where it could have created one. The session bus, the compositor
+and container daemons all return `Permission denied` because each would run requests outside the
+sandbox. Allow the socket itself rather than its directory:
 
 ```console
 $ kamchatka --sandbox-write /run/docker.sock -m …
@@ -805,8 +802,8 @@ Landlock rules, and the filter pauses every `socket()` call for `AF_INET` or `AF
 with `--auto-allow exec:run`, `git status` runs without a question, while `python3 fetch.py` is
 asked about as soon as it does a DNS lookup, which couldn't be told apart from the command alone.
 
-An unattended run answers with `--on-ask`, immediately, while the turn is running, since the
-command is waiting on the answer and waiting for the turn to end would wait forever:
+An unattended run answers with `--on-ask` immediately while the turn is running, since the command
+is waiting on the answer and waiting for the turn to end would wait forever:
 
 ```console
 $ kamchatka --headless --auto-allow exec:run 'fetch the release notes'

@@ -54,7 +54,7 @@ The context tab shows the same session from your side: every item, what it adds 
 and what it leaves out. One item is opened to show why it is there (in the model's words, since the
 model added it) and that it is pinned:
 
-![The context tab. Five items with what each sends and holds back; the pinned note is selected and
+![The context tab. Five items show what each sends and holds back; the pinned note is selected and
 open, showing why it is there and what it says.][shot-context]
 
 ## 🔍 nothing behind your back
@@ -103,17 +103,16 @@ system libraries.
 
 You can verify a released binary instead of trusting it:
 
-- **It's reproducible.** The release workflow builds every binary a second time, from a checkout at
-  a different path with crates in a different `CARGO_HOME`, and checks the two are identical byte
-  for byte. The release notes give the `rustc -V` it was built with, and
-  [CONTRIBUTING.md][contributing] has the command to rebuild it yourself.
+- **It's reproducible.** The release workflow builds every binary twice, from a different path with
+  crates in a different `CARGO_HOME`, and checks the two are identical byte for byte. The release
+  notes give the `rustc -V` it was built with, and [CONTRIBUTING.md][contributing] has the command
+  to rebuild it yourself.
 - **It's attested.** Each archive has a build provenance attestation proving it was built by this
-  repository, workflow and tag, which a checksum can't prove, since whoever could replace the
+  repository, workflow and tag. A checksum cannot prove that, because whoever could replace the
   archive could replace the checksum too. Check it with
   `gh attestation verify ARCHIVE --repo ljedrz/nachalnik`.
-- **It lists its contents.** It's built with `cargo auditable`, so the binary contains its own
-  dependency list, and `cargo audit bin kamchatka` checks those exact versions against the advisory
-  database.
+- **It lists its contents.** Built with `cargo auditable`, the binary contains its own dependency
+  list, and `cargo audit bin kamchatka` checks those exact versions against the advisory database.
 - **Its dependencies are checked.** CI fails on known vulnerabilities, unmaintained crates, yanked
   versions and new licences, with no exceptions. Every action in the workflows is pinned to a
   commit.

@@ -30,14 +30,13 @@ same with a state and a note for each item, for one move that doesn't land every
 it describes, so `undo` removes an annotation with the operation before it. It still counts as new
 work, so it clears anything `redo` could have restored.
 
-Excluding an item removes it from the *projection* (the request), not from the record. It keeps its
-identifier, stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a
-`redo`. `Elided` is in between: the item stays in the request as a one-line placeholder, so a large
-tool result stops costing tokens without its tool call having to be removed too. The default
-projector removes the other half of a call/result pair when one half is gone, so excluding can't
-produce a request the provider will reject. It reports this in `Projection::repairs` *and* in the
-session log, because any request the kernel adjusted is one you'll want to be able to look into
-afterwards.
+Excluding an item removes it from the projection (the request), not from the record. It keeps its
+identifier, stays listed and inspectable, and comes back with `set_state`, `undo`, or `redo`.
+`Elided` is in between: the item stays in the request as a one-line placeholder, so a large tool
+result stops costing tokens without its tool call having to be removed too. The default projector
+removes the other half of a call/result pair when one half is gone, so excluding can't produce a
+request the provider will reject. It reports this in `Projection::repairs` and in the session log,
+because any request the kernel adjusted is one you'll want to look into afterwards.
 
 **Nothing is destroyed, not even by a limit.** A tool output over its limit is recorded twice: the
 full output, excluded, and the truncated copy the model sees. Showing the model the full output is
@@ -86,9 +85,9 @@ ContextItem::assistant(
 )
 ```
 
-It is a variant of `Content` rather than a field on `Message` because content is the one type a
-`ModelResponse`, a `ContextItem` and a `Message` all carry — so the order survives from the wire,
-into the context where it is counted, excluded and elided like anything else, and back out again.
+It is a variant of `Content` rather than a field on `Message` because `ModelResponse`, `ContextItem`
+and `Message` all carry content, so the order survives from the wire, into the context where it is
+counted, excluded and elided, and back out again.
 
 A turn is recorded either in that form or in the three conventional slots, never both, so nothing
 can hold two accounts of it. `calls()` and `thinking()` on an item or a response read whichever form
