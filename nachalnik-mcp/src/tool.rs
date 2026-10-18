@@ -551,10 +551,10 @@ mod tests {
             prop_assert_eq!(sanitize(&name).chars().count(), expected);
         }
 
-        /// note: a rewrite that turned every `-` into `_` would still hand back a name a provider
-        /// takes. This says it leaves the server's name alone: `list-changes` and `list_changes`
-        /// are two tools a server may offer side by side. Beside the first property it also makes
-        /// the rewrite idempotent, so no property says that on its own.
+        /// note: rewriting every `-` to `_` would still return a name a provider takes. This says
+        /// it leaves the server's name alone: `list-changes` and `list_changes` are two tools a
+        /// server may offer side by side. It also makes the rewrite idempotent alongside the first
+        /// property, so no property says that on its own.
         #[test]
         fn an_acceptable_name_arrives_as_the_server_sent_it(name in "[a-zA-Z0-9_-]{1,64}") {
             prop_assert_eq!(sanitize(&name), name);
