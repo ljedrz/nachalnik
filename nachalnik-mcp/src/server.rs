@@ -1,8 +1,7 @@
 //! A connection to one MCP server, and what installing its tools into a kernel did.
 //!
-//! note: the connection lives as long as the [`Server`]; dropping it ends the session, and for a
-//! child process the process goes with it. This crate is not the runtime: `nachalnik` does not hold
-//! processes open.
+//! note: the connection lives as long as the [`Server`]; dropping it ends the session, and a child
+//! process goes with it. `nachalnik` itself holds no processes open.
 
 use std::sync::Arc;
 
@@ -26,10 +25,10 @@ const PAGES: usize = 100;
 
 /// What installing a server's tools into a kernel did.
 ///
-/// note: `replaced` exists because a kernel holds one tool per identifier, and two servers may
-/// well both offer `read`. Prefixing makes that unlikely rather than impossible - a name has to be
-/// rewritten to fit what model providers accept, and rewriting can collide - so what was displaced
-/// is reported rather than assumed to be nothing.
+/// note: a kernel holds one tool per identifier, and two servers may both offer `read`. Prefixing
+/// makes a clash unlikely, not impossible, since a name may be rewritten to fit what model
+/// providers accept and rewriting can collide, so what was displaced is reported rather than
+/// assumed to be nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Installed {
@@ -42,11 +41,11 @@ pub struct Installed {
 impl Installed {
     /// Takes these tools back out of a kernel, returning how many were still there.
     ///
-    /// note: it removes what was actually added, not what the server says today; a changed list
-    /// would otherwise leave tools behind that nothing can name.
+    /// note: it removes what was actually added, not what the server lists today, which would leave
+    /// behind tools nothing can name.
     ///
-    /// note: by identifier, so a tool installed since under one of the same identifiers is what
-    /// goes. The later install's `replaced` said that identifier was taken.
+    /// note: by identifier, so a tool installed since under one of the same identifiers is removed;
+    /// that later install's `replaced` said the identifier was taken.
     pub fn remove_from(&self, kernel: &Kernel) -> usize {
         self.added
             .iter()
@@ -99,19 +98,18 @@ impl Server {
 
     /// Connects to a server run as a child process, talking over its stdin and stdout.
     ///
-    /// note: most MCP servers are distributed this way; the runtime spawns no processes, which is
-    /// why this crate exists separately.
+    /// note: most MCP servers are distributed this way, and the runtime spawns no processes, which
+    /// is why this crate is separate.
     ///
-    /// note: standard error is held and read rather than inherited, whatever the `Command` says;
-    /// all three streams are pipes. Inherited output writes across the caller's terminal, a drawn
-    /// screen included, and no caller can stop it. A few lines are kept for a failed handshake,
-    /// where they are the reason.
+    /// note: standard error is piped and read, whatever the `Command` says, because inherited
+    /// output writes across the caller's terminal, a drawn screen included, and no caller could
+    /// stop it. A few lines are kept for a failed handshake, where they are the reason.
     ///
-    /// note: spawned here rather than by `rmcp`, so the process is this value's and goes when it
-    /// does. `rmcp`'s transport kills a child it drops from a task it spawns, and a runtime being
-    /// shut down need not run that task, so a server still busy with a call, which never reads the
-    /// end of its input, outlived the program that started it. Held here with `kill_on_drop`,
-    /// whatever the `Command` says, it is killed in the drop itself.
+    /// note: spawned here rather than by `rmcp`, so the process belongs to this value and goes when
+    /// it does. `rmcp`'s transport kills a child it drops from a task it spawns, which a runtime
+    /// shutting down need not run, so a server busy with a call outlived the program that started
+    /// it. Held here with `kill_on_drop`, whatever the `Command` says, it is killed in the drop
+    /// itself.
     #[cfg(feature = "child-process")]
     pub async fn spawn(
         name: impl Into<String>,
@@ -174,9 +172,9 @@ impl Server {
     /// Stops waiting for a tool's answer after this long, tells the server to stop, and tells the
     /// model the call went unanswered.
     ///
-    /// note: no limit unless one is given; how long a tool may take is the caller's to know. A call
-    /// that never comes back holds the turn until it is interrupted. That includes a server that
-    /// hangs, or a response `rmcp` drops because it carries neither a result nor an error.
+    /// note: no limit unless one is given, since how long a tool may take is the caller's to know.
+    /// Without one, a call that never comes back (a hung server, or a response `rmcp` drops for
+    /// carrying neither a result nor an error) holds the turn until it is interrupted.
     pub fn answering_within(mut self, within: std::time::Duration) -> Self {
         self.within = Some(within);
         self
@@ -205,12 +203,11 @@ impl Server {
 
     /// Asks the server what it offers, and wraps each of them as a [`Tool`](nachalnik::Tool).
     ///
-    /// note: Nothing is registered by this. It hands back a list; what to do with it is yours.
-    /// [`Server::install`] is the common answer.
+    /// note: nothing is registered; it returns a list, and [`Server::install`] is the usual next
+    /// step.
     ///
-    /// note: one page at a time, up to a hundred. A server returns the next page's cursor with each
-    /// one. A server that always returns another would be listed for ever at startup, where nothing
-    /// interrupts it.
+    /// note: one page at a time, up to a hundred pages, since a server that always returned another
+    /// cursor would otherwise be listed for ever at startup, where nothing interrupts it.
     pub async fn tools(&self) -> Result<Vec<Arc<dyn Tool>>> {
         let listed = paged("tools", |page| async move {
             self.running
@@ -238,13 +235,12 @@ impl Server {
 
     /// Puts every tool the server offers into a kernel.
     ///
-    /// note: Running it again is how a server whose tool list has grown or changed is picked up -
-    /// every tool it listed before comes back in `replaced`, since each one had a tool under its
-    /// name, and one it has only just started offering is in `added` alone. A tool the server has
-    /// *stopped* offering is left where it is, for
-    /// [`Kernel::remove_tool`](nachalnik::Kernel::remove_tool). It is deliberately something you do
-    /// rather than something that happens: the model is about to be told what it can do, and that
-    /// is not a thing to change underneath a turn.
+    /// note: running it again picks up a server whose list grew or changed: every tool it listed
+    /// before comes back in `replaced`, since each had a tool under its name, and a new one is in
+    /// `added` alone. A tool the server stopped offering is left for
+    /// [`Kernel::remove_tool`](nachalnik::Kernel::remove_tool). It is something you do rather than
+    /// something that happens, because what the model is told it can do should not change under a
+    /// turn.
     pub async fn install(&self, kernel: &Kernel) -> Result<Installed> {
         let mut installed = Installed::default();
 
@@ -261,16 +257,13 @@ impl Server {
 
     /// Reads every resource the server offers, as context items ready to be pushed.
     ///
-    /// note: They are handed back rather than pushed, because what goes into a context is the
-    /// user's decision and a server offering forty documents is not an argument. Each one is a
-    /// [`ContextKind::Reference`] labelled with its URI, so it arrives in the request saying where
-    /// it came from.
+    /// note: returned rather than pushed, because what goes into a context is the user's decision
+    /// and a server offering forty documents is no argument for all forty. Each is a
+    /// [`ContextKind::Reference`] labelled with its URI, so the request says where it came from.
     ///
-    /// note: a resource with no text in it - an image, a binary blob - is *named* rather than
-    /// dropped, exactly as a tool result's non-text blocks are. A list that quietly came back one
-    /// shorter than the server's would leave a caller unable to say whether a document had been
-    /// missed or had never been offered; the marker costs a line, and pushing it is optional like
-    /// everything else here.
+    /// note: a resource with no text, such as an image or a binary blob, is named rather than
+    /// dropped, as a tool result's non-text blocks are: a list one shorter than the server's would
+    /// leave a caller unable to tell a missed document from one never offered.
     pub async fn resources(&self) -> Result<Vec<ContextItem>> {
         let listed = paged("resources", |page| async move {
             self.running
@@ -432,9 +425,9 @@ impl std::error::Error for Said {
 /// Reads a spawned server's standard error to its end, keeping the start of each of the last
 /// [`KEPT`] lines.
 ///
-/// note: the start of a line, to [`LINE`] bytes, and the rest read and let go. The line count was
-/// bounded but a line's length was not, so a server writing without newlines - a progress bar
-/// redrawn with `\r`, or a malicious one - grew this without end for as long as it ran.
+/// note: the start of a line, up to [`LINE`] bytes, with the rest read and dropped. The line count
+/// was bounded but not a line's length, so a server writing without newlines (a progress bar
+/// redrawn with `\r`, or a malicious one) grew this without end.
 #[cfg(feature = "child-process")]
 async fn drain(
     stderr: tokio::process::ChildStderr,
