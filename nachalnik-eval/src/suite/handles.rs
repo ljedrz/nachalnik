@@ -772,11 +772,11 @@ mod tests {
         );
     }
 
-    /// An item named by its number as a JSON number is the item with that number.
+    /// A JSON number names the item with that number.
     ///
-    /// note: `look` shows numbers and the schema says an item may be named by one, so a model will
-    /// send `[12]` as often as `["12"]`. Skipping the number would have `test` answer that it
-    /// needs `without`, and `amend` refuse with an empty list of reasons.
+    /// note: `look` shows numbers and the schema says an item may be named by one, so a model sends
+    /// `[12]` as often as `["12"]`. Without the number, `test` says it needs `without`, and `amend`
+    /// refuses with no reasons.
     #[test]
     fn a_number_names_the_item_it_numbers() {
         let items = vec![

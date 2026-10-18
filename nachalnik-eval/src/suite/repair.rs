@@ -1,5 +1,5 @@
-//! Whether an agent that can *change* its own context ends up with a better answer, and whether
-//! merely being able to describe what is wrong with it ever did.
+//! Whether an agent that can change its own context gets a better answer, and whether being able to
+//! describe what is wrong with it ever did.
 
 use std::sync::Arc;
 
@@ -148,12 +148,11 @@ impl Repair {
         self
     }
 
-    /// How many times the whole ladder is run over each dossier, in independent sessions.
+    /// How many times the whole ladder runs over each dossier, in independent sessions.
     ///
-    /// note: `replicates(1)` is a probe and nothing else. It answers whether the ladder runs and
-    /// whether the model reaches for the handles at all, which is worth a dozen requests before
-    /// paying for the rest; it cannot answer any hypothesis, because at one run per dossier the
-    /// [`AGAIN`] control has no room to show anything and a rung that moved cannot be told from a
+    /// note: `replicates(1)` is a probe only. It shows whether the ladder runs and whether the
+    /// model reaches for the handles. It cannot answer any hypothesis: at one run per dossier the
+    /// [`AGAIN`] control has no room to show anything, and a moved rung cannot be told from a
     /// subject that changed its mind.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
@@ -161,11 +160,11 @@ impl Repair {
         self
     }
 
-    /// Whether to warn the subject that carried-over notes may be wrong; off by default.
+    /// Whether to warn the subject that carried-over notes may be wrong. Off by default.
     ///
-    /// note: here so that a caveated run can be reproduced rather than only described.
-    /// `caveated(true)` is what every figure recorded before 2026-09-03 was measured under, and it
-    /// moves the digest, so a report says which of the two it was.
+    /// note: so that a caveated run can be reproduced rather than only described. Every figure
+    /// recorded before 2026-09-03 was measured under `caveated(true)`. It moves the digest, so a
+    /// report says which of the two it was.
     #[must_use]
     pub fn caveated(mut self, caveated: bool) -> Self {
         self.caveated = caveated;

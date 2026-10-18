@@ -606,18 +606,17 @@ impl fmt::Display for Report {
 
 /// Picks one report per model: the newest of those that produced a usable primary endpoint.
 ///
-/// note: the rule that matters is not recency, it is that **a report which measured nothing never
-/// displaces one that did**. Recency only breaks ties among reports that did produce the endpoint.
+/// note: a report which measured nothing never displaces one that did. Recency only breaks ties
+/// among reports that produced the endpoint.
 ///
-/// note: a sweep exists to be re-run in pieces when cells fail, which makes a failed re-run the
-/// *expected* case rather than an odd one, and the analysis has to survive it. Chosen by recency
-/// alone, a re-run stopped early by a provider's budget limit would replace a completed run as
-/// that model's newest report, and the model would drop out of the pooled table with only a "not
-/// measured" to show for it.
+/// note: a sweep is re-run in pieces when cells fail, so a failed re-run is expected and the
+/// analysis must survive it. Chosen by recency alone, a re-run stopped early by a provider's budget
+/// limit would replace a completed run as that model's newest report, and the model would drop out
+/// of the pooled table with only a "not measured" to show for it.
 ///
-/// note: keyed on [`Report::model`], so one model reached through two providers is one row, and
-/// the report picked may be either provider's. That is the reading a sign test over models
-/// needs; a caller that wants to know a choice was made compares [`Report::served_by`].
+/// note: keyed on [`Report::model`], so one model reached through two providers is one row, and the
+/// report picked may be either provider's. A sign test over models needs that reading; a caller
+/// that wants to know a choice was made compares [`Report::served_by`].
 pub fn per_model<T>(reports: impl IntoIterator<Item = (Report, T)>) -> Vec<(String, Report, T)> {
     let mut best: BTreeMap<String, (Report, T, bool)> = BTreeMap::new();
     for (report, tag) in reports {
@@ -775,12 +774,12 @@ fn now() -> u64 {
         .unwrap_or_default()
 }
 
-/// Puts a subject's provider under a ceiling, so that everything it goes on to do is under it.
+/// Puts a subject's provider under a ceiling so everything it does is under it.
 ///
-/// note: done to the subject rather than to each request, because a subject hands its provider on:
+/// note: done to the subject rather than to each request, because a subject hands its provider on
 /// to the siblings an experiment raises for its other dossiers, and to every copy an
-/// [`Ablation`](crate::Ablation) resumes from a snapshot of it. Wrapping once here is what makes
-/// one ceiling cover all three.
+/// [`Ablation`](crate::Ablation) resumes from a snapshot of it. Wrapping once here makes one
+/// ceiling cover all three.
 fn under(subject: &Subject, governor: &Governor) {
     let Some(provider) = subject.kernel().provider() else {
         return;

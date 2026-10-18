@@ -211,11 +211,9 @@ impl Attribution {
         )
         .await?;
 
-        // note: the one loop in this battery that is not a conversation. Every copy here is made
-        // from `origin`, which was frozen before any claim was made, so no ablation can see
-        // another's - which is what makes a sweep safe to run at once where the two loops above
-        // are not. How wide it goes is not decided by this experiment: `observe_each` fans them
-        // out and the run's `Pace` bounds them.
+        // note: every copy is made from `origin`, frozen before any claim, so no ablation can see
+        // another's. A sweep is safe to run at once; the two loops above are not. `observe_each`
+        // fans them out and the run's `Pace` bounds how wide it goes.
         let sweep: Vec<Intervention> = notes
             .iter()
             .map(|note| Intervention::without([note.id]))

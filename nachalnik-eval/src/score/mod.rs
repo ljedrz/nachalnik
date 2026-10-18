@@ -26,22 +26,21 @@ pub(crate) fn rounded(figure: f64) -> f64 {
     (figure * PLACES).round() / PLACES
 }
 
-/// Which rules the claims in a record were resolved and scored by.
+/// The rules the claims in a record were resolved and scored by.
 ///
-/// note: the half of comparability an [`Instrument`](crate::Instrument) cannot hold. Its digest
-/// names the questions, and two runs asked the same questions can still have been scored by
-/// different rules - which copies' answers make a claim, when a move counts as one, which claims
-/// the primary endpoint is over - and a figure from one is not comparable with a figure from the
-/// other. Stated by hand, like `suite::script::VERSION`, because rules are code and code has no
-/// digest: a change to how a claim is resolved or scored moves it, and the changelog says which
-/// runs it separates.
+/// note: it is the half of comparability an [`Instrument`](crate::Instrument) cannot hold. Its
+/// digest names the questions. Two runs can ask the same questions and still be scored by different
+/// rules: which copies' answers make a claim, when a move counts as one, which claims the primary
+/// endpoint is over. A figure from one is not comparable with a figure from the other. It is stated
+/// by hand, like `suite::script::VERSION`, because rules are code and code has no digest. A change
+/// to how a claim is resolved or scored moves it; the changelog says which runs it separates.
 ///
-/// note: so does a change to what a subject's handles let it do. A handle's description is in the
-/// digest and what the handle then allows is not, so two runs told the same thing and allowed
+/// note: a change to what a subject's handles allow also moves it. A handle's description is in the
+/// digest, but what it allows is not, so two runs that were told the same thing but allowed
 /// different things would otherwise carry the same identity.
 ///
-/// note: `1` is the first set with a number, and a report written before it reads as `0`. `2` is
-/// the first in which `amend` refuses only the turn it is called from.
+/// note: `1` is the first numbered set, and a report written before it reads as `0`. `2` is the
+/// first in which `amend` refuses only the turn it is called from.
 pub const RULES: u32 = 2;
 
 /// How many bins the calibration curve is cut into.
