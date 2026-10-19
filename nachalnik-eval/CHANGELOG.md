@@ -12,6 +12,9 @@ minor bump may break you.
 - **A rate allowance larger than `u32::MAX` no longer panics or paces to one a window.**
   `Pace::per` divided the window by the allowance cast to `u32`, so `2^32` requests a window was a
   division by zero and `2^32 + 1` was paced as one. It saturates now.
+- **`Scores::p_value` holds for long runs.** The binomial tail started from `(1 - base)^n`, which
+  is zero in an `f64` from about a thousand claims at even odds, so a run that did no better than
+  chance got a p-value of 0. The tail is worked out in logarithms now.
 
 ## [0.9.0] - 2026-10-14
 
