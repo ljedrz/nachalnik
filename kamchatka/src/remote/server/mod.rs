@@ -617,8 +617,8 @@ pub fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvErr
 /// turn paused after 3 requests" *above* the result it paused after. The transcript must show what
 /// happened, in that order.
 pub fn apply_outcome(app: &mut App, events: &mut broadcast::Receiver<Event>, outcome: Outcome) {
-    while let Ok(event) = events.try_recv() {
-        app.on_event(event);
+    for event in crate::app::queued(events) {
+        apply_event(app, event.map_err(broadcast::error::RecvError::Lagged));
     }
     app.on_outcome(outcome);
 }

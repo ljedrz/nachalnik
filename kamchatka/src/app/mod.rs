@@ -1094,7 +1094,7 @@ impl App {
                 },
                 Some(outcome) = finished.recv() => {
                     // the turn's last events are queued behind its outcome, as in every loop
-                    while let Ok(event) = events.try_recv() {
+                    for event in queued(events).flatten() {
                         heard(&event);
                         self.on_event(event);
                     }
@@ -1678,4 +1678,23 @@ fn held_to_window(kernel: &Kernel, limits: &Limits) {
     if let Some(built) = kernel.config().default_tool_output_limit {
         kernel.set_default_tool_output_limit(Some(limits.held(built)));
     }
+}
+
+/// Every event queued on `events` now, in order: `Err` with how many went by where the queue
+/// dropped some.
+///
+/// note: what every loop takes in ahead of a turn's outcome, since the turn's last events are
+/// queued behind it. Read with `while let Ok`, a lag ended the reading: the events after it were
+/// taken in after the outcome, in the wrong order, and nothing said any had gone by. The queue
+/// goes on from the oldest event it still holds after saying it lagged, so the reading does too.
+pub fn queued(
+    events: &mut tokio::sync::broadcast::Receiver<Event>,
+) -> impl Iterator<Item = Result<Event, u64>> + '_ {
+    use tokio::sync::broadcast::error::TryRecvError;
+
+    std::iter::from_fn(move || match events.try_recv() {
+        Ok(event) => Some(Ok(event)),
+        Err(TryRecvError::Lagged(missed)) => Some(Err(missed)),
+        Err(TryRecvError::Empty | TryRecvError::Closed) => None,
+    })
 }

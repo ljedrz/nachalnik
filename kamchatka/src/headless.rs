@@ -371,9 +371,14 @@ impl<'a> Headless<'a> {
                             let opened = app.submit(line.trim()).await.page;
                             // the line's effect on the context is said with it, not on a later
                             // pass - after the next line, or never if this was the last
-                            while let Ok(event) = events.try_recv() {
-                                self.say(&app.kernel, &event)?;
-                                app.on_event(event);
+                            for event in crate::app::queued(events) {
+                                match event {
+                                    Ok(event) => {
+                                        self.say(&app.kernel, &event)?;
+                                        app.on_event(event);
+                                    }
+                                    Err(missed) => self.lagged(missed),
+                                }
                             }
                             if let Some(Overlay::Text { title, pages, .. }) = opened {
                                 self.prose.fresh_line()?;
@@ -430,11 +435,7 @@ impl<'a> Headless<'a> {
                             // be shown and pointed at a log without them, because a fragment is not
                             // an event anybody records. A count is only believed while a model is
                             // answering, the one thing this loop prints fragments of
-                        Err(broadcast::error::RecvError::Lagged(missed)) => {
-                                if self.answering {
-                                    self.missed += missed;
-                                }
-                        }
+                        Err(broadcast::error::RecvError::Lagged(missed)) => self.lagged(missed),
                         Err(broadcast::error::RecvError::Closed) => break,
                     },
                     // note: a deadline that is not set waits on a future that never completes,
@@ -491,9 +492,14 @@ impl<'a> Headless<'a> {
                     Some(outcome) = finished.recv() => {
                         // the turn's last events are still queued behind this one, and `select!` picks
                         // whichever branch is ready rather than whichever happened first
-                        while let Ok(event) = events.try_recv() {
-                            self.say(&app.kernel, &event)?;
-                            app.on_event(event);
+                        for event in crate::app::queued(events) {
+                            match event {
+                                Ok(event) => {
+                                    self.say(&app.kernel, &event)?;
+                                    app.on_event(event);
+                                }
+                                Err(missed) => self.lagged(missed),
+                            }
                         }
                         // a command coming back says nothing about how the last turn went
                         let returned = matches!(outcome, Outcome::Returned(_));
@@ -507,9 +513,14 @@ impl<'a> Headless<'a> {
                         // pass taken reports itself in an event, and a script whose last line was
                         // `/compact` would otherwise leave before that event was read
                         if returned {
-                            while let Ok(event) = events.try_recv() {
-                                self.say(&app.kernel, &event)?;
-                                app.on_event(event);
+                            for event in crate::app::queued(events) {
+                                match event {
+                                    Ok(event) => {
+                                        self.say(&app.kernel, &event)?;
+                                        app.on_event(event);
+                                    }
+                                    Err(missed) => self.lagged(missed),
+                                }
                             }
                         }
                     }
@@ -733,6 +744,13 @@ impl<'a> Headless<'a> {
         self.records.flush().map_err(|e| e.to_string())?;
 
         Ok(())
+    }
+
+    /// Takes in that `missed` events went by unread; see the note where the stream is read.
+    fn lagged(&mut self, missed: u64) {
+        if self.answering {
+            self.missed += missed;
+        }
     }
 
     /// The part of an event a person watching wants to see go by.

@@ -892,6 +892,32 @@ async fn ctrl_c_stops_a_turn_rather_than_leaving() {
     assert!(!harness.app.quit, "stopping a turn does not leave");
 }
 
+/// The events queued behind a turn's outcome are all taken in ahead of it, past a lag.
+///
+/// note: read with `while let Ok`, the reading stopped at the lag, and the events after it were
+/// taken in after the outcome, in the wrong order, with nothing said about the ones that went by.
+#[test]
+fn every_queued_event_is_read_past_a_lag() {
+    let (sender, mut events) = tokio::sync::broadcast::channel(2);
+    for n in 1..=4 {
+        sender
+            .send(nachalnik::Event::ToolsChanged {
+                tools: vec![n.to_string()],
+            })
+            .expect("a receiver");
+    }
+
+    let read: Vec<Result<String, u64>> = kamchatka::app::queued(&mut events)
+        .map(|event| {
+            event.map(|event| match event {
+                nachalnik::Event::ToolsChanged { tools } => tools.concat(),
+                other => panic!("{other:?}"),
+            })
+        })
+        .collect();
+    assert_eq!(read, [Err(2), Ok("3".to_owned()), Ok("4".to_owned())]);
+}
+
 /// A session asked to restart and to leave leaves.
 ///
 /// note: a `/quit`, or a `SIGTERM`, that lands while a `/restart` is still stopping the turn sets

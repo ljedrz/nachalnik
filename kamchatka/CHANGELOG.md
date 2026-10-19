@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The events queued ahead of a turn's end are all taken in before it, past a lag.** Every loop
+  reads the events still queued when a turn ends before the end itself, and stopped at the first
+  sign the queue had dropped some: the events after it came in after the turn's end, out of order,
+  and nothing said any had gone by. `app::queued` reads past it, and each loop says the lag as it
+  does where it reads the stream.
 - **A served session's own line too long for a client is said to be missed.** The program's lines,
   and the state said again to a client that reattaches, went out however long they were, while
   records, fragments and answers are held to what a client reads. A network question carries the
