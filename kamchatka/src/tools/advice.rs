@@ -516,8 +516,11 @@ impl Advised {
             questions.push((format!("{DANGER}-{n}"), claiming(&cmd[*from..*to])));
         }
 
+        // note: the answer first. One already in hand when the stop lands is kept, because what
+        // it cost was spent either way; a stop picked over it left `spent` short by that much
         let mut stopped = self.stopped.subscribe();
         let answers = tokio::select! {
+            biased;
             asked = self.engine.ask(state(request), questions) => {
                 asked.map_err(|e| cut(&e.to_string()))?
             }
@@ -1197,6 +1200,14 @@ mod tests {
         let unreached = Advised::new(Arc::new(Careful::new()), unreachable());
         unreached.evaluate(&request).await;
         assert_eq!(unreached.spent(), 0);
+
+        // and an answer in hand when a stop lands is counted as well: what it cost was spent
+        let stopped = Advised::new(Arc::new(Careful::new()), Arc::new(Billed));
+        stopped.stop();
+        for _ in 0..20 {
+            stopped.evaluate(&request).await;
+        }
+        assert_eq!(stopped.spent(), 20 * 320, "every answer that came back");
     }
 
     /// A stop gives up on a rating at once, and the question says the advice was not waited for.
