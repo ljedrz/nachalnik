@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A command is not told "no TCP" where nothing refuses TCP.** On a kernel below Linux 6.7, whose
+  Landlock has no TCP rights, and where the network gate could not be installed, a command with the
+  network not allowed was described as having no TCP, while its TCP connections went through. The
+  network is said to be reachable there now, which is what it is.
 - **A command whose network attempt was answered under a signal is not left waiting.** The
   answer to a held `socket()` call, and the receive before it, give up with `EINTR` when a signal
   lands while another of the command's processes is being held. A lost answer left the command
