@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **The shell advisor's answer is counted when a stop lands with it.** An answer that came back in
+  the same moment as a `ctrl+c` could lose to the stop, and what it cost was then left out of what
+  `--max-spend-tokens` charges. The answer is taken first now.
 - **`--web`'s page draws a deeply nested answer instead of stopping.** A model's line with a few
   thousand `> ` - a few kilobytes it could be handed by anything it read - ran the page's markdown
   out of stack. A whole conversation is drawn when the page attaches, so the drawing stopped at that
