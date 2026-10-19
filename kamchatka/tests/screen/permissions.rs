@@ -591,11 +591,20 @@ async fn a_shell_reaching_for_the_network_is_judged_as_reaching_for_it() {
         "HTTPS_PROXY=http://p:8080 curl https://example.com"
     ));
     assert!(reaches("/usr/bin/curl https://example.com"));
+    // behind a program that runs it
+    assert!(reaches("timeout 30 curl https://example.com"));
+    assert!(reaches("nice -n 10 git fetch"));
+    assert!(reaches("sudo apt-get install jq"));
+    assert!(reaches("env FOO=1 /usr/bin/wget https://example.com"));
+    assert!(reaches("sh -c 'curl -s https://example.com'"));
+    assert!(reaches("ls | xargs -n1 curl -O"));
 
     // and what it writes the rest of the time
     assert!(!reaches("wc -l ledger.py"));
     assert!(!reaches("cat curl.txt"));
     assert!(!reaches("echo 'curl is a program'"));
+    assert!(!reaches("timeout 30 cargo-nextest run"));
+    assert!(!reaches("bash build.sh"));
     assert!(!reaches(""));
 }
 

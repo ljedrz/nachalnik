@@ -937,8 +937,10 @@ const NETWORKED: &[&str] = &[
 /// [`Careful::gate_the_network`].
 ///
 /// note: a heuristic over the command as it was written. It catches `curl https://…`,
-/// `pip install x` and `git push`, which is what a model writes when it wants the network, and it
-/// does not catch a script that curls, a binary that opens a socket of its own, or `$(echo cur)l`.
+/// `pip install x` and `git push`, which is what a model writes when it wants the network, and the
+/// same behind a program that runs another (`timeout 30 curl …`, `sh -c 'curl …'`; see
+/// `WRAPPERS`). It does not catch a script that curls, a binary that opens a socket of its own,
+/// or `$(echo cur)l`.
 /// It is not a sandbox and this program does not claim it is one - `Capability::exec("run")`
 /// subsumes every other capability, and the runtime's own documentation says so.
 ///
@@ -954,14 +956,39 @@ const NETWORKED: &[&str] = &[
 /// called `Careful` errs that way on purpose.
 pub fn reaches_the_network(cmd: &str) -> bool {
     cmd.split([';', '|', '&', '\n', '(', ')', '`'])
-        .filter_map(|segment| {
-            // `FOO=bar curl …`: the assignments come first, and none of them is the program
-            segment.split_whitespace().find(|word| !word.contains('='))
-        })
-        .any(|program| {
-            let program = program.trim_matches(['"', '\'']);
-            let program = program.rsplit('/').next().unwrap_or(program);
+        .filter_map(program)
+        .any(|program| NETWORKED.contains(&program))
+}
 
-            NETWORKED.contains(&program)
-        })
+/// Programs that run the program named after them, which is then the one judged.
+///
+/// note: a model puts these in front of the command it means as a matter of course - a `timeout`
+/// so a fetch cannot hang the turn, an `sh -c` round a pipeline - so reading only the first word
+/// let `timeout 30 curl …` past a refused network while `curl …` was refused.
+const WRAPPERS: &[&str] = &[
+    "sudo", "doas", "env", "time", "nohup", "timeout", "nice", "ionice", "exec", "command",
+    "stdbuf", "setsid", "xargs", "sh", "bash", "dash", "zsh",
+];
+
+/// The program one segment of a command runs: its first word that is not an assignment
+/// (`FOO=bar curl …`), and after one of [`WRAPPERS`], the first word after it that is not an option
+/// or a number (`nice -n 10 curl …`).
+fn program(segment: &str) -> Option<&str> {
+    let mut wrapped = false;
+    for word in segment.split_whitespace() {
+        if word.contains('=') {
+            continue;
+        }
+        let word = word.trim_matches(['"', '\'']);
+        let word = word.rsplit('/').next().unwrap_or(word);
+        if wrapped && word.starts_with(|c: char| c == '-' || c.is_ascii_digit()) {
+            continue;
+        }
+        if WRAPPERS.contains(&word) {
+            wrapped = true;
+            continue;
+        }
+        return Some(word);
+    }
+    None
 }

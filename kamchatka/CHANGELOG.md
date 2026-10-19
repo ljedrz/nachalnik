@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A network program behind `timeout`, `sudo`, `sh -c` and the like is judged as the network.**
+  Where the network gate does not hold, under `--no-sandbox` or on a kernel that cannot hold a
+  call, a command was judged by its first word alone, so `timeout 30 curl …` ran with `net:reach`
+  denied while `curl …` was refused. A program that runs the one after it is now looked past.
 - **`--serve` says when a socket it could not make private is left behind.** If the socket's
   permissions could not be set to `0600`, it was removed and the error said so, but a failed removal
   was dropped. The socket then stayed with the umask's permissions while the error said nothing of
