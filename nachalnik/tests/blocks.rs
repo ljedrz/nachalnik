@@ -196,6 +196,29 @@ fn a_picture_is_kept_whole_and_the_text_around_it_is_cut() {
     assert!(content.as_blocks().is_none(), "{content:?}");
 }
 
+/// A picture's limit is on its payload, as the APIs measure one, so a picture exactly at it is kept
+/// whole, on its own and beside text.
+#[test]
+fn a_picture_exactly_at_its_limit_is_kept() {
+    let picture = || Content::blob("image/png", "A".repeat(10_000));
+
+    let mut content = picture();
+    assert_eq!(content.truncate_around_pictures(100, 10_000), None);
+    assert_eq!(content, picture());
+
+    let mut content = Content::blocks([
+        Block::text(Content::text("x".repeat(200))),
+        Block::text(picture()),
+    ]);
+    content.truncate_around_pictures(100, 10_000).expect("over");
+    let blocks = content.as_blocks().expect("still blocks");
+    assert_eq!(
+        blocks.last(),
+        Some(&Block::text(picture())),
+        "the picture, whole"
+    );
+}
+
 /// Text beside a picture is held to the limit however small the picture, and a block of it that
 /// fits leaves the next only what remains.
 #[test]

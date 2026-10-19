@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A picture exactly at `Kernel::set_picture_limit`'s limit is kept.** It was measured with its
+  media type added to its payload, so one within a few bytes of the limit was named instead of
+  shown. The payload is what the APIs limit, and it is what `nachalnik-mcp` checks before carrying
+  an image, so a picture of `LARGEST_IMAGE` bytes was carried by the bridge and then named here.
+
 ## [0.10.0] - 2026-10-14
 
 ### breaking
