@@ -216,6 +216,7 @@ impl Sandbox {
         granted: bool,
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
+        let tcp = confines_tcp();
         let writable = writes(policy);
         // note: it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is refused
         // a write there under the same refusal. A shell that could still write in them was two
@@ -235,13 +236,10 @@ impl Sandbox {
                 granted || stance == Verdict::Allow,
                 stance == Verdict::Deny,
                 policy.gates_the_network(),
-                confines_tcp(),
+                tcp,
             ),
             devices: DEVICES.iter().map(PathBuf::from).collect(),
-            closed: SERVED
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone(),
+            closed: closing(tcp, &SERVED.lock().unwrap_or_else(PoisonError::into_inner)),
         }
     }
 
@@ -914,6 +912,18 @@ pub const DEVICES: &[&str] = &[
     "/dev/urandom",
 ];
 
+/// The ports a command is to have closed: the ones `served`, where Landlock can close a TCP port
+/// (`tcp`), and none where it cannot.
+///
+/// note: none below Linux 6.7. Named anyway, a command was told that the ports a session is served
+/// on were closed to it, and they were not; [`weaker_here`] says so to the person at startup.
+fn closing(tcp: bool, served: &[u16]) -> Vec<u16> {
+    match tcp {
+        true => served.to_vec(),
+        false => Vec::new(),
+    }
+}
+
 /// The ports this process serves a session on, which [`Sandbox::of`] closes to every command.
 ///
 /// note: the process's rather than a session's, because a command that reached any session served
@@ -972,7 +982,7 @@ pub(crate) fn from_a_command(pid: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::Network;
+    use super::{Network, closing};
 
     /// A network nothing can refuse is said to be open, whatever the stance.
     ///
@@ -991,5 +1001,12 @@ mod tests {
             assert_eq!(Network::of(false, false, true, tcp), Network::Asked);
             assert_eq!(Network::of(true, false, true, tcp), Network::Open);
         }
+    }
+
+    /// A served port is said to be closed to a command only where the kernel can close it.
+    #[test]
+    fn a_port_is_closed_only_where_the_kernel_can_close_it() {
+        assert_eq!(closing(true, &[8080, 9090]), [8080, 9090]);
+        assert!(closing(false, &[8080, 9090]).is_empty());
     }
 }
