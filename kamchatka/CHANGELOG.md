@@ -38,6 +38,9 @@ minor bump may break you.
   a text argument quoted the model's value whole, so a long string passed in the wrong place went
   into the context, the record and every save as its own error. It is cut to 200 characters now,
   with its size.
+- **A command whose processes outlive being killed at the end of a session is said to be still
+  running.** Everything found was named as stopped, whether or not the `SIGKILL` took. What is
+  still there half a second after it is now named as still running instead.
 
 ## [0.21.0] - 2026-10-18
 

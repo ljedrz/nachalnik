@@ -982,10 +982,18 @@ pub fn stragglers_at_end(app: &App, leave: bool) -> Vec<String> {
         ),
         false => (app.stragglers.stop(), "stopped what it had left running"),
     };
+    // what outlived its `SIGKILL`, said as still running rather than left out
+    let lasting = match leave {
+        true => Vec::new(),
+        false => app.stragglers.running(),
+    };
 
     commands
         .into_iter()
         .map(|cmd| format!("· `{cmd}` {done}"))
+        .chain(lasting.into_iter().map(|cmd| {
+            format!("· `{cmd}` is still running: what it left would not stop when killed")
+        }))
         .collect()
 }
 

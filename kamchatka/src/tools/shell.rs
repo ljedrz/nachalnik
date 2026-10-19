@@ -299,6 +299,17 @@ pub const CALL_VAR: &str = "KAMCHATKA_CALL";
 /// How long a straggler is given to leave on `SIGTERM` before it is sent `SIGKILL`.
 const GRACE: Duration = Duration::from_secs(2);
 
+/// How long a straggler sent `SIGKILL` is given to be gone before it is said to be still running.
+const KILLED: Duration = Duration::from_millis(500);
+
+/// The calls whose processes were all stopped: those found to stop, less any still running after.
+fn stopped<'a>(
+    found: impl Iterator<Item = usize> + 'a,
+    left: &'a BTreeMap<usize, Vec<u32>>,
+) -> impl Iterator<Item = usize> + 'a {
+    found.filter(|call| !left.contains_key(call))
+}
+
 impl Stragglers {
     /// Takes in a command about to run, and hands back what its environment carries for it.
     fn mark(&self, cmd: &str) -> String {
@@ -379,8 +390,18 @@ impl Stragglers {
         for pid in lasting.values().flatten() {
             self.signal(*pid, rustix::process::Signal::KILL);
         }
+        // note: looked for once more, since a `SIGKILL` is not always the end of a process: one
+        // waiting on a device in the kernel takes it only when the wait is over, and a signal can
+        // be refused. Named as stopped regardless, a command still running was said to be over;
+        // `Stragglers::running` names what is left
+        let until = std::time::Instant::now() + KILLED;
+        let mut left = self.found();
+        while !left.is_empty() && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+            left = self.found();
+        }
 
-        self.named(found.into_keys())
+        self.named(stopped(found.into_keys(), &left))
     }
 
     /// Sends `signal` to process `pid`, if it still carries this session's mark.
@@ -1680,6 +1701,21 @@ mod tests {
         assert!(
             unkept.starts_with(&format!("[{} more bytes", KEPT - errors.len() / 3)),
             "{unkept}"
+        );
+    }
+
+    /// A command whose processes outlived the kill is not among those named as stopped.
+    ///
+    /// note: the partition alone, since a process that outlives `SIGKILL` - one waiting on a device
+    /// in the kernel, or a signal refused - is not one a test here can make.
+    #[test]
+    fn what_outlived_the_kill_is_not_said_to_be_stopped() {
+        let left = BTreeMap::from([(1, vec![4_242])]);
+        let said: Vec<usize> = stopped([0, 1, 2].into_iter(), &left).collect();
+        assert_eq!(said, [0, 2]);
+        assert_eq!(
+            stopped([0, 2].into_iter(), &BTreeMap::new()).collect::<Vec<_>>(),
+            [0, 2]
         );
     }
 
