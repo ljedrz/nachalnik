@@ -2320,3 +2320,34 @@ async fn p_takes_a_pin_back_off_as_well_as_going_one_on() {
     );
     assert!(sent.contains("keep me"), "{sent}");
 }
+
+/// Nothing goes in between the model's calls and their results while the calls are decided and
+/// waiting to run: not a note, not an attachment, not a message.
+///
+/// note: the guard asked whether a turn was running or a question open, and `ready` is neither, so
+/// each of these landed between an answer's calls and their results, a shape most APIs refuse.
+#[tokio::test]
+async fn nothing_goes_in_between_decided_calls_and_their_results() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "look", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "nothing to see")));
+    harness.send("/step look around").await;
+    harness.settle().await;
+    assert!(harness.app.ready(), "the call is decided and waiting");
+    let before = harness.app.kernel.items().len();
+
+    harness.send("/note keep it short").await;
+    harness.send("/attach Cargo.toml what is this?").await;
+    harness.send("and hurry").await;
+    assert_eq!(
+        harness.app.kernel.items().len(),
+        before,
+        "nothing went in: {}",
+        harness.flat()
+    );
+}

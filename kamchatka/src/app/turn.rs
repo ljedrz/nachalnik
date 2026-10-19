@@ -206,8 +206,12 @@ impl App {
     /// note: a turn resting on a question is not `busy`, and it is still mid-turn: the call it is
     /// waiting on has a result to come, and anything put in the context now lands between the
     /// two.
+    ///
+    /// note: and a turn resting with its calls decided and none of them run, in [`State::Ready`].
+    /// Those calls have results to come as well. Asked only about questions, `/note`, `/attach` and
+    /// a message went in between them and their calls there.
     pub(super) fn mid_turn(&self) -> bool {
-        self.busy || !self.kernel.pending_permissions().is_empty()
+        self.busy || !self.kernel.pending_calls().is_empty()
     }
 
     /// Whether there is anything for [`App::interrupt`] to stop: a turn, or a listing or a pass
