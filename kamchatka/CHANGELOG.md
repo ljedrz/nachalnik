@@ -45,6 +45,10 @@ minor bump may break you.
   The open refused a link that led out of the directory but followed one that stayed in it, so a
   directory swapped for a relative link to protected files beside it was read without their rules
   being asked. Any link met at the open is refused now, as SECURITY.md says.
+- **A `../` path rule catches a link that climbs out of the working directory.** A link's target
+  was matched as the absolute path it resolved to, which has no `..` in it, so `up ->
+  ../elsewhere/plan.txt` was read where `../elsewhere/plan.txt` was refused. A target is matched,
+  and named, as the working directory reaches it now.
 
 ## [0.21.0] - 2026-10-18
 

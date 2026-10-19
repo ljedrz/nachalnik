@@ -201,10 +201,31 @@ pub(super) fn led_past<'a>(
     workdir: &Path,
     barred: &'a [(String, Verdict)],
 ) -> Option<&'a (String, Verdict)> {
-    let target = relative(resolved, &under(workdir));
-    barred
-        .iter()
-        .find(|(rule, _)| path_matches(rule, &target) && !path_matches(rule, named))
+    let target = climbing(resolved, &under(workdir));
+    barred.iter().find(|(rule, _)| {
+        path_matches(rule, &target.to_string_lossy()) && !path_matches(rule, named)
+    })
+}
+
+/// A resolved path as the working directory reaches it: relative where it is under it, and with a
+/// `..` for each directory it climbs where it is not.
+///
+/// note: so that a link is matched as the path it stands for. Matched as the absolute path it
+/// resolved to, which has no `..` in it, a link out of the working directory passed a `../` rule
+/// that the same path written out was refused by.
+pub(super) fn climbing(path: &Path, workdir: &Path) -> PathBuf {
+    let (mut from, mut to) = (
+        workdir.components().peekable(),
+        path.components().peekable(),
+    );
+    while from.peek().is_some() && from.peek() == to.peek() {
+        from.next();
+        to.next();
+    }
+
+    from.map(|_| std::path::Component::ParentDir)
+        .chain(to)
+        .collect()
 }
 
 /// What a walk left behind, and why.
