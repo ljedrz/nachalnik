@@ -683,15 +683,22 @@ fn opened_beneath(
         _ => Path::new("."),
     };
 
+    // note: and no links at all. `path` is resolved, so a link on it now was put there since it
+    // was checked. `BENEATH` alone refuses only one that leaves the directory, and a relative link
+    // to a directory of protected files beside it was followed
     match rustix::fs::openat2(
         &dir,
         relative,
         flags | OFlags::CLOEXEC,
         mode,
-        ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS,
+        ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS | ResolveFlags::NO_SYMLINKS,
     ) {
         Ok(opened) => Some(Ok(opened)),
         Err(Errno::NOSYS | Errno::PERM) => None,
+        Err(Errno::LOOP) => Some(Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "a part of this path has become a link since it was checked, so it was not opened",
+        ))),
         Err(Errno::XDEV) => Some(Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "a part of this path has become a link out of what this session reaches since it \

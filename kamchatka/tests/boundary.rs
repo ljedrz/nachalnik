@@ -292,6 +292,52 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     assert_eq!(said, "mine");
 }
 
+/// A path turned after it was checked into a link to somewhere else inside the reach is not
+/// opened either.
+///
+/// note: `RESOLVE_BENEATH` refuses only a link that leaves the directory, so a link from `d` to a
+/// directory of protected files beside it was followed, and the open read a file no rule had been
+/// asked about. The path `allows` hands back is resolved, so any link on it at the open is a swap.
+#[test]
+fn a_path_turned_into_a_link_within_after_it_was_checked_is_not_opened() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let base = common::scratch("swapped-within")
+        .canonicalize()
+        .expect("it exists");
+    let inside = base.join("w");
+    std::fs::create_dir_all(inside.join("d")).expect("a directory to check");
+    std::fs::create_dir_all(inside.join("private")).expect("a directory beside it");
+    std::fs::write(inside.join("d").join("notes.txt"), "mine").expect("a file");
+    std::fs::write(inside.join("private").join("notes.txt"), "secret").expect("another");
+    let reach = Reach {
+        workdir: inside.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+
+    let read = reach
+        .allows("d/notes.txt", Access::Reading)
+        .expect("it is inside");
+    std::fs::rename(inside.join("d"), base.join("d-was")).expect("moved aside");
+    // relative, as a link made in the directory would be: `RESOLVE_BENEATH` refuses an absolute
+    // one wherever it points, and lets a relative one through as long as it stays inside
+    std::os::unix::fs::symlink("private", inside.join("d")).expect("a link in");
+
+    let refused = reach
+        .open(&read, Access::Reading)
+        .expect_err("the path is not what was checked");
+    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+    reach
+        .open(&read, Access::Writing)
+        .expect_err("and is not written through either");
+    assert_eq!(
+        std::fs::read_to_string(inside.join("private").join("notes.txt")).expect("there"),
+        "secret"
+    );
+}
+
 /// A directory a write is to make is not made through a link swapped in after the path was
 /// checked.
 ///
