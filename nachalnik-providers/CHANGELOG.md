@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A stop that lands after the server finished leaves the turn finished.** An endpoint can send
+  its finish and hold the stream open before `[DONE]` or the usage, and a stop in that pause wrote
+  `interrupted` over the server's own reason, as though the answer had been cut short. The answer
+  keeps the reason the server gave now.
 - **An error page's words end where its text does, not in the tag the read stopped inside.** Only
   the first 64 KiB of a body that is not JSON is read, and a tag that cut was in had its name and
   attributes quoted as words after the page's own: `quota exceeded svg path d="M0 0M0…`.

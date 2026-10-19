@@ -1019,3 +1019,67 @@ async fn a_responses_stream_stopped_after_its_preface_is_not_a_failure() {
         .expect("the turn is not a panic");
     stopped.expect("an interrupted request is not a failed one");
 }
+
+/// A turn the server has finished is kept as finished when a stop lands while the connection is
+/// still open after it.
+///
+/// note: an endpoint can send its finish and hold the stream open a while before `[DONE]` or the
+/// usage. A stop pressed in that pause was taken as the answer cut short, and the server's own
+/// finish was written over with `interrupted`.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_stop_after_the_server_finished_does_not_unfinish_the_turn() {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    let (reached, reaching) = oneshot::channel();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 16384];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n\
+                  data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"},\
+                  \"finish_reason\":\"stop\"}]}\n\n",
+            )
+            .await;
+        let _ = socket.flush().await;
+        let _ = reached.send(());
+        // and nothing after the finish, not even `[DONE]`
+        tokio::time::sleep(Duration::from_secs(600)).await;
+    });
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "finished",
+        format!("http://{address}"),
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("say it"));
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+
+    reaching.await.expect("the server answered");
+    tokio::time::sleep(MARGIN).await;
+    kernel.interrupt();
+    tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("the stop should reach a stream held open")
+        .expect("the turn is not a panic")
+        .expect("a stopped turn is not a failed one");
+
+    let response = kernel.last_response().expect("the answer that came");
+    assert_eq!(
+        response
+            .content
+            .as_ref()
+            .map(|it| it.to_text().into_owned())
+            .as_deref(),
+        Some("all of it")
+    );
+    assert_eq!(response.stop, nachalnik::StopReason::EndTurn);
+}
