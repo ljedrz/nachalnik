@@ -286,6 +286,34 @@ async fn a_lull_does_not_buy_back_room_the_window_has_not_given_back() {
     );
 }
 
+/// An allowance too large for the spacing's arithmetic is as good as no limit, rather than a panic
+/// or a limit of one.
+///
+/// note: the spacing divided the window by the allowance cast to `u32`, which wraps: `2^32` was a
+/// division by zero, and `2^32 + 1` a spacing of the whole window.
+#[cfg(target_pointer_width = "64")]
+#[tokio::test(start_paused = true)]
+async fn an_allowance_past_what_the_spacing_counts_is_not_a_limit_of_one() {
+    let window = Duration::from_secs(60);
+    for allowed in [1usize << 32, (1usize << 32) + 1] {
+        let inner = Arc::new(Spaced {
+            at: std::sync::Mutex::new(Vec::new()),
+        });
+        let paced = Governor::new(Pace::at_once(8).per(allowed, window)).over(inner.clone());
+        for _ in 0..3 {
+            paced
+                .respond(plain_request(), DeltaSink::disconnected())
+                .await
+                .expect("the wrapped provider answered");
+        }
+
+        let at = inner.at.lock().unwrap().clone();
+        let span = at[2].duration_since(at[0]);
+        // a millisecond a wait is the timer's grain; a limit of one would be the whole window
+        assert!(span < Duration::from_secs(1), "{allowed}: {span:?}");
+    }
+}
+
 /// A request with nothing in it, for the tests that are about when it goes rather than what it
 /// says.
 fn plain_request() -> ModelRequest {

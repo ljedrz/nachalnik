@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A rate allowance larger than `u32::MAX` no longer panics or paces to one a window.**
+  `Pace::per` divided the window by the allowance cast to `u32`, so `2^32` requests a window was a
+  division by zero and `2^32 + 1` was paced as one. It saturates now.
+
 ## [0.9.0] - 2026-10-14
 
 ### changed
