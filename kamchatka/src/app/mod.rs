@@ -989,6 +989,15 @@ impl App {
         self.quit || self.restart
     }
 
+    /// Whether the session that was left is to be started again, rather than the program ending.
+    ///
+    /// note: not [`App::restart`] alone. A `/quit` - or a `SIGTERM` - that lands while a `/restart`
+    /// is still stopping the turn sets both, and the loop that read `restart` alone started a new
+    /// session for somebody who had asked to leave; see the note on `restart`.
+    pub fn restarting(&self) -> bool {
+        self.restart && !self.quit
+    }
+
     /// Stops a turn that is still running when the session is left, and takes in what it does until
     /// it has ended; `heard` is handed each event first, for a loop that prints them. Hands back
     /// what the turn failed with, if it did.

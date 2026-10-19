@@ -892,6 +892,26 @@ async fn ctrl_c_stops_a_turn_rather_than_leaving() {
     assert!(!harness.app.quit, "stopping a turn does not leave");
 }
 
+/// A session asked to restart and to leave leaves.
+///
+/// note: a `/quit`, or a `SIGTERM`, that lands while a `/restart` is still stopping the turn sets
+/// both, and the program read the restart alone and started a new session for somebody who had
+/// asked to leave.
+#[tokio::test]
+async fn a_session_asked_to_restart_and_to_leave_leaves() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/restart").await;
+    assert!(harness.app.restarting(), "a restart on its own is one");
+
+    harness.send("/quit").await;
+    assert!(harness.app.leaving());
+    assert!(
+        !harness.app.restarting(),
+        "leaving cannot be undone by the other word"
+    );
+}
+
 /// `ctrl+c` with a listing still out stops the listing, rather than leaving the session.
 ///
 /// note: the other half of the same claim, and the state it is about. A `/models` is waiting at an

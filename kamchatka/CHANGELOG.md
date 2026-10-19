@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A session asked to restart and to leave leaves.** A `/quit` or a `SIGTERM` that landed while a
+  `/restart` was still stopping the turn set both, and the program started a new session instead of
+  ending. `App::restarting` says which it is, and leaving wins, as `App::restart`'s documentation
+  already said.
 - **The shell advisor's answer is counted when a stop lands with it.** An answer that came back in
   the same moment as a `ctrl+c` could lose to the stop, and what it cost was then left out of what
   `--max-spend-tokens` charges. The answer is taken first now.
