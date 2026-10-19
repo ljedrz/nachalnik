@@ -380,6 +380,55 @@ async fn what_the_advisor_spends_is_counted_against_the_ceiling() {
     assert!(harness.app.overspent());
 }
 
+/// An advisor that reports nothing of what its answers cost is said to, once, where a ceiling is
+/// counting.
+///
+/// note: as an endpoint that reports no usage is. Silent, the ceiling read as bounding the advisor
+/// while it counted none of it.
+#[tokio::test]
+async fn an_advisor_that_reports_no_cost_is_said_to() {
+    let endpoint = serving(
+        "200 OK",
+        "application/json",
+        format!(
+            "{{\"model\":\"vendor/decider\",\"answers\":{{{}}}}}",
+            scored("rating", 1.9, 0.93)
+        ),
+    )
+    .await;
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "action": "run", "cmd": "rm -rf ~/work" }),
+        )]),
+        ModelResponse::text("asked"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+    let engine = Arc::new(Client::new("vendor/decider", endpoint, "k"));
+    let advised = Arc::new(Advised::new(harness.app.policy.clone(), engine));
+    harness
+        .app
+        .kernel
+        .set_policy(advised.clone() as Arc<dyn PermissionPolicy>);
+    harness.app.advisor = Some(advised);
+    harness.app.set_spend(Some(1_000_000));
+
+    harness.send("tidy up").await;
+    harness.settle().await;
+    harness.drain();
+
+    let said = harness.flat();
+    assert_eq!(
+        said.matches("the shell advisor reports less than its answers cost")
+            .count(),
+        1,
+        "{said}"
+    );
+}
+
 /// A stop while the advisor is rating a command is taken at once, and the question says the advice
 /// was not waited for.
 ///

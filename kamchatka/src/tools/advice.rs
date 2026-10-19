@@ -26,7 +26,7 @@ use std::{
     collections::VecDeque,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
@@ -371,6 +371,8 @@ pub struct Advised {
     readings: Mutex<VecDeque<(ToolCallId, Result<Rated, String>)>>,
     /// What the engine has reported its answers cost, added up: see [`Advised::spent`].
     spent: AtomicU64,
+    /// Whether an answer has come back without its full cost on it; see [`Advised::unreported`].
+    unreported: AtomicBool,
     /// Whether the turn this is rating for has been asked to stop; see [`Advised::stop`].
     stopped: tokio::sync::watch::Sender<bool>,
 }
@@ -383,6 +385,7 @@ impl Advised {
             engine,
             readings: Mutex::new(VecDeque::new()),
             spent: AtomicU64::new(0),
+            unreported: AtomicBool::new(false),
             stopped: tokio::sync::watch::Sender::new(false),
         }
     }
@@ -417,6 +420,15 @@ impl Advised {
     /// last looked. A local engine that reports nothing adds nothing.
     pub fn spent(&self) -> u64 {
         self.spent.load(Ordering::Relaxed)
+    }
+
+    /// Whether the engine has answered without saying all of what the answer cost, so that
+    /// [`Advised::spent`] is less than was spent.
+    ///
+    /// note: for the ceiling to say so, as it does for an endpoint that reports no usage. A ceiling
+    /// that cannot count the advisor and says nothing reads as bounding a session it does not.
+    pub fn unreported(&self) -> bool {
+        self.unreported.load(Ordering::Relaxed)
     }
 
     /// Whatever the engine last wanted to say for itself, if anything.
@@ -517,6 +529,13 @@ impl Advised {
                 .unwrap_or(0)
                 .saturating_add(usage.output_tokens.unwrap_or(0));
             self.spent.fetch_add(tokens, Ordering::Relaxed);
+        }
+        if answers
+            .usage
+            .as_ref()
+            .is_none_or(|usage| usage.input_tokens.is_none() || usage.output_tokens.is_none())
+        {
+            self.unreported.store(true, Ordering::Relaxed);
         }
 
         // note: the score and the confidence together or not at all. A score with no confidence
@@ -1172,6 +1191,7 @@ mod tests {
         advised.evaluate(&request).await;
         advised.evaluate(&request).await;
         assert_eq!(advised.spent(), 640, "both answers, input and output");
+        assert!(!advised.unreported(), "and all of it was said");
 
         // and an engine that could not be reached cost nothing
         let unreached = Advised::new(Arc::new(Careful::new()), unreachable());
