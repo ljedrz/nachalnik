@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A box open over the screen is not folded again on every frame.** `/request`, `/payload` and the
+  other boxes folded their whole text to the window on each key and tick, which for a long session's
+  request took most of a frame while somebody scrolled it. The folded text is kept while the words
+  and the width are the same.
 - **A long session's chat no longer rewraps every line on every frame.** Only the model's answers
   were kept from one frame to the next; every turn's reasoning, every message and every result was
   wrapped again on each key and each tick, which in a long session with a reasoning model took most

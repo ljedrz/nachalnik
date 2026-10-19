@@ -5,6 +5,8 @@
 //! go out, the answer a tool gave. A permission question is not a panel: it stands where the prompt
 //! does, because answering it is the only thing to be typed at that moment.
 
+use std::{cell::RefCell, rc::Rc};
+
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -597,7 +599,7 @@ fn panel(
     };
     let width = centred(frame.area(), columns, 0).width;
     let measured = width.saturating_sub(4);
-    let mut lines = wrapped(&showing.body, measured as usize, "");
+    let mut lines = folded(&showing.body, measured as usize);
     let wanted = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_add(2 + strip);
@@ -622,7 +624,7 @@ fn panel(
     // everywhere but a window too narrow for the borders. Folding the body is most of what drawing
     // a box of the help costs, and doing it twice a frame was most of it again
     if inner.width != measured {
-        lines = wrapped(&showing.body, inner.width as usize, "");
+        lines = folded(&showing.body, inner.width as usize);
     }
     let at = scroll.min(lines.len().saturating_sub(inner.height as usize));
     let footer = format!(
@@ -643,11 +645,16 @@ fn panel(
     }
     // note: QR code lines are white on black regardless of the terminal's colours, because an
     // inverted code on a light background is one some cameras will not read. See `qr::Code::lines`
-    let shown: Vec<Line> = in_view(lines, at, inner)
-        .into_iter()
-        .map(|line| match code_line(&line) {
-            true => Line::styled(line, Style::default().fg(Color::White).bg(Color::Black)),
-            false => Line::from(line),
+    let shown: Vec<Line> = lines
+        .iter()
+        .skip(at)
+        .take(inner.height.into())
+        .map(|line| match code_line(line) {
+            true => Line::styled(
+                line.clone(),
+                Style::default().fg(Color::White).bg(Color::Black),
+            ),
+            false => Line::from(line.clone()),
         })
         .collect();
     frame.render_widget(Paragraph::new(shown), inner);
@@ -664,6 +671,35 @@ fn panel(
     );
 
     at
+}
+
+/// A box's body folded to `width`, kept from the last frames that folded the same words to it.
+///
+/// note: a box is drawn again on every key and every tick while it is open, and folding is most of
+/// what that costs: `/request` and `/payload` on a long session are megabytes, and folding them
+/// again on each scroll took most of a frame. Two are kept, because a window too narrow for the
+/// borders folds a body at two widths each frame.
+fn folded(body: &str, width: usize) -> Rc<[String]> {
+    /// A body's words, the width they were folded to, and what they came to.
+    type Folding = (String, usize, Rc<[String]>);
+    thread_local! {
+        static FOLDED: RefCell<Vec<Folding>> = const { RefCell::new(Vec::new()) };
+    }
+
+    FOLDED.with_borrow_mut(|kept| {
+        if let Some((.., lines)) = kept
+            .iter()
+            .find(|(text, at, _)| *at == width && text == body)
+        {
+            return Rc::clone(lines);
+        }
+        let lines: Rc<[String]> = wrapped(body, width, "").into();
+        if kept.len() == 2 {
+            kept.remove(0);
+        }
+        kept.push((body.to_owned(), width, Rc::clone(&lines)));
+        lines
+    })
 }
 
 /// The names of an overlay's faces, with the open one marked.
