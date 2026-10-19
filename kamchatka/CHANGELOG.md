@@ -52,6 +52,9 @@ minor bump may break you.
 - **A rule that refuses a call, set while its question waits, is kept when the question is
   answered.** The answer was taken as given: `always` set the new refusal back to `allow`, and a
   `yes` ran a call the policy now refused. The call is refused instead, and the session says why.
+- **The session record is not written where somebody else could move its directory.** The
+  directory was checked once and then written into by name. In a temporary directory where others
+  can rename things, somebody could put a directory of their own at that name after the check. Recording is refused there now, and says to set `TMPDIR` or use `--no-record`.
 
 ## [0.21.0] - 2026-10-18
 
