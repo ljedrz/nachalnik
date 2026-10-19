@@ -328,6 +328,11 @@ impl Kernel {
     /// and were never the session's to remember. The new log starts empty and numbers its first
     /// record, [`Event::SessionResumed`], after the last one the snapshot's session had.
     ///
+    /// note: ask [`Snapshot::problems`] first about a snapshot this program did not just write.
+    /// Resuming repairs what it can, and one numbered too near the top of a `u64` is past repair:
+    /// its numbers stop at the top rather than wrap, so items and records added after it share
+    /// identifiers. It resumes rather than panics, and refusing it is the caller's choice.
+    ///
     /// note: the name comes from the snapshot unless [`Config::session_name`] is set, which forks
     /// the session rather than continuing it.
     ///
