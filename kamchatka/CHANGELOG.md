@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`--web`'s page draws a deeply nested answer instead of stopping.** A model's line with a few
+  thousand `> ` - a few kilobytes it could be handed by anything it read - ran the page's markdown
+  out of stack. A whole conversation is drawn when the page attaches, so the drawing stopped at that
+  line, before a waiting permission question was shown. Quotes and lists nest 32 deep now, and what
+  is deeper is drawn as it was written.
 - **A command is not told "no TCP" where nothing refuses TCP.** On a kernel below Linux 6.7, whose
   Landlock has no TCP rights, and where the network gate could not be installed, a command with the
   network not allowed was described as having no TCP, while its TCP connections went through. The
