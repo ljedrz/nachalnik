@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **An ablation that fails keeps the ones that answered.** `attribution`, `feedback` and
+  `instrumented` ask their ablations all at once, and stopped at the first that failed in the order
+  of the notes, so the copies after it that had answered - and had been paid for - were left off
+  the record of the failed run. Every one that answered is recorded before the run stops now.
 - **A rate allowance larger than `u32::MAX` no longer panics or paces to one a window.**
   `Pace::per` divided the window by the allowance cast to `u32`, so `2^32` requests a window was a
   division by zero and `2^32 + 1` was paced as one. It saturates now.

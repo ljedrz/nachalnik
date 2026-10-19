@@ -147,9 +147,18 @@ impl Feedback {
             )
             .await;
 
+        // a copy that failed stops the run once every copy that answered is recorded; see
+        // `Ablation::observe_each`
         let mut verdicts = Vec::with_capacity(battery.len());
+        let mut failed = None;
         for ((label, (claim, asked), id), observation) in sweep.into_iter().zip(observed) {
-            let observation = observation?;
+            let observation = match observation {
+                Ok(observation) => observation,
+                Err(e) => {
+                    failed.get_or_insert(e);
+                    continue;
+                }
+            };
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
 
@@ -174,6 +183,9 @@ impl Feedback {
                 correct: resolution.correct,
                 measured: resolution.measured,
             });
+        }
+        if let Some(e) = failed {
+            return Err(e);
         }
 
         trial.check(

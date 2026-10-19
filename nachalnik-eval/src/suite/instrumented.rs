@@ -308,8 +308,26 @@ impl Instrumented {
                 .map(|((label, id), observation)| (label, id, observation))
                 .collect();
 
+        // a copy that failed stops the run once every copy that answered is recorded; see
+        // `Ablation::observe_each`
+        let mut failed = None;
         for ((label, id), observation) in here.into_iter().zip(observed) {
-            let observation = observation?;
+            let observation = match observation {
+                Ok(observation) => observation,
+                Err(e) => {
+                    failed.get_or_insert(e);
+                    // the second session's copy for this note answered or failed on its own
+                    if let Some(at) = elsewhere_by_label
+                        .iter()
+                        .position(|(seen, ..)| *seen == label)
+                        && let (.., Ok(elsewhere)) = elsewhere_by_label.remove(at)
+                    {
+                        let there = elsewhere.against(&fresh_control);
+                        trial.measured(elsewhere, Some(there));
+                    }
+                    continue;
+                }
+            };
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
 
@@ -367,7 +385,13 @@ impl Instrumented {
                 continue;
             };
             let (_, fresh_id, elsewhere) = elsewhere_by_label.remove(at);
-            let elsewhere = elsewhere?;
+            let elsewhere = match elsewhere {
+                Ok(elsewhere) => elsewhere,
+                Err(e) => {
+                    failed.get_or_insert(e);
+                    continue;
+                }
+            };
             let there = elsewhere.against(&fresh_control);
             trial.measured(elsewhere, Some(there.clone()));
             if let Some((_, claim, asked, _)) = tested.iter().find(|(seen, ..)| seen == label) {
@@ -387,6 +411,9 @@ impl Instrumented {
                         )),
                 );
             }
+        }
+        if let Some(e) = failed {
+            return Err(e);
         }
 
         trial.check(

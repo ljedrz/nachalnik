@@ -221,13 +221,24 @@ impl Attribution {
         let observed = ablation.observe_each(&origin, sweep).await;
 
         // recorded in the order the notes are in, not the order the copies came back, so the record
-        // is the same either way
+        // is the same either way. A copy that failed stops the run once every copy that answered
+        // is recorded; see `Ablation::observe_each`
         let mut measured: Vec<(String, ContextId, Change)> = Vec::new();
+        let mut failed = None;
         for (note, observation) in notes.iter().zip(observed) {
-            let observation = observation?;
+            let observation = match observation {
+                Ok(observation) => observation,
+                Err(e) => {
+                    failed.get_or_insert(e);
+                    continue;
+                }
+            };
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
             measured.push((note.label.clone(), note.id, change));
+        }
+        if let Some(e) = failed {
+            return Err(e);
         }
 
         // Record the whole ranking, so somebody who would rather score attribution another way can
