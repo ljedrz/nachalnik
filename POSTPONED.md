@@ -139,3 +139,22 @@ don't know, and `Attached::version` tells them what the server speaks.
   never reaches the run's total. A run that fails reports less than it spent. Carrying it needs an
   error that holds a `Spend`, which changes `nachalnik-eval`'s error type. Unblocked by a run whose
   reported cost has to match the bill.
+
+- **A call whose arguments are exactly `{"_unparsed": "..."}` reads back as an unparsed call.**
+  `ToolCall` reads a call recorded before `unparsed` existed by recognising the old wrapper: an
+  object whose only key is `_unparsed`, holding text that does not parse. A call written today
+  with those arguments - models do copy the wrapper, which is why `kamchatka`'s `ops::inner` looks
+  for it - is the same bytes, so after a resume its arguments are empty and it is marked unparsed.
+  One already answered only changes how it is sent back; one waiting on a question when the
+  session was saved is answered by the kernel as unparsed rather than asked about. Telling the two
+  apart needs the writer to mark one of them, which is a snapshot format change. Unblocked by
+  deciding whether the old form still has to be read, or by the next format change.
+
+- **A command can leave its temporary directory behind.** The directory a confined command gets
+  as `TMPDIR` is removed when the call ends, and a failed removal is not reported. A command that
+  makes a directory inside it unreadable (`chmod 000`) makes the removal fail, and the directory
+  stays in the temporary directory with whatever was written to it. Opening such directories up
+  before removing them is done by this unconfined process while something the command left
+  running may still be swapping names for links, so it needs `chmod`s relative to a held
+  directory that never follow a link. Unblocked by writing that walk, or by deciding a report of
+  what was left is enough.
