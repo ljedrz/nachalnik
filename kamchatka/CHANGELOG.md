@@ -60,6 +60,10 @@ minor bump may break you.
   On a resume the log beside the snapshot is read up to where the snapshot ends, read from the
   snapshot file again. A file that would not parse was taken as no end, and every record past it
   came in as this session's. Where the session numbers on from is used instead.
+- **`-r` reserves the identifier of every call a lost turn made.** A log that runs past its
+  snapshot has its call identifiers reserved, so the resumed session does not hand them out again.
+  Only calls that were requested were counted, so a call to an unknown tool, or one whose arguments
+  did not parse, could be reused. Every call the log names is reserved now.
 
 ## [0.21.0] - 2026-10-18
 
