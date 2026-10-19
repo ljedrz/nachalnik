@@ -21,6 +21,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   That changes what a root that does not exist yet means, since one made later would never be
   granted, and refusing nested roots outright is the other choice. Unblocked by deciding which.
 
+- **A turn recorded by another dialect goes to Gemini with its thinking unsigned.** A turn kept as
+  `content` and `reasoning` rather than as blocks, which is how the OpenAI dialects record one, is
+  sent to Gemini as a `thought: true` part with no `thoughtSignature`, and its calls without one
+  either. Whether Gemini takes that, ignores it, or refuses the request as it refuses a signed
+  call sent back unsigned is not known here. Unblocked by a live Gemini request continuing a
+  session recorded through another dialect, with thinking and a call in it.
+
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a string,
   so an image in a tool result goes out as a line naming it. The dialect could move the image to a
   user message after the tool messages, where the API takes one, without changing the context.
