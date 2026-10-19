@@ -1283,3 +1283,53 @@ async fn a_counter_installed_mid_request_is_not_taught_the_old_ones_estimate() {
         "the counter swapped in was told what a request it never counted cost"
     );
 }
+
+/// A counter that cannot price a tool's schema is not taught what a request carrying it cost, and
+/// the budget says part of the request went unpriced.
+///
+/// note: the tools were priced and never asked about: a counter that abstained on JSON had a
+/// request it could not price passed to `observe` as if it had priced all of it.
+#[tokio::test]
+async fn a_tool_schema_a_counter_cannot_price_is_unpriced() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    struct NoJson(Arc<AtomicUsize>);
+
+    impl TokenCounter for NoJson {
+        fn count(&self, content: &Content) -> usize {
+            match content {
+                Content::Json(_) => 0,
+                other => other.byte_len(),
+            }
+        }
+
+        fn uncounted(&self, content: &Content) -> usize {
+            usize::from(matches!(content, Content::Json(_)))
+        }
+
+        fn observe(&self, _estimated: usize, _reported: usize) {
+            self.0.fetch_add(1, SeqCst);
+        }
+    }
+
+    let taught = Arc::new(AtomicUsize::new(0));
+    let kernel = kernel();
+    kernel.set_counter(Arc::new(NoJson(taught.clone())));
+    kernel.add_tool(Arc::new(ConstTool::new("scan", Content::text("ok"))));
+    kernel.set_provider(Arc::new(ScriptedProvider::new(vec![ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(40),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }])));
+    kernel.push(ContextItem::user("a question"));
+
+    assert_eq!(kernel.budget().uncounted, 1, "the schema");
+    kernel.turn().await.expect("the turn ran");
+    assert_eq!(
+        taught.load(SeqCst),
+        0,
+        "taught a request it could not price"
+    );
+}
