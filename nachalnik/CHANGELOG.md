@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`Snapshot::problems` names a second whole output for one call.** The whole of an output
+  shortened by a limit is the kernel's own second result for its call and is not counted, but it
+  was not counted however many there were, so a snapshot holding two passed as sound.
 - **A picture exactly at `Kernel::set_picture_limit`'s limit is kept.** It was measured with its
   media type added to its payload, so one within a few bytes of the limit was named instead of
   shown. The payload is what the APIs limit, and it is what `nachalnik-mcp` checks before carrying

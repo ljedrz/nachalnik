@@ -271,9 +271,9 @@ impl Snapshot {
     /// neither, so either means something else changed the snapshot - except a whole output
     /// shortened by an output limit, which
     /// [`Config::keep_truncated_output`](crate::Config::keep_truncated_output) keeps as a second
-    /// result for the call and does not count. A call with no result is not among them: a snapshot
-    /// taken while the call ran, or before a crash, holds one, and the projector leaves it out of
-    /// the next request and says so.
+    /// result for the call and does not count, once. A call with no result is not among them: a
+    /// snapshot taken while the call ran, or before a crash, holds one, and the projector leaves it
+    /// out of the next request and says so.
     ///
     /// note: it also names a snapshot in a later [`FORMAT`] than this one, which is read as far as
     /// it fits this version's types and may mean something this version cannot tell.
@@ -315,6 +315,7 @@ impl Snapshot {
 
         let mut made = std::collections::HashSet::new();
         let mut answered = std::collections::HashSet::new();
+        let mut whole = std::collections::HashSet::new();
         for item in &self.items {
             made.extend(item.calls().map(|call| &call.id));
             if let crate::context::ContextKind::ToolResult { call, .. } = &item.kind {
@@ -324,7 +325,14 @@ impl Snapshot {
                         item.id, call.0
                     ));
                 } else if item.included_because.as_deref() == Some(crate::context::WHOLE_OUTPUT) {
-                    // the kernel's own second answer, kept beside the copy the model was shown
+                    // the kernel's own second answer, kept beside the copy the model was shown,
+                    // and kept once
+                    if !whole.insert(call) {
+                        problems.push(format!(
+                            "item {} holds the whole output of the call `{}` a second time",
+                            item.id, call.0
+                        ));
+                    }
                 } else if !answered.insert(call) {
                     problems.push(format!(
                         "item {} answers the call `{}` a second time",

@@ -854,6 +854,27 @@ async fn the_whole_of_a_shortened_output_is_not_a_second_answer() {
         problems.iter().any(|it| it.contains("a second time")),
         "{problems:?}"
     );
+
+    // and so is a second whole, which the kernel never keeps
+    let mut two_wholes = snapshot.clone();
+    let whole = two_wholes
+        .items
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .max_by_key(|item| item.content.byte_len())
+        .unwrap()
+        .clone();
+    let mut again = whole;
+    again.id = nachalnik::ContextId(two_wholes.next_item);
+    two_wholes.next_item += 1;
+    two_wholes.items.push(again);
+    let problems = two_wholes.problems();
+    assert!(
+        problems
+            .iter()
+            .any(|it| it.contains("the whole output of the call `c1` a second time")),
+        "{problems:?}"
+    );
 }
 
 /// A snapshot says the format it is written in, and one from a later format is named.
