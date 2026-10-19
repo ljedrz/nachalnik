@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A Responses stream that numbers none of its items no longer says each one twice.** An
+  `output_item.done` without an `output_index` was filed as one more item rather than as the one
+  its `output_item.added` opened, so a message streamed that way came back with its text repeated.
+
 ## [0.10.1] - 2026-10-18
 
 ### added
