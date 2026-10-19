@@ -182,6 +182,16 @@ impl App {
     /// no keys and answers this itself; see the note there for why it takes it rather than refusing
     /// it as it refuses a tool's question.
     pub fn take_proposal(&mut self, take: bool) {
+        // note: the pass is an errand, and there is one errand at a time. Started while another is
+        // out, a client's `/models` say, it took that one's place, and what that one came back with
+        // was dropped without a word. The question stays until the other is back
+        if take && self.in_flight() {
+            self.say(
+                Speaker::Note,
+                "the command before this is still out; `y` takes the pass once it is back",
+            );
+            return;
+        }
         self.proposed = None;
         self.focus = Focus::Input;
         // the next question starts at the top of itself, whatever was being read in this one

@@ -1658,6 +1658,47 @@ async fn y_takes_it_and_says_what_it_took() {
     assert!(screen.contains("compacted:"), "{screen}");
 }
 
+/// `y` with another command still out waits for it, rather than putting the pass in its place.
+///
+/// note: a pass and a listing are one errand slot. Taking the pass while a client's `/models` was
+/// out replaced the listing, and whatever it came back with was dropped without a word.
+#[tokio::test]
+async fn y_with_a_listing_out_leaves_the_listing_alone() {
+    let (mut harness, result) = ready_to_compact().await;
+
+    harness.send("/compact").await;
+    harness.settle().await;
+    // the keys are locked while the question stands, but a client of a served session still
+    // sends lines, and they arrive as this one does
+    harness.app.submit("/models").await;
+    assert!(harness.app.in_flight(), "the listing is out");
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('y')).await;
+
+    assert!(
+        harness.app.proposed.is_some(),
+        "the question still stands: {}",
+        harness.flat()
+    );
+    harness.settle().await;
+    harness.drain();
+    let screen = harness.flat();
+    assert!(
+        screen.contains("did not answer with a list of models"),
+        "and the listing came back and was said: {screen}"
+    );
+
+    // and once it is back, `y` takes the pass
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
+    harness.drain();
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Elided
+    );
+}
+
 /// `n` leaves it, and says so rather than going quiet.
 #[tokio::test]
 async fn n_leaves_it_alone() {

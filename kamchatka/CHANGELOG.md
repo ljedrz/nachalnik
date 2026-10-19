@@ -13,6 +13,9 @@ minor bump may break you.
   permissions could not be set to `0600`, it was removed and the error said so, but a failed removal
   was dropped. The socket then stayed with the umask's permissions while the error said nothing of
   it. The error now says it is still there and has to be removed.
+- **`y` on a compaction question waits for a command still out.** Taken while a served client's
+  `/models` was out, the pass replaced the listing, and whatever the listing came back with was
+  dropped without a word. The question now stays until the other command is back, and says so.
 
 ## [0.21.0] - 2026-10-18
 
