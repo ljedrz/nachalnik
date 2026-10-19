@@ -850,7 +850,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             },
         };
 
-        if !app.restart {
+        if !app.restarting() {
             break ran;
         }
 
