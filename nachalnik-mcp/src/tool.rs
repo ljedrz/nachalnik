@@ -226,8 +226,11 @@ impl Tool for McpTool {
             }
         };
         let started = tokio::time::Instant::now();
+        // note: the answer first. One that arrives as a heartbeat ends is in hand, and an interrupt
+        // or a timeout picked over it would throw it away and report the call as not known
         let answered = loop {
             tokio::select! {
+                biased;
                 answered = &mut handle.rx => break answered,
                 () = tokio::time::sleep(HEARTBEAT) => {
                     // note: told to stop as an interrupted call is, and said as the server's
