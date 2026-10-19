@@ -274,8 +274,7 @@ impl Server {
         // stale next time. The listener is dropped on the way out without the `Drop` that would
         // remove it
         if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)) {
-            let _ = std::fs::remove_file(&path);
-            return Err(format!("could not make {} private: {e}", path.display()));
+            return Err(not_private(&path, &e));
         }
         let made = std::fs::symlink_metadata(&path)
             .map(|meta| (meta.dev(), meta.ino()))
@@ -1410,6 +1409,20 @@ fn fits(message: Option<&Message>) -> bool {
     }
 }
 
+/// Removes a socket that could not be made private, and says why it was not served.
+///
+/// note: a removal that fails is said too. The socket is then still there with the umask's
+/// permissions, which may let others connect, and the person has to know to remove it.
+fn not_private(path: &std::path::Path, e: &std::io::Error) -> String {
+    let refused = format!("could not make {} private: {e}", path.display());
+    match std::fs::remove_file(path) {
+        Err(left) if left.kind() != std::io::ErrorKind::NotFound => {
+            format!("{refused}; it is still there and could not be removed ({left}), so remove it")
+        }
+        _ => refused,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1439,6 +1452,32 @@ mod tests {
             ])));
 
         wired
+    }
+
+    /// A socket that could not be made private and then could not be removed is said to be left.
+    #[test]
+    fn a_socket_left_behind_is_said_to_be() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir =
+            std::env::temp_dir().join(format!("kamchatka-not-private-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a directory");
+        let path = dir.join("socket");
+        std::fs::write(&path, "").expect("a file");
+        let refused = std::io::Error::other("refused");
+
+        // a directory nobody may write in, so the file in it cannot be removed
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).expect("locked");
+        let left = not_private(&path, &refused);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("unlocked");
+        assert!(path.exists(), "the removal was refused");
+        assert!(left.contains("still there"), "{left}");
+
+        // and one that can be removed is, and only the refusal is said
+        let gone = not_private(&path, &refused);
+        assert!(!path.exists());
+        assert!(!gone.contains("still there"), "{gone}");
+        std::fs::remove_dir_all(&dir).expect("cleaned up");
     }
 
     /// A run of failed arrivals is one run until a whole `RESTING` goes by past the retry, however
