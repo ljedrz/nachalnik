@@ -62,6 +62,7 @@ const X32: Option<u32> = Some(0x4000_0000);
 const X32: Option<u32> = None;
 
 const SOCKET: u32 = libc::SYS_socket as u32;
+const SOCKETPAIR: u32 = libc::SYS_socketpair as u32;
 const IO_URING_SETUP: u32 = libc::SYS_io_uring_setup as u32;
 
 /// Socket families a process may open without asking: the ones that cannot leave the machine.
@@ -74,8 +75,8 @@ const IO_URING_SETUP: u32 = libc::SYS_io_uring_setup as u32;
 /// Netlink talks to this kernel and nothing past it. `getifaddrs` opens one
 const LOCAL: [u32; 2] = [libc::AF_UNIX as u32, libc::AF_NETLINK as u32];
 
-/// `socket`, and `socketcall` where there is one, in the table of the 32-bit processes this kernel
-/// also runs.
+/// `socket`, `socketpair`, and `socketcall` where there is one, in the table of the 32-bit
+/// processes this kernel also runs.
 ///
 /// note: `socketcall` multiplexes every socket call behind its first argument and keeps the real
 /// arguments in memory, which a filter cannot read. So the family of a `socketcall` socket cannot
@@ -84,13 +85,18 @@ const LOCAL: [u32; 2] = [libc::AF_UNIX as u32, libc::AF_NETLINK as u32];
 #[cfg(target_arch = "x86_64")]
 const FOREIGN_SOCKET: u32 = 359;
 #[cfg(target_arch = "x86_64")]
+const FOREIGN_SOCKETPAIR: u32 = 360;
+#[cfg(target_arch = "x86_64")]
 const FOREIGN_SOCKETCALL: Option<u32> = Some(102);
 #[cfg(target_arch = "aarch64")]
 const FOREIGN_SOCKET: u32 = 281;
 #[cfg(target_arch = "aarch64")]
+const FOREIGN_SOCKETPAIR: u32 = 288;
+#[cfg(target_arch = "aarch64")]
 const FOREIGN_SOCKETCALL: Option<u32> = None;
-/// `socketcall`'s first argument when what it is asked for is a socket.
+/// `socketcall`'s first argument when what it is asked for is a socket, or a pair of them.
 const SYS_SOCKET: u32 = 1;
+const SYS_SOCKETPAIR: u32 = 8;
 /// `io_uring_setup` is the same number in both tables.
 const FOREIGN_IO_URING_SETUP: u32 = 425;
 
@@ -108,15 +114,18 @@ const ARG0: u32 = 16;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Label {
     Native,
+    NativePair,
     NativeNext,
     Family,
     Netlink,
     Foreign,
     ForeignNumber,
+    ForeignPair,
     ForeignFamily,
     ForeignNetlink,
     ForeignCall,
     ForeignSocketcall,
+    ForeignSocketcallPair,
     ForeignNext,
     Held,
     Enosys,
@@ -141,6 +150,10 @@ enum Op {
 /// name lookup says `Temporary failure in name resolution`, which reads as a network having trouble
 /// rather than a refused network.
 ///
+/// note: `socketpair` is held as `socket` is. Most families refuse to make a pair, but `AF_TIPC`
+/// makes one, and a TIPC socket sends to any TIPC address, another machine's included, whatever it
+/// was paired with.
+///
 /// note: `io_uring_setup` is refused as though the kernel had none. A ring opens a socket with its
 /// own operation rather than a `socket()` call, so letting rings through would leave a door beside
 /// the gate. `ENOSYS` rather than a refusal, because programs that can use a ring fall back from
@@ -162,7 +175,9 @@ fn program() -> Vec<libc::sock_filter> {
         ops.push(Op::And(!x32));
     }
     ops.extend([
-        Op::Is(SOCKET, Family, NativeNext),
+        Op::Is(SOCKET, Family, NativePair),
+        Op::Mark(NativePair),
+        Op::Is(SOCKETPAIR, Family, NativeNext),
         Op::Mark(NativeNext),
         Op::Is(IO_URING_SETUP, Enosys, Allow),
         Op::Mark(Family),
@@ -175,7 +190,9 @@ fn program() -> Vec<libc::sock_filter> {
         Op::Is(FOREIGN, ForeignNumber, Kill),
         Op::Mark(ForeignNumber),
         Op::Load(NR),
-        Op::Is(FOREIGN_SOCKET, ForeignFamily, ForeignCall),
+        Op::Is(FOREIGN_SOCKET, ForeignFamily, ForeignPair),
+        Op::Mark(ForeignPair),
+        Op::Is(FOREIGN_SOCKETPAIR, ForeignFamily, ForeignCall),
         // This repeats the test above instead of jumping back to it, because a filter only jumps
         // forward. A 32-bit call's arguments are the low halves of the same slots
         Op::Mark(ForeignFamily),
@@ -190,7 +207,9 @@ fn program() -> Vec<libc::sock_filter> {
             Op::Is(socketcall, ForeignSocketcall, ForeignNext),
             Op::Mark(ForeignSocketcall),
             Op::Load(ARG0),
-            Op::Is(SYS_SOCKET, Held, Allow),
+            Op::Is(SYS_SOCKET, Held, ForeignSocketcallPair),
+            Op::Mark(ForeignSocketcallPair),
+            Op::Is(SYS_SOCKETPAIR, Held, Allow),
         ]);
     }
     ops.extend([
@@ -576,6 +595,37 @@ mod tests {
                 run(&held, FOREIGN, FOREIGN_SOCKET, family),
                 HELD,
                 "{family}"
+            );
+        }
+    }
+
+    /// A pair of sockets is held as one socket is, since `AF_TIPC` makes a pair that sends to
+    /// other machines.
+    #[test]
+    fn a_pair_of_sockets_is_held_as_one_is() {
+        let held = program();
+        let tipc = u64::try_from(libc::AF_TIPC).expect("a family is positive");
+
+        for family in [INET, tipc] {
+            assert_eq!(run(&held, NATIVE, SOCKETPAIR, family), HELD, "{family}");
+            assert_eq!(
+                run(&held, FOREIGN, FOREIGN_SOCKETPAIR, family),
+                HELD,
+                "{family}"
+            );
+        }
+        for family in LOCAL.map(u64::from) {
+            assert_eq!(run(&held, NATIVE, SOCKETPAIR, family), ALLOWED, "{family}");
+            assert_eq!(
+                run(&held, FOREIGN, FOREIGN_SOCKETPAIR, family),
+                ALLOWED,
+                "{family}"
+            );
+        }
+        if let Some(socketcall) = FOREIGN_SOCKETCALL {
+            assert_eq!(
+                run(&held, FOREIGN, socketcall, u64::from(SYS_SOCKETPAIR)),
+                HELD
             );
         }
     }

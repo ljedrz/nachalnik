@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **The network gate holds `socketpair` as it holds `socket`.** A sandboxed command could make a
+  pair of sockets of any family without being held. Most families refuse to make a pair, but
+  `AF_TIPC` makes one, and a TIPC socket sends to any TIPC address, another machine's included.
 - **A network program behind `timeout`, `sudo`, `sh -c` and the like is judged as the network.**
   Where the network gate does not hold, under `--no-sandbox` or on a kernel that cannot hold a
   call, a command was judged by its first word alone, so `timeout 30 curl …` ran with `net:reach`
