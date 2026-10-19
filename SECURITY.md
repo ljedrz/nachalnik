@@ -247,10 +247,11 @@ What changes to this workspace must keep true about what is and isn't enforced.
 - **Other users on the machine.** The automatic session record is written under a `0700` directory
   in the temporary directory, and not at all if whatever has that name is not a directory only you
   can read, or if a directory above it lets others rename what is in it (writable by them and not
-  sticky, as `/tmp` is), since they could move it once it is checked. A served unix socket is made `0600` right after the bind; putting it in a directory of
-  your own covers the moment before that. A served loopback port is not protected: every account on
-  the machine can connect to it, and a connection can run the `shell` tool as the person serving. On
-  shared machines, use `--serve unix:PATH`.
+  sticky, as `/tmp` is), since they could move it once it is checked. A served unix socket is made
+  `0600` right after the bind; putting it in a directory of your own covers the moment before that.
+  A served loopback port is not protected: every account on the machine can connect to it, and a
+  connection can run the `shell` tool as the person serving. On shared machines, use
+  `--serve unix:PATH`.
 - **Size.** What a tool keeps from one call is capped at `tools::KEPT` for each of a command's two
   output streams, so a command that never stops writing, or a huge file, cannot exhaust memory, the
   archive or a saved session. Output from MCP server tools is up to the server to limit.
