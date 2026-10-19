@@ -16,6 +16,9 @@ minor bump may break you.
 - **`y` on a compaction question waits for a command still out.** Taken while a served client's
   `/models` was out, the pass replaced the listing, and whatever the listing came back with was
   dropped without a word. The question now stays until the other command is back, and says so.
+- **`--max-spend-tokens` says when the shell advisor reports less than its answers cost.** An
+  answer with no usage, or only half of it, added that much less to the total and said nothing,
+  while an endpoint's response with no usage is said once. The advisor's is said once too now.
 
 ## [0.21.0] - 2026-10-18
 

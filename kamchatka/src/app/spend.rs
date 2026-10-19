@@ -113,9 +113,22 @@ impl App {
     /// much of the figure was the advisor's, so neither reading is hidden inside the other.
     #[cfg(feature = "shell-advisor")]
     fn charge_advice(&mut self) {
-        let Some(now) = self.advisor.as_ref().map(|advised| advised.spent()) else {
+        let Some((now, unreported)) = self
+            .advisor
+            .as_ref()
+            .map(|advised| (advised.spent(), advised.unreported()))
+        else {
             return;
         };
+        // said once, as an endpoint that reports no usage is, and only where a ceiling is counting
+        if unreported && self.spend.is_some() && !self.advice_unreported {
+            self.advice_unreported = true;
+            self.say(
+                Speaker::Note,
+                "the shell advisor reports less than its answers cost, so the ceiling is counted \
+                 against less than was spent",
+            );
+        }
         // an `App` keeps one advisor for its life - `/restart` builds both again - so the figure
         // only grows
         let new = now.saturating_sub(self.advised);

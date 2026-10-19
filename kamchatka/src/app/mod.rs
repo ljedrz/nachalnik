@@ -667,6 +667,9 @@ pub struct App {
     /// part of `spent`.
     #[cfg(feature = "shell-advisor")]
     advised: u64,
+    /// Whether it has already said that the advisor reports less than its answers cost.
+    #[cfg(feature = "shell-advisor")]
+    advice_unreported: bool,
     /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
     overspent: bool,
     /// How large the context was when the last turn was refused for a request longer than the model
@@ -828,6 +831,8 @@ impl App {
             charged,
             #[cfg(feature = "shell-advisor")]
             advised: 0,
+            #[cfg(feature = "shell-advisor")]
+            advice_unreported: false,
             overspent: false,
             oversized: None,
             unreported: false,
