@@ -381,9 +381,12 @@ impl App {
         // that came to rest. Left waiting, the message is overtaken by the next one sent, which
         // finds the session resting and runs at once - and goes in after that one's turn, or never
         // if there is no next turn. A step that stopped at `Ready` has calls still to run, and the
-        // message waits for their results rather than landing between them and their calls
+        // message waits for their results rather than landing between them and their calls - and
+        // so does a turn stopped there, with its calls decided and the stop spent before they ran
         let ended = match &outcome {
-            Outcome::Stopped(state) => !matches!(state, State::Deciding { .. }),
+            Outcome::Stopped(state) => {
+                !matches!(state, State::Deciding { .. } | State::Ready { .. })
+            }
             Outcome::Stepped(state) => matches!(state, State::Idle | State::Finished { .. }),
             Outcome::Failed(_) => true,
             // taken at the top, and never a turn's

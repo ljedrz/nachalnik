@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A message sent into a turn stopped before its calls ran waits for their results.** A stop that
+  landed after the model's calls were decided and before they ran left the turn resting with them
+  still to run, and a message typed during the turn went in between the calls and their results, a
+  shape most APIs refuse. It waits for the results now, as it does for a turn stopped to ask.
 - **A session asked to restart and to leave leaves.** A `/quit` or a `SIGTERM` that landed while a
   `/restart` was still stopping the turn set both, and the program started a new session instead of
   ending. `App::restarting` says which it is, and leaving wins, as `App::restart`'s documentation
