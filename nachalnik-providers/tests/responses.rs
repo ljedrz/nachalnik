@@ -330,6 +330,39 @@ async fn a_text_answer_and_its_cached_prompt_are_read() {
     assert_eq!(usage.reasoning_tokens, Some(0));
 }
 
+/// A stream that numbers none of its items finishes each one as the item it opened, rather than as
+/// one more after it.
+#[tokio::test]
+async fn an_item_finished_without_an_index_is_the_one_open() {
+    const SAID: &str = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\",",
+        "\"role\":\"assistant\",\"content\":[]}}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"po\"}\n\n",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ng\"}\n\n",
+        "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",",
+        "\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"pong\"}]}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",",
+        "\"output\":[],\"error\":null}}\n\n",
+    );
+
+    let (response, shown) = shown(SAID).await;
+    assert_eq!(
+        response
+            .content
+            .as_ref()
+            .map(|said| said.to_text().into_owned()),
+        Some("pong".to_owned())
+    );
+    let text: String = shown
+        .iter()
+        .filter_map(|delta| match delta {
+            Delta::Text(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, "pong", "shown once");
+}
+
 /// A summary in several parts is several paragraphs.
 #[tokio::test]
 async fn a_summary_in_parts_is_kept_in_paragraphs() {

@@ -330,6 +330,8 @@ struct Streamed {
     items: Vec<(u64, Partial)>,
     /// Whether any item has begun.
     started: bool,
+    /// The index the latest `output_item.added` opened, for a `done` that names none.
+    open: Option<u64>,
     /// The response's status once it has ended: `completed`, `incomplete`, `failed`.
     status: Option<String>,
     /// Why it was incomplete, where it said.
@@ -451,8 +453,17 @@ impl Events for Streamed {
     fn event(&mut self, event: &Value, deltas: &DeltaSink) {
         let index = event["output_index"].as_u64();
         match event["type"].as_str().unwrap_or_default() {
-            "response.output_item.added" | "response.output_item.done" => {
+            "response.output_item.added" => {
                 let index = index.unwrap_or(self.items.len() as u64);
+                self.open = Some(index);
+                self.item(index, &event["item"], deltas);
+            }
+            // note: a `done` that names no index finishes the item opened last. Treated as a new
+            // item, as an `added` is, it made a second copy of that item
+            "response.output_item.done" => {
+                let index = index
+                    .or_else(|| self.open.take())
+                    .unwrap_or(self.items.len() as u64);
                 self.item(index, &event["item"], deltas);
             }
             "response.output_text.delta" => {
