@@ -22,6 +22,10 @@ minor bump may break you.
 - **A served client's `/copy` says it was not copied.** It said the item went to the clipboard,
   but nothing hands a client's text to a terminal: a headless served session kept it, and one
   with a screen would have put it on that screen's clipboard. It now says why and points at `?N`.
+- **Nothing goes in between decided calls and their results.** With a turn's calls decided and
+  none of them run, `/note`, `/attach` and a typed message went into the context between the calls
+  and their results, a shape most APIs refuse. They wait or are refused there now, as they are
+  while a turn runs or a question is open.
 
 ## [0.21.0] - 2026-10-18
 
