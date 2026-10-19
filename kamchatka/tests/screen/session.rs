@@ -1229,6 +1229,40 @@ async fn a_record_that_is_not_past_the_snapshot_says_nothing_about_the_run_that_
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A log that runs past its snapshot is cut where the session resumed from, even when the
+/// snapshot beside it can no longer be read.
+///
+/// note: the end of the snapshot was read from the file again, and a file that would not parse was
+/// read as no end at all: every record past it came in as this session's, numbered as its own
+/// would be. The resumed kernel says where it numbers on from.
+#[tokio::test]
+async fn a_log_past_an_unreadable_snapshot_is_cut_where_the_session_resumed() {
+    let first = Harness::new([]);
+    first.app.kernel.push(ContextItem::user("before the save"));
+    let dir = common::scratch("recall-unreadable");
+    let (log, state) = (dir.join("s.jsonl"), dir.join("s.json"));
+    first.app.write_session(&log, &state).expect("written");
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&state).expect("there")).expect("parses");
+
+    // the run carried on and wrote its log, and the snapshot beside it was lost
+    first.app.kernel.push(ContextItem::user("after the save"));
+    first
+        .app
+        .write_session(&log, &dir.join("later.json"))
+        .expect("written");
+    std::fs::write(&state, "not a snapshot").expect("written over");
+
+    let mut second = Harness::new([]);
+    second.app.kernel = Kernel::resume(Config::default(), snapshot);
+    second.app.recall(&state);
+    second.app.replay();
+    let screen = second.flat();
+    assert!(screen.contains("past it"), "{screen}");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// A record that is not there, or that ends mid-line, costs a page rather than a session.
 ///
 /// note: the session has already resumed by the time the log is read, so nothing found there can
