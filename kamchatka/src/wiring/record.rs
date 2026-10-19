@@ -361,8 +361,32 @@ fn private(dir: &Path) -> Result<(), String> {
             dir.display()
         ));
     }
+    // note: and nobody else can move it. It was checked through what was opened, and the record is
+    // written into it by name after that, for the whole session. A directory above it that others
+    // may rename things in - writable by them without the sticky bit - lets them put a
+    // directory of their own at the name once the check is over. `/tmp` is sticky, so this refuses
+    // only a temporary directory set up so that it is not
+    if let Some(open) = dir.ancestors().skip(1).find(|above| movable(above)) {
+        return Err(format!(
+            "{} is in {}, where somebody else can move it, so the session was not recorded \
+             there; set `TMPDIR` to a directory of your own, or use `--no-record` and `/save`",
+            dir.display(),
+            open.display()
+        ));
+    }
 
     Ok(())
+}
+
+/// Whether others can rename what is in `dir`: it is writable by them and not sticky.
+///
+/// note: by the mode alone, not the owner. Root is seen as `nobody` inside a user namespace, so
+/// refusing a directory somebody else owns refused `/tmp` there, and a directory another ordinary
+/// user owns is one the person chose to point `TMPDIR` at.
+fn movable(dir: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    std::fs::metadata(dir).is_ok_and(|meta| meta.mode() & 0o022 != 0 && meta.mode() & 0o1000 == 0)
 }
 
 /// A `.jsonl` and `.json` pair under `stem` that no other session has written, and the log's open
@@ -556,6 +580,30 @@ mod tests {
             refused.contains("is not a directory only you can enter"),
             "the refusal does not say what is wrong: {refused}"
         );
+    }
+
+    /// A private directory in one others can rename things in is refused, since they could move it
+    /// once it is checked.
+    #[test]
+    fn a_record_directory_others_can_move_is_refused() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let base = std::env::temp_dir().join("kamchatka-private-movable");
+        let _ = std::fs::remove_dir_all(&base);
+        let open = base.join("open");
+        let dir = open.join("kamchatka");
+        std::fs::create_dir_all(&dir).expect("a directory");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("private");
+        private(&dir).expect("private, in a directory of this user's");
+
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).expect("opened");
+        let refused = private(&dir).expect_err("anybody can move it");
+        assert!(refused.contains("somebody else can move it"), "{refused}");
+
+        // and the sticky bit, as `/tmp` has, is what stops that
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o1777)).expect("sticky");
+        private(&dir).expect("only its owner can move it");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A link at the record directory's name is refused, even to a private directory of this
