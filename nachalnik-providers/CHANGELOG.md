@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **An error page's words end where its text does, not in the tag the read stopped inside.** Only
+  the first 64 KiB of a body that is not JSON is read, and a tag that cut was in had its name and
+  attributes quoted as words after the page's own: `quota exceeded svg path d="M0 0M0…`.
 - **A Responses stream that numbers none of its items no longer says each one twice.** An
   `output_item.done` without an `output_index` was filed as one more item rather than as the one
   its `output_item.added` opened, so a message streamed that way came back with its text repeated.

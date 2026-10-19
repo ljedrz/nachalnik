@@ -49,9 +49,11 @@ pub(crate) fn unmarked(body: &str) -> String {
             None => rest,
         };
         // and past the tag itself, or - for a `<` that never closes - past the `<`, so that
-        // `retry in <60s` keeps what follows it
+        // `retry in <60s` keeps what follows it. In a body cut at `READ` it is the last tag, cut
+        // short, and its name and attributes are not words
         rest = match rest.find('>') {
             Some(end) => &rest[end + 1..],
+            None if end < body.len() => "",
             None => rest.get(1..).unwrap_or_default(),
         };
     }
@@ -100,4 +102,22 @@ fn names(tag: &[u8], element: &[u8]) -> bool {
         && tag
             .get(element.len())
             .is_none_or(|next| *next == b'>' || *next == b'/' || next.is_ascii_whitespace())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tag the cut at [`READ`] lands inside is not read as words, and a `<` that never closes in
+    /// a body read whole still is.
+    #[test]
+    fn a_tag_cut_short_is_not_words() {
+        let body = format!(
+            "<p>quota exceeded</p><svg><path d=\"{}\"/></svg>",
+            "M0 0".repeat(READ)
+        );
+        assert_eq!(unmarked(&body), "quota exceeded");
+
+        assert_eq!(unmarked("busy, retry in <60s"), "busy, retry in 60s");
+    }
 }
