@@ -252,7 +252,7 @@ where
                 // `kamchatka --connect` with a question piped in detaches without the answer
                 Ok(message) => {
                     caught_up(&mut events, kernel, &mut last, write, progress_recorded).await?;
-                    protocol::write(write, &*message).await?;
+                    voiced(write, &message).await?;
                 }
                 // the program's own lines are in no log either, and the same rule applies to them.
                 //
@@ -458,7 +458,7 @@ async fn watermark<W: AsyncWrite + Unpin>(
     // told the session was resting and left before the records it had come back for
     flush(kernel, &mut last, write).await?;
     for standing in &answered.standing {
-        protocol::write(write, standing).await?;
+        voiced(write, standing).await?;
     }
     protocol::write(write, &message).await?;
 
@@ -560,6 +560,19 @@ async fn progress<W: AsyncWrite + Unpin>(
     }
 }
 
+/// Writes one of the program's own lines, or says one was missed where it is too long to read.
+///
+/// note: the rule [`progress`] holds fragments to, for the lines no record holds. A frame the client
+/// refuses closes its connection, and these carry text the session did not write: a network
+/// question carries the command it is about as the model wrote it.
+async fn voiced<W: AsyncWrite + Unpin>(write: &mut W, message: &Message) -> Result<(), String> {
+    let line = protocol::framed(message)?;
+    match protocol::overlong(&line) {
+        Some(_) => protocol::write(write, &Message::Missed { frames: 1 }).await,
+        None => protocol::write_frame(write, &line).await,
+    }
+}
+
 /// Writes the answer to a command, or says why it cannot be sent.
 ///
 /// note: the rule [`flush`] holds records to, for the answers that carry content. An `inspect` of
@@ -624,4 +637,32 @@ async fn flush<W: AsyncWrite + Unpin>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One of the program's own lines too long for a client to read is said to have been missed,
+    /// rather than sent and refused, which closes the connection.
+    #[tokio::test]
+    async fn a_line_too_long_to_read_is_missed_rather_than_sent() {
+        let long = Message::Said {
+            speaker: crate::app::Speaker::Note,
+            text: "x".repeat(protocol::MAX_LINE + 1),
+        };
+        let mut written = Vec::new();
+        voiced(&mut written, &long).await.expect("written");
+        let said: Message = serde_json::from_slice(&written).expect("one frame");
+        assert!(matches!(said, Message::Missed { frames: 1 }), "{said:?}");
+
+        let short = Message::Said {
+            speaker: crate::app::Speaker::Note,
+            text: "hello".to_owned(),
+        };
+        let mut written = Vec::new();
+        voiced(&mut written, &short).await.expect("written");
+        let said: Message = serde_json::from_slice(&written).expect("one frame");
+        assert!(matches!(said, Message::Said { .. }), "{said:?}");
+    }
 }
