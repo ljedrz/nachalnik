@@ -201,6 +201,11 @@ Start as the first sweeps complete, with the run going on beside it; `status.py 
 when one has. Where agents are not to be used (the person's own instructions decide), verify the
 same way yourself, one sweep at a time.
 
+**A verified defect is fixed, however narrow its window.** Reject only what is wrong or contradicts
+a documented decision, and send what needs a person's choice to POSTPONED.md. "Real, but only within
+ten bytes of the limit" or "only if two calls fail in a row" is not a third outcome: an image of
+exactly the size one crate carries being named by another was such a gap, and it was a bug.
+
 One agent per finished sweep (two small ones may share), **at most about four at a time**: a debug
 target is 2-3 GB and a per-session disk quota once ran out and killed every running sweep. Start
 the next agent as one finishes.
