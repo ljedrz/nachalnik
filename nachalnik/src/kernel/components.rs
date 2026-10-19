@@ -289,8 +289,9 @@ impl Kernel {
     ///
     /// note: read before each request, so a change during a turn applies from the next request:
     /// raising it lets the turn continue, and lowering it to what was already sent or fewer pauses
-    /// the turn. A paused turn stays paused until [`Kernel::turn`] is called again, which resumes
-    /// the count.
+    /// the turn. A paused turn stays paused until [`Kernel::turn`] is called again, which starts a
+    /// new count: the turn rests in [`State::Idle`](crate::State::Idle), and only a `turn` from a
+    /// question carries the old count on.
     ///
     /// note: like [`Kernel::set_call_ceiling`], a setting and not session state: a snapshot does
     /// not carry it, and a resumed kernel starts from its own `Config`.
