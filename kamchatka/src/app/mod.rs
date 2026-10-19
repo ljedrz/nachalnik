@@ -1082,16 +1082,12 @@ impl App {
         self.interrupt();
         let until = tokio::time::Instant::now() + LEAVING;
         while self.busy {
+            // note: in this order. The outcome before the deadline, so a turn that ends at the
+            // instant it runs out is taken in rather than said to have been left, its failure with
+            // it; the deadline before the events, so a turn that goes on streaming after it was
+            // asked to stop is still left when the time is up
             tokio::select! {
-                event = events.recv() => match event {
-                    Ok(event) => {
-                        heard(&event);
-                        self.on_event(event);
-                    }
-                    // the log has what went by; what is waited for here is the outcome
-                    Err(RecvError::Lagged(_)) => {}
-                    Err(RecvError::Closed) => return None,
-                },
+                biased;
                 Some(outcome) = finished.recv() => {
                     // the turn's last events are queued behind its outcome, as in every loop
                     for event in queued(events).flatten() {
@@ -1123,6 +1119,15 @@ impl App {
 
                     return None;
                 }
+                event = events.recv() => match event {
+                    Ok(event) => {
+                        heard(&event);
+                        self.on_event(event);
+                    }
+                    // the log has what went by; what is waited for here is the outcome
+                    Err(RecvError::Lagged(_)) => {}
+                    Err(RecvError::Closed) => return None,
+                },
             }
         }
 
