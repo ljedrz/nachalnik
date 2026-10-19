@@ -276,6 +276,28 @@ async fn a_file_that_is_not_text_says_which_byte_and_what_to_do() {
     );
 }
 
+/// A file whose name is too long to carry the temporary's suffix is still edited, in place.
+///
+/// note: an edit writes a temporary beside the file and renames it over, and the temporary's name
+/// is the file's with more after it. A name near the filesystem's limit leaves no room, and the
+/// kernel's `ENAMETOOLONG` is what sends the edit to overwriting the file where it is.
+#[tokio::test]
+async fn a_file_named_too_long_for_a_temporary_beside_it_is_still_edited() {
+    let dir = scratch("files-long-name");
+    let name = format!("{}.rs", "n".repeat(247));
+    std::fs::write(dir.join(&name), "fn go() {}\n").expect("a file with a long name");
+
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": name, "old": "fn go() {}", "new": "fn stop() {}" }),
+    )
+    .await;
+
+    assert!(said.contains("replaced one occurrence"), "{said}");
+    assert_eq!(held(&dir, &name), "fn stop() {}\n");
+}
+
 /// A first line longer than the output limit that is not text is said to be, rather than shown
 /// from its start as though it were a line of text cut short.
 ///
