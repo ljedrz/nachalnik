@@ -115,3 +115,27 @@ don't know, and `Attached::version` tells them what the server speaks.
   so it is not affected. A guard that spawns the cancellation when dropped would close it, given a
   runtime to spawn on. Unblocked by a caller that drops step futures, and a test server that can say
   whether it was told to stop.
+
+- **A counter is not asked about the calls inside a turn kept as blocks, one by one.**
+  `TokenCounter::count_message`, `count_item`, `uncounted_message` and `uncounted_item` hand a flat
+  turn's calls to the counter as a name and a JSON value each, so a counter that abstains on JSON
+  says so for their arguments. A turn kept as `Content::Blocks`, as Anthropic and Gemini send one,
+  is handed over whole, and the calls inside it are priced or declined only if the counter walks the
+  blocks itself. The counters here are right either way: `BytesPerToken` declines only pictures and
+  finds them at any depth. Splitting the blocks up in the default methods would change what `count`
+  is asked for every counter written against them. Unblocked by a counter that abstains on JSON, and
+  deciding whether the trait splits blocks or documents that a counter must.
+
+- **A compaction report prices a removed item that was already elided at its whole size.**
+  `ReportItem::tokens` is documented as what the item was costing, and is filled from
+  `ContextItem::tokens`, the size of its content. An item already elided was costing only its
+  marker, so its row overstates what removing it freed. The report's own totals are taken from the
+  projection and are right, and nothing in this workspace shows the per-item figure. Getting it
+  right needs the projector's price for each item, or a decision that the field is the item's size.
+  Unblocked by deciding which the field means.
+
+- **What the copies of a failed observation had cost is lost.** `Ablation::observe` returns the
+  first failed copy's error and nothing else, so the spend of the copies beside it that answered
+  never reaches the run's total. A run that fails reports less than it spent. Carrying it needs an
+  error that holds a `Spend`, which changes `nachalnik-eval`'s error type. Unblocked by a run whose
+  reported cost has to match the bill.
