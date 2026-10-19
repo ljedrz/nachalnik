@@ -101,14 +101,13 @@ pub(super) fn linked(
 ) -> Option<String> {
     let barred = super::search::barred(policy);
     let (rule, verdict) = super::search::led_past(named, resolved, &reach.workdir, &barred)?;
-    let target = resolved
-        .strip_prefix(
-            reach
-                .workdir
-                .canonicalize()
-                .unwrap_or_else(|_| reach.workdir.clone()),
-        )
-        .unwrap_or(resolved);
+    let target = super::search::climbing(
+        resolved,
+        &reach
+            .workdir
+            .canonicalize()
+            .unwrap_or_else(|_| reach.workdir.clone()),
+    );
 
     Some(match verdict {
         Verdict::Deny => format!(

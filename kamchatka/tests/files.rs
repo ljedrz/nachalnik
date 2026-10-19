@@ -596,6 +596,46 @@ async fn a_link_to_a_file_a_rule_refuses_says_so() {
     assert!(!said.contains("the plan"), "{said}");
 }
 
+/// A link that climbs out of the working directory is caught by a `../` rule, as a path that
+/// climbs out by name is.
+///
+/// note: the target was matched as the absolute path it resolved to, which has no `..` in it, so
+/// `../` never matched a link and `up -> ../elsewhere/plan.txt` read what `../elsewhere/plan.txt`
+/// was refused.
+#[tokio::test]
+async fn a_link_that_climbs_out_is_caught_by_a_rule_against_climbing() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::Verdict;
+
+    let base = scratch("files-link-climbs");
+    let dir = base.join("w");
+    std::fs::create_dir_all(&dir).expect("a working directory");
+    std::fs::create_dir_all(base.join("elsewhere")).expect("a directory beside it");
+    std::fs::write(base.join("elsewhere/plan.txt"), "the plan\n").expect("a file");
+    std::os::unix::fs::symlink("../elsewhere/plan.txt", dir.join("up")).expect("a link");
+    let policy = std::sync::Arc::new(Careful::new());
+    policy.set(&Subject::Path("../".to_owned()), Verdict::Deny);
+
+    let tools = common::builtin_under(&dir, false, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let said = fs
+        .invoke(
+            &call("c1", "fs", json!({ "action": "read", "path": "up" })),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned();
+
+    assert!(!said.contains("the plan"), "{said}");
+    assert!(said.contains("leads to `../elsewhere/plan.txt`"), "{said}");
+}
+
 /// And under `--no-sandbox`, where the reach is not held but the path rules still are.
 ///
 /// note: named in full, so that what is under test is the link and not which directory a relative
