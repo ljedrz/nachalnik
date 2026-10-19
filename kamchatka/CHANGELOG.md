@@ -19,6 +19,9 @@ minor bump may break you.
 - **`--max-spend-tokens` says when the shell advisor reports less than its answers cost.** An
   answer with no usage, or only half of it, added that much less to the total and said nothing,
   while an endpoint's response with no usage is said once. The advisor's is said once too now.
+- **A served client's `/copy` says it was not copied.** It said the item went to the clipboard,
+  but nothing hands a client's text to a terminal: a headless served session kept it, and one
+  with a screen would have put it on that screen's clipboard. It now says why and points at `?N`.
 
 ## [0.21.0] - 2026-10-18
 

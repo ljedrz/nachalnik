@@ -169,6 +169,18 @@ impl App {
             return;
         };
 
+        // note: a client's copy goes nowhere. The only terminal here is this session's, and the
+        // sequence written to it would land on somebody else's clipboard, or on none where nothing
+        // draws. Said to be copied, the client found nothing in its paste
+        if self.remote {
+            return self.say(
+                Speaker::Note,
+                format!(
+                    "[{id}] was not copied: it was asked for over a connection, and the clipboard \
+                     is the terminal's; `?{id}` reads it whole"
+                ),
+            );
+        }
         let text = item.content.to_text().into_owned();
         let said = format!("[{id}] to the clipboard: {} bytes", thousands(text.len()));
         self.clipboard = Some(text);
