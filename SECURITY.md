@@ -46,27 +46,28 @@ What changes to this workspace must keep true about what is and isn't enforced.
   new file are made the same way, one at a time from the one before, refusing a symlink. On
   kernels older than 5.6 it is an ordinary open, and such a swap isn't caught. A directory swapped
   during a directory walk is only caught for the files opened inside it.
-- **Network access is asked about when a command tries to use it, not based on the command's
-  name.** The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
-  `socket()` call (the first step of any network use, DNS lookups included) and hands the decision
-  to the parent process. The exceptions are `AF_UNIX`, which the filesystem rules cover, and
-  `AF_NETLINK`, which reaches only this kernel. Every other family is paused: besides `AF_INET` and
-  `AF_INET6`, any process can open `AF_SMC`, `AF_RDS` and `AF_RXRPC`, which reach the internet over
-  TCP or UDP, `AF_VSOCK`, which reaches the host from inside a virtual machine, and
-  `AF_BLUETOOTH`. The parent answers from `net:reach`: `allow` lets it through, `deny` refuses it
-  with `EACCES`, and `ask` asks the person, once per command, while the call waits. The filter only
-  reads the call's integer arguments (the low 32 bits of the address family, which is all the
-  kernel reads), so there's no address the command could change after the answer; decisions aren't
-  made per destination. Where the gate works, `Careful` stops looking for program names in
-  commands, and an allowed `exec:run` runs without asking until the command tries to use the
-  network. The gate also covers 32-bit processes and x32 calls, and refuses `io_uring_setup`
-  entirely, since an io_uring can open sockets without calling `socket()`. It doesn't cover a socket inherited from, or passed over a unix socket by, a process
-  outside the sandbox (the unix socket rules below deal with that). A network attempt by a
-  process a command left running, after the call has finished and with nothing decided, is refused
-  without asking, since there's no command left to ask about. Where the gate can't be installed
-  (under `--no-sandbox`, or on a kernel that can't pause calls), the question is based on the
-  command's name, and the permissions tab says so. `gate` is the only module in the workspace with
-  `unsafe` code, each block with a comment explaining why it's sound.
+- **Network access is asked about when a command tries to use it, not based on the command's name.**
+  The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
+  `socket()` call (the first step of any network use, DNS lookups included), and every
+  `socketpair()`, and hands the decision to the parent process. The exceptions are `AF_UNIX`, which
+  the filesystem rules cover, and `AF_NETLINK`, which reaches only this kernel. Every other family
+  is paused: besides `AF_INET` and `AF_INET6`, any process can open `AF_SMC`, `AF_RDS` and
+  `AF_RXRPC`, which reach the internet over TCP or UDP, `AF_VSOCK`, which reaches the host from
+  inside a virtual machine, and `AF_BLUETOOTH`. The parent answers from `net:reach`: `allow` lets it
+  through, `deny` refuses it with `EACCES`, and `ask` asks the person, once per command, while the
+  call waits. The filter only reads the call's integer arguments (the low 32 bits of the address
+  family, which is all the kernel reads), so there's no address the command could change after the
+  answer; decisions aren't made per destination. Where the gate works, `Careful` stops looking for
+  program names in commands, and an allowed `exec:run` runs without asking until the command tries
+  to use the network. The gate also covers 32-bit processes and x32 calls, and refuses
+  `io_uring_setup` entirely, since an io_uring can open sockets without calling `socket()`. It
+  doesn't cover a socket inherited from, or passed over a unix socket by, a process outside the
+  sandbox (the unix socket rules below deal with that). A network attempt by a process a command
+  left running, after the call has finished and with nothing decided, is refused without asking,
+  since there's no command left to ask about. Where the gate can't be installed (under
+  `--no-sandbox`, or on a kernel that can't pause calls), the question is based on the command's
+  name, and the permissions tab says so. `gate` is the only module in the workspace with `unsafe`
+  code, each block with a comment explaining why it's sound.
 - **Commands the model runs don't get this program's API keys.** Every variable `kamchatka` reads a
   key from (`endpoint::KEYS`) is removed from the `shell` tool's environment, sandboxed or not, and
   so is an address variable (`endpoint::ADDRESSES`) that carries a `user:password@`. The sandbox
