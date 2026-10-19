@@ -189,13 +189,18 @@ fn binomial_tail(hits: usize, n: usize, base: f64) -> Option<f64> {
         return None;
     }
 
-    // the pmf, walked upwards from `k = 0` by its own ratio, so that no factorial is ever formed
-    let mut term = (1.0 - base).powi(n as i32);
+    // the pmf, walked upwards from `k = 0` by its own ratio, so that no factorial is ever formed.
+    //
+    // note: in logarithms. The first term, `(1 - base)^n`, is below the smallest `f64` from about
+    // a thousand claims at even odds, and a walk multiplied up from that zero found every term zero
+    // and the tail with them. A term is only exponentiated once it is the one being added
+    let ratio = base.ln() - (1.0 - base).ln();
+    let mut term = n as f64 * (1.0 - base).ln();
     let mut tail = if hits == 0 { 1.0 } else { 0.0 };
     for k in 0..n {
-        term *= base / (1.0 - base) * ((n - k) as f64 / (k + 1) as f64);
+        term += ratio + ((n - k) as f64).ln() - ((k + 1) as f64).ln();
         if k + 1 >= hits {
-            tail += term;
+            tail += term.exp();
         }
     }
 
@@ -440,5 +445,24 @@ impl fmt::Display for Scores {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The tail holds for runs long enough that the first term of the walk underflows.
+    ///
+    /// note: `(1 - base)^n` is below the smallest `f64` from about a thousand claims at even odds,
+    /// and the walk multiplied every later term up from that zero, so a run that did exactly as well
+    /// as chance read as one luck could never have produced.
+    #[test]
+    fn a_long_run_at_chance_is_not_read_as_beyond_it() {
+        let tail = binomial_tail(1_000, 2_000, 0.5).expect("a tail");
+        assert!((0.5..0.52).contains(&tail), "{tail}");
+
+        // and a short one is what it always was
+        assert_eq!(binomial_tail(3, 3, 0.5), Some(0.125));
     }
 }
