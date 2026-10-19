@@ -110,12 +110,18 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             // marks the first row and hangs the rest under it, which is right for `> ` but wrong
             // here: a long answer would get one marked row and the rest reading as ordinary
             // indented text
-            for text in wrapped(&said, width.saturating_sub(2), "") {
-                lines.push(Row::Drawn(Line::from(vec![
-                    Span::styled("╎ ", faint()),
-                    Span::styled(text, quiet()),
-                ])));
-            }
+            let rows = kept_or_drawn(&mut kept, &mut fresh, Look::Held, &said, || {
+                wrapped(&said, width.saturating_sub(2), "")
+                    .into_iter()
+                    .map(|text| {
+                        Line::from(vec![
+                            Span::styled("╎ ", faint()),
+                            Span::styled(text, quiet()),
+                        ])
+                    })
+                    .collect()
+            });
+            lines.extend((0..rows.len()).map(|at| Row::Kept(Rc::clone(&rows), at)));
             lines.push(Row::Drawn(Line::default()));
             continue;
         }
@@ -125,16 +131,10 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // emphasis. Nothing else here is markdown: a tool's output is whatever the tool said, and
         // rendering it would invent structure the tool did not put there
         if speaker == Speaker::Model {
-            let answer = match fresh.get(said.as_ref()) {
-                Some(answer) => answer,
-                None => {
-                    let (text, answer) = kept
-                        .remove_entry(said.as_ref())
-                        .unwrap_or_else(|| (said.to_string(), answer(&said, width).into()));
-                    fresh.entry(text).or_insert(answer)
-                }
-            };
-            lines.extend((0..answer.len()).map(|at| Row::Kept(Rc::clone(answer), at)));
+            let answer = kept_or_drawn(&mut kept, &mut fresh, Look::Answer, &said, || {
+                answer(&said, width)
+            });
+            lines.extend((0..answer.len()).map(|at| Row::Kept(Rc::clone(&answer), at)));
             lines.push(Row::Drawn(Line::default()));
             continue;
         }
@@ -160,26 +160,31 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             Some((head, rest)) => (head, rest),
             None => (said.as_ref(), ""),
         };
-        match (speaker == Speaker::Result)
-            .then(|| Exit::of(head))
-            .flatten()
-        {
-            Some(exit) => {
-                for text in wrapped(head, width, prefix) {
-                    lines.push(Row::Drawn(Line::styled(text, exit_style(exit))));
+        let rows = kept_or_drawn(&mut kept, &mut fresh, Look::Said(speaker), &said, || {
+            let mut rows = Vec::new();
+            match (speaker == Speaker::Result)
+                .then(|| Exit::of(head))
+                .flatten()
+            {
+                Some(exit) => {
+                    for text in wrapped(head, width, prefix) {
+                        rows.push(Line::styled(text, exit_style(exit)));
+                    }
+                    if !rest.is_empty() {
+                        for text in wrapped(rest, width, &" ".repeat(columns(prefix))) {
+                            rows.push(Line::styled(text, style));
+                        }
+                    }
                 }
-                if !rest.is_empty() {
-                    for text in wrapped(rest, width, &" ".repeat(columns(prefix))) {
-                        lines.push(Row::Drawn(Line::styled(text, style)));
+                None => {
+                    for text in wrapped(&said, width, prefix) {
+                        rows.push(Line::styled(text, style));
                     }
                 }
             }
-            None => {
-                for text in wrapped(&said, width, prefix) {
-                    lines.push(Row::Drawn(Line::styled(text, style)));
-                }
-            }
-        }
+            rows
+        });
+        lines.extend((0..rows.len()).map(|at| Row::Kept(Rc::clone(&rows), at)));
         lines.push(Row::Drawn(Line::default()));
     }
 
@@ -229,21 +234,56 @@ impl From<Row> for Line<'static> {
     }
 }
 
-/// The model's answers as the last frame drew them, and the width it drew them at.
+/// How a line's rows were drawn from its words, so the same words drawn two ways are kept apart.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Look {
+    /// The model's answer, as markdown.
+    Answer,
+    /// Words the model is no longer shown, under the rule that says so.
+    Held,
+    /// Anyone else's, under that speaker's prefix.
+    Said(Speaker),
+}
+
+/// Rows drawn on one frame, by how they were drawn and from what words.
+type Kept = HashMap<Look, HashMap<String, Rc<[Line<'static>]>>>;
+
+/// The rows this frame draws for `said`: the ones the last frame drew from the same words the same
+/// way, or `draw`'s.
+fn kept_or_drawn(
+    kept: &mut Kept,
+    fresh: &mut Kept,
+    look: Look,
+    said: &str,
+    draw: impl FnOnce() -> Vec<Line<'static>>,
+) -> Rc<[Line<'static>]> {
+    let fresh = fresh.entry(look).or_default();
+    if let Some(rows) = fresh.get(said) {
+        return Rc::clone(rows);
+    }
+    let (text, rows) = kept
+        .get_mut(&look)
+        .and_then(|kept| kept.remove_entry(said))
+        .unwrap_or_else(|| (said.to_owned(), draw().into()));
+    Rc::clone(fresh.entry(text).or_insert(rows))
+}
+
+/// The chat's lines as the last frame drew them, and the width it drew them at.
 ///
-/// note: kept from one frame to the next because drawing an answer - its markdown, tables, and
-/// highlighted code - is expensive, and on nearly every frame it is unchanged. Held by the text
-/// rather than by the item, so an answer still arriving is drawn afresh as it grows, and dropped
-/// when a frame does not draw it.
+/// note: kept from one frame to the next because drawing them is expensive - an answer's markdown,
+/// tables and highlighted code, and the wrapping of everything else - and on nearly every frame it
+/// is unchanged. Rewrapping every turn's reasoning took most of a frame in a long session, on every
+/// key and every tick. Held by the text rather than by the item, so a line still arriving is drawn
+/// afresh as it grows, and dropped when a frame does not draw it.
 #[derive(Default)]
 struct Drawn {
     width: usize,
-    answers: HashMap<String, Rc<[Line<'static>]>>,
+    answers: Kept,
 }
 
 impl Drawn {
     /// What is kept for a frame of this width: all of it, or nothing if the width changed.
-    fn at(self, width: usize) -> HashMap<String, Rc<[Line<'static>]>> {
+    fn at(self, width: usize) -> Kept {
         match self.width == width {
             true => self.answers,
             false => HashMap::new(),

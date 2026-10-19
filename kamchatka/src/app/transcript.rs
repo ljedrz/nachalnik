@@ -30,7 +30,7 @@ use serde_json::Value;
 ///
 /// note: serializable because a line of the chat is what attaching to a session answers with, and
 /// the reader is not always in this process; see [`crate::remote`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Speaker {
     /// The person at the terminal.
