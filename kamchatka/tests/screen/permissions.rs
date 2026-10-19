@@ -134,6 +134,40 @@ async fn saying_always_is_a_rule_in_the_record() {
     );
 }
 
+/// A rule that refuses the call, set while its question waited, is honoured when the question is
+/// answered: `always` does not turn it back, and the call does not run.
+///
+/// note: the question was asked when nothing refused the call, and the answer was taken as it
+/// stood. A rule cycled to `deny` on the permissions tab, or a served client's `/rule`, came back
+/// to `allow` with `a`, and a `y` ran a call the policy now refused.
+#[tokio::test]
+async fn a_refusal_set_while_the_question_waits_is_kept() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("dig").await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_some(), "a question");
+    let run = Subject::Capability(Capability::exec("run"));
+    harness.app.policy.set(&run, Verdict::Deny);
+    harness.answer(KeyCode::Char('a')).await;
+    harness.settle().await;
+
+    assert_eq!(harness.app.policy.stance(&run), Verdict::Deny);
+    let ran = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .any(|item| item.content.to_text().contains("a bone"));
+    assert!(!ran, "the call ran: {}", harness.flat());
+}
+
 #[tokio::test]
 async fn saying_always_stops_the_question_being_asked_again() {
     let mut harness = Harness::new([

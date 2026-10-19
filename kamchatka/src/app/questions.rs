@@ -59,6 +59,24 @@ impl App {
             return Err(format!("there is no question {id} waiting to be answered"));
         };
         rememberable(grant, remember)?;
+        // note: asked again, because the question was asked about the rules as they stood, and a
+        // rule set while it waited - cycled on the permissions tab, or a client's `/rule` - may
+        // refuse the call now. Taken as it was given, `always` set that rule back to `allow`, and
+        // a `yes` ran a call the policy refused. The refusal wins, and is said
+        let (grant, remember) =
+            match grant == Grant::Allow && self.policy.verdict(&request) == Verdict::Deny {
+                true => {
+                    self.say(
+                        Speaker::Note,
+                        format!(
+                            "`{}` is refused: a rule set since it was asked about refuses it",
+                            request.tool
+                        ),
+                    );
+                    (Grant::Deny, false)
+                }
+                false => (grant, remember),
+            };
 
         if remember {
             // everything the policy actually consulted, not just what the tool declared. Each is

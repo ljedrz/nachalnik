@@ -49,6 +49,9 @@ minor bump may break you.
   was matched as the absolute path it resolved to, which has no `..` in it, so `up ->
   ../elsewhere/plan.txt` was read where `../elsewhere/plan.txt` was refused. A target is matched,
   and named, as the working directory reaches it now.
+- **A rule that refuses a call, set while its question waits, is kept when the question is
+  answered.** The answer was taken as given: `always` set the new refusal back to `allow`, and a
+  `yes` ran a call the policy now refused. The call is refused instead, and the session says why.
 
 ## [0.21.0] - 2026-10-18
 
