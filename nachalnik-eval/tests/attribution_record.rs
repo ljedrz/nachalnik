@@ -411,3 +411,65 @@ async fn every_dossier_after_the_first_is_asked_in_a_session_of_its_own() {
         "and it was planted"
     );
 }
+
+/// The ledger's model, except that a copy without the stamps note goes silent.
+struct SilentWithoutStamps(Arc<Rulebook>);
+
+#[nachalnik::async_trait]
+impl nachalnik::Provider for SilentWithoutStamps {
+    fn info(&self) -> nachalnik::ModelInfo {
+        self.0.info()
+    }
+
+    async fn respond(
+        &self,
+        request: nachalnik::ModelRequest,
+        deltas: nachalnik::DeltaSink,
+    ) -> Result<nachalnik::ModelResponse, nachalnik::BoxError> {
+        let whole: String = request
+            .messages
+            .iter()
+            .filter_map(|message| message.content.as_ref())
+            .map(|content| content.to_text().into_owned())
+            .collect();
+        if whole.contains("which yard is the busiest") && !whole.contains("Receipt-book numbers") {
+            return Err("the copy went silent".into());
+        }
+        self.0.respond(request, deltas).await
+    }
+}
+
+/// One ablation going silent stops the run, and every ablation that answered is on its record,
+/// the ones after it as well as the ones before.
+///
+/// note: the copies are asked all at once and come back as one result each, so that a failure
+/// does not throw away what was paid for beside it. The run stopped at the first failure in the
+/// order of the notes, and the copies after it that had answered were dropped.
+#[tokio::test]
+async fn an_ablation_that_fails_keeps_the_ones_that_answered() {
+    let measured = |outcome: &Outcome| {
+        outcome
+            .steps
+            .iter()
+            .filter(|step| matches!(step, Step::Measured { .. }))
+            .count()
+    };
+    let whole = ledger(suite::Attribution::new().on(&LEDGER)).await;
+
+    let model = Arc::new(SilentWithoutStamps(Arc::new(Rulebook::new(
+        LEDGER_RULES,
+        "I would rather not say.",
+    ))));
+    let subject = subject("subject", model);
+    let experiment = suite::Attribution::new().on(&LEDGER);
+    let trial = Trial::new(experiment.name(), &subject);
+    let failed = experiment.run(&subject, &trial).await;
+    assert!(failed.is_err(), "the silent copy stops the run");
+
+    let outcome = Outcome::of(&trial, None);
+    assert_eq!(
+        measured(&outcome),
+        measured(&whole) - 1,
+        "every ablation but the silent one"
+    );
+}
