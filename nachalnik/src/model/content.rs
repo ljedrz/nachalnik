@@ -326,6 +326,10 @@ impl Content {
     /// price it by length, so `pictures`, set by the caller to what its APIs accept, bounds it
     /// instead. A larger one is named, as before.
     ///
+    /// note: a picture is held to `pictures` by its payload alone, [`Blob::byte_len`], because that
+    /// is what the APIs limit. Counting the media type as well named a picture the API would take,
+    /// as long as it was within a few bytes of the limit.
+    ///
     /// note: only a picture that is the content, or a text block of a [`Content::Blocks`], is kept,
     /// which is how a tool result carries one. Where something other than plain text would have to
     /// be cut to fit, the whole is truncated as [`Content::truncate_to`] does, because cutting a
@@ -333,12 +337,12 @@ impl Content {
     pub fn truncate_around_pictures(&mut self, limit: usize, pictures: usize) -> Option<usize> {
         let kept = |block: &Block| match block {
             Block::Text(part) => {
-                matches!(&part.content, Self::Blob(blob) if blob.wire_len() <= pictures)
+                matches!(&part.content, Self::Blob(blob) if blob.byte_len() <= pictures)
             }
             _ => false,
         };
         let blocks = match self {
-            Self::Blob(blob) if blob.wire_len() <= pictures => return None,
+            Self::Blob(blob) if blob.byte_len() <= pictures => return None,
             Self::Blocks(blocks) if blocks.iter().any(kept) => blocks.clone(),
             _ => return self.truncate_to(limit),
         };

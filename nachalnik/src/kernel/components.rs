@@ -309,7 +309,7 @@ impl Kernel {
     ///
     /// note: an output limit is bytes the model reads, and a picture is not read by the byte. An
     /// MCP screenshot is a few megabytes of base64, over any text limit, so without this the model
-    /// saw only its name. Set it to the most the APIs in use take in one picture;
+    /// saw only its name. Set it to the most the APIs in use take in one picture, in base64;
     /// [`Content::truncate_around_pictures`](crate::Content::truncate_around_pictures) says what is
     /// kept and what is cut.
     ///
