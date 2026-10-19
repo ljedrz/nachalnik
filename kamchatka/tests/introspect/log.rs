@@ -955,6 +955,78 @@ async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it()
     );
 }
 
+/// And they are still said to be missing a resume later, when the hole is in the middle of the log.
+///
+/// note: a resumed session's record copies the one before it forward, so a gap one resume left
+/// where the two logs meet is in the middle of the log by the next resume. `log` only looked for a
+/// gap where the earlier records end and this session's own begin, and said nothing about this one.
+#[tokio::test]
+async fn a_hole_carried_through_a_second_resume_is_still_said_to_be_missing() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("which index?"));
+    let mut snapshot = first.snapshot();
+    let taken = snapshot.last_seq;
+    let mut lines: Vec<String> = first
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).expect("a record"))
+        .collect();
+    // the second session's own, numbered on from past two records a killed run took with it
+    for seq in taken + 3..=taken + 4 {
+        lines.push(
+            json!({ "seq": seq, "at": 0, "event": {
+                "event": "tool.requested", "call": format!("kept{seq}"), "tool": "fs", "args": {} } })
+            .to_string(),
+        );
+    }
+    // and the second session's snapshot reflects all of it, so nothing runs past it
+    snapshot.last_seq = taken + 4;
+    let dir = std::env::temp_dir().join(format!("kamchatka-carried-hole-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a directory");
+    let state = dir.join("second.json");
+    std::fs::write(
+        &state,
+        serde_json::to_string(&snapshot).expect("a snapshot"),
+    )
+    .expect("written");
+    std::fs::write(state.with_extension("jsonl"), lines.join("\n") + "\n").expect("written");
+
+    let kernel = Kernel::resume(Config::default(), snapshot);
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let anchor = introspect::install(
+        &kernel,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+    assert_eq!(anchor.earlier().read(&state, None), 0, "nothing past it");
+    let _ = std::fs::remove_dir_all(&dir);
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(
+        said[0].contains(&format!(
+            "Records {} to {} are not here",
+            taken + 1,
+            taken + 2
+        )),
+        "{}",
+        said[0]
+    );
+}
+
 /// `since` is exclusive, and the schema says which number means everything.
 ///
 /// note: also found live, and it cost the answer. A session reaching for "all of it" wrote the

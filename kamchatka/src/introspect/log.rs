@@ -184,8 +184,14 @@ impl Tool for Log {
             let mut matched: Vec<String> = Vec::new();
             let mut added = BTreeSet::new();
             let mut hits = 0;
+            let mut lost = Vec::new();
+            let mut before: Option<u64> = None;
 
             for record in earlier.iter().chain(session.records()) {
+                if let Some(before) = before.filter(|before| record.seq > before + 1) {
+                    lost.push((before + 1, record.seq - 1));
+                }
+                before = Some(record.seq);
                 *kinds.entry(record.event.name()).or_default() += 1;
                 if let Event::ContextAdded { id, .. } = &record.event {
                     added.insert(*id);
@@ -200,11 +206,6 @@ impl Tool for Log {
             }
 
             let first = earlier.first().or_else(|| session.records().next());
-            let lost = earlier
-                .last()
-                .zip(session.records().next())
-                .map(|(before, after)| (before.seq + 1, after.seq.saturating_sub(1)))
-                .filter(|(from, to)| from <= to);
             Read {
                 total: earlier.len() + session.len(),
                 last_seq: session.last_seq(),
@@ -268,10 +269,14 @@ struct Read {
     /// wants. An item with no creation record here was in the context before this log began, and
     /// nothing else in an answer says so.
     added: BTreeSet<ContextId>,
-    /// The records between the last one read before the resume and the first of this session's own,
-    /// where there are any. A run killed after its snapshot was taken numbered them, and the
-    /// session carried on from the snapshot without what they did.
-    lost: Option<(u64, u64)>,
+    /// The runs of records missing between two that are here, oldest first. A run killed after its
+    /// snapshot was taken numbered them, and the session carried on from the snapshot without what
+    /// they did.
+    ///
+    /// note: anywhere in the log, not only where the records read before the resume end and this
+    /// session's own begin. A resumed session's record copies the one before it forward, so a gap
+    /// left at one resume is in the middle of the log by the next.
+    lost: Vec<(u64, u64)>,
 }
 
 impl Read {
@@ -602,14 +607,27 @@ impl Query {
 /// added is not in its context - and they are said because a log read as one whole would otherwise
 /// pass over them as if nothing had happened there.
 fn earlier(read: &Read) -> String {
-    let lost = read.lost.map(|(from, to)| {
-        let (which, them) = match from == to {
-            true => (format!("Record {from} is"), "it"),
-            false => (format!("Records {from} to {to} are"), "them"),
+    let lost = (!read.lost.is_empty()).then(|| {
+        let runs: Vec<String> = read
+            .lost
+            .iter()
+            .map(|(from, to)| match from == to {
+                true => from.to_string(),
+                false => format!("{from} to {to}"),
+            })
+            .collect();
+        let runs = match runs.split_last() {
+            Some((last, [])) => last.clone(),
+            Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+            None => String::new(),
+        };
+        let (which, them) = match read.lost[..] {
+            [(from, to)] if from == to => (format!("Record {runs} is"), "it"),
+            _ => (format!("Records {runs} are"), "them"),
         };
         format!(
-            "{which} not here: a run that stopped after the snapshot this session was resumed \
-             from had been taken wrote {them}, and what {them} did is not in this session."
+            "{which} not here: a run that stopped after its snapshot had been taken wrote {them}, \
+             the session carried on from that snapshot, and what {them} did is not in it."
         )
     });
     let begins = (read.first_seq > 1).then(|| match read.resumed {
