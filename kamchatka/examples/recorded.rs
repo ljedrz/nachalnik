@@ -210,14 +210,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .run(&mut app, &mut events, &mut finished, lines.as_bytes())
         .await
         .err();
+    // a run the deadline cut short is not one that finished, and leaves with the status the
+    // program gives it, as `kamchatka --headless` does; see `Stop::code`
+    let stopped = driver.stopped();
     if let Some(e) = &failed {
         eprintln!("the run failed: {e}");
     }
 
     write(&app.kernel, budget, &prose, started.elapsed())?;
-    match failed {
-        Some(e) => Err(e.into()),
-        None => Ok(()),
+    match (failed, stopped) {
+        (Some(e), _) => Err(e.into()),
+        (None, Some(stop)) => {
+            eprintln!("the run was stopped short: {stop:?}");
+            std::process::exit(stop.code().into())
+        }
+        (None, None) => Ok(()),
     }
 }
 
