@@ -12,7 +12,7 @@ HARD RULES
 - Never put an API key anywhere. Do not use `git stash` (its refs are shared with the main tree); commit in your worktree or `git diff > file && git checkout .` there instead.
 
 HOW TO READ THE SWEEP
-The findings are the sweep's `FINDING:` lines, one terse line each, and after them its `LEAD:` lines: what it suspected and did not get to verify. Check each lead briefly; one that holds is a finding like any other. Print them with:
+The findings are the sweep's `FINDING:` lines, one terse line each, and after them its `LEAD:` lines: what it suspected and did not get to verify. Verify every lead as you verify a finding, to a verdict - REAL, OVERSTATED, WRONG or DECISION - with the lines that settle it; a lead is not done until it has one. Leads are not weaker findings: they are what the sweep ran out of room to check, and in earlier runs they held real defects as often as the findings did. A lead whose code cannot be found (a function or operation that does not exist) is WRONG, and says so. One that can only be settled by something this machine lacks - a live endpoint, another kernel - goes in POSTPONED.md, with what would settle it. Print them with:
   SWEEPS=SWEEPS python3 SKILL/read.py SWEEP -f
 and without `-f` for the replies around them, where a line needs its context.
 
