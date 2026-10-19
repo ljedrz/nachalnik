@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A turn that ends as the wait for it runs out is taken in, not said to have been left.** Leaving
+  a session waits a while for a running turn to stop, and where the turn's end arrived at the moment
+  the wait ran out, either could be taken: the session then said the turn had been left, and a turn
+  that failed was not reported as failing. The turn's end is taken first now.
 - **A command does not inherit the request for the sandbox's report.**
   `KAMCHATKA_REPORT_CONFINEMENT` asks the confined child to say how much of the sandbox took, for
   the start-up probe. Exported in the person's environment, it reached every command, and the report
