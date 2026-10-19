@@ -34,6 +34,10 @@ minor bump may break you.
   UTF-8 grows threefold on the way to text, and the count of what was not kept was taken from the
   text, so a command writing such bytes was said to have written more than it did. Both streams
   count what was read now.
+- **A wrong-typed tool argument is quoted back cut short.** A refusal of a number, a yes-or-no or
+  a text argument quoted the model's value whole, so a long string passed in the wrong place went
+  into the context, the record and every save as its own error. It is cut to 200 characters now,
+  with its size.
 
 ## [0.21.0] - 2026-10-18
 

@@ -419,7 +419,7 @@ fn unparsed(args: &Value) -> Option<&str> {
 
 /// How much of a payload to quote back: enough to see the fault in its sentence, and not so much
 /// that a long command is copied into the context twice over.
-const SHOWN: usize = 200;
+pub(crate) const SHOWN: usize = 200;
 
 /// What is wrong with arguments that never parsed, and the part of them to look at.
 ///

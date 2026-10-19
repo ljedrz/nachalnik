@@ -110,6 +110,24 @@ fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
     }
 }
 
+/// A value the model passed, as a refusal quotes it: whole if it is short, and its first
+/// [`ops::SHOWN`] characters and its size if it is not.
+///
+/// note: a refusal is a tool result, and a wrong-typed argument can be anything the model wrote.
+/// Quoted whole, a two-hundred-kilobyte string passed as a number went into the context, the
+/// record and every save as the error about it.
+pub(crate) fn quoted(value: &Value) -> String {
+    let text = value.to_string();
+    match text.chars().nth(ops::SHOWN) {
+        None => text,
+        Some(_) => format!(
+            "{}... ({} bytes)",
+            text.chars().take(ops::SHOWN).collect::<String>(),
+            text.len()
+        ),
+    }
+}
+
 /// What kind of JSON value arrived, for a refusal that names it without copying it back.
 pub(crate) fn what(value: &Value) -> &'static str {
     match value {
@@ -160,7 +178,8 @@ pub(crate) fn number(args: &Value, name: &str) -> Result<Option<u64>, String> {
     }
 
     Err(format!(
-        "`{name}` is a whole number and this one is `{value}`."
+        "`{name}` is a whole number and this one is `{}`.",
+        quoted(value)
     ))
 }
 
@@ -170,7 +189,8 @@ fn words<'a>(args: &'a Value, name: &str) -> Result<Option<&'a str>, String> {
         Value::Null => Ok(None),
         Value::String(text) => Ok(Some(text)),
         other => Err(format!(
-            "`{name}` is text and this one is `{other}`. {UNSEARCHED}"
+            "`{name}` is text and this one is `{}`. {UNSEARCHED}",
+            quoted(other)
         )),
     }
 }
@@ -197,7 +217,8 @@ pub(crate) fn yes_or_no(args: &Value, name: &str) -> Result<bool, String> {
         Some("true") => Ok(true),
         Some("false") => Ok(false),
         _ => Err(format!(
-            "`{name}` is true or false and this one is `{value}`."
+            "`{name}` is true or false and this one is `{}`.",
+            quoted(value)
         )),
     }
 }
@@ -454,7 +475,29 @@ pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>>
 mod tests {
     use serde_json::json;
 
-    use super::{CEILING, FLOOR, Limits, REPORT, arg};
+    use super::{CEILING, FLOOR, Limits, REPORT, arg, number, words, yes_or_no};
+
+    /// A wrong-typed argument is quoted back cut short, whatever the model put in it.
+    ///
+    /// note: quoted whole, a long string passed as a number went into the context as its own
+    /// refusal, and into the record and every save after it.
+    #[test]
+    fn a_long_wrong_argument_is_quoted_short() {
+        let args = json!({ "it": "x".repeat(200_000) });
+        let refusals = [
+            number(&args, "it").expect_err("not a number"),
+            yes_or_no(&args, "it").expect_err("not true or false"),
+            words(&json!({ "it": ["x".repeat(200_000)] }), "it").expect_err("not text"),
+        ];
+        for refusal in refusals {
+            assert!(refusal.len() < 1_000, "{} bytes", refusal.len());
+            assert!(refusal.contains("bytes)"), "and says how large: {refusal}");
+        }
+
+        // and a short one is quoted as it was
+        let refusal = number(&json!({ "it": "three" }), "it").expect_err("not a number");
+        assert!(refusal.contains("`\"three\"`"), "{refusal}");
+    }
 
     /// Every row is held to a tenth of a small window, never above itself, and a row somebody set
     /// is left as they set it.
