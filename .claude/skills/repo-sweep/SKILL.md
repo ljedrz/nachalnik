@@ -184,7 +184,12 @@ columns say what the endpoint costs.
 ## 3. read what a sweep found
 
 `python3 $SKILL/read.py NAME -f` - its `FINDING:` lines, each once, which is what to verify, and
-then its `LEAD:` lines, each a suspicion worth a quick look.
+then its `LEAD:` lines, what it suspected and did not get to verify. **Every lead is verified as a
+finding is**, to a verdict with the lines that settle it, and fixed when real: leads are what a
+sweep ran out of room for, not weaker findings. In one run a third of the fixes came from leads,
+and a lead given only a glance had been a real defect left behind. A lead naming code that does
+not exist is wrong, said so; one that needs what the machine lacks, such as a live endpoint, goes
+to POSTPONED.md.
 `-c` gives what it covered: a `CLEARED:` line for each class it searched and found nothing in, with
 what it searched, and an `UNSEARCHED:` line for each it did not get to. A sweep with no findings
 is only clean where it says CLEARED; its UNSEARCHED classes, and any the scope names that appear in
@@ -201,7 +206,8 @@ Start as the first sweeps complete, with the run going on beside it; `status.py 
 when one has. Where agents are not to be used (the person's own instructions decide), verify the
 same way yourself, one sweep at a time.
 
-**A verified defect is fixed, however narrow its window.** Reject only what is wrong or contradicts
+**A verified defect is fixed, however narrow its window**, whether it came as a finding or a lead.
+Reject only what is wrong or contradicts
 a documented decision, and send what needs a person's choice to POSTPONED.md. "Real, but only within
 ten bytes of the limit" or "only if two calls fail in a row" is not a third outcome: an image of
 exactly the size one crate carries being named by another was such a gap, and it was a bug.
