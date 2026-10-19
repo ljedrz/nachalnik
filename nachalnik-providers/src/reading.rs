@@ -83,6 +83,19 @@ pub(crate) enum Stopped {
     CutOff,
 }
 
+/// How a stream somebody asked to stop has stopped.
+///
+/// note: `Done` where the server has already said why the turn ended. What came is the whole
+/// answer, and marked interrupted, the server's own finish was written over with a word that says
+/// the answer was cut short - a stop pressed while an endpoint held the connection open after its
+/// finish, waiting to send usage or `[DONE]`, turned a finished turn into an interrupted one.
+fn interrupted(events: &impl Events) -> Stopped {
+    match events.finished() {
+        true => Stopped::Done,
+        false => Stopped::Interrupted,
+    }
+}
+
 /// A response, read to its end.
 pub(crate) enum Read {
     /// Every event the server sent, verbatim, and how the stream stopped.
@@ -210,7 +223,7 @@ pub(crate) async fn read(
             }
             Err(_) => {
                 if asking.deltas.is_interrupted() {
-                    stopped = Stopped::Interrupted;
+                    stopped = interrupted(&*events);
                     break;
                 }
                 let silence = vigil.waited();
@@ -253,7 +266,7 @@ pub(crate) async fn read(
             // checked before each event rather than after, so that an event is never read and
             // then thrown away
             if asking.deltas.is_interrupted() {
-                stopped = Stopped::Interrupted;
+                stopped = interrupted(&*events);
                 break;
             }
 
@@ -366,7 +379,8 @@ pub(crate) async fn read(
         // asked after every chunk as well as in the quiet and between lines, because a body that
         // trickles without ending a line is none of those
         if asking.deltas.is_interrupted() {
-            stopped = Stopped::Interrupted;
+            stopped = interrupted(&*events);
+            break;
         }
         if ended || stopped != Stopped::Done {
             break;
