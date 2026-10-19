@@ -41,6 +41,10 @@ minor bump may break you.
 - **A command whose processes outlive being killed at the end of a session is said to be still
   running.** Everything found was named as stopped, whether or not the `SIGKILL` took. What is
   still there half a second after it is now named as still running instead.
+- **`fs` refuses a path that became a link inside the working directory after it was checked.**
+  The open refused a link that led out of the directory but followed one that stayed in it, so a
+  directory swapped for a relative link to protected files beside it was read without their rules
+  being asked. Any link met at the open is refused now, as SECURITY.md says.
 
 ## [0.21.0] - 2026-10-18
 
