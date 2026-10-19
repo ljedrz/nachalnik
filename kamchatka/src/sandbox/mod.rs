@@ -67,8 +67,8 @@ mod reach;
 
 pub use confinement::{
     Confinement, Probed, Scratch, available, confine, confine_saying, confines_abstract_sockets,
-    confines_signals, confines_unix_sockets, make_scratch, run_if_asked, scope_signals,
-    scratch_for, weaker_here,
+    confines_signals, confines_tcp, confines_unix_sockets, make_scratch, run_if_asked,
+    scope_signals, scratch_for, weaker_here,
 };
 pub use reach::{Access, Reach};
 
@@ -151,6 +151,22 @@ pub enum Network {
 }
 
 impl Network {
+    /// What a command gets: `open` where the network was allowed, `denied` where the stance
+    /// refuses it, `gated` where the gate holds here, and `tcp` where Landlock can refuse TCP here.
+    ///
+    /// note: with neither the gate nor Landlock's TCP rights, below Linux 6.7, nothing refuses
+    /// anything, and that is [`Network::Open`]. Written as `NoTcp`, a command was told "no TCP"
+    /// while its TCP connections went through.
+    fn of(open: bool, denied: bool, gated: bool, tcp: bool) -> Self {
+        match (open, gated) {
+            (true, _) => Self::Open,
+            (false, false) if tcp => Self::NoTcp,
+            (false, false) => Self::Open,
+            (false, true) if denied => Self::Shut,
+            (false, true) => Self::Asked,
+        }
+    }
+
     /// Whether Landlock is asked to refuse TCP.
     fn refuses_tcp(self) -> bool {
         matches!(self, Self::NoTcp | Self::Shut)
@@ -215,15 +231,12 @@ impl Sandbox {
             extra,
             readable,
             writable,
-            network: match (
+            network: Network::of(
                 granted || stance == Verdict::Allow,
+                stance == Verdict::Deny,
                 policy.gates_the_network(),
-            ) {
-                (true, _) => Network::Open,
-                (false, false) => Network::NoTcp,
-                (false, true) if stance == Verdict::Deny => Network::Shut,
-                (false, true) => Network::Asked,
-            },
+                confines_tcp(),
+            ),
             devices: DEVICES.iter().map(PathBuf::from).collect(),
             closed: SERVED
                 .lock()
@@ -954,5 +967,29 @@ pub(crate) fn from_a_command(pid: u32) -> bool {
             .unwrap_or_else(PoisonError::into_inner)
             .contains(&session.as_raw_nonzero().get().unsigned_abs()),
         None => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Network;
+
+    /// A network nothing can refuse is said to be open, whatever the stance.
+    ///
+    /// note: below Linux 6.7, where Landlock has no TCP rights, and with no gate, a command told
+    /// "no TCP" had its TCP connections go through.
+    #[test]
+    fn a_network_nothing_can_refuse_is_open() {
+        // neither the gate nor Landlock's TCP rights
+        assert_eq!(Network::of(false, true, false, false), Network::Open);
+        assert_eq!(Network::of(false, false, false, false), Network::Open);
+        // Landlock's TCP rights and no gate
+        assert_eq!(Network::of(false, true, false, true), Network::NoTcp);
+        // the gate, with or without them
+        for tcp in [true, false] {
+            assert_eq!(Network::of(false, true, true, tcp), Network::Shut);
+            assert_eq!(Network::of(false, false, true, tcp), Network::Asked);
+            assert_eq!(Network::of(true, false, true, tcp), Network::Open);
+        }
     }
 }

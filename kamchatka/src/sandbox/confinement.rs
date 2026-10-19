@@ -64,6 +64,19 @@ pub fn confines_unix_sockets() -> bool {
         .is_ok()
 }
 
+/// Whether this kernel can refuse a confined command a TCP connection.
+///
+/// note: put to the kernel through the crate, as [`confines_unix_sockets`] is, and applying
+/// nothing: the right is ABI 4, which is Linux 6.7.
+pub fn confines_tcp() -> bool {
+    use landlock::{AccessNet, CompatLevel, Compatible, Ruleset, RulesetAttr};
+
+    Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .handle_access(AccessNet::ConnectTcp)
+        .is_ok()
+}
+
 /// Whether this kernel refuses a confined command a connection to an abstract unix socket made
 /// outside its confinement.
 ///
@@ -106,14 +119,14 @@ pub fn confines_signals() -> bool {
 /// socket files Landlock covers from Linux 7.1 are not among them, since a kernel that recent is
 /// still the exception, and a warning most people get is one nobody reads.
 pub fn weaker_here() -> Option<String> {
-    use landlock::{
-        ABI, Access, AccessFs, AccessNet, CompatLevel, Compatible, Ruleset, RulesetAttr,
-    };
+    use landlock::{ABI, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
 
-    let hard = || Ruleset::default().set_compatibility(CompatLevel::HardRequirement);
     weaker(Kernel {
-        landlock: hard().handle_access(AccessFs::from_all(ABI::V1)).is_ok(),
-        tcp: hard().handle_access(AccessNet::ConnectTcp).is_ok(),
+        landlock: Ruleset::default()
+            .set_compatibility(CompatLevel::HardRequirement)
+            .handle_access(AccessFs::from_all(ABI::V1))
+            .is_ok(),
+        tcp: confines_tcp(),
         abstract_sockets: confines_abstract_sockets(),
         signals: confines_signals(),
         scope_refused: SCOPE_REFUSED.load(std::sync::atomic::Ordering::Relaxed),
