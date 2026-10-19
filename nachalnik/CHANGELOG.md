@@ -13,6 +13,9 @@ minor bump may break you.
   media type added to its payload, so one within a few bytes of the limit was named instead of
   shown. The payload is what the APIs limit, and it is what `nachalnik-mcp` checks before carrying
   an image, so a picture of `LARGEST_IMAGE` bytes was carried by the bridge and then named here.
+- **A tool schema the counter cannot price is counted as unpriced.** Only the messages were asked
+  what the counter abstained on, so a counter that could not price JSON had a request with tools
+  passed to `TokenCounter::observe` as fully priced, and `Budget::uncounted` left the tools out.
 
 ## [0.10.0] - 2026-10-14
 

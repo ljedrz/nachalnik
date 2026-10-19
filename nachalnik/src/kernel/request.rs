@@ -201,7 +201,7 @@ impl Kernel {
             let projection = projector.project(context.items());
             (specs, projection, params.clone())
         };
-        let tool_tokens = tool_tokens(&tools, counter);
+        let tool_cost = tool_cost(&tools, counter);
         let context = projection_cost(&projection, counter);
 
         if projection.messages.is_empty() {
@@ -213,11 +213,9 @@ impl Kernel {
             tools,
             params,
         };
-        // a tool schema is JSON and a counter always has a number for one, so the tool side
-        // contributes tokens and never an abstention
         let cost = Cost {
-            tokens: context.tokens + tool_tokens,
-            uncounted: context.uncounted,
+            tokens: context.tokens + tool_cost.tokens,
+            uncounted: context.uncounted + tool_cost.uncounted,
         };
 
         Ok((request, projection, cost))
@@ -351,7 +349,7 @@ impl Kernel {
     /// context, by the same check that refuses one that is not.
     fn carries(&self, item: &ContextItem) -> bool {
         let counter = self.counter();
-        let tools = tool_tokens(&self.tool_specs(), &*counter);
+        let tools = tool_cost(&self.tool_specs(), &*counter);
         let projection = {
             let projector = self.projector();
             let context = self.0.context.read();
@@ -367,8 +365,8 @@ impl Kernel {
         self.oversized(
             limit,
             &Cost {
-                tokens: cost.tokens + tools,
-                uncounted: cost.uncounted,
+                tokens: cost.tokens + tools.tokens,
+                uncounted: cost.uncounted + tools.uncounted,
             },
         )
         .is_none()
@@ -514,13 +512,25 @@ pub(super) struct Cost {
     pub uncounted: usize,
 }
 
-/// Estimates the size of the given tool definitions: the schemas plus the descriptions.
-pub(super) fn tool_tokens(specs: &[ToolSpec], counter: &dyn TokenCounter) -> usize {
+/// Estimates the size of the given tool definitions, the schemas plus the descriptions, and how
+/// many pieces of them the counter would not count.
+///
+/// note: a counter is not obliged to price JSON, so a schema it abstains on is counted as unpriced,
+/// as a message's content is; otherwise a request with tools it could not price would reach
+/// [`TokenCounter::observe`] as if it had priced all of it.
+pub(super) fn tool_cost(specs: &[ToolSpec], counter: &dyn TokenCounter) -> Cost {
     specs
         .iter()
         .map(|spec| {
-            counter.count_schema(&spec.schema)
-                + counter.count(&Content::text(format!("{} {}", spec.id, spec.description)))
+            let named = Content::text(format!("{} {}", spec.id, spec.description));
+            Cost {
+                tokens: counter.count_schema(&spec.schema) + counter.count(&named),
+                uncounted: counter.uncounted(&Content::Json(spec.schema.clone()))
+                    + counter.uncounted(&named),
+            }
         })
-        .sum()
+        .fold(Cost::default(), |cost, tool| Cost {
+            tokens: cost.tokens + tool.tokens,
+            uncounted: cost.uncounted + tool.uncounted,
+        })
 }

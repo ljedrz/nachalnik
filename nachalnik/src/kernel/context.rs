@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     Kernel, State, StateChange, addition, arriving,
-    request::{projection_cost, tool_tokens},
+    request::{projection_cost, tool_cost},
 };
 
 impl Kernel {
@@ -383,7 +383,7 @@ impl Kernel {
         // one counter for both halves, as a request is priced: a `set_counter` between them would
         // otherwise price the tools and context by two different counters
         let counter = self.counter();
-        let tool_tokens = tool_tokens(&self.tool_specs(), &*counter);
+        let tools = tool_cost(&self.tool_specs(), &*counter);
         let limit = self.model_info().and_then(|i| i.context_limit);
         let reported = self.last_response().and_then(|response| response.usage);
 
@@ -391,8 +391,8 @@ impl Kernel {
 
         Budget {
             context_tokens: context.tokens,
-            uncounted: context.uncounted,
-            tool_tokens,
+            uncounted: context.uncounted + tools.uncounted,
+            tool_tokens: tools.tokens,
             limit,
             reported,
         }
