@@ -64,6 +64,10 @@ minor bump may break you.
   snapshot has its call identifiers reserved, so the resumed session does not hand them out again.
   Only calls that were requested were counted, so a call to an unknown tool, or one whose arguments
   did not parse, could be reused. Every call the log names is reserved now.
+- **`log` still says which records are missing a resume later.** Records a killed run wrote past its
+  snapshot are left out of the resumed session's log, and `log` said so, but it only looked where
+  the earlier records end and the session's own begin. The next resume copies that log forward, so
+  the gap is then in the middle, and `log` did not mention it. It reports every gap in the log now.
 
 ## [0.21.0] - 2026-10-18
 
