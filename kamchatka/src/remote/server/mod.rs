@@ -1114,8 +1114,10 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             // to answer the question with, so the pass is taken and its list is said. See
             // `App::planned`
             let keys = std::mem::replace(&mut app.keys, false);
+            let remote = std::mem::replace(&mut app.remote, true);
             let reply = app.submit(&line).await;
             app.keys = keys;
+            app.remote = remote;
 
             Some(Message::Replied {
                 did: reply.did,

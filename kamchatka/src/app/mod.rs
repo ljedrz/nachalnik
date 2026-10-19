@@ -353,8 +353,9 @@ pub struct App {
     /// How many errands have been sent, which is what numbers them.
     errands: u64,
     /// Lines handed to [`App::submit`] while a command was in flight, oldest first, each with
-    /// whether whoever sent it had keys to press; for [`App::release`].
-    held: VecDeque<(String, bool)>,
+    /// whether whoever sent it had keys to press and whether it came over a connection; for
+    /// [`App::release`].
+    held: VecDeque<(String, bool, bool)>,
     /// How much of each tool's output the model is shown, which `/limit` changes.
     ///
     /// note: the same handle the tools were built with, so `/limit` changes the number they declare
@@ -569,6 +570,12 @@ pub struct App {
     /// scroll positions, so the caller without keys is the one that departs from its shape and says
     /// so. `headless.rs` and [`crate::remote`] are driven by a loop that knows.
     pub keys: bool,
+    /// Whether the line being handled came from a client of a served session.
+    ///
+    /// note: set by the loop around the one call, as [`App::keys`] is, and for the same reason: it
+    /// is a fact about the caller. It is what `/copy` needs, since the terminal a sequence would go
+    /// to is this session's and not the client's.
+    pub remote: bool,
     /// Digits typed at the context tab, waiting for the key that uses them.
     pub count: String,
     /// Which capability is picked out on the permissions tab.
@@ -801,6 +808,7 @@ impl App {
             editing: None,
             stepping: false,
             keys: true,
+            remote: false,
             count: String::new(),
             chosen: 0,
             #[cfg(feature = "tui")]
@@ -1026,7 +1034,7 @@ impl App {
             .chain(
                 std::mem::take(&mut self.held)
                     .into_iter()
-                    .map(|(line, _)| line),
+                    .map(|(line, ..)| line),
             )
             .collect();
         if lines.is_empty() {

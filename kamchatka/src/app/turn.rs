@@ -236,12 +236,14 @@ impl App {
                 && self
                     .held
                     .front()
-                    .is_some_and(|(line, _)| super::command::switches(line)))
-            && let Some((line, keys)) = self.held.pop_front()
+                    .is_some_and(|(line, ..)| super::command::switches(line)))
+            && let Some((line, keys, remote)) = self.held.pop_front()
         {
             let had = std::mem::replace(&mut self.keys, keys);
+            let was = std::mem::replace(&mut self.remote, remote);
             let reply = Box::pin(self.submitted(&line, true)).await;
             self.keys = had;
+            self.remote = was;
             if !keys && let Some(Overlay::Text { title, pages, .. }) = reply.page {
                 let pages: Vec<String> = pages
                     .iter()

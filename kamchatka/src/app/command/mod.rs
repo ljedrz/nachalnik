@@ -48,7 +48,8 @@ impl App {
         // note: except `/stop`, which ends the wait. Held, it stopped a turn only once the listing
         // it was held behind came back, which is what it was typed to avoid
         if self.in_flight() && line.trim() != "/stop" {
-            self.held.push_back((line.to_owned(), self.keys));
+            self.held
+                .push_back((line.to_owned(), self.keys, self.remote));
             self.say(
                 Speaker::Note,
                 "this waits for the command before it to come back; `ctrl+c` stops a listing or a \
@@ -67,7 +68,8 @@ impl App {
             && line.trim() != "/stop"
             && (self.held_switch() || self.mid_turn() && switches(line))
         {
-            self.held.push_back((line.to_owned(), self.keys));
+            self.held
+                .push_back((line.to_owned(), self.keys, self.remote));
             self.say(
                 Speaker::Note,
                 match switches(line) && self.held.len() == 1 {
@@ -157,7 +159,7 @@ impl App {
 
     /// Whether a switch of model or endpoint is held for the end of the turn.
     pub(super) fn held_switch(&self) -> bool {
-        self.held.iter().any(|(line, _)| switches(line))
+        self.held.iter().any(|(line, ..)| switches(line))
     }
 
     /// What the lines said and the pages opened since `from` and `pages` add up to.

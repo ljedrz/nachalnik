@@ -287,3 +287,88 @@ async fn a_retry_reaches_a_client_before_the_answer_it_held_up() {
 
     quit(&at).await;
 }
+
+/// A client's `/copy` is said not to have been copied, rather than said to have gone to a clipboard
+/// nothing hands it to.
+///
+/// note: the served loop has no terminal of the client's to write the sequence to, and nothing in
+/// it took the text, so the client read `to the clipboard` and found nothing in its paste.
+#[tokio::test]
+async fn a_clients_copy_is_said_not_to_be_copied() {
+    let session = served(vec![ModelResponse::text("worth keeping")], |_| {}).await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until_words("worth keeping").await;
+    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+        .await;
+
+    peer.send(Command::Submit {
+        line: "/copy".to_owned(),
+    })
+    .await;
+    let heard = peer.until(|message| said(message, "was not copied")).await;
+    assert!(
+        !heard
+            .iter()
+            .any(|message| said(message, "to the clipboard:")),
+        "{heard:?}"
+    );
+
+    quit(&session.at).await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.clipboard.is_none(),
+        "and nothing is left waiting to be handed over"
+    );
+}
+
+/// A client's `/copy` held behind a switch and handed in after the turn is still the client's.
+#[tokio::test]
+async fn a_clients_copy_held_for_later_is_still_not_copied() {
+    let script = vec![ModelResponse::tool_calls(vec![call(
+        "c1",
+        "wait",
+        json!({}),
+    )])];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(Slow));
+    })
+    .await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until_record("tool.started").await;
+
+    // a switch typed into a running turn waits for the end of it, and so does what follows it
+    for line in ["/model other", "/copy 2", "/stop"] {
+        peer.send(Command::Submit {
+            line: line.to_owned(),
+        })
+        .await;
+    }
+    let heard = peer
+        .until(|message| said(message, "[2] was not copied"))
+        .await;
+    assert!(
+        !heard
+            .iter()
+            .any(|message| said(message, "to the clipboard:")),
+        "{heard:?}"
+    );
+
+    quit(&session.at).await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(app.clipboard.is_none());
+}
+
+/// Whether a message is a line the session said with these words in it.
+fn said(message: &Message, words: &str) -> bool {
+    matches!(message, Message::Said { text, .. } if text.contains(words))
+}
