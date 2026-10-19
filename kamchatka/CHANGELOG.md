@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A served session's own line too long for a client is said to be missed.** The program's lines,
+  and the state said again to a client that reattaches, went out however long they were, while
+  records, fragments and answers are held to what a client reads. A network question carries the
+  command as the model wrote it, and a frame past the limit closes every client that gets it.
 - **A message sent into a turn stopped before its calls ran waits for their results.** A stop that
   landed after the model's calls were decided and before they ran left the turn resting with them
   still to run, and a message typed during the turn went in between the calls and their results, a
