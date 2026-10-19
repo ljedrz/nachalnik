@@ -319,6 +319,10 @@ impl Content {
     /// Truncates as [`Content::truncate_to`] does, except that a picture of at most `pictures`
     /// bytes is kept whole and not measured against `limit`: only the text around it is cut.
     ///
+    /// note: "picture" here is any [`Blob`], whatever its media type. A tool's pictures are what
+    /// this is for, but any blob is kept the same way, because half of one is nothing either. A
+    /// dialect that cannot send a blob of some type names it in the request.
+    ///
     /// note: for a tool that returns a picture beside text, as an MCP server's screenshot tool
     /// does. Measured with the rest, a picture exceeds any limit for text, and
     /// [`Content::truncate_to`] would replace it with a sentence naming it, so the model would
