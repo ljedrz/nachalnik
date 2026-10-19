@@ -1767,6 +1767,80 @@ async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too()
     assert!(result < question, "{after:?}");
 }
 
+/// A message sent into a turn that is stopped with its calls decided and not yet run waits for
+/// their results too.
+///
+/// note: a turn stopped there rests in `Ready`, which is not an end: the calls still have results
+/// to come, and they run at the next step whatever is pushed first. It was taken for one, and the
+/// message went in between the calls and their results.
+#[tokio::test]
+async fn a_message_sent_into_a_turn_stopped_before_its_calls_ran_waits_for_them() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug"),
+        ModelResponse::text("Lima"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.policy.set(
+        &Subject::Capability(Capability::exec("run")),
+        Verdict::Allow,
+    );
+
+    // one transition, to the calls decided and not run
+    harness.send("/step dig").await;
+    harness.settle().await;
+    assert!(
+        matches!(harness.app.kernel.state(), nachalnik::State::Ready { .. }),
+        "{:?}",
+        harness.app.kernel.state()
+    );
+
+    // the rest of the turn, a message typed into it, and the turn stopped before it got going
+    harness.send("/continue").await;
+    harness.send("what is the capital of Peru").await;
+    harness.send("/stop").await;
+    harness.settle().await;
+    assert!(
+        matches!(harness.app.kernel.state(), nachalnik::State::Ready { .. }),
+        "the stop was spent with the calls still to run: {:?}",
+        harness.app.kernel.state()
+    );
+
+    let items: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert!(
+        !items.iter().any(|text| text.contains("capital of Peru")),
+        "{items:?}"
+    );
+
+    // and it goes in once the calls have their results
+    harness.send("/continue").await;
+    harness.settle().await;
+    let after: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    let question = after
+        .iter()
+        .position(|text| text.contains("capital of Peru"))
+        .expect("it went in once the calls had run");
+    let result = after
+        .iter()
+        .position(|text| text.contains("a bone"))
+        .expect("the call's result");
+    assert!(result < question, "{after:?}");
+}
+
 /// The whole of why a question is pinned rather than laid over the screen: it is a question about
 /// something, and the something is on another tab.
 ///
