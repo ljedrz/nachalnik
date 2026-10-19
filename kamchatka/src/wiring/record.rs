@@ -211,6 +211,12 @@ impl Recorder {
     }
 
     fn append_into(kept: &mut Kept, kernel: &Kernel) -> Result<(), String> {
+        // note: one number read before the log is searched, for the reason `connection::flush`
+        // gives: this runs on every event, every streamed fragment among them, and the search
+        // takes the lock every emit waits on to find, nearly always, nothing
+        if kernel.last_seq() <= kept.written {
+            return Ok(());
+        }
         Self::write_all(kept, kernel.history_since(kept.written).iter())
     }
 

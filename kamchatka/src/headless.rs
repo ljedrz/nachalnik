@@ -736,6 +736,10 @@ impl<'a> Headless<'a> {
 
     /// Writes out every record the session has grown since the last time.
     fn flush(&mut self, app: &App, written: &mut u64) -> Result<(), String> {
+        // nothing new, which is most events: see `Recorder::append_into`
+        if app.kernel.last_seq() <= *written {
+            return Ok(());
+        }
         for record in app.kernel.history_since(*written) {
             let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
             writeln!(self.records, "{line}").map_err(|e| e.to_string())?;

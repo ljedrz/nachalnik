@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Writing the record no longer searches the log on every streamed fragment.** The session record
+  and a headless run's records looked for new records on every event, under the lock every event
+  waits on, and nearly always found none. They read the log's last number first now, as a served
+  connection already did.
 - **A box open over the screen is not folded again on every frame.** `/request`, `/payload` and the
   other boxes folded their whole text to the window on each key and tick, which for a long session's
   request took most of a frame while somebody scrolled it. The folded text is kept while the words
