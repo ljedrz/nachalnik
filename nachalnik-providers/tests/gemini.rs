@@ -874,6 +874,23 @@ async fn a_turn_that_ran_out_of_room_says_so_beside_its_call() {
     assert_eq!(response.calls().count(), 1, "and the call is still there");
 }
 
+/// A turn a safety filter stopped says so, even when it asked for a tool first.
+///
+/// note: as with running out of room above, the call runs from the blocks either way; `ToolUse`
+/// hid the refusal, which is said nowhere else.
+#[tokio::test]
+async fn a_turn_a_filter_stopped_says_so_beside_its_call() {
+    let response = answered(concat!(
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":",
+        "{\"name\":\"read\",\"args\":{}}}]},",
+        "\"finishReason\":\"SAFETY\"}]}\n\n",
+    ))
+    .await;
+
+    assert_eq!(response.stop, StopReason::Refusal);
+    assert_eq!(response.calls().count(), 1, "and the call is still there");
+}
+
 /// A turn stopped after it asked for a tool says it was stopped.
 ///
 /// note: the call is in the blocks and is decided on from there either way; `ToolUse` would hide

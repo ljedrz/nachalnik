@@ -763,9 +763,10 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
             // ahead of `asked` too: running out of room is reported nowhere else either, and the
             // OpenAI dialect reports it as `Length` whether or not the turn asked for anything
             Some("MAX_TOKENS") => StopReason::Length,
+            // and a filter's refusal, as the Responses dialect puts `content_filter` ahead
+            Some("SAFETY" | "PROHIBITED_CONTENT" | "BLOCKLIST" | "SPII") => StopReason::Refusal,
             _ if asked => StopReason::ToolUse,
             Some("STOP") => StopReason::EndTurn,
-            Some("SAFETY" | "PROHIBITED_CONTENT" | "BLOCKLIST" | "SPII") => StopReason::Refusal,
             Some(other) => StopReason::Other(other.to_lowercase()),
             None => StopReason::Other("unreported".to_owned()),
         },

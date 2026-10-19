@@ -12,6 +12,8 @@ minor bump may break you.
 - **A Responses stream that numbers none of its items no longer says each one twice.** An
   `output_item.done` without an `output_index` was filed as one more item rather than as the one
   its `output_item.added` opened, so a message streamed that way came back with its text repeated.
+- **A Gemini turn stopped by a safety filter after it asked for a tool is a refusal.** It was
+  reported as `ToolUse`, so nothing said the filter had stopped it. The call is still in the turn.
 
 ## [0.10.1] - 2026-10-18
 
