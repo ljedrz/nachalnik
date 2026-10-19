@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A long session's chat no longer rewraps every line on every frame.** Only the model's answers
+  were kept from one frame to the next; every turn's reasoning, every message and every result was
+  wrapped again on each key and each tick, which in a long session with a reasoning model took most
+  of the frame. Every line's rows are kept now, by how they were drawn and from what words.
 - **A turn that ends as the wait for it runs out is taken in, not said to have been left.** Leaving
   a session waits a while for a running turn to stop, and where the turn's end arrived at the moment
   the wait ran out, either could be taken: the session then said the turn had been left, and a turn
