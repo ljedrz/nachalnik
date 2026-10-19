@@ -815,11 +815,12 @@ impl Tool for Shell {
         if held {
             collecting_stderr.abort();
         }
-        let (mut errors, mut dropped) = {
+        let (mut errors, mut dropped, read) = {
             let heard = heard.lock().expect("nothing panics holding it");
             (
                 String::from_utf8_lossy(&heard.0).into_owned(),
                 dropped + heard.1,
+                heard.0.clone(),
             )
         };
         // held to the ceiling as it is kept, for the reason standard output is: the bytes were
@@ -829,7 +830,7 @@ impl Tool for Shell {
             while !errors.is_char_boundary(cut) {
                 cut -= 1;
             }
-            dropped += errors.len() - cut;
+            dropped += read.len() - read_into(&read, cut);
             errors.truncate(cut);
         }
         if held && !interrupted {
@@ -1216,7 +1217,7 @@ fn keep(
             cut -= 1;
         }
         *full = true;
-        *dropped += line.len().saturating_sub(cut);
+        *dropped += line.len() - read_into(line, cut);
         if cut == 0 {
             return;
         }
@@ -1225,6 +1226,33 @@ fn keep(
     output.push(format!("{text}\n"));
     collected.push_str(text);
     collected.push('\n');
+}
+
+/// How many of the bytes read went into the first `text` bytes of their lossy text.
+///
+/// note: what is not UTF-8 grows on the way to text, each run of it becoming the three bytes of
+/// `�`, so a cut in the text is not a cut at the same place in what was read. The count of bytes
+/// not kept is of what the command wrote, and a run of bytes that are not text counted at three
+/// times their size was reported as more output than there had been.
+fn read_into(read: &[u8], text: usize) -> usize {
+    let (mut left, mut taken) = (text, 0);
+    for chunk in read.utf8_chunks() {
+        let valid = chunk.valid().len().min(left);
+        (left, taken) = (left - valid, taken + valid);
+        if valid < chunk.valid().len() || chunk.invalid().is_empty() {
+            if left == 0 {
+                break;
+            }
+            continue;
+        }
+        if left < char::REPLACEMENT_CHARACTER.len_utf8() {
+            break;
+        }
+        left -= char::REPLACEMENT_CHARACTER.len_utf8();
+        taken += chunk.invalid().len();
+    }
+
+    taken
 }
 
 /// Removes the program's keys from `command`'s environment, and an address with a password in it,
@@ -1631,7 +1659,7 @@ mod tests {
     }
 
     /// Standard error that is not text is held to the ceiling as text, cut where a character
-    /// ends, and every byte of it is either kept or counted.
+    /// ends, and every byte the command wrote is either kept or counted.
     ///
     /// note: held to the ceiling as bytes while it is read, standard error grows on the way to
     /// text - a byte that is not UTF-8 is the three of `�` - so it is held to it again there, and
@@ -1647,10 +1675,52 @@ mod tests {
             .unwrap_or_else(|| panic!("no standard error: {}", &said[..200]));
         assert!(errors.len() <= KEPT, "{} bytes kept", errors.len());
         let unkept = said.lines().nth(1).unwrap_or_default();
+        // and what was not kept is counted in the bytes the command wrote, a third of the text
+        // each of these became
         assert!(
-            unkept.starts_with(&format!("[{} more bytes", 3 * KEPT - errors.len())),
+            unkept.starts_with(&format!("[{} more bytes", KEPT - errors.len() / 3)),
             "{unkept}"
         );
+    }
+
+    /// Standard output that is not text is counted as standard error is: in the bytes written.
+    #[tokio::test]
+    async fn standard_output_that_is_not_text_is_counted_in_bytes_written() {
+        let said = ran(&format!("head -c {KEPT} /dev/zero | tr '\\0' '\\377'")).await;
+
+        let output = said
+            .split_once("--- stdout ---\n")
+            .map(|(_, output)| output.trim_end_matches('\n'))
+            .unwrap_or_else(|| panic!("no standard output: {}", &said[..200]));
+        let kept = output
+            .chars()
+            .filter(|c| *c == char::REPLACEMENT_CHARACTER)
+            .count();
+        assert!(kept > 0, "{}", &said[..200]);
+        let unkept = said
+            .lines()
+            .find(|line| line.contains("not kept"))
+            .unwrap_or_default();
+        assert!(
+            unkept.starts_with(&format!("[{} more bytes", KEPT - kept)),
+            "{unkept}"
+        );
+    }
+
+    /// A cut in the text is taken back to the bytes it came from, a run that is not text being
+    /// the three bytes of `�` there and however many it was here.
+    #[test]
+    fn a_cut_in_the_text_is_a_count_of_bytes_read() {
+        let read = b"ab\xff\xfecd";
+        // "ab", a `�` for each of the two bytes that are not text, then "cd": ten bytes of text
+        assert_eq!(String::from_utf8_lossy(read).len(), 10);
+        assert_eq!(read_into(read, 0), 0);
+        assert_eq!(read_into(read, 2), 2);
+        assert_eq!(read_into(read, 4), 2, "half a replacement is none of it");
+        assert_eq!(read_into(read, 5), 3);
+        assert_eq!(read_into(read, 8), 4);
+        assert_eq!(read_into(read, 10), 6);
+        assert_eq!(read_into("zażółć".as_bytes(), 3), 3);
     }
 
     /// What a command said went wrong comes before what it printed, where a limit cutting from the

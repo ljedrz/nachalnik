@@ -30,6 +30,10 @@ minor bump may break you.
   One refused path the session could reach, such as `/etc/shadow`, silenced the note for every
   other refusal in the same output, including one that named no path and may have been the
   confinement. Each line that names no path is judged on its own now.
+- **`shell` counts the output it did not keep in the bytes the command wrote.** Output that is not
+  UTF-8 grows threefold on the way to text, and the count of what was not kept was taken from the
+  text, so a command writing such bytes was said to have written more than it did. Both streams
+  count what was read now.
 
 ## [0.21.0] - 2026-10-18
 
