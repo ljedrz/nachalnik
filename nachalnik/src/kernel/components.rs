@@ -305,7 +305,8 @@ impl Kernel {
 
     /// Sets the maximum size of a picture in a tool's output that is kept whole beside text cut to
     /// the output limit, returning the previous value; `None`, the default, measures the picture
-    /// with the rest of the output, so a picture over the limit is named instead.
+    /// with the rest of the output, so a picture over the limit is named instead. Any blob counts
+    /// as a picture here, whatever its media type.
     ///
     /// note: an output limit is bytes the model reads, and a picture is not read by the byte. An
     /// MCP screenshot is a few megabytes of base64, over any text limit, so without this the model
