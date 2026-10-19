@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A command does not inherit the request for the sandbox's report.**
+  `KAMCHATKA_REPORT_CONFINEMENT` asks the confined child to say how much of the sandbox took, for
+  the start-up probe. Exported in the person's environment, it reached every command, and the report
+  went into the standard error the model reads. The `shell` tool takes it out of a command's
+  environment now.
 - **A command is not told a served session's ports are closed to it where they are not.** Below
   Linux 6.7 Landlock cannot close a TCP port, and a command was still described as having the ports
   a session is served on closed to it. They are named only where the kernel can close them now.

@@ -620,8 +620,9 @@ const REPORT: &str = "kamchatka-confinement:";
 ///
 /// note: that line is asked for rather than always written, because a confined command's standard
 /// error is collected and put in front of the model. A line of this program's own bookkeeping there
-/// is context nobody added on purpose, counted against the budget and read by the model.
-const REPORT_VAR: &str = "KAMCHATKA_REPORT_CONFINEMENT";
+/// is context nobody added on purpose, counted against the budget and read by the model. So the
+/// `shell` tool takes it out of a command's environment, where somebody exported it.
+pub(crate) const REPORT_VAR: &str = "KAMCHATKA_REPORT_CONFINEMENT";
 
 /// Confines this process and runs the command, if this program was asked to; returns the exit
 /// code it should leave with.

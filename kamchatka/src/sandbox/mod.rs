@@ -65,6 +65,7 @@ use crate::tools::{Careful, Subject};
 mod confinement;
 mod reach;
 
+pub(crate) use confinement::REPORT_VAR;
 pub use confinement::{
     Confinement, Probed, Scratch, available, confine, confine_saying, confines_abstract_sockets,
     confines_signals, confines_tcp, confines_unix_sockets, make_scratch, run_if_asked,

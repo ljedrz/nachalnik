@@ -1277,7 +1277,8 @@ fn read_into(read: &[u8], text: usize) -> usize {
 }
 
 /// Removes the program's keys from `command`'s environment, and an address with a password in it,
-/// as `value` reads each variable.
+/// as `value` reads each variable - and the variable that asks the confined child for its report,
+/// which is for the start-up probe and would put the report in front of the model.
 ///
 /// note: an address is read as `endpoint::address_in` reads it, with what is not text replaced,
 /// since non-text is still in the environment the command inherits. Read with `env::var`, which
@@ -1289,6 +1290,7 @@ fn scrub(
     for key in crate::endpoint::KEYS {
         command.env_remove(key);
     }
+    command.env_remove(crate::sandbox::REPORT_VAR);
     for address in crate::endpoint::ADDRESSES {
         if value(address)
             .is_some_and(|url| crate::endpoint::has_credentials(&url.to_string_lossy()))
@@ -1331,6 +1333,23 @@ mod tests {
         for key in crate::endpoint::KEYS {
             assert!(removed.iter().any(|name| name == key), "{key}: {removed:?}");
         }
+    }
+
+    /// The variable that asks the confined child to report on its confinement is kept from a
+    /// command, so a person who exported it does not get the report in front of the model.
+    #[test]
+    fn the_request_for_a_confinement_report_is_kept_from_a_command() {
+        let mut command = tokio::process::Command::new("true");
+        scrub(&mut command, |_| None);
+
+        assert!(
+            command
+                .as_std()
+                .get_envs()
+                .any(|(name, value)| name == crate::sandbox::REPORT_VAR && value.is_none()),
+            "{:?}",
+            command.as_std().get_envs().collect::<Vec<_>>()
+        );
     }
 
     /// What no command of this session started is left alone at its end - a process of this user's
