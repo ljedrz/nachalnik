@@ -249,8 +249,11 @@ impl Rate {
     /// every request it allows in the window's first instant and then sitting out the rest, which
     /// is the burst an endpoint's own limiter rejects. Spacing keeps under the limit at every
     /// moment, not only on average.
+    ///
+    /// note: an allowance past what a `u32` holds divides as the largest one does. Cast, it wrapped:
+    /// `2^32` was a division by zero and `2^32 + 1` a spacing of the whole window.
     fn spacing(&self) -> Duration {
-        self.window / self.allowed as u32
+        self.window / u32::try_from(self.allowed).unwrap_or(u32::MAX)
     }
 
     /// Waits until letting one more through would break neither the window nor the spacing, then
