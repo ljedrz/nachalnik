@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A command is not told a served session's ports are closed to it where they are not.** Below
+  Linux 6.7 Landlock cannot close a TCP port, and a command was still described as having the ports
+  a session is served on closed to it. They are named only where the kernel can close them now.
 - **The events queued ahead of a turn's end are all taken in before it, past a lag.** Every loop
   reads the events still queued when a turn ends before the end itself, and stopped at the first
   sign the queue had dropped some: the events after it came in after the turn's end, out of order,
