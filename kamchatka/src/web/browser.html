@@ -496,9 +496,19 @@ function grown(el) {
  * note: no highlighting in a fenced block, which the terminal does with a highlighter this page
  * has no copy of; the block keeps the rule down its left. An unterminated fence runs to the end,
  * because every block is unterminated for as long as it is still arriving.
+ *
+ * note: quotes and list items nest by calling this again, so past `DEEPEST` levels the rest is
+ * drawn as it was written. A few thousand `> ` in one line - a few kilobytes a model can be handed
+ * by anything it reads - ran out of stack, and since a whole conversation is drawn when the page
+ * attaches, the error stopped the drawing there, before a waiting question was shown.
  */
-function markdown(text) {
+const DEEPEST = 32;
+function markdown(text, depth = 0) {
   const out = document.createDocumentFragment();
+  if (depth > DEEPEST) {
+    out.append(document.createTextNode(text));
+    return out;
+  }
   const lines = text.split("\n");
   const fence = (l) => l.match(/^ {0,3}(`{3,}|~{3,})\s*([^`\s]*)/);
   const heading = (l) => l.match(/^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/);
@@ -549,7 +559,7 @@ function markdown(text) {
       const body = [];
       while (at < lines.length && quote(lines[at])) body.push(lines[at++].replace(/^ {0,3}> ?/, ""));
       const el = document.createElement("blockquote");
-      el.append(markdown(body.join("\n")));
+      el.append(markdown(body.join("\n"), depth + 1));
       out.append(el);
       continue;
     }
@@ -602,7 +612,7 @@ function markdown(text) {
           body.push(deeper ? next.slice(Math.min(next.match(/^\s*/)[0].length, indent + here[2].length + 1)) : next);
         }
         const li = document.createElement("li");
-        li.append(markdown(body.join("\n")));
+        li.append(markdown(body.join("\n"), depth + 1));
         // a single paragraph in an item is the item, not a paragraph inside one
         if (li.childNodes.length === 1 && li.firstChild.nodeName === "P") {
           li.replaceChildren(...li.firstChild.childNodes);
