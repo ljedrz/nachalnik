@@ -21,6 +21,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   That changes what a root that does not exist yet means, since one made later would never be
   granted, and refusing nested roots outright is the other choice. Unblocked by deciding which.
 
+- **A hard link to a protected file is read under its other name without a question.** Path rules
+  match the name a tool is given, and a hard link has no target to follow, so `alias` sharing
+  `.env`'s inode reads as an ordinary file. Catching it means finding a file's other names, which
+  only a walk of what the session reaches can do, on every read of a file with more than one link;
+  a build directory is full of them. It waits on choosing between that walk, refusing every file
+  with more than one link under a path rule, or leaving it as SECURITY.md describes.
+
 - **A turn recorded by another dialect goes to Gemini with its thinking unsigned.** A turn kept as
   `content` and `reasoning` rather than as blocks, which is how the OpenAI dialects record one, is
   sent to Gemini as a `thought: true` part with no `thoughtSignature`, and its calls without one
