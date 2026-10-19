@@ -30,7 +30,7 @@ pub(super) fn taken(args: &Value) -> Result<Option<usize>, String> {
             "`take` is a whole number of lines and this one is `{}`. Nothing was read, rather \
              than nothing being found: leave it out for the count and the price, which is what \
              `take: 0` asks for too.",
-            args["take"]
+            crate::tools::quoted(&args["take"])
         )),
     }
 }
