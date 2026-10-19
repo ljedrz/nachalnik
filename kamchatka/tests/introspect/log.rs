@@ -849,7 +849,7 @@ async fn a_resumed_log_reads_the_session_before_it_as_one_log() {
         Limits::default(),
         kamchatka::tools::Layout::Wrapped,
     );
-    anchor.earlier().read(&state);
+    anchor.earlier().read(&state, None);
     let _ = std::fs::remove_dir_all(&dir);
     kernel.push(ContextItem::user("and now?"));
 
@@ -934,7 +934,7 @@ async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it()
         kamchatka::tools::Layout::Wrapped,
     );
     assert_eq!(
-        anchor.earlier().read(&state),
+        anchor.earlier().read(&state, None),
         2,
         "two records past the snapshot"
     );

@@ -270,7 +270,11 @@ impl Earlier {
     /// leaves a log that runs past its snapshot, and those records are not this session's: what
     /// they did is not in it, and the kernel numbers on from the snapshot, so the next record here
     /// would share a number with one of them.
-    pub fn read(&self, state: &Path) -> usize {
+    ///
+    /// note: where the snapshot ends is read from it, and `resumed` is for when it cannot be: where
+    /// the caller's kernel numbers on from. Where neither says, nothing is read. Taken as no end at
+    /// all, the records past a snapshot that could not be read came in as this session's.
+    pub fn read(&self, state: &Path, resumed: Option<u64>) -> usize {
         /// The one field of the snapshot this needs, read without the rest of it.
         #[derive(Deserialize)]
         struct Taken {
@@ -284,10 +288,14 @@ impl Earlier {
         let Ok(log) = std::fs::File::open(state.with_extension("jsonl")) else {
             return 0;
         };
-        let taken = std::fs::File::open(state)
+        let Some(taken) = std::fs::File::open(state)
             .ok()
             .and_then(|file| serde_json::from_reader::<_, Taken>(BufReader::new(file)).ok())
-            .map_or(u64::MAX, |taken| taken.last_seq);
+            .map(|taken| taken.last_seq)
+            .or(resumed)
+        else {
+            return 0;
+        };
 
         let (mut records, mut past) = (Vec::new(), 0);
         for line in BufReader::new(log).lines().map_while(Result::ok) {

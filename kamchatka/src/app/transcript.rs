@@ -595,7 +595,14 @@ impl App {
     ///
     /// [`Earlier::read`]: crate::wiring::Earlier::read
     pub fn recall(&mut self, state: &Path) -> usize {
-        let past = self.earlier.read(state);
+        // the record `Kernel::resume` begins with is numbered one past where it numbers on from,
+        // for when the snapshot beside the log cannot be read again
+        let resumed = self.kernel.with_history(|log| {
+            log.records()
+                .find(|record| matches!(record.event, Event::SessionResumed { .. }))
+                .map(|record| record.seq.saturating_sub(1))
+        });
+        let past = self.earlier.read(state, resumed);
         if past > 0 {
             self.say(
                 Speaker::Note,

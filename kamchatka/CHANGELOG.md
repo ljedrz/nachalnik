@@ -54,7 +54,12 @@ minor bump may break you.
   `yes` ran a call the policy now refused. The call is refused instead, and the session says why.
 - **The session record is not written where somebody else could move its directory.** The
   directory was checked once and then written into by name. In a temporary directory where others
-  can rename things, somebody could put a directory of their own at that name after the check. Recording is refused there now, and says to set `TMPDIR` or use `--no-record`.
+  can rename things, somebody could put a directory of their own at that name after the check.
+  Recording is refused there now, and says to set `TMPDIR` or use `--no-record`.
+- **A log that runs past a snapshot that can no longer be read is still cut where it should be.**
+  On a resume the log beside the snapshot is read up to where the snapshot ends, read from the
+  snapshot file again. A file that would not parse was taken as no end, and every record past it
+  came in as this session's. Where the session numbers on from is used instead.
 
 ## [0.21.0] - 2026-10-18
 
