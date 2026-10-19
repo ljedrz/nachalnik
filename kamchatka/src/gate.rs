@@ -463,26 +463,26 @@ impl Listener {
         // SAFETY: an all-zero `seccomp_notif` is a valid value of it - integers throughout -
         // and it is what the kernel requires to be handed.
         let mut notif: libc::seccomp_notif = unsafe { std::mem::zeroed() };
-        // SAFETY: `RECV` writes one `seccomp_notif` through the pointer, which is to a local
-        // of exactly that type; the descriptor is a listener this owns, polled readable just
-        // now, so the call does not wait.
-        let done = unsafe {
-            libc::ioctl(
-                self.0.as_raw_fd(),
-                libc::SECCOMP_IOCTL_NOTIF_RECV,
-                &mut notif as *mut libc::seccomp_notif,
-            )
-        };
-        match done {
-            0 => Ok(Attempt(notif.id)),
-            _ => Err(io::Error::last_os_error()),
-        }
+        again(|| {
+            // SAFETY: `RECV` writes one `seccomp_notif` through the pointer, which is to a local
+            // of exactly that type; the descriptor is a listener this owns, polled readable just
+            // now, so the call does not wait.
+            unsafe {
+                libc::ioctl(
+                    self.0.as_raw_fd(),
+                    libc::SECCOMP_IOCTL_NOTIF_RECV,
+                    &mut notif as *mut libc::seccomp_notif,
+                )
+            }
+        })?;
+        Ok(Attempt(notif.id))
     }
 
     /// Lets the attempt through, or refuses it with `EACCES`.
     ///
-    /// note: a failure is not reported. The only failure is `ENOENT`: the process was killed while
-    /// waiting, most often by a stopped call, so nobody is left to answer.
+    /// note: a failure is not reported. The only failure left once `again` has seen to `EINTR` is
+    /// `ENOENT`: the process was killed while waiting, most often by a stopped call, so nobody is
+    /// left to answer.
     pub fn answer(&self, attempt: Attempt, allow: bool) {
         let response = libc::seccomp_notif_resp {
             id: attempt.0,
@@ -496,15 +496,36 @@ impl Listener {
                 false => 0,
             },
         };
-        // SAFETY: `SEND` reads one `seccomp_notif_resp` through the pointer, which is to a
-        // local of exactly that type; the descriptor is a listener this owns.
-        let _ = unsafe {
-            libc::ioctl(
-                self.0.as_raw_fd(),
-                libc::SECCOMP_IOCTL_NOTIF_SEND,
-                &response as *const libc::seccomp_notif_resp,
-            )
-        };
+        let _ = again(|| {
+            // SAFETY: `SEND` reads one `seccomp_notif_resp` through the pointer, which is to a
+            // local of exactly that type; the descriptor is a listener this owns.
+            unsafe {
+                libc::ioctl(
+                    self.0.as_raw_fd(),
+                    libc::SECCOMP_IOCTL_NOTIF_SEND,
+                    &response as *const libc::seccomp_notif_resp,
+                )
+            }
+        });
+    }
+}
+
+/// Makes a call on the listener, again for as long as a signal interrupts it.
+///
+/// note: the kernel takes the listener's lock interruptibly for `RECV` and `SEND` alike and hands
+/// back `EINTR`, which `SA_RESTART` does not restart, while another of the command's processes
+/// holds that lock to be held itself. A receive given up on dropped the listener, as a look given
+/// up on did. A send given up on left the attempt held with nobody to answer it, and its command
+/// stuck in `socket()` until the call was stopped.
+fn again(mut call: impl FnMut() -> libc::c_int) -> io::Result<()> {
+    loop {
+        if call() == 0 {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
     }
 }
 #[cfg(test)]
@@ -628,6 +649,37 @@ mod tests {
                 HELD
             );
         }
+    }
+
+    /// A call on the listener that a signal interrupted is made again, and any other failure is
+    /// handed back.
+    #[test]
+    fn a_call_a_signal_interrupted_is_made_again() {
+        let failing = |errno: libc::c_int| {
+            // SAFETY: `__errno_location` points at this thread's `errno`, which is an `int`
+            // nothing else is reading while this writes it.
+            unsafe { *libc::__errno_location() = errno };
+            -1
+        };
+
+        let mut calls = 0;
+        let made = again(|| {
+            calls += 1;
+            match calls {
+                1 | 2 => failing(libc::EINTR),
+                _ => 0,
+            }
+        });
+        assert!(made.is_ok());
+        assert_eq!(calls, 3);
+
+        let mut calls = 0;
+        let made = again(|| {
+            calls += 1;
+            failing(libc::ENOENT)
+        });
+        assert_eq!(made.map_err(|e| e.raw_os_error()), Err(Some(libc::ENOENT)));
+        assert_eq!(calls, 1);
     }
 
     /// A family with a high bit set is the family the kernel reads.

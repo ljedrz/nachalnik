@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A command whose network attempt was answered under a signal is not left waiting.** The
+  answer to a held `socket()` call, and the receive before it, give up with `EINTR` when a signal
+  lands while another of the command's processes is being held. A lost answer left the command
+  stuck until the call was stopped, and a lost receive made every later attempt fail as though
+  the kernel had no sockets. Both are made again now.
 - **The network gate holds `socketpair` as it holds `socket`.** A sandboxed command could make a
   pair of sockets of any family without being held. Most families refuse to make a pair, but
   `AF_TIPC` makes one, and a TIPC socket sends to any TIPC address, another machine's included.
