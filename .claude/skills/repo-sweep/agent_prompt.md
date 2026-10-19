@@ -24,13 +24,14 @@ VERIFY EACH FINDING
 - Classify REAL / OVERSTATED / WRONG with file:line and one sentence of why.
 - A finding contradicting a documented decision is WRONG: check AGENTS.md, INVARIANTS.md, SECURITY.md, POSTPONED.md, CONTRIBUTING.md and the `note:` comments near the code. Tests that pin behaviour on purpose count as documentation.
 - Performance findings are only REAL if the cost is on a real hot path at a realistic size; micro-optimisations nobody would measure are OVERSTATED. Skip taste nits.
-- Findings that need a design decision (API break, behaviour change a person should choose) are DECISION, with the options. So is a real defect whose fix costs more than the defect does: a wider public API, a new dependency, or a behaviour change for an input nobody sends.
+- Findings that need a design decision (API break, behaviour change a person should choose) are DECISION, with the options. So is a real defect whose only fix widens the public API or adds a dependency.
+- A REAL defect is fixed however narrow its window. "Only within a few bytes of the limit", "needs two syscalls to fail in a row" and "rare in practice" are not reasons to leave it: two of the workspace's own pieces disagreeing at an exact limit, or a failure dropped on an error path, is a bug. Fix it at the end that measures or handles the wrong thing.
 - Reject these thoughts in both directions. "This pattern is dangerous, so it is a bug", "this is clearly high severity" and "a similar spot elsewhere was a bug" are not evidence: models see bugs where there are none and rate them too high. "Nothing calls it that way", "the input is validated upstream" and "only one thread touches it" are not evidence either until you have found the caller, the check or the thread.
 
 VARIANTS
 For each REAL finding, look for the same root cause elsewhere in the workspace, not only in the sweep's scope: the same mistake rarely happens once. State the root cause (why the code is wrong, not what it does), grep for the exact pattern of this instance and check it matches it, then widen the pattern one element at a time, reading what each step matches, and stop when most of the matches are noise. A variant in code your fix already touches goes in the same patch; any other is a finding like the rest, verified the same way, and listed as VARIANT in your report.
 
-FOR EACH REAL FINDING WORTH FIXING, prepare a patch following the repo's conventions (AGENTS.md, CONTRIBUTING.md):
+FOR EACH REAL FINDING, prepare a patch following the repo's conventions (AGENTS.md, CONTRIBUTING.md):
 - match the surrounding code's style and comment density; `note:` paragraphs explain why, plainly, no story of how the bug was found, no souvenir numbers;
 - a behaviour fix comes with a test that FAILS without the fix: check by reverting just the source and running the test (mutation check), and report that you did. It must fail on its assertion, not fail to build: where the fix adds something the test calls, revert only the lines that change the behaviour;
 - look for an existing test first and extend it where natural;
