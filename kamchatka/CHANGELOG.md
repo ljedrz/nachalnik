@@ -26,6 +26,10 @@ minor bump may break you.
   none of them run, `/note`, `/attach` and a typed message went into the context between the calls
   and their results, a shape most APIs refuse. They wait or are refused there now, as they are
   while a turn runs or a question is open.
+- **A permission error that names no path is said to maybe be the sandbox, whatever else failed.**
+  One refused path the session could reach, such as `/etc/shadow`, silenced the note for every
+  other refusal in the same output, including one that named no path and may have been the
+  confinement. Each line that names no path is judged on its own now.
 
 ## [0.21.0] - 2026-10-18
 

@@ -1024,6 +1024,16 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         .expect("something was refused");
     assert!(note.contains("confined"), "{note}");
 
+    // and still where another line names a path refused by its own permissions: that line says
+    // nothing about this one, which may have been the boundary
+    let note = confined
+        .note_for(
+            "cat: /etc/shadow: Permission denied\n\
+             bind: Permission denied\n",
+        )
+        .expect("the line naming no path may have been the confinement");
+    assert!(note.contains("confined"), "{note}");
+
     // ... and a path that has been opened up is not the confinement either. A real directory,
     // because a root that is not there is not one this opens up - the same answer `Reach::allows`
     // gives, and for the same reason - and a real file its own permissions refuse, since a file

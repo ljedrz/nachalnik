@@ -396,6 +396,12 @@ impl Sandbox {
         // of work after the command ended, with nothing to interrupt it. Stopped short with nothing
         // named, it says the general sentence, since saying nothing would call every refusal after
         // the last one judged the file's own
+        //
+        // note: a line naming no path is judged on its own. A path elsewhere in the output that was
+        // refused by its own permissions says nothing about it, so it still gets the general
+        // sentence: counted for the whole output, one `/etc/shadow` silenced a refusal beside it
+        // that may have been the boundary
+        let pathless = refusals.iter().any(|line| paths_in(line).is_empty());
         let (mut named, mut mentioned): (Vec<(String, Why)>, bool) = (Vec::new(), false);
         let (mut judged, mut stopped) = (std::collections::HashSet::new(), false);
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
@@ -433,7 +439,7 @@ impl Sandbox {
                 .collect()
         };
         let (sockets, read_only, outside) = (of(Why::Socket), of(Why::ReadOnly), of(Why::Outside));
-        match (named.is_empty(), !mentioned || stopped) {
+        match (named.is_empty(), !mentioned || stopped || pathless) {
             // every path it named is one this reaches, so the refusal is the file's own
             (true, false) => None,
             (true, true) => Some(format!(
