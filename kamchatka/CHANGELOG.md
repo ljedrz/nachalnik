@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **`--serve` says when a socket it could not make private is left behind.** If the socket's
+  permissions could not be set to `0600`, it was removed and the error said so, but a failed removal
+  was dropped. The socket then stayed with the umask's permissions while the error said nothing of
+  it. The error now says it is still there and has to be removed.
+
 ## [0.21.0] - 2026-10-18
 
 ### breaking
