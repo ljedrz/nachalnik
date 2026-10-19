@@ -1611,6 +1611,9 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
         serde_json::json!({ "seq": seq + 3, "at": 0, "event": {
             "event": "permission.decided", "id": permission, "call": "lost", "tool": "fs",
             "grant": "allow", "source": "policy" } }),
+        // a call to a tool nobody has, which is answered without ever being requested
+        serde_json::json!({ "seq": seq + 4, "at": 0, "event": {
+            "event": "tool.unknown", "call": "lost-unknown", "tool": "nope" } }),
     ];
     let mut log = std::fs::read_to_string(dir.join("first.jsonl")).expect("saved");
     for record in tail {
@@ -1620,7 +1623,7 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
 
     let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
     assert!(ok, "{said}");
-    assert!(said.contains("runs 3 records past it"), "{said}");
+    assert!(said.contains("runs 4 records past it"), "{said}");
 
     let second: nachalnik::Snapshot =
         serde_json::from_str(&std::fs::read_to_string(dir.join("second.json")).expect("saved"))
@@ -1634,6 +1637,14 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
     assert!(
         second.used_calls.iter().any(|call| call.0 == "lost"),
         "{:?}",
+        second.used_calls
+    );
+    assert!(
+        second
+            .used_calls
+            .iter()
+            .any(|call| call.0 == "lost-unknown"),
+        "a call the tool was unknown for is spoken for too: {:?}",
         second.used_calls
     );
     // the second record begins with the first session's, up to its snapshot and not the tail the

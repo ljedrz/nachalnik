@@ -919,8 +919,18 @@ fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path)
                 snapshot.next_item = snapshot.next_item.max(id.0 + 1);
                 None
             }
-            Event::ToolRequested { call, .. } | Event::ToolCallRepaired { call, .. } => {
+            // note: every event that names a call, not only the one that runs it. A call to a tool
+            // nobody has, or with arguments that did not parse, is answered without being requested,
+            // and its identifier is spoken for all the same
+            Event::ToolRequested { call, .. }
+            | Event::ToolCallRepaired { call, .. }
+            | Event::ToolUnknown { call, .. }
+            | Event::ToolUnparsed { call, .. } => {
                 snapshot.used_calls.push(call);
+                None
+            }
+            Event::ModelFinished { tool_calls, .. } => {
+                snapshot.used_calls.extend(tool_calls);
                 None
             }
             Event::PermissionRequested { request } => Some(request.id),
