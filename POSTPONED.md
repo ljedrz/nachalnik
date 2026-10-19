@@ -158,3 +158,13 @@ don't know, and `Attached::version` tells them what the server speaks.
   running may still be swapping names for links, so it needs `chmod`s relative to a held
   directory that never follow a link. Unblocked by writing that walk, or by deciding a report of
   what was left is enough.
+
+- **`--connect` writes the session's records from where it attached, not from the start.** A
+  client's standard output is documented as the whole log, the bytes `/save` writes. It writes
+  records live as they stream, and fetches the ones from before it attached only when it detaches,
+  from a mark that every streamed record moves. So a client that saw any record stream -
+  `printf 'question\n' | kamchatka --connect` against a session with history - writes the new
+  turn's records and never the history before them. Writing the log in order and in full means
+  either holding streamed records back until the history has arrived, so a watching client writes
+  nothing live, or fetching the history on every attach, which the client avoids on purpose for
+  somebody watching. Unblocked by choosing which.
