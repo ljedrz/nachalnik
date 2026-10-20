@@ -22,13 +22,20 @@ impl App {
         // has them if `record_progress` is on
         match &event {
             Event::ModelDelta { .. } => {}
-            Event::ToolOutput { tool, chunk, .. } => {
-                self.streamed_bytes += chunk.len();
-                let detail = format!("{tool}, {} bytes so far", thousands(self.streamed_bytes));
-                // one line that counts up, rather than one line per chunk
+            Event::ToolOutput { call, tool, chunk } => {
+                let (counted, counts) = &mut self.streamed_bytes;
+                let so_far = counts.entry(call.clone()).or_default();
+                *so_far += chunk.len();
+                let detail = format!("{tool}, {} bytes so far", thousands(*so_far));
+                // one line that counts up, rather than one line per chunk, and a line of its own
+                // for a call running beside it
+                let same = counted.as_ref() == Some(call);
                 match self.trace.back_mut() {
-                    Some(last) if last.name == "tool.output" => last.detail = detail,
-                    _ => self.trace("tool.output", detail),
+                    Some(last) if last.name == "tool.output" && same => last.detail = detail,
+                    _ => {
+                        *counted = Some(call.clone());
+                        self.trace("tool.output", detail);
+                    }
                 }
             }
             _ => {
@@ -201,13 +208,16 @@ impl App {
             // the only event that carries content, and the only place the old text exists once the
             // undo window closes; the viewer reads it back off `←` and `→`
             Event::ContextReplaced { id, was, .. } => self.remember(id, was),
-            Event::ToolStarted { .. } => self.streamed_bytes = 0,
+            Event::ToolStarted { call, .. } => {
+                self.streamed_bytes.1.insert(call, 0);
+            }
             // note: nothing. The calls a turn asked for are on the turn's own item and are drawn
             // from it, so they arrive with the answer instead of one event later. They go when the
             // item goes, so there is no need to track which turn proposed them
             Event::ToolRequested { .. } => {}
             Event::ToolOutput { call, chunk, .. } => self.append_output(&call, &chunk),
             Event::ToolFinished { call, item, .. } => {
+                self.streamed_bytes.1.remove(&call);
                 // whatever this call streamed in is dropped for the item, which holds what the
                 // model was actually given - and the line about what it cost is read off the item
                 // too, truncation included, so a resumed session says the same thing this one does.
