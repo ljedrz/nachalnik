@@ -9,6 +9,8 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.10.1, which is released beside it. Nothing here uses what changed in it;
+  it is the runtime this release was tested with.
 - **`Trust::Annotations` gives a tool that is not read-only `fs:write` alone.** It gave `fs:write`
   and `fs:edit`, the names `kamchatka` used for its two ways of changing a file, and `kamchatka`
   judges both as `fs:write` now. A rule about `fs:write` judges such a tool as before; a rule about
