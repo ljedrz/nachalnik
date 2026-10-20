@@ -73,7 +73,9 @@ pub async fn attach_within(
     for spec in specs {
         let (name, line) = named(spec);
         let mut words = line.split_whitespace();
-        let program = words.next().ok_or("an MCP server needs a command to run")?;
+        let program = words.next().ok_or_else(|| {
+            format!("`{spec}` names no command to run, which an MCP server needs")
+        })?;
 
         let mut command = tokio::process::Command::new(program);
         command.args(words);
