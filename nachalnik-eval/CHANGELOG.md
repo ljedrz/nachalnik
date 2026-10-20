@@ -7,6 +7,11 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- Requires `nachalnik` 0.10.1, which is released beside it. Nothing here uses what changed in it;
+  it is the runtime this release was tested with.
+
 ### fixed
 
 - **An ablation that fails keeps the ones that answered.** `attribution`, `feedback` and
