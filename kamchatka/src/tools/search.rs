@@ -31,7 +31,7 @@ use serde_json::Value;
 
 use crate::{
     sandbox::{Access, Reach},
-    tools::{Careful, Limits, arg, files::linked, path_matches, truth, whole, words},
+    tools::{Careful, Limits, arg, files::allowed, path_matches, truth, whole, words},
 };
 
 /// How many matching lines one `grep` answers with.
@@ -107,14 +107,9 @@ impl Looking {
     /// allow it; or a refusal saying nothing was `doing`.
     fn root(&self, args: &Value, doing: &str) -> Result<(String, PathBuf), String> {
         let asked = words(args, "path")?.unwrap_or(".").to_owned();
-        let root = self
-            .reach
-            .allows_under(&asked, Access::Reading, &self.policy)?;
         // the call's own path is exempt from what a walk bars because it was asked about by name. A
         // link's name is not where it leads
-        if let Some(refusal) = linked(&asked, &root, &self.reach, &self.policy, doing) {
-            return Err(refusal);
-        }
+        let root = allowed(&asked, Access::Reading, &self.reach, &self.policy, doing)?;
         // note: a root that is not there is said to be, where a walk of it would count it as "a
         // file that could not be read" - present and unreadable, which an absent path is not. After
         // the path rules, so that whether a refused path exists is not said in place of the

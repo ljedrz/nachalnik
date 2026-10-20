@@ -57,13 +57,10 @@ impl Read {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let named = arg(args, "path")?;
-        let path = match self.0.allows_under(named, Access::Reading, &self.2) {
+        let path = match allowed(named, Access::Reading, &self.0, &self.2, "read") {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
-        if let Some(refusal) = linked(named, &path, &self.0, &self.2, "read") {
-            return Ok(ToolOutput::error(refusal));
-        }
         let span = match Span::of(args) {
             Ok(span) => span,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -85,6 +82,25 @@ impl Read {
     }
 }
 
+/// `named` as it resolves, once the reach and the path rules allow it for `access` and it leads
+/// through no link past a path rule; or the refusal, saying nothing was `doing`.
+///
+/// note: the two together, because each operation needs both and one that asked only the first
+/// would follow a link wherever it led.
+pub(super) fn allowed(
+    named: &str,
+    access: Access,
+    reach: &Reach,
+    policy: &Careful,
+    doing: &str,
+) -> Result<PathBuf, String> {
+    let path = reach.allows_under(named, access, policy)?;
+    match linked(named, &path, reach, policy, doing) {
+        Some(refusal) => Err(refusal),
+        None => Ok(path),
+    }
+}
+
 /// Why a path is refused for leading, through a link, to a file a path rule has not allowed; see
 /// [`led_past`](super::search::led_past).
 ///
@@ -92,7 +108,7 @@ impl Read {
 /// wrote - and where the rule asks, the answer names the target, so asking for it by that name is
 /// one call away and is asked like any other. Where the rule refuses, the answer says that name is
 /// refused too, since a model told what a rule is about reads it as a way round.
-pub(super) fn linked(
+fn linked(
     named: &str,
     resolved: &Path,
     reach: &Reach,
@@ -483,13 +499,10 @@ impl Write {
         if let Some(refusal) = dir(named, "written", &self.1) {
             return Ok(ToolOutput::error(refusal));
         }
-        let path = match self.0.allows_under(named, Access::Writing, &self.1) {
+        let path = match allowed(named, Access::Writing, &self.0, &self.1, "written") {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
-        if let Some(refusal) = linked(named, &path, &self.0, &self.1, "written") {
-            return Ok(ToolOutput::error(refusal));
-        }
 
         let _changing = self.2.hold(&path).await;
         // the directories it goes in, where they are not there; see `Reach::make_parents`
@@ -583,13 +596,10 @@ impl Edit {
         if let Some(refusal) = dir(named, "changed", &self.1) {
             return Ok(ToolOutput::error(refusal));
         }
-        let path = match self.0.allows_under(named, Access::Writing, &self.1) {
+        let path = match allowed(named, Access::Writing, &self.0, &self.1, "changed") {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
-        if let Some(refusal) = linked(named, &path, &self.0, &self.1, "changed") {
-            return Ok(ToolOutput::error(refusal));
-        }
 
         let _changing = self.2.hold(&path).await;
         let before = match whole(&self.0, &path, &self.1).await {
