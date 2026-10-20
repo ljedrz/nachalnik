@@ -241,6 +241,13 @@ minor bump may break you.
   the earlier records end and the session's own begin. The next resume copies that log forward, so
   the gap is then in the middle, and `log` did not mention it. It reports every gap in the log now.
 
+### security
+
+- **The binaries are built with `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10**, which
+  refuse certificate paths through emSign intermediates whose private keys are now known
+  (RUSTSEC-2026-0382, RUSTSEC-2026-0383). Neither is a dependency of this crate's own, so only the
+  lock file moves; a build of the published crate takes them with `cargo update`.
+
 ## [0.21.0] - 2026-10-18
 
 ### breaking
