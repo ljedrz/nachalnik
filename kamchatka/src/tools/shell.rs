@@ -721,109 +721,13 @@ impl Tool for Shell {
             }
         });
 
-        // note: bytes rather than `lines()`, which refuses a line that is not UTF-8. Stopping there
-        // would leave the pipe full and unread, so `cat` of a picture would block writing and the
-        // call would wait for it for ever. A command's output is whatever it wrote; what is not
-        // text is shown with `from_utf8_lossy`
-        let mut stdout = BufReader::new(stdout);
-        let mut line = Vec::new();
-        let mut collected = String::new();
-        // bytes read past `KEPT` and let go. Once one line does not fit, nothing after it is kept,
-        // so the kept output is the start with no hole
-        let (mut dropped, mut full) = (0, false);
-        let mut interrupted = false;
-        // the signal the command stopped itself with, where it did; see `stopped_itself`
-        let mut halted = None;
-        let mut waited = None;
-        loop {
-            // the timeout is what makes a command that says nothing at all interruptible; without
-            // it this would sit in `read_until` until the child felt like talking. A timed-out
-            // read keeps what it had in `line`, and the next one carries on from there
-            //
-            // note: and a read takes no more than would put `line` one byte past the ceiling. A
-            // command writing without newlines never ends a line, and the heartbeat is all that
-            // stopped the read - which at the speed of a pipe held hundreds of megabytes against
-            // a ceiling of eight. A line that stops there is over it, and only its start is kept
-            let room = (KEPT + 1).saturating_sub(line.len()) as u64;
-            let mut bounded = (&mut stdout).take(room);
-            match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
-                // a line a timed-out read left in `line` is only ever finished here, by the end
-                Ok(Ok(0)) => {
-                    keep(&line, &mut collected, &output, &mut full, &mut dropped);
-                    break;
-                }
-                Ok(Ok(_)) => {
-                    keep(&line, &mut collected, &output, &mut full, &mut dropped);
-                    line.clear();
-                }
-                Ok(Err(e)) => {
-                    collected.push_str(&format!("\n[could not read the output: {e}]\n"));
-                    break;
-                }
-                // a line that never ends is held to the ceiling as well, or it would be the way
-                // round it
-                Err(_) if line.len() > KEPT => {
-                    keep(&line, &mut collected, &output, &mut full, &mut dropped);
-                    line.clear();
-                }
-                // note: the end of the command is not the end of its standard output, and there is
-                // no draining it here: `sleep 60 & echo started` leaves the pipe open for a minute,
-                // and a server started with `&` for ever. A quiet moment after the command has gone
-                // is the end of what it said
-                Err(_) => {
-                    if let Ok(Some(status)) = child.try_wait() {
-                        keep(&line, &mut collected, &output, &mut full, &mut dropped);
-                        collected.push_str(
-                            "[standard output is still open: something this command started is \
-                             still running]\n",
-                        );
-                        waited = Some(Ok(status));
-                        break;
-                    }
-                    if let Some(signal) = stopped_itself(&child) {
-                        stop(&mut child).await;
-                        keep(&line, &mut collected, &output, &mut full, &mut dropped);
-                        halted = Some(signal);
-                        break;
-                    }
-                }
-            }
-
-            // an unfinished line from a timed-out read is part of what the command said by then, so
-            // the answer to a stopped command holds it. `printf 'downloading 45%'` never ends its
-            // line, and it is the line worth having
-            if output.is_interrupted() {
-                stop(&mut child).await;
-                keep(&line, &mut collected, &output, &mut full, &mut dropped);
-                interrupted = true;
-                break;
-            }
-        }
-        // whatever stopped the reading, nobody reads this pipe again. Closing it tells a command
-        // still writing to it, rather than leaving it blocked on a full pipe
-        drop(stdout);
-
-        // note: the end of standard output is not the end of the command. `sleep 5 >&-` has closed
-        // it and is still running, so the wait is watched the way the reading was
-        while !interrupted && waited.is_none() {
-            match tokio::time::timeout(HEARTBEAT, child.wait()).await {
-                Ok(status) => {
-                    waited = Some(status);
-                    break;
-                }
-                Err(_) if output.is_interrupted() => {
-                    stop(&mut child).await;
-                    interrupted = true;
-                }
-                Err(_) if halted.is_none() => {
-                    if let Some(signal) = stopped_itself(&child) {
-                        stop(&mut child).await;
-                        halted = Some(signal);
-                    }
-                }
-                Err(_) => {}
-            }
-        }
+        let Watched {
+            collected,
+            dropped,
+            interrupted,
+            halted,
+            waited,
+        } = watch(stdout, &mut child, &output).await;
 
         // note: the end of the command is not the end of its standard error. A killed shell can
         // leave children behind - `sleep 60; echo done` is two processes - and so can one that
@@ -870,48 +774,7 @@ impl Tool for Shell {
         };
         let reached = gatekeeper.and_then(Gatekeeper::over);
         let scratch = running.over();
-        let (meant, status) = match (interrupted, waited) {
-            // note: said as stopped, not as the kill that ended it. A stopped command waits for a
-            // `SIGCONT` nothing here will send, so the model that wrote `kill -STOP $$` is told why
-            // the command came back and does not try the same thing again
-            (false, _) if let Some(signal) = halted => (
-                Exit::Stopped,
-                format!(
-                    "exit: stopped itself with {}, and was ended, since nothing would continue \
-                     it; what is below is what it had said by then",
-                    signal_name(signal)
-                ),
-            ),
-            (true, _) => (
-                Exit::Stopped,
-                // note: not "at the person's request": a deadline interrupts the same way and
-                // carries no word of who asked, so the model is told only what happened
-                "exit: stopped before it finished, when the turn was interrupted; what is below \
-                 is what it had said by then"
-                    .to_owned(),
-            ),
-            (false, Ok(status)) => match status.code() {
-                Some(0) => (Exit::Ok, "exit: 0".to_owned()),
-                Some(code) => (
-                    Exit::Failed,
-                    format!("exit: {code} (the command reported a failure)"),
-                ),
-                None => (
-                    Exit::Stopped,
-                    format!("exit: {status} (the command was killed)"),
-                ),
-            },
-            (false, Err(e)) => (Exit::Stopped, format!("exit: unknown ({e})")),
-        };
-        // note: the one place the line and its meaning are checked together, at no cost in a
-        // release build. A test that runs a real command then also tests that the line says what
-        // the run meant; a separate table of strings could not, since it would keep agreeing with
-        // itself after the wording changed
-        debug_assert_eq!(
-            Exit::of(&status),
-            Some(meant),
-            "the status line and what it means have come apart"
-        );
+        let status = status_line(interrupted, halted, waited);
 
         // note: under the status line rather than beside the message it explains, for the same
         // reason the status line says whether the command was stopped: an output limit cuts from
@@ -1143,6 +1006,191 @@ impl Drop for Running {
             let _ = std::fs::remove_dir_all(scratch);
         }
     }
+}
+/// What reading a command's standard output and waiting for it came to.
+struct Watched {
+    /// What it wrote, as far as `KEPT`.
+    collected: String,
+    /// The bytes of standard output read past `KEPT` and let go.
+    dropped: usize,
+    /// Whether the turn was interrupted, and the command stopped for it.
+    interrupted: bool,
+    /// The signal the command stopped itself with, where it did; see `stopped_itself`.
+    halted: Option<i32>,
+    /// How it ended, where that is known yet.
+    waited: Option<std::io::Result<std::process::ExitStatus>>,
+}
+
+/// Reads a command's standard output to its end, or until the command stops itself or the turn is
+/// interrupted, and then waits for the command the same way.
+async fn watch(
+    stdout: tokio::process::ChildStdout,
+    child: &mut tokio::process::Child,
+    output: &OutputSink,
+) -> Watched {
+    // note: bytes rather than `lines()`, which refuses a line that is not UTF-8. Stopping there
+    // would leave the pipe full and unread, so `cat` of a picture would block writing and the
+    // call would wait for it for ever. A command's output is whatever it wrote; what is not
+    // text is shown with `from_utf8_lossy`
+    let mut stdout = BufReader::new(stdout);
+    let mut line = Vec::new();
+    let mut collected = String::new();
+    // bytes read past `KEPT` and let go. Once one line does not fit, nothing after it is kept,
+    // so the kept output is the start with no hole
+    let (mut dropped, mut full) = (0, false);
+    let mut interrupted = false;
+    // the signal the command stopped itself with, where it did; see `stopped_itself`
+    let mut halted = None;
+    let mut waited = None;
+    loop {
+        // the timeout is what makes a command that says nothing at all interruptible; without
+        // it this would sit in `read_until` until the child felt like talking. A timed-out
+        // read keeps what it had in `line`, and the next one carries on from there
+        //
+        // note: and a read takes no more than would put `line` one byte past the ceiling. A
+        // command writing without newlines never ends a line, and the heartbeat is all that
+        // stopped the read - which at the speed of a pipe held hundreds of megabytes against
+        // a ceiling of eight. A line that stops there is over it, and only its start is kept
+        let room = (KEPT + 1).saturating_sub(line.len()) as u64;
+        let mut bounded = (&mut stdout).take(room);
+        match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
+            // a line a timed-out read left in `line` is only ever finished here, by the end
+            Ok(Ok(0)) => {
+                keep(&line, &mut collected, output, &mut full, &mut dropped);
+                break;
+            }
+            Ok(Ok(_)) => {
+                keep(&line, &mut collected, output, &mut full, &mut dropped);
+                line.clear();
+            }
+            Ok(Err(e)) => {
+                collected.push_str(&format!("\n[could not read the output: {e}]\n"));
+                break;
+            }
+            // a line that never ends is held to the ceiling as well, or it would be the way
+            // round it
+            Err(_) if line.len() > KEPT => {
+                keep(&line, &mut collected, output, &mut full, &mut dropped);
+                line.clear();
+            }
+            // note: the end of the command is not the end of its standard output, and there is
+            // no draining it here: `sleep 60 & echo started` leaves the pipe open for a minute,
+            // and a server started with `&` for ever. A quiet moment after the command has gone
+            // is the end of what it said
+            Err(_) => {
+                if let Ok(Some(status)) = child.try_wait() {
+                    keep(&line, &mut collected, output, &mut full, &mut dropped);
+                    collected.push_str(
+                        "[standard output is still open: something this command started is \
+                         still running]\n",
+                    );
+                    waited = Some(Ok(status));
+                    break;
+                }
+                if let Some(signal) = stopped_itself(child) {
+                    stop(child).await;
+                    keep(&line, &mut collected, output, &mut full, &mut dropped);
+                    halted = Some(signal);
+                    break;
+                }
+            }
+        }
+
+        // an unfinished line from a timed-out read is part of what the command said by then, so
+        // the answer to a stopped command holds it. `printf 'downloading 45%'` never ends its
+        // line, and it is the line worth having
+        if output.is_interrupted() {
+            stop(child).await;
+            keep(&line, &mut collected, output, &mut full, &mut dropped);
+            interrupted = true;
+            break;
+        }
+    }
+    // whatever stopped the reading, nobody reads this pipe again. Closing it tells a command
+    // still writing to it, rather than leaving it blocked on a full pipe
+    drop(stdout);
+
+    // note: the end of standard output is not the end of the command. `sleep 5 >&-` has closed
+    // it and is still running, so the wait is watched the way the reading was
+    while !interrupted && waited.is_none() {
+        match tokio::time::timeout(HEARTBEAT, child.wait()).await {
+            Ok(status) => {
+                waited = Some(status);
+                break;
+            }
+            Err(_) if output.is_interrupted() => {
+                stop(child).await;
+                interrupted = true;
+            }
+            Err(_) if halted.is_none() => {
+                if let Some(signal) = stopped_itself(child) {
+                    stop(child).await;
+                    halted = Some(signal);
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    Watched {
+        collected,
+        dropped,
+        interrupted,
+        halted,
+        waited,
+    }
+}
+
+/// The first line of a command's answer, which says how it ended.
+fn status_line(
+    interrupted: bool,
+    halted: Option<i32>,
+    waited: std::io::Result<std::process::ExitStatus>,
+) -> String {
+    let (meant, status) = match (interrupted, waited) {
+        // note: said as stopped, not as the kill that ended it. A stopped command waits for a
+        // `SIGCONT` nothing here will send, so the model that wrote `kill -STOP $$` is told why
+        // the command came back and does not try the same thing again
+        (false, _) if let Some(signal) = halted => (
+            Exit::Stopped,
+            format!(
+                "exit: stopped itself with {}, and was ended, since nothing would continue \
+                 it; what is below is what it had said by then",
+                signal_name(signal)
+            ),
+        ),
+        (true, _) => (
+            Exit::Stopped,
+            // note: not "at the person's request": a deadline interrupts the same way and
+            // carries no word of who asked, so the model is told only what happened
+            "exit: stopped before it finished, when the turn was interrupted; what is below \
+             is what it had said by then"
+                .to_owned(),
+        ),
+        (false, Ok(status)) => match status.code() {
+            Some(0) => (Exit::Ok, "exit: 0".to_owned()),
+            Some(code) => (
+                Exit::Failed,
+                format!("exit: {code} (the command reported a failure)"),
+            ),
+            None => (
+                Exit::Stopped,
+                format!("exit: {status} (the command was killed)"),
+            ),
+        },
+        (false, Err(e)) => (Exit::Stopped, format!("exit: unknown ({e})")),
+    };
+    // note: the one place the line and its meaning are checked together, at no cost in a
+    // release build. A test that runs a real command then also tests that the line says what
+    // the run meant; a separate table of strings could not, since it would keep agreeing with
+    // itself after the wording changed
+    debug_assert_eq!(
+        Exit::of(&status),
+        Some(meant),
+        "the status line and what it means have come apart"
+    );
+
+    status
 }
 
 /// The signal the command stopped itself with: `kill -STOP $$`, or a `SIGTSTP` to its group, which
