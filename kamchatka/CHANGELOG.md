@@ -29,8 +29,21 @@ minor bump may break you.
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.
 
+### added
+
+- **`Careful::offers_tool`** tells the policy about a tool and asks it which of its actions need
+  each subject, which `Careful::actions_for`, `Careful::named_for` and `Careful::needed_by` then
+  say. `Setup::wire` calls it for every tool it installs; an embedder installing tools of its own
+  calls it where it called `Careful::offers`.
+
 ### changed
 
+- **Wherever a subject is put to somebody deciding, the actions it covers are named beside it.**
+  The question reads `[a] always, for fs:read (read, glob, grep)`, the permissions tab's row reads
+  `fs:read  allow  fs: read, glob, grep`, `setup permissions` gives the model the same list, and a
+  refusal by a rule names every action the rule refuses: a refusal by `context:trim` names
+  `elide`, `exclude`, `undo` and `redo`. Without them, an `always` given to a `grep` allowed `read`
+  with nothing saying so, and a model refused `elide` tried `exclude` next.
 - **A headless run under `--on-ask deny` gives commands no network instead of asking about it.**
   A command that reached for the network was asked about and refused by the run, and the model was
   told this was one answer to one command and to say why it needed the network before trying again.

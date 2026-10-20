@@ -565,24 +565,33 @@ impl App {
                 return inside;
             }
 
-            // note: and a rule about one operation answers for that operation and nothing wider.
-            // Naming the tools, with one tool to a domain, reads back the subject's own first
-            // half: `fs:read  allow  fs` puts the narrow rule over the whole tool, the one
-            // direction it cannot go. What a rule reaches is never broader than the rule.
+            // note: and a rule about one operation answers for that operation and nothing wider:
+            // the actions that need it, where a tool has several - `fs:read  allow  fs: read,
+            // glob, grep` - since an `always` given to one of them answered for the others, and
+            // the operation itself otherwise. Naming the tools, with one tool to a domain, reads
+            // back the subject's own first half: `fs:read  allow  fs` puts the narrow rule over
+            // the whole tool, the one direction it cannot go.
             //
             // note: an empty list is how the row says nothing here is judged by it, and that is
             // the answer where every tool declaring the capability came from a server - `judges`
             // swaps `mcp:call` for the server's name, so a rule about `mcp` decides for none of
             // them however many declare it.
             if let Subject::Capability(capability) = subject {
-                let anything = specs.iter().any(|spec| {
-                    spec.capabilities.contains(capability) && judged(&spec.id, capability)
-                });
+                let mut covered: Vec<String> = specs
+                    .iter()
+                    .filter(|spec| {
+                        spec.capabilities.contains(capability) && judged(&spec.id, capability)
+                    })
+                    .map(
+                        |spec| match self.policy.actions_for(capability, &spec.id).is_empty() {
+                            true => capability.to_string(),
+                            false => self.policy.named_for(capability, &spec.id),
+                        },
+                    )
+                    .collect();
+                covered.dedup();
 
-                return match anything {
-                    true => vec![capability.to_string()],
-                    false => Vec::new(),
-                };
+                return covered;
             }
 
             specs

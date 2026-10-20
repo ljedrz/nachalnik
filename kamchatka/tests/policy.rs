@@ -845,3 +845,59 @@ fn a_capability_is_reachable_only_where_the_model_could_use_it() {
         "refused, whatever the operation's own rule"
     );
 }
+
+/// A subject is named with the actions it covers, from what each tool says its actions need, and
+/// a refusal tells the model every action the rule refuses.
+///
+/// note: a subject is named for what a call does rather than for the action asking, so one
+/// answers for several. Named alone, an `always` for `fs:read` given to a `grep` allowed `read`
+/// with nobody having been told, and a model refused `elide` by `context:trim` went on to try
+/// `exclude`, which the same rule refuses.
+#[tokio::test]
+async fn a_subject_is_named_with_the_actions_it_covers() {
+    let policy = std::sync::Arc::new(Careful::new());
+    for tool in common::builtin_under(
+        std::path::Path::new("/w"),
+        true,
+        Default::default(),
+        policy.clone(),
+    ) {
+        policy.offers_tool(&*tool);
+    }
+
+    assert_eq!(
+        policy.actions_for(&Capability::fs("read"), "fs"),
+        ["read", "glob", "grep"]
+    );
+    assert_eq!(
+        policy.named_for(&Capability::fs("write"), "fs"),
+        "fs: write, edit"
+    );
+    // a tool with one action has nothing to add to its subject
+    assert!(
+        policy
+            .actions_for(&Capability::exec("run"), "shell")
+            .is_empty()
+    );
+    assert_eq!(policy.named_for(&Capability::exec("run"), "shell"), "shell");
+
+    policy.set(&Subject::parse("fs:write"), Verdict::Deny);
+    let call = ToolCall::new(
+        "c1",
+        "fs",
+        json!({ "call": { "action": "edit", "path": "a", "old": "x", "new": "y" } }),
+    );
+    let request = PermissionRequest {
+        id: PermissionId(1),
+        call: call.id.clone(),
+        tool: "fs".to_owned(),
+        capabilities: vec![Capability::fs("write")],
+        args: call.args.clone(),
+    };
+    assert_eq!(policy.evaluate(&request).await, Verdict::Deny);
+    let why = policy.why(&call.id).expect("a refusal says why");
+    assert!(
+        why.contains("`fs:write`, which `fs`'s `write` and `edit` need"),
+        "{why}"
+    );
+}

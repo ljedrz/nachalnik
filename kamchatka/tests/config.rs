@@ -2835,3 +2835,35 @@ fn a_key_is_asked_for_only_where_the_address_checks_one() {
     assert!(said.contains("KAMCHATKA_API_KEY"), "{said}");
     assert!(said.contains("openrouter.ai"), "and it says where: {said}");
 }
+
+/// A wired session's policy knows which actions each subject covers, so the question, the tab,
+/// `setup` and a refusal can name them.
+///
+/// note: the policy learns it from the tools, and only where they are installed; a session that
+/// skipped it would ask `always, for context:trim` with nothing saying `exclude` came with it.
+#[test]
+fn a_wired_session_knows_which_actions_each_subject_covers() {
+    use std::sync::Arc;
+
+    use kamchatka::wiring::Setup;
+    use nachalnik::Capability;
+    use nachalnik_providers::OpenAiCompatible;
+
+    let wired = Setup::default()
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed");
+    let policy = &wired.app.policy;
+
+    assert_eq!(
+        policy.actions_for(&Capability::fs("read"), "fs"),
+        ["read", "glob", "grep"]
+    );
+    assert_eq!(
+        policy.actions_for(&kamchatka::tools::domains::context("trim"), "context"),
+        ["elide", "exclude", "undo", "redo"]
+    );
+}
