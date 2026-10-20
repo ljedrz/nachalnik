@@ -1614,6 +1614,11 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
         // a call to a tool nobody has, which is answered without ever being requested
         serde_json::json!({ "seq": seq + 4, "at": 0, "event": {
             "event": "tool.unknown", "call": "lost-unknown", "tool": "nope" } }),
+        // a call the model asked for in a turn killed before the call was requested, which only
+        // the answer names
+        serde_json::json!({ "seq": seq + 5, "at": 0, "event": {
+            "event": "model.finished", "stop": "tool_use", "usage": null,
+            "tool_calls": ["lost-answered"], "item": item } }),
     ];
     let mut log = std::fs::read_to_string(dir.join("first.jsonl")).expect("saved");
     for record in tail {
@@ -1623,7 +1628,7 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
 
     let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
     assert!(ok, "{said}");
-    assert!(said.contains("runs 4 records past it"), "{said}");
+    assert!(said.contains("runs 5 records past it"), "{said}");
 
     let second: nachalnik::Snapshot =
         serde_json::from_str(&std::fs::read_to_string(dir.join("second.json")).expect("saved"))
@@ -1645,6 +1650,14 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
             .iter()
             .any(|call| call.0 == "lost-unknown"),
         "a call the tool was unknown for is spoken for too: {:?}",
+        second.used_calls
+    );
+    assert!(
+        second
+            .used_calls
+            .iter()
+            .any(|call| call.0 == "lost-answered"),
+        "a call only the answer named is spoken for too: {:?}",
         second.used_calls
     );
     // the second record begins with the first session's, up to its snapshot and not the tail the
@@ -1831,6 +1844,10 @@ fn a_rule_nothing_is_judged_under_is_refused() {
     assert!(tool.contains("`exec:run`"), "{tool}");
     let typo = checked("fs:writ").expect_err("an operation nothing does");
     assert!(typo.contains("write"), "{typo}");
+    assert!(
+        typo.contains("is not something a call here does"),
+        "a name no tool offers is not an operation to be told the subject of: {typo}"
+    );
     let nowhere = checked("network").expect_err("a domain nothing is judged under");
     assert!(nowhere.contains("exec"), "{nowhere}");
     // and an operation named as a subject, which each was once, is told what it is judged as

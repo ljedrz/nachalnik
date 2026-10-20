@@ -849,6 +849,29 @@ async fn a_limit_of_nothing_is_no_limit() {
     );
 }
 
+/// And a limit the provider does give is said, by each read that says how full the context is.
+#[tokio::test]
+async fn a_limit_the_provider_gives_is_said() {
+    let (kernel, _provider, _anchor) = agent([]);
+    kernel.set_provider(Arc::new(
+        ScriptedProvider::new(one_turn(vec![
+            call("c1", "context", json!({ "action": "look" })),
+            call("c2", "context", json!({ "action": "request" })),
+            call("c3", "context", json!({ "action": "budget" })),
+        ]))
+        .with_info(nachalnik::ModelInfo::new("test", "test").with_context_limit(64_000)),
+    ));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answers_from(&kernel, &["context"]);
+    assert_eq!(said.len(), 3, "{said:?}");
+    for said in &said {
+        assert!(said.contains(" of 64,000"), "{said}");
+    }
+    assert!(said[2].contains("% full, ~"), "{}", said[2]);
+}
+
 /// The fifth column of the expensive list is the running total of the fourth.
 ///
 /// note: what the model is asked to read the list for. `budget` exists so a compaction decision

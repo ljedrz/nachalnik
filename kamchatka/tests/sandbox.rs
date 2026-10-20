@@ -354,6 +354,97 @@ fn a_path_the_ruleset_cannot_open_costs_its_own_rule_and_no_more() {
     let _ = std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700));
 }
 
+/// A path opened up for reading that the person may enter but not list is granted all the same,
+/// and a file in it is read by its name.
+///
+/// note: the ruleset holds each root by an `O_PATH` open, which asks nothing of the directory's
+/// own permissions. Opened for reading instead, a directory without its read bit was refused, and
+/// the path was left out of the confinement without a word.
+#[test]
+fn a_path_that_cannot_be_listed_is_still_granted() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    if !enforced() {
+        return;
+    }
+
+    let dir = common::workdir("sandbox-unlistable");
+    let outside = common::scratch("sandbox-unlistable-outside");
+    std::fs::write(outside.join("note.txt"), "found it\n").expect("a file");
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o100)).expect("unlisted");
+
+    let mut asked = sandbox(dir, true, Network::NoTcp);
+    asked.readable = vec![outside.clone()];
+    let (ok, said) = run(&asked, &format!("cat {}/note.txt", outside.display()));
+    let _ = std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o700));
+
+    assert!(ok, "the path was left out of the confinement: {said}");
+    assert!(said.contains("found it"), "{said}");
+}
+
+/// A file opened up for reading on its own is granted as a file, the rest stays confined, and the
+/// confinement is whole.
+///
+/// note: a file takes only the rights a file can have. Asked for a directory's, the `landlock`
+/// crate takes those off itself and counts the rule as only partly met, so the confinement was
+/// called partial on a kernel that enforces all of it. Confining is for good, so the last check is
+/// done in a child: this test's own binary run again.
+#[test]
+fn a_file_opened_up_on_its_own_is_read_and_nothing_beside_it() {
+    const CHILD: &str = "KAMCHATKA_TEST_ONE_FILE";
+    if let Some(file) = std::env::var_os(CHILD) {
+        let file = PathBuf::from(file);
+        let mut asked = sandbox(
+            file.parent().expect("in a directory").join("work"),
+            false,
+            Network::Open,
+        );
+        asked.devices = Vec::new();
+        asked.readable = vec![file];
+        std::process::exit(match confine_saying(&asked, None).0 {
+            Confinement::Full => 0,
+            Confinement::Partial => 1,
+            _ => 77,
+        });
+    }
+    if !enforced() {
+        return;
+    }
+
+    let dir = common::workdir("sandbox-one-file");
+    let outside = common::scratch("sandbox-one-file-outside");
+    std::fs::write(outside.join("note.txt"), "found it\n").expect("a file");
+    std::fs::write(outside.join("beside.txt"), "not this\n").expect("a file");
+    std::fs::create_dir_all(outside.join("work")).expect("a directory");
+
+    let mut asked = sandbox(dir, true, Network::NoTcp);
+    asked.readable = vec![outside.join("note.txt")];
+    let (ok, said) = run(&asked, &format!("cat {}/note.txt", outside.display()));
+    assert!(ok, "the file was not granted: {said}");
+    assert!(said.contains("found it"), "{said}");
+    let (ok, said) = run(&asked, &format!("cat {}/beside.txt", outside.display()));
+    assert!(!ok, "the file beside it was read: {said}");
+
+    let status = Command::new(std::env::current_exe().expect("this test's binary"))
+        .args([
+            "--exact",
+            "a_file_opened_up_on_its_own_is_read_and_nothing_beside_it",
+            "--test-threads=1",
+        ])
+        .env(CHILD, outside.join("note.txt"))
+        .output()
+        .expect("the child ran");
+    match status.status.code() {
+        Some(0) => {}
+        Some(1) => panic!("a file opened up on its own made the confinement partial"),
+        Some(77) => eprintln!("skipped: the child could not be confined"),
+        other => panic!(
+            "the child ended with {other:?}: {}",
+            String::from_utf8_lossy(&status.stderr)
+        ),
+    }
+}
+
 #[test]
 fn a_command_can_read_and_write_inside_the_working_directory() {
     if !enforced() {

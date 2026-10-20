@@ -880,18 +880,13 @@ async fn a_resumed_log_reads_the_session_before_it_as_one_log() {
     assert!(started < resumed, "{records}");
 }
 
-/// And the records a run wrote past its snapshot are said to be missing, where the two meet.
-///
-/// note: `-r` numbers the resumed session on from past them, so that nothing is numbered twice,
-/// and leaves them out of the log read before the resume, because what they did is not in this
-/// session. Read as one log, the two would otherwise pass over the hole as if nothing had happened.
-#[tokio::test]
-async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it() {
+/// What `log` says in a session resumed from a snapshot its log runs `past` records beyond.
+async fn read_after_a_run_past_its_snapshot(past: u64, name: &str) -> (u64, String) {
     let first = Kernel::new(Config::default());
     first.push(ContextItem::user("which index?"));
     let mut snapshot = first.snapshot();
     let taken = snapshot.last_seq;
-    let dir = std::env::temp_dir().join(format!("kamchatka-lost-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kamchatka-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a directory");
     let state = dir.join("first.json");
     std::fs::write(
@@ -904,7 +899,7 @@ async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it()
         .iter()
         .map(|record| serde_json::to_string(record).expect("a record"))
         .collect();
-    for seq in taken + 1..=taken + 2 {
+    for seq in taken + 1..=taken + past {
         lines.push(
             json!({ "seq": seq, "at": 0, "event": {
                 "event": "tool.requested", "call": format!("lost{seq}"), "tool": "fs", "args": {} } })
@@ -913,7 +908,7 @@ async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it()
     }
     std::fs::write(state.with_extension("jsonl"), lines.join("\n") + "\n").expect("written");
     // what `-r` does with a log that runs past its snapshot
-    snapshot.last_seq = taken + 2;
+    snapshot.last_seq = taken + past;
 
     let kernel = Kernel::resume(Config::default(), snapshot);
     kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
@@ -935,24 +930,46 @@ async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it()
     );
     assert_eq!(
         anchor.earlier().read(&state, None),
-        2,
-        "two records past the snapshot"
+        usize::try_from(past).expect("a few"),
+        "the records past the snapshot"
     );
     let _ = std::fs::remove_dir_all(&dir);
     kernel.push(ContextItem::user("and now?"));
 
     kernel.turn().await.expect("the turn failed");
 
-    let said = answers_from(&kernel, &["log"]);
+    let mut said = answers_from(&kernel, &["log"]);
+    (taken, said.remove(0))
+}
+
+/// And the records a run wrote past its snapshot are said to be missing, where the two meet.
+///
+/// note: `-r` numbers the resumed session on from past them, so that nothing is numbered twice,
+/// and leaves them out of the log read before the resume, because what they did is not in this
+/// session. Read as one log, the two would otherwise pass over the hole as if nothing had happened.
+#[tokio::test]
+async fn a_resumed_log_says_which_records_a_run_past_its_snapshot_took_with_it() {
+    let (taken, said) = read_after_a_run_past_its_snapshot(2, "lost").await;
     assert!(
-        said[0].contains(&format!(
+        said.contains(&format!(
             "Records {} to {} are not here",
             taken + 1,
             taken + 2
         )),
-        "{}",
-        said[0]
+        "{said}"
     );
+}
+
+/// And one record is said as one.
+#[tokio::test]
+async fn a_resumed_log_says_the_one_record_a_run_past_its_snapshot_took_with_it() {
+    let (taken, said) = read_after_a_run_past_its_snapshot(1, "lost-one").await;
+    assert!(
+        said.contains(&format!("Record {} is not here", taken + 1)),
+        "{said}"
+    );
+    assert!(said.contains("did is not in it"), "{said}");
+    assert!(!said.contains("Records"), "{said}");
 }
 
 /// And they are still said to be missing a resume later, when the hole is in the middle of the log.

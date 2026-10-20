@@ -1481,6 +1481,10 @@ mod tests {
         let gone = not_private(&path, &refused);
         assert!(!path.exists());
         assert!(!gone.contains("still there"), "{gone}");
+
+        // and one already gone, which there is nothing to remove of, is not said to be left either
+        let never = not_private(&path, &refused);
+        assert!(!never.contains("still there"), "{never}");
         std::fs::remove_dir_all(&dir).expect("cleaned up");
     }
 
