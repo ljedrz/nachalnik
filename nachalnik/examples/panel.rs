@@ -47,9 +47,7 @@ use serde_json::json;
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{save, thousands, wrap};
-
-const WIDTH: usize = 78;
+use common::{WIDTH, heading, save, thousands, wrap};
 
 const USAGE: &str = "\
 usage: panel [-m MODEL].. [-r ROUNDS] [options] question...
@@ -264,10 +262,6 @@ fn brief(trouble: &str) -> String {
 }
 
 // -------------------------------------------------------------------------------- the reporting
-
-fn heading(text: &str) {
-    println!("\n\x1b[1m{text}\x1b[0m");
-}
 
 /// Where every panelist stood in every round, side by side, so that movement is visible.
 fn report_positions(panel: &[Panelist], rounds: usize) {

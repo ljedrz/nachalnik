@@ -22,7 +22,10 @@ use parking_lot::Mutex;
 use serde_json::json;
 use tokio::sync::broadcast::Receiver;
 
-const WIDTH: usize = 78;
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{WIDTH, note, stage, textwrap, thousands};
 
 /// A provider that answers from a prepared script; a real one would speak HTTP instead.
 struct Script(Mutex<VecDeque<ModelResponse>>);
@@ -197,20 +200,6 @@ fn clip(text: &str, room: usize) -> String {
     }
 }
 
-/// Formats a number with `,` as the thousands separator.
-fn thousands(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-
-    out
-}
-
 /// Prints whatever has happened since the last time it was called.
 fn events(receiver: &mut Receiver<Event>) {
     while let Ok(event) = receiver.try_recv() {
@@ -284,40 +273,6 @@ fn events(receiver: &mut Receiver<Event>) {
             event.name(),
             clip(&detail, WIDTH - 28)
         );
-    }
-}
-
-/// A numbered stage, with a sentence saying what it is there to show.
-fn stage(number: usize, title: &str, note: &str) {
-    println!("\n\x1b[1m{number} · {title}\x1b[0m");
-    for line in textwrap(note, WIDTH - 4) {
-        println!("   \x1b[2m{line}\x1b[0m");
-    }
-    println!();
-}
-
-fn textwrap(text: &str, width: usize) -> Vec<String> {
-    let mut lines = vec![String::new()];
-    for word in text.split_whitespace() {
-        let line = lines.last_mut().expect("there is always one");
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
-            lines.push(word.to_owned());
-        } else {
-            if !line.is_empty() {
-                line.push(' ');
-            }
-            line.push_str(word);
-        }
-    }
-
-    lines
-}
-
-/// A remark under a stage, in the same voice as the stage headings.
-fn note(text: &str) {
-    for (i, line) in textwrap(text, WIDTH - 6).into_iter().enumerate() {
-        let lead = if i == 0 { "→" } else { " " };
-        println!("   \x1b[2m{lead} {line}\x1b[0m");
     }
 }
 

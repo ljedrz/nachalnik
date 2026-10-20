@@ -1,5 +1,4 @@
-//! The little the networked examples share that is theirs alone: two formatting helpers, and
-//! what `--save` writes.
+//! The little the examples share that is theirs alone: how they draw, and what `--save` writes.
 //!
 //! note: The provider they talk through is `nachalnik-providers`, a published crate, and the
 //! environment it is built from comes from `nachalnik-utils`, which is never published and exists
@@ -15,6 +14,47 @@
 
 use nachalnik::{BoxError, Kernel};
 pub use nachalnik_utils::{base_url, models, providers};
+
+/// How wide the examples draw.
+pub const WIDTH: usize = 78;
+
+/// A numbered stage, with a sentence saying what it is for.
+pub fn stage(number: usize, title: &str, note: &str) {
+    println!("\n\x1b[1m{number} · {title}\x1b[0m");
+    for line in textwrap(note, WIDTH - 4) {
+        println!("   \x1b[2m{line}\x1b[0m");
+    }
+    println!();
+}
+
+pub fn textwrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in text.split_whitespace() {
+        let line = lines.last_mut().expect("there is always one");
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+            lines.push(word.to_owned());
+        } else {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+        }
+    }
+
+    lines
+}
+
+/// A remark under a table, in the same voice as the stage headings.
+pub fn note(text: &str) {
+    for (i, line) in textwrap(text, WIDTH - 6).into_iter().enumerate() {
+        let lead = if i == 0 { "→" } else { " " };
+        println!("   \x1b[2m{lead} {line}\x1b[0m");
+    }
+}
+
+pub fn heading(text: &str) {
+    println!("\n\x1b[1m{text}\x1b[0m");
+}
 
 /// Formats a number with `,` as the thousands separator.
 pub fn thousands(n: impl TryInto<u64>) -> String {
