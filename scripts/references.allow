@@ -12,3 +12,5 @@ nachalnik/tests/kernel/main.rs tests/kernel.rs
 # files a program, a test or a person makes, rather than files in here
 kamchatka/examples/recorded.rs session.md
 kamchatka/tests/introspect/context.rs big.rs
+kamchatka/src/sandbox/reach.rs /workspace/AGENTS.md
+kamchatka/tests/files.rs /workspace/AGENTS.md
