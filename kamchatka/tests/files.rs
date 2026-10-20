@@ -1669,3 +1669,36 @@ async fn fs_sends_the_model_only_where_it_could_go() {
         "{said}"
     );
 }
+
+/// A path under a root that is not there, whose end is in the working directory, is answered with
+/// that end, and a file that is there outside the reach is not answered with one of the same name.
+///
+/// note: told only that `/workspace/AGENTS.md` was outside the reach, a model sent its next reads
+/// under `/workspace` too.
+#[tokio::test]
+async fn a_guessed_root_is_answered_with_the_path_in_the_working_directory() {
+    let dir = scratch("files-guessed-root");
+    std::fs::create_dir_all(dir.join("src")).expect("a directory");
+    std::fs::write(dir.join("src/lib.rs"), "fn x() {}").expect("a file");
+
+    let said = ask(
+        &dir,
+        "read",
+        json!({ "path": "/no-such-root-for-kamchatka/checkout/src/lib.rs" }),
+    )
+    .await;
+    assert!(said.contains("outside what this session reaches"), "{said}");
+    assert!(said.contains("name it as `src/lib.rs`"), "{said}");
+
+    let outside = scratch("files-guessed-root-outside");
+    std::fs::create_dir_all(outside.join("src")).expect("a directory");
+    std::fs::write(outside.join("src/lib.rs"), "fn y() {}").expect("a file");
+    let said = ask(
+        &dir,
+        "read",
+        json!({ "path": outside.join("src/lib.rs").to_string_lossy() }),
+    )
+    .await;
+    assert!(said.contains("outside what this session reaches"), "{said}");
+    assert!(!said.contains("name it as"), "{said}");
+}
