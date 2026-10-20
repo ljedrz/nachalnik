@@ -6,9 +6,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nachalnik::Capability;
+use nachalnik::{Capability, Verdict};
 
-use crate::tools::Careful;
+use crate::tools::{Careful, barred, path_matches};
 
 use super::{SYSTEM, resolve, writes};
 
@@ -87,17 +87,20 @@ impl Reach {
             .join(", ")
     }
 
-    /// The end of `path` that is in the working directory, where `path` itself names nothing: what
-    /// a model that guessed at the working directory's own name meant.
+    /// The longest end of `path` that is in the working directory: what a model that guessed at the
+    /// working directory's own name meant.
     ///
     /// note: a model told only that the path is outside the reach guesses again under the same
-    /// root, and is refused the same way each time. The longest end is tried first, and only where
-    /// nothing is at the path asked for, so a file that is there outside the reach is never
-    /// answered with a different one of the same name.
-    fn meant_here(&self, path: &Path) -> Option<PathBuf> {
-        if !path.is_absolute() || path.symlink_metadata().is_ok() {
+    /// root, and is refused the same way each time.
+    ///
+    /// note: whether anything is at `path` is never looked at, so a refused path is answered the
+    /// same whether or not it exists. Only what a walk of the working directory would show is
+    /// offered: an end reached through no link and barred by no path rule.
+    fn meant_here(&self, path: &Path, barred: &[(String, Verdict)]) -> Option<PathBuf> {
+        if !path.is_absolute() {
             return None;
         }
+        let workdir = self.workdir.canonicalize().ok()?;
         let parts: Vec<_> = path
             .components()
             .filter_map(|part| match part {
@@ -108,7 +111,13 @@ impl Reach {
 
         (1..parts.len())
             .map(|skip| parts[skip..].iter().collect::<PathBuf>())
-            .find(|tail| self.workdir.join(tail).symlink_metadata().is_ok())
+            .find(|tail| {
+                let here = workdir.join(tail);
+                here.canonicalize().is_ok_and(|resolved| resolved == here)
+                    && !barred
+                        .iter()
+                        .any(|(rule, _)| path_matches(rule, &tail.to_string_lossy()))
+            })
     }
 
     /// Everywhere it may change something, which is what a refused write needs to hear.
@@ -144,7 +153,7 @@ impl Reach {
     /// `~/notes.txt` reads `./~`. That spelling lives in `PATH_ARG` instead, which is read while
     /// choosing.
     pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
-        self.judged(path, doing, true, true)
+        self.judged(path, doing, true, true, None)
     }
 
     /// [`Reach::allows`], but a refusal says what `policy` decides about writing.
@@ -157,7 +166,8 @@ impl Reach {
         doing: Access,
         policy: &Careful,
     ) -> Result<PathBuf, String> {
-        self.judged(path, doing, writes(policy), runs(policy))
+        let barred = barred(policy);
+        self.judged(path, doing, writes(policy), runs(policy), Some(&barred))
     }
 
     fn judged(
@@ -166,6 +176,7 @@ impl Reach {
         doing: Access,
         writing: bool,
         shell: bool,
+        barred: Option<&[(String, Verdict)]>,
     ) -> Result<PathBuf, String> {
         // `starts_with` matches the whole string, not a path component. `notes.txt~` is a real file
         // and `./~` is a shell's way to name a literal `~`, so both pass untouched and the message
@@ -185,7 +196,7 @@ impl Reach {
             true => path.clone(),
             false => self.workdir.join(&path),
         };
-        let Some(resolved) = resolve(&absolute) else {
+        let Some(mut resolved) = resolve(&absolute) else {
             return Err(format!(
                 "{}: a chain of links too long to follow to its end, so where it leads cannot be \
                  checked",
@@ -202,24 +213,29 @@ impl Reach {
         // directory is one of those: `nope/../../../etc/passwd` came back with its `..`s still in
         // it, and comparing components found the working directory at the front. Where such a path
         // ends up depends on a directory that does not exist yet, so it is refused rather than
-        // checked
+        // checked.
+        //
+        // note: refused as outside the reach where it would land outside, as a path through a
+        // directory that is there and lands in the same place is. Said apart, the two refusals
+        // would tell whether a directory outside the reach exists
         if resolved
             .components()
             .any(|part| matches!(part, std::path::Component::ParentDir))
         {
-            return Err(format!(
-                "{}: goes up with `..` out of a directory that is not there, so where it ends up \
-                 cannot be checked; say the path without the `..`",
-                path.display()
-            ));
+            let landed = lexical(&resolved);
+            if !self.within(&landed, doing) {
+                resolved = landed;
+            } else {
+                return Err(format!(
+                    "{}: goes up with `..` out of a directory that is not there, so where it ends \
+                     up cannot be checked; say the path without the `..`",
+                    path.display()
+                ));
+            }
         }
 
         let readable = matches!(doing, Access::Reading);
-        match self.roots(doing).any(|allowed| {
-            allowed
-                .canonicalize()
-                .is_ok_and(|allowed| resolved.starts_with(allowed))
-        }) {
+        match self.within(&resolved, doing) {
             true => Ok(resolved),
             // note: written for the model, which reads it. The model cannot restart this program or
             // pass it a flag, so telling it to is worse than telling it nothing. It can work inside
@@ -264,10 +280,11 @@ impl Reach {
                  for this path to be opened up and say what you need it for.{}",
                 path.display(),
                 self.range(writing),
-                self.meant_here(&path)
+                barred
+                    .and_then(|barred| self.meant_here(&path, barred))
                     .map(|tail| format!(
-                        " Nothing is at that path, but `{0}` is in the working directory; if that \
-                         is what you meant, name it as `{0}`.",
+                        " `{0}` is in the working directory; if that is what you meant, name it \
+                         as `{0}`.",
                         tail.display()
                     ))
                     .unwrap_or_default()
@@ -478,6 +495,15 @@ impl Reach {
         std::iter::once(&self.workdir)
             .chain(self.extra.iter())
             .chain(self.readable.iter().filter(move |_| readable))
+    }
+
+    /// Whether `resolved` is beneath a directory `doing` may happen in.
+    fn within(&self, resolved: &Path, doing: Access) -> bool {
+        self.roots(doing).any(|allowed| {
+            allowed
+                .canonicalize()
+                .is_ok_and(|allowed| resolved.starts_with(allowed))
+        })
     }
 
     /// The allowed directory `path` is under, as `open` and `replace` start from it.
@@ -740,4 +766,19 @@ fn opened_beneath(
         ))),
         Err(e) => Some(Err(e.into())),
     }
+}
+
+/// `path` with each `..` taking off the name before it, as though every directory it names were
+/// there; for saying where a path that cannot be resolved would land, never for opening it.
+fn lexical(path: &Path) -> PathBuf {
+    let mut landed = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                landed.pop();
+            }
+            other => landed.push(other),
+        }
+    }
+    landed
 }

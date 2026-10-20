@@ -148,7 +148,7 @@ impl Looking {
 /// note: refusals first, so [`led_past`] reports the strictest rule a path falls under, since it
 /// takes the first rule it finds. Which rule a path matches is a fact about the tree, not the order
 /// it was typed in. A refusal is the rule a model must not be offered a way round.
-pub(super) fn barred(policy: &Careful) -> Vec<(String, Verdict)> {
+pub(crate) fn barred(policy: &Careful) -> Vec<(String, Verdict)> {
     let mut barred: Vec<(String, Verdict)> = policy
         .paths()
         .into_iter()

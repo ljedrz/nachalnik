@@ -1670,35 +1670,63 @@ async fn fs_sends_the_model_only_where_it_could_go() {
     );
 }
 
-/// A path under a root that is not there, whose end is in the working directory, is answered with
-/// that end, and a file that is there outside the reach is not answered with one of the same name.
+/// A path outside the reach whose end is in the working directory is answered with that end, the
+/// same whether or not anything is at the path, and never with an end a walk would not show.
 ///
-/// note: told only that `/workspace/AGENTS.md` was outside the reach, a model sent its next reads
-/// under `/workspace` too.
+/// note: the refusal of a path that exists and of one that does not must not differ, or `fs`
+/// becomes a way to learn what is there outside the reach. A model told only that the path was
+/// outside the reach guesses again under the same root.
 #[tokio::test]
 async fn a_guessed_root_is_answered_with_the_path_in_the_working_directory() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::Verdict;
+
     let dir = scratch("files-guessed-root");
     std::fs::create_dir_all(dir.join("src")).expect("a directory");
     std::fs::write(dir.join("src/lib.rs"), "fn x() {}").expect("a file");
-
-    let said = ask(
-        &dir,
-        "read",
-        json!({ "path": "/no-such-root-for-kamchatka/checkout/src/lib.rs" }),
-    )
-    .await;
-    assert!(said.contains("outside what this session reaches"), "{said}");
-    assert!(said.contains("name it as `src/lib.rs`"), "{said}");
-
+    std::fs::write(dir.join("keys.txt"), "a key").expect("a file");
+    std::os::unix::fs::symlink("src", dir.join("via")).expect("a link");
     let outside = scratch("files-guessed-root-outside");
     std::fs::create_dir_all(outside.join("src")).expect("a directory");
     std::fs::write(outside.join("src/lib.rs"), "fn y() {}").expect("a file");
-    let said = ask(
-        &dir,
-        "read",
-        json!({ "path": outside.join("src/lib.rs").to_string_lossy() }),
-    )
-    .await;
-    assert!(said.contains("outside what this session reaches"), "{said}");
-    assert!(!said.contains("name it as"), "{said}");
+    std::fs::write(outside.join("keys.txt"), "another key").expect("a file");
+
+    let policy = std::sync::Arc::new(Careful::new());
+    policy.set(&Subject::Path("keys.txt".to_owned()), Verdict::Deny);
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let read = |path: std::path::PathBuf| {
+        let call = call("c1", "fs", json!({ "action": "read", "path": path }));
+        async move {
+            let said = fs
+                .invoke(&call, OutputSink::disconnected())
+                .await
+                .expect("the tool answers the call either way")
+                .content
+                .to_text()
+                .into_owned();
+            said.replace(&*path.to_string_lossy(), "PATH")
+        }
+    };
+
+    let missing = read(outside.join("nowhere/src/lib.rs")).await;
+    assert!(
+        missing.contains("outside what this session reaches"),
+        "{missing}"
+    );
+    assert!(missing.contains("name it as `src/lib.rs`"), "{missing}");
+    let there = read(outside.join("src/lib.rs")).await;
+    assert_eq!(
+        there, missing,
+        "a file that is there is told apart from one that is not"
+    );
+
+    // an end a path rule bars, or one reached through a link, is not named
+    let barred = read(outside.join("keys.txt")).await;
+    assert!(!barred.contains("name it as"), "{barred}");
+    let linked = read(outside.join("via/lib.rs")).await;
+    assert!(!linked.contains("name it as"), "{linked}");
 }
