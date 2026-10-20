@@ -129,7 +129,7 @@ $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 ```
 
 Those tools arrive through [`nachalnik-mcp`][nachalnik-mcp] and only declare `mcp:call`, whatever
-their annotations claim. Which server they came from is a separate permission: `--auto-allow-server
+their annotations claim. Which server they came from is a separate permission: `--auto-allow-servers
 files` covers that one server and no other, so give each server a `name=`. The command is split on
 whitespace and nothing is unquoted, so an argument cannot hold a space. A path with a space is two
 arguments; a script that starts the server works around that.

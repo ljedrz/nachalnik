@@ -455,7 +455,7 @@ fn the_program_offers_a_spawned_servers_tools() {
 /// refusal leaves the kernel as it found it.
 ///
 /// note: two `npx` lines with no `name=` are the commonest way to get there: both are named for
-/// their program. The name is what `--auto-allow-server` grants, so letting both in would grant
+/// their program. The name is what `--auto-allow-servers` grants, so letting both in would grant
 /// them together.
 #[tokio::test]
 async fn two_servers_under_one_name_are_refused() {
@@ -647,7 +647,7 @@ async fn a_server_is_refused_for_what_actually_went_wrong() {
 /// note: `env FOO=bar cmd` is the case the guard is written for - `env` and its argument are a
 /// command that sets a variable, and read as a name there is nothing to run at all. A `/` in front
 /// of the `=` is the same shape with the same consequence. The name is otherwise only visible in
-/// the prefix the server's tools carry and in what `--auto-allow-server` has to be given.
+/// the prefix the server's tools carry and in what `--auto-allow-servers` has to be given.
 #[tokio::test]
 async fn a_spec_is_read_as_a_command_wherever_a_name_could_not_be() {
     let server = spec!();

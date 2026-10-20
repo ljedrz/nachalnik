@@ -484,12 +484,12 @@ impl Flagged {
 
 /// Why [`Setup::check`] refused a setup, and which setting said what it refused.
 ///
-/// note: the key is spelled as in a settings file, such as `sandbox-device` or `auto-allow-server`;
-/// a flag spells it with `--` in front. It is `None` when no setting said it, such as a working
+/// note: the key is spelled as in a settings file, such as `sandbox-devices` or
+/// `auto-allow-servers`; a flag spells it with `--` in front. It is `None` when no setting said it, such as a working
 /// directory that cannot be found.
 ///
 /// note: it lets a caller holding a settings file name the file beside a value the file said, so a
-/// `--sandbox-device` typed on the command line is not mistaken for a file setting.
+/// `--sandbox-devices` typed on the command line is not mistaken for a file setting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Refused {
@@ -658,9 +658,9 @@ impl Setup {
             .find(|device| sandbox::device(device).is_none())
         {
             return Err(refused(
-                "sandbox-device",
+                "sandbox-devices",
                 format!(
-                    "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
+                    "{}: `--sandbox-devices` names a device under `/dev`; a path anywhere else is \
                      `--sandbox-write`",
                     stray.display()
                 ),

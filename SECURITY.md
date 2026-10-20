@@ -93,7 +93,7 @@ What changes to this workspace must keep true about what is and isn't enforced.
   `y` into the input `kamchatka` reads keys from and answer its own permission question (on kernels
   that still allow `TIOCSTI`), or draw over the question on any kernel. If the child can't detach
   from the terminal, it runs nothing. In `/dev`, the ruleset allows `null`, `zero`, `full`, `random`
-  and `urandom` and nothing else (`sandbox-device` replaces the list), since other devices reach
+  and `urandom` and nothing else (`sandbox-devices` replaces the list), since other devices reach
   beyond the command: the person's other terminals, shared memory, cameras and microphones. Under
   `--no-sandbox`, a command keeps the terminal and `/dev`, along with everything else the person
   has access to.
@@ -241,7 +241,7 @@ What changes to this workspace must keep true about what is and isn't enforced.
   like any other tool result, where the model reads it.
 - **Whoever wrote the directory `kamchatka` is run in.** Without `--config-file`, `kamchatka` reads
   `./kamchatka.json`, which can set every setting the command line can: `mcp` (starts unconfined
-  programs before the first message), `no-sandbox`, `auto-allow`, `auto-allow-server`, `on-ask` and
+  programs before the first message), `no-sandbox`, `auto-allow`, `auto-allow-servers`, `on-ask` and
   the sandbox paths. Running `kamchatka` in someone else's repository would run it with their
   settings: their MCP servers would start as you, and a file that turns off the sandbox and allows
   `exec` would leave nothing between that repository's instructions and your machine. So the file is

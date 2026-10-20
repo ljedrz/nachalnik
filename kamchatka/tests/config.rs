@@ -473,12 +473,12 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
         ),
         (
             "servers",
-            r#"{ "auto-deny-server": ["nope"] }"#,
+            r#"{ "auto-deny-servers": ["nope"] }"#,
             "is not a server this run starts",
         ),
         (
             "device",
-            r#"{ "sandbox-device": ["/home"] }"#,
+            r#"{ "sandbox-devices": ["/home"] }"#,
             "names a device under `/dev`",
         ),
     ] {
@@ -910,17 +910,17 @@ fn an_advisor_this_build_does_not_have_is_refused() {
 /// anywhere else, and a writable path the screens never mention.
 #[test]
 fn a_device_outside_dev_is_refused() {
-    let (ok, said) = run(&["--sandbox-device", "/tmp/not-a-device"], "");
+    let (ok, said) = run(&["--sandbox-devices", "/tmp/not-a-device"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
-    let path = settings("device-outside", r#"{ "sandbox-device": ["/home"] }"#);
+    let path = settings("device-outside", r#"{ "sandbox-devices": ["/home"] }"#);
     let (ok, said) = run(&["--config-file", &path], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
     // begins with `/dev` by its components, and is `/tmp` once the `..` is settled
-    let (ok, said) = run(&["--sandbox-device", "/dev/../tmp"], "");
+    let (ok, said) = run(&["--sandbox-devices", "/dev/../tmp"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
@@ -928,7 +928,7 @@ fn a_device_outside_dev_is_refused() {
     // leading out of `/dev` whatever the sandbox is doing, and a run switched between the two
     // should not change which values are acceptable
     let (ok, said) = run(
-        &["--no-sandbox", "--sandbox-device", "/dev/../home/you"],
+        &["--no-sandbox", "--sandbox-devices", "/dev/../home/you"],
         "",
     );
     assert!(!ok, "a device nobody checks is a device nobody has: {said}");
@@ -936,7 +936,7 @@ fn a_device_outside_dev_is_refused() {
 
     let path = settings(
         "device-outside-unconfined",
-        r#"{ "sandbox-device": ["/etc/shadow"] }"#,
+        r#"{ "sandbox-devices": ["/etc/shadow"] }"#,
     );
     let (ok, said) = run(&["--no-sandbox", "--config-file", &path], "");
     assert!(!ok, "{said}");
@@ -1874,7 +1874,7 @@ fn a_rule_nothing_is_judged_under_is_refused() {
 /// A deny naming no server this run starts is refused where it is given, and says which servers
 /// there are; an allow naming one is said and taken.
 ///
-/// note: `--auto-deny-server filess` beside `--mcp files=...` refused nothing, and a headless run
+/// note: `--auto-deny-servers filess` beside `--mcp files=...` refused nothing, and a headless run
 /// given `--on-ask allow` ran every call to `files` unasked, under a rule that read as given. An
 /// allow of a server that is not there grants nothing, and a settings file allowing somebody's
 /// usual servers was refused whenever `--mcp` left one of them out.
@@ -1884,7 +1884,7 @@ fn a_server_rule_naming_no_server_is_refused() {
     let refused = "is not a server this run starts";
 
     let (ok, said) = run(
-        &["--mcp", "files=/nowhere", "--auto-deny-server", "filess"],
+        &["--mcp", "files=/nowhere", "--auto-deny-servers", "filess"],
         "",
     );
     assert!(!ok, "{said}");
@@ -1892,13 +1892,13 @@ fn a_server_rule_naming_no_server_is_refused() {
         said.contains(&format!("`filess` {refused}; they are files")),
         "{said}"
     );
-    let (ok, said) = run(&["--auto-allow-server", "files"], "");
+    let (ok, said) = run(&["--auto-allow-servers", "files"], "");
     assert!(
         ok,
         "an allow of a server not started grants nothing, and is taken: {said}"
     );
     assert!(
-        said.contains("`--auto-allow-server` names `files`, which this run does not start")
+        said.contains("`--auto-allow-servers` names `files`, which this run does not start")
             && said.contains("it starts none"),
         "and said: {said}"
     );
@@ -1906,7 +1906,7 @@ fn a_server_rule_naming_no_server_is_refused() {
     // and one typed is not blamed on a file that carried the other list, as the shipped one does
     let path = settings(
         "servers-carried",
-        r#"{ "auto-allow-server": [], "auto-deny-server": [] }"#,
+        r#"{ "auto-allow-servers": [], "auto-deny-servers": [] }"#,
     );
     let (ok, said) = run(
         &[
@@ -1914,7 +1914,7 @@ fn a_server_rule_naming_no_server_is_refused() {
             &path,
             "--mcp",
             "files=/nowhere",
-            "--auto-deny-server",
+            "--auto-deny-servers",
             "filess",
         ],
         "",
@@ -1931,7 +1931,7 @@ fn a_server_rule_naming_no_server_is_refused() {
         &[
             "--mcp",
             "/nowhere/files --root /srv",
-            "--auto-deny-server",
+            "--auto-deny-servers",
             "files",
         ],
         "",
@@ -1939,7 +1939,7 @@ fn a_server_rule_naming_no_server_is_refused() {
     assert!(!said.contains(refused), "{said}");
 }
 
-/// An `allow` for `mcp:call` or `mcp` is refused with a pointer to `--auto-allow-server`, and a
+/// An `allow` for `mcp:call` or `mcp` is refused with a pointer to `--auto-allow-servers`, and a
 /// `deny` of either is kept.
 ///
 /// note: a server's tools are judged under its name in place of `mcp:call`, so
@@ -1950,7 +1950,7 @@ fn an_allow_for_mcp_is_refused_and_a_deny_is_not() {
     for rule in ["mcp", "mcp:call"] {
         let (ok, said) = run(&["--auto-allow", rule], "");
         assert!(!ok, "{said}");
-        assert!(said.contains("`--auto-allow-server NAME`"), "{said}");
+        assert!(said.contains("`--auto-allow-servers NAME`"), "{said}");
 
         let (ok, said) = run(&["--auto-deny", rule], "");
         assert!(ok, "a `deny` of {rule} was refused: {said}");
@@ -1968,7 +1968,7 @@ fn a_settings_file_names_the_servers_a_run_starts() {
     let path = settings("servers", r#"{ "mcp": ["files=/nowhere"] }"#);
 
     let (ok, said) = run(
-        &["--config-file", &path, "--auto-deny-server", "filess"],
+        &["--config-file", &path, "--auto-deny-servers", "filess"],
         "",
     );
 
@@ -1992,7 +1992,7 @@ fn a_typed_mcp_beats_the_file() {
             &path,
             "--mcp",
             "typed=/nowhere",
-            "--auto-deny-server",
+            "--auto-deny-servers",
             "neither",
         ],
         "",
@@ -2319,7 +2319,7 @@ fn a_file_named_on_the_command_line_says_why_it_could_not_be_read() {
 ///
 /// note: the refusals that come after the merge - a device, a path rule, a tool - were prefixed
 /// with the file whenever `tools` was not typed, and `tools` can only ever come from a file, so a
-/// typed `--sandbox-device /home` was answered `kamchatka.json: /home: ...` by a file that said
+/// typed `--sandbox-devices /home` was answered `kamchatka.json: /home: ...` by a file that said
 /// nothing about devices. Which setting was refused is part of the refusal now, and the file is
 /// named only where it carried that setting.
 #[test]
@@ -2333,7 +2333,7 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
         &[
             "--config-file",
             "kamchatka.json",
-            "--sandbox-device",
+            "--sandbox-devices",
             "/home",
         ],
         "",
@@ -2348,7 +2348,7 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
     // and the same refusal, the file's own, still names it
     std::fs::write(
         dir.join("kamchatka.json"),
-        r#"{ "tools": ["fs"], "sandbox-device": ["/home"] }"#,
+        r#"{ "tools": ["fs"], "sandbox-devices": ["/home"] }"#,
     )
     .expect("written");
     let (ok, out) = run_from(&dir, &["--config-file", "kamchatka.json"], "");

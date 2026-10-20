@@ -190,7 +190,7 @@ pub struct Args {
     /// A `/dev` device the shell may read and write. The list replaces the usual one rather than
     /// adding to it. Everything else under `/dev` stays out of reach.
     #[arg(long, value_name = "PATH", value_delimiter = ',', default_values = crate::sandbox::DEVICES)]
-    pub sandbox_device: Vec<std::path::PathBuf>,
+    pub sandbox_devices: Vec<std::path::PathBuf>,
 
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
     /// excluded item that can still be read.
@@ -248,11 +248,11 @@ pub struct Args {
     ///
     /// It is a separate argument because a server name and a domain are both bare words.
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
-    pub auto_allow_server: Vec<String>,
+    pub auto_allow_servers: Vec<String>,
 
     /// Refuse one, the same way.
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
-    pub auto_deny_server: Vec<String>,
+    pub auto_deny_servers: Vec<String>,
 
     /// What to do with a question nobody is there to answer: in a headless run, and in a
     /// `--connect` run once its input has closed. `--connect` leaves it for somebody else unless
@@ -360,11 +360,11 @@ impl Args {
             no_sandbox,
             sandbox_write,
             sandbox_read,
-            sandbox_device,
+            sandbox_devices,
             auto_allow,
             auto_deny,
-            auto_allow_server,
-            auto_deny_server,
+            auto_allow_servers,
+            auto_deny_servers,
             max_run_seconds,
             max_silence_seconds,
             mcp_timeout_seconds,
@@ -639,18 +639,18 @@ impl Args {
         }
         // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
         // deny naming a server this run does not start matches nothing, so a misspelled
-        // `--auto-deny-server` read as given and left the server it meant to the question - which a
-        // headless run with `--on-ask allow` answers yes. An auto-allow of one grants nothing, and
-        // is only said; see `Args::unstarted`
+        // `--auto-deny-servers` read as given and left the server it meant to the question -
+        // which a headless run with `--on-ask allow` answers yes. An auto-allow of one grants
+        // nothing, and is only said; see `Args::unstarted`
         let servers = self.servers();
         if let Some(unknown) = self
-            .auto_deny_server
+            .auto_deny_servers
             .iter()
             .find(|name| !servers.contains(name))
         {
             anyhow::bail!(
                 "{}`{unknown}` is not a server this run starts; {}",
-                at("auto_deny_server").unwrap_or_default(),
+                at("auto_deny_servers").unwrap_or_default(),
                 these(&servers)
             );
         }
@@ -667,7 +667,7 @@ impl Args {
             let at = at("auto_allow").unwrap_or_default();
             anyhow::bail!(
                 "{at}`--auto-allow {granted}` grants nothing: a tool from an MCP server is judged \
-                 under the server's name, so `--auto-allow-server NAME` is what lets one through"
+                 under the server's name, so `--auto-allow-servers NAME` is what lets one through"
             );
         }
         let resume = match &self.resume {
@@ -724,7 +724,7 @@ impl Args {
             confine: !self.no_sandbox,
             reachable: self.sandbox_write.clone(),
             readable: self.sandbox_read.clone(),
-            devices: self.sandbox_device.clone(),
+            devices: self.sandbox_devices.clone(),
             layout: match self.flat_tool_arguments {
                 true => crate::tools::Layout::Flat,
                 false => crate::tools::Layout::Wrapped,
@@ -733,13 +733,13 @@ impl Args {
                 .auto_allow
                 .iter()
                 .map(|it| Subject::parse(it))
-                .chain(self.auto_allow_server.iter().cloned().map(Subject::Server))
+                .chain(self.auto_allow_servers.iter().cloned().map(Subject::Server))
                 .collect(),
             deny: self
                 .auto_deny
                 .iter()
                 .map(|it| Subject::parse(it))
-                .chain(self.auto_deny_server.iter().cloned().map(Subject::Server))
+                .chain(self.auto_deny_servers.iter().cloned().map(Subject::Server))
                 .collect(),
             tools: self.tools.clone(),
             system: self.system_prompt.clone(),
@@ -764,7 +764,7 @@ impl Args {
         Ok(setup)
     }
 
-    /// What to say about the servers `--auto-allow-server` names that this run does not start;
+    /// What to say about the servers `--auto-allow-servers` names that this run does not start;
     /// `None` where it names none.
     ///
     /// note: said rather than refused, unlike a deny. Which servers run is up to the command line,
@@ -774,16 +774,16 @@ impl Args {
     pub fn unstarted(&self, filed: Option<&Filed>) -> Option<String> {
         let servers = self.servers();
         let absent: Vec<&str> = self
-            .auto_allow_server
+            .auto_allow_servers
             .iter()
             .filter(|name| !servers.contains(name))
             .map(String::as_str)
             .collect();
         (!absent.is_empty()).then(|| {
             format!(
-                "{}`--auto-allow-server` names {}, which this run does not start, so it grants \
+                "{}`--auto-allow-servers` names {}, which this run does not start, so it grants \
                  nothing there; {}",
-                filed_at(filed, "auto_allow_server").unwrap_or_default(),
+                filed_at(filed, "auto_allow_servers").unwrap_or_default(),
                 absent
                     .iter()
                     .map(|name| format!("`{name}`"))

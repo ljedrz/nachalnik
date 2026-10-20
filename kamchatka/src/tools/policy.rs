@@ -69,7 +69,7 @@ impl Subject {
     ///
     /// note: a server is not in here, and cannot be: `files` is a server name and `fs` is a domain,
     /// and nothing in either string says which. It is named on its own argument instead - see
-    /// `--auto-allow-server`.
+    /// `--auto-allow-servers`.
     ///
     /// note: it is the inverse of [`fmt::Display`] above for the three it can produce, so
     /// `--auto-deny "$(read a row off the permissions tab)"` means what it says.
@@ -471,13 +471,13 @@ impl Careful {
         //
         // note: it answers for `mcp:call`, which every tool from a server declares and means
         // "somebody else's tool, and nobody has vouched for what it does". Naming the server is the
-        // same statement made precisely, so consulting both would make `--auto-allow-server files`
+        // same statement made precisely, so consulting both would make `--auto-allow-servers files`
         // grant nothing until `mcp:call` had been answered too. Server annotations are untouched: a
         // tool that says it writes is still judged against `fs:write`.
         //
         // note: except where somebody refused it. The server stands in for `mcp:call`'s question,
         // not for `--auto-deny mcp:call` or `--auto-deny mcp`. Dropping one would let
-        // `--auto-allow-server` bypass a refusal, which no rule may do
+        // `--auto-allow-servers` bypass a refusal, which no rule may do
         let unvouched = Subject::Capability(unvouched());
         let refused = self.stance(&unvouched) == Verdict::Deny;
         if let Some(server) = self.servers.lock().get(&request.tool) {
