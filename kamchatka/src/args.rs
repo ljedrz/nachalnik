@@ -722,7 +722,7 @@ impl Args {
             spend: self.max_spend_tokens.filter(|it| *it > 0),
             leave_running: self.leave_running,
             confine: !self.no_sandbox,
-            reachable: self.sandbox_write.clone(),
+            writable: self.sandbox_write.clone(),
             readable: self.sandbox_read.clone(),
             devices: self.sandbox_devices.clone(),
             layout: match self.flat_tool_arguments {

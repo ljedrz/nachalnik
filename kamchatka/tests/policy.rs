@@ -49,7 +49,7 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
 
     let reach = Reach {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -222,7 +222,7 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
         // shape of a name rule and the reason the sandbox is where the boundary is
         let reach = Reach {
             workdir: dir.clone(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             confined: true,
         };
@@ -242,7 +242,7 @@ fn the_reach_refuses_what_is_outside_it() {
     std::fs::create_dir_all(dir.join("sub")).expect("a temporary directory");
     let reach = Reach {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -257,7 +257,7 @@ fn the_reach_refuses_what_is_outside_it() {
     // and with the confinement off, nothing is refused
     let open = Reach {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: false,
     };
@@ -687,7 +687,7 @@ fn a_file_allowed_on_its_own_can_be_opened() {
     std::fs::write(&beside, "not yours").expect("a file");
     let reach = Reach {
         workdir: work,
-        extra: vec![allowed.clone()],
+        writable: vec![allowed.clone()],
         readable: Vec::new(),
         confined: true,
     };
@@ -737,7 +737,7 @@ fn a_chain_of_links_too_long_to_follow_is_refused() {
     let outside = common::scratch("chain-outside");
     let reach = Reach {
         workdir: work.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };

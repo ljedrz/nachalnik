@@ -39,6 +39,10 @@ minor bump may break you.
   `Tab` and `Overlay`, and `tools::Subject`: a `match` on one outside this crate needs a `_` arm.
   The structs `Settings`, `config::Compact`, `args::Filed`, `app::Stance`, `Entry`, `Reply`,
   `Anchor` and `When`, and `help::Section`, which a caller reads and does not build.
+- **The paths `--sandbox-write` opens are `writable` everywhere they are held**, beside `readable`
+  for `--sandbox-read`: `Setup::reachable` and the `extra` of `Reach`, `Shell` and `Sandbox` are
+  renamed. `Sandbox::writable`, which said whether the working directory is writable, is
+  `Sandbox::workdir_writable`.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.

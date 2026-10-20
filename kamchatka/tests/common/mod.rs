@@ -126,7 +126,7 @@ pub fn builtin_under(
     kamchatka::tools::builtin(
         Shell {
             workdir: dir.to_path_buf(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy,
@@ -137,7 +137,7 @@ pub fn builtin_under(
         },
         Reach {
             workdir: dir.to_path_buf(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             confined,
         },

@@ -133,7 +133,7 @@ pub struct Setup {
     /// it off for everything `fs` does as well.
     pub confine: bool,
     /// Paths outside the working directory the tools may also read and write.
-    pub reachable: Vec<std::path::PathBuf>,
+    pub writable: Vec<std::path::PathBuf>,
     /// Paths outside the working directory the tools may read but not change.
     pub readable: Vec<std::path::PathBuf>,
     /// The devices under `/dev` a confined command may read and write, and no others;
@@ -187,7 +187,7 @@ impl Default for Setup {
             leave_running: false,
             tools: None,
             confine: true,
-            reachable: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: sandbox::DEVICES
                 .iter()
@@ -284,7 +284,7 @@ fn built() -> Vec<Arc<dyn nachalnik::Tool>> {
         tools::Shell {
             policy: policy.clone(),
             workdir: std::path::PathBuf::new(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
@@ -294,7 +294,7 @@ fn built() -> Vec<Arc<dyn nachalnik::Tool>> {
         },
         crate::sandbox::Reach {
             workdir: std::path::PathBuf::new(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             confined: true,
         },
@@ -626,7 +626,7 @@ impl Setup {
                 said: format!("could not find the working directory: {e}"),
             })?;
             let writable: Vec<_> = std::iter::once(&workdir)
-                .chain(self.reachable.iter())
+                .chain(self.writable.iter())
                 .filter_map(|path| sandbox::resolve(&workdir.join(path)))
                 .collect();
             if let Some(nested) = self.readable.iter().find(|path| {
@@ -850,7 +850,7 @@ impl Setup {
                     .collect()
             };
             let reach = sandbox::Reach {
-                extra: resolved(self.reachable),
+                writable: resolved(self.writable),
                 readable: resolved(self.readable),
                 workdir,
                 confined: self.confine,
@@ -859,7 +859,7 @@ impl Setup {
                 tools::Shell {
                     policy: policy.clone(),
                     workdir: reach.workdir.clone(),
-                    extra: reach.extra.clone(),
+                    writable: reach.writable.clone(),
                     readable: reach.readable.clone(),
                     devices: self.devices,
                     // Set the confiner only when it would actually confine anything. A binary

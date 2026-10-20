@@ -628,7 +628,7 @@ print('answered' if got else 'hung up')
 
     let shell = Shell {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: std::sync::Arc::new(Careful::new()),
