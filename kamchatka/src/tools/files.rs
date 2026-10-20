@@ -546,7 +546,7 @@ fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
     if without.is_empty() || !named.ends_with('/') {
         return None;
     }
-    let or = match makes_directories(policy) {
+    let or = match policy.reachable(&Capability::exec("run")) {
         true => format!(" - or make the directory with `shell` - `mkdir -p {named}`."),
         false => "; `shell`, which makes directories, is not available in this session.".to_owned(),
     };
@@ -555,11 +555,6 @@ fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
         "`{named}` ends in a separator, so it is a directory, and a directory is not something to \
          be {doing}. Say the file you mean - `{without}`{or}"
     ))
-}
-
-/// Whether a refusal may send the model to `shell` to make a directory `fs` will not.
-fn makes_directories(policy: &Careful) -> bool {
-    policy.reachable(&Capability::exec("run"))
 }
 
 /// How to add text with an edit, for the two refusals of an `edit` that names nothing to replace.
