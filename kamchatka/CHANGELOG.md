@@ -17,14 +17,16 @@ minor bump may break you.
   for reading and one for writing. A refused `fs:read` still lets `shell` read; the guide says that
   refusing `exec:run` is what keeps commands away from the files.
 - **`context`, `setup` and `fork` are judged by what a call does, as `fs` is.** `context`'s twelve
-  operations come under four subjects: `context:read` for `look`, `budget`, `request` and `search`;
-  `context:trim` for `elide` and `exclude`; `context:add` for `note`, `restore` and `pin`; and
-  `context:revise`. `undo` and `redo` need the three that change the context. `setup`'s four are
-  `setup:read`, and `fork`'s `draft` and `ask` are both `fork:ask`. A refused `context:look` left
-  `search` reading the items somebody had excluded. The old names are refused where they are given,
-  with the subjects the operation is judged as now. A run that should make room and change nothing
-  else is `--auto-allow context:read,context:trim`. Only `fs:write` and `context:revise` start on
-  the lower output limit, since every other subject has an operation whose answer grows.
+  operations come under five subjects: `context:read` for `look`, `budget`, `request` and
+  `search`; `context:move` for `elide`, `exclude` and `restore`, which change what of an item is
+  sent and never what it says; `context:pin`, which keeps an item from the compactor;
+  `context:note`; and `context:revise`. `undo` and `redo` need the four that change the context.
+  `setup`'s four are `setup:read`, and `fork`'s `draft` and `ask` are both `fork:ask`. A refused
+  `context:look` left `search` reading the items somebody had excluded. The old names are refused
+  where they are given, with the subjects the operation is judged as now. A run that should only
+  choose what goes into its requests is `--auto-allow context:read,context:move`. `fs:write`,
+  `context:note` and `context:revise` start on the lower output limit; every other subject has an
+  operation whose answer grows.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.
@@ -41,9 +43,9 @@ minor bump may break you.
 - **Wherever a subject is put to somebody deciding, the actions it covers are named beside it.**
   The question reads `[a] always, for fs:read (read, glob, grep)`, the permissions tab's row reads
   `fs:read  allow  fs: read, glob, grep`, `setup permissions` gives the model the same list, and a
-  refusal by a rule names every action the rule refuses: a refusal by `context:trim` names
-  `elide`, `exclude`, `undo` and `redo`. Without them, an `always` given to a `grep` allowed `read`
-  with nothing saying so, and a model refused `elide` tried `exclude` next.
+  refusal by a rule names every action the rule refuses: a refusal by `context:move` names
+  `elide`, `exclude`, `restore`, `undo` and `redo`. Without them, an `always` given to a `grep`
+  allowed `read` with nothing saying so, and a model refused `elide` tried `exclude` next.
 - **A headless run under `--on-ask deny` gives commands no network instead of asking about it.**
   A command that reached for the network was asked about and refused by the run, and the model was
   told this was one answer to one command and to say why it needed the network before trying again.

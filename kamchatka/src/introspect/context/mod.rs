@@ -34,21 +34,28 @@ use crate::tools::{
 use super::{Reach, action, ids, named, unknown};
 
 /// What a call to `op` needs, by what it does to the context: `read` for the four that only read
-/// it, `trim` for the two that make the request smaller, `add` for the three that add to it or keep
-/// something in it, and `revise` for rewriting what an item says. `undo` and `redo` walk back and
-/// forth through any of the changes, so they need all three that change it, as does a word this
-/// tool does not have.
+/// it; `move` for `elide`, `exclude` and `restore`, which change what of an item goes into the
+/// request and never what it says; `pin` for keeping an item from the compactor; `note` for adding
+/// an item of the model's own; and `revise` for rewriting what one says. `undo` and `redo` walk
+/// back and forth through any of the changes, so they need all four that change it, as does a word
+/// this tool does not have.
 ///
-/// note: `trim` on its own is what a run that should make room and change nothing else is granted,
-/// with `read` to see what to take.
+/// note: `pin` on its own, though it is one of the four moves in the schema, because it decides
+/// something else: what the person's compactor may take, rather than what the model sends.
+///
+/// note: `move` with `read` is what a run that should decide what goes into its requests, and
+/// change nothing else, is granted.
 pub(crate) fn subjects(op: &str) -> Vec<Capability> {
     let one = |subject| vec![domains::context(subject)];
     match op {
         "look" | "budget" | "request" | "search" => one("read"),
-        "elide" | "exclude" => one("trim"),
-        "note" | "restore" | "pin" => one("add"),
+        "elide" | "exclude" | "restore" => one("move"),
+        "pin" => one("pin"),
+        "note" => one("note"),
         "revise" => one("revise"),
-        _ => ["trim", "add", "revise"].map(domains::context).to_vec(),
+        _ => ["move", "pin", "note", "revise"]
+            .map(domains::context)
+            .to_vec(),
     }
 }
 
@@ -306,7 +313,7 @@ impl Tool for Context {
              `label:<text>`. Anything else is read as a label.",
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(["read", "trim", "add", "revise"].map(domains::context))
+        .with_capabilities(["read", "move", "pin", "note", "revise"].map(domains::context))
     }
 
     /// note: decided by `action` and nothing else, so a rule about `context:read` covers reading
@@ -457,14 +464,20 @@ mod tests {
             ("budget", "context:read"),
             ("request", "context:read"),
             ("search", "context:read"),
-            ("elide", "context:trim"),
-            ("exclude", "context:trim"),
-            ("pin", "context:add"),
-            ("restore", "context:add"),
+            ("elide", "context:move"),
+            ("exclude", "context:move"),
+            ("pin", "context:pin"),
+            ("restore", "context:move"),
             ("revise", "context:revise"),
-            ("note", "context:add"),
-            ("undo", "context:trim context:add context:revise"),
-            ("redo", "context:trim context:add context:revise"),
+            ("note", "context:note"),
+            (
+                "undo",
+                "context:move context:pin context:note context:revise",
+            ),
+            (
+                "redo",
+                "context:move context:pin context:note context:revise",
+            ),
         ];
         assert_eq!(
             needed,
@@ -475,8 +488,9 @@ mod tests {
             declared,
             [
                 "context:read",
-                "context:trim",
-                "context:add",
+                "context:move",
+                "context:pin",
+                "context:note",
                 "context:revise"
             ]
         );

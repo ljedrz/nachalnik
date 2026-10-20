@@ -223,7 +223,7 @@ pub(crate) fn if_offered(kernel: &Kernel, tool: &str, said: impl FnOnce() -> Str
     }
 }
 
-/// A sentence sending the model to `capability` - `log:read`, `context:add` - or nothing if
+/// A sentence sending the model to `capability` - `log:read`, `context:move` - or nothing if
 /// the model could not use it now: no tool on offer declares it, or it would be refused.
 ///
 /// note: [`if_offered`] one level further. A tool on offer whose every call a rule refuses, or

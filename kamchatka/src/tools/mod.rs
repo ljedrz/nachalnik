@@ -246,12 +246,12 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// The limit for one call's output when the answer is a fixed-shape report rather than a piece of
 /// the session, in bytes.
 ///
-/// note: the distinction is measured, not guessed. Two subjects' answers do not change between a
+/// note: the distinction is measured, not guessed. Three subjects' answers do not change between a
 /// small session and a large one with many more tools registered: `fs:write`'s, for `write` and
-/// `edit`, are one line, and `context:revise`'s says what it replaced without quoting it. Every
-/// other subject has at least one operation whose answer grows with what the session holds:
-/// `context:read` has `look`, `context:add` and `context:trim` list what they moved, and
-/// `setup:read` has the tools and the permissions.
+/// `edit`, are one line; `context:revise`'s says what it replaced without quoting it; and
+/// `context:note`'s is a short paragraph. Every other subject has at least one operation whose
+/// answer grows with what the session holds: `context:read` has `look`, `context:move` and
+/// `context:pin` list what they moved, and `setup:read` has the tools and the permissions.
 ///
 /// note: a lower number buys a tripwire where the limit never fires anyway. The answers are bounded
 /// because of how each is built, so if one arrives cut, that has silently stopped being true: a
@@ -340,7 +340,7 @@ impl Limits {
     /// number per row: a number per row would be a set of opinions nobody asked for, and one number
     /// for every row would treat a line confirming a write and a whole log as the same kind of
     /// answer. The tier is decided by whether the answer grows with the session, not by importance:
-    /// two subjects have answers that do not, and every other one does. The table exists so a
+    /// three subjects have answers that do not, and every other one does. The table exists so a
     /// person can change the row that matters to them.
     ///
     /// note: `grep` and `glob` answer under `fs:read`'s row with `read`, and it rarely shapes their
@@ -356,13 +356,16 @@ impl Limits {
             .map(Capability::fs)
             .into_iter()
             .chain([Capability::exec("run")])
-            .chain(["read", "trim", "add", "revise"].map(domains::context))
+            .chain(["read", "move", "pin", "note", "revise"].map(domains::context))
             .chain([domains::fork("ask")])
             .chain([domains::log("read")])
             .chain([domains::setup("read")])
             .map(|subject| {
                 let subject = subject.to_string();
-                let bounded = matches!(subject.as_str(), "fs:write" | "context:revise");
+                let bounded = matches!(
+                    subject.as_str(),
+                    "fs:write" | "context:note" | "context:revise"
+                );
 
                 (subject, if bounded { REPORT } else { CEILING })
             });

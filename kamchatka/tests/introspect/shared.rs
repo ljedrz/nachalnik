@@ -228,7 +228,7 @@ async fn the_file_selectors_advice_names_no_tool_that_has_been_taken_away() {
 /// note: the regression this is here for. These tools take their arguments inside a `call` object,
 /// and `Tool::needs` on `context` was reading the outside of it - so it found no `action`, took
 /// the branch meant for a call nobody can place, and declared every subject. A `look` at three
-/// items asked the person to allow `context:revise` and `context:trim` along with it, and a session
+/// items asked the person to allow `context:revise` and `context:move` along with it, and a session
 /// allowed to read the context and nothing else could not look at all.
 ///
 /// note: over every tool this program installs rather than over `context`, because the bug was not
@@ -250,12 +250,17 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
         (
             "context",
             json!({ "action": "note", "content": "x", "reason": "y" }),
-            "context:add",
+            "context:note",
         ),
         (
             "context",
             json!({ "action": "exclude", "ids": [3], "reason": "y" }),
-            "context:trim",
+            "context:move",
+        ),
+        (
+            "context",
+            json!({ "action": "pin", "ids": [3], "reason": "y" }),
+            "context:pin",
         ),
         ("fs", json!({ "action": "read", "path": "a.rs" }), "fs:read"),
         ("fs", json!({ "action": "grep", "pattern": "x" }), "fs:read"),
@@ -331,11 +336,11 @@ async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
 ///
 /// note: `Limits` holds two numbers - 32,000 bytes for an answer made of what the session holds,
 /// 8,000 for one that is a report of a fixed shape - and which tier a subject is in is a claim
-/// about how its answer is built. This is that claim, checked: every operation of the two
-/// subjects on it, `fs:write` and `context:revise`, against ten items and against a thousand, and
-/// none of the answers may move. A `revise` that quoted what it wrote would be a subject that had
-/// quietly changed tier, and the first anybody would otherwise know of it is a cut answer in a live
-/// session.
+/// about how its answer is built. This is that claim, checked: every operation of the three
+/// subjects on it, `fs:write`, `context:note` and `context:revise`, against ten items and against a
+/// thousand, and none of the answers may move. A `revise` that quoted what it wrote would be a
+/// subject that had quietly changed tier, and the first anybody would otherwise know of it is a cut
+/// answer in a live session.
 ///
 /// note: the figures are the point of the pairing rather than the absolute sizes, so it asserts
 /// both: no answer grows by more than the identifiers in it can (`[3]` becomes `[997]`), and every
@@ -345,7 +350,7 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
     let dir = common::scratch("bounded-answers");
     std::fs::write(dir.join("w.rs"), "x".repeat(40_000)).expect("a file to act on");
 
-    // `fs:write` by both its operations, and `context:revise`
+    // `fs:write` by both its operations, `context:note` and `context:revise`
     let calls = |path: &std::path::Path| -> Vec<(&'static str, serde_json::Value)> {
         vec![
             (
@@ -360,6 +365,11 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
                 // was the refusal
                 json!({"call": {"action": "edit", "path": path.join("w.rs"),
                                    "old": "z".repeat(300), "new": "w".repeat(300)}}),
+            ),
+            (
+                "context",
+                json!({"call": {"action": "note", "content": "a note",
+                                        "reason": "measuring"}}),
             ),
             (
                 "context",
@@ -405,7 +415,12 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
         sizes.push(answers);
     }
 
-    let names = ["fs:write (write)", "fs:write (edit)", "context:revise"];
+    let names = [
+        "fs:write (write)",
+        "fs:write (edit)",
+        "context:note",
+        "context:revise",
+    ];
     for ((name, small), big) in names.iter().zip(&sizes[0]).zip(&sizes[1]) {
         assert!(
             *big <= small + 256,

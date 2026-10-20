@@ -536,7 +536,7 @@ impl Changes {
                         "`search` reads a line of one without putting it back",
                     ),
                     (
-                        Capability::parse("context:add").expect("a capability"),
+                        Capability::parse("context:move").expect("a capability"),
                         "`restore` returns the whole",
                     ),
                 ]);
@@ -548,7 +548,7 @@ impl Changes {
                 out.push_str(&crate::introspect::if_reachable(
                     kernel,
                     &self.policy,
-                    "context:add",
+                    "context:note",
                     || {
                         "`note` writes a finding down in an item of its own, which this move does \
                          not touch.\n"

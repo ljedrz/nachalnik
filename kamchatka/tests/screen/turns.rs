@@ -249,9 +249,9 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
     // tab reads what the registered tools declare and what they declare is what they do. Reading
     // your own items, reading the record beside them and rewriting one are different questions,
     // and each is answerable on its own row - which is the whole point of a subject being
-    // `context:read` rather than the name of whichever tool happened to serve it: context's four,
+    // `context:read` rather than the name of whichever tool happened to serve it: context's five,
     // and one each for fork, setup and log
-    let operations = 4 + 1 + 1 + 1;
+    let operations = 5 + 1 + 1 + 1;
     harness.tab(Tab::Permissions);
     assert_eq!(harness.app.undecided(), before + operations);
     let screen = harness.screen();

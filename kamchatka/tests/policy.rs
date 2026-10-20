@@ -349,8 +349,8 @@ async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
     assert_eq!(policy.why(&ToolCallId::from("call_0")), None);
 }
 
-/// What the policy would answer about a call to the context needing `subject`: `read`, `trim`,
-/// `add` or `revise`.
+/// What the policy would answer about a call to the context needing `subject`: `read`, `move`,
+/// `pin`, `note` or `revise`.
 ///
 /// note: one subject, which is what a tool reports through `Tool::needs`. The policy no longer
 /// reads the `action` argument itself - it is handed what the call needs and answers about that.
@@ -377,7 +377,7 @@ fn allowing_a_tool_allows_every_action_of_it() {
     let policy = Careful::new();
     policy.set(&Subject::parse("context"), Verdict::Allow);
 
-    for action in ["read", "trim", "add", "revise"] {
+    for action in ["read", "move", "pin", "note", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Allow,
@@ -390,14 +390,14 @@ fn allowing_a_tool_allows_every_action_of_it() {
 #[test]
 fn allowing_one_action_allows_only_that_action() {
     let policy = Careful::new();
-    policy.set(&Subject::parse("context:add"), Verdict::Allow);
+    policy.set(&Subject::parse("context:note"), Verdict::Allow);
 
-    assert_eq!(asking_about_action(&policy, "add"), Verdict::Allow);
-    for action in ["read", "trim", "revise"] {
+    assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
+    for action in ["read", "move", "pin", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Ask,
-            "only `add` was allowed, so `{action}` is still a question"
+            "only `note` was allowed, so `{action}` is still a question"
         );
     }
     assert_eq!(
@@ -415,7 +415,7 @@ fn refusing_one_action_refuses_only_that_action() {
     policy.set(&Subject::parse("context:revise"), Verdict::Deny);
 
     assert_eq!(asking_about_action(&policy, "revise"), Verdict::Deny);
-    assert_eq!(asking_about_action(&policy, "add"), Verdict::Allow);
+    assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
 }
 
 /// A tool somebody refused stays refused, however finely an action of it is named.
@@ -427,9 +427,9 @@ fn refusing_one_action_refuses_only_that_action() {
 fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     let policy = Careful::new();
     policy.set(&Subject::parse("context"), Verdict::Deny);
-    policy.set(&Subject::parse("context:trim"), Verdict::Allow);
+    policy.set(&Subject::parse("context:move"), Verdict::Allow);
 
-    assert_eq!(asking_about_action(&policy, "trim"), Verdict::Deny);
+    assert_eq!(asking_about_action(&policy, "move"), Verdict::Deny);
 }
 
 /// A rule is spelled the way it is read out, so `--auto-deny "$(a row off the permissions tab)"`
@@ -503,7 +503,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     // the question was about one operation, so that is what the answer is about, and the rest of
     // the domain is untouched by it
     let policy = Careful::new();
-    let request = asked_about("trim");
+    let request = asked_about("move");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
     assert_eq!(asking_about_action(&policy, "revise"), Verdict::Ask);
@@ -512,7 +512,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     // credential path survives an `always` for `read`
     let policy = Careful::new();
     policy.set(&Subject::parse("context:revise"), Verdict::Deny);
-    let request = asked_about("trim");
+    let request = asked_about("move");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
     assert_eq!(
@@ -851,7 +851,7 @@ fn a_capability_is_reachable_only_where_the_model_could_use_it() {
 ///
 /// note: a subject is named for what a call does rather than for the action asking, so one
 /// answers for several. Named alone, an `always` for `fs:read` given to a `grep` allowed `read`
-/// with nobody having been told, and a model refused `elide` by `context:trim` went on to try
+/// with nobody having been told, and a model refused `elide` by `context:move` went on to try
 /// `exclude`, which the same rule refuses.
 #[tokio::test]
 async fn a_subject_is_named_with_the_actions_it_covers() {

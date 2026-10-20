@@ -36,7 +36,7 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     );
 
     // one subject held to something else, which is what the sentence has to be able to say
-    limits.set("context:add", 4_000).expect("a row for it");
+    limits.set("context:pin", 4_000).expect("a row for it");
 
     kernel.push(ContextItem::user("what are you running with?"));
     kernel.turn().await.expect("the turn failed");
@@ -44,12 +44,15 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     let said = answered(&kernel);
     assert!(said.contains("cut at 32,000 bytes"), "{said}");
     assert!(
-        said.contains("context:add at 4,000"),
+        said.contains("context:pin at 4,000"),
         "the one somebody changed is named, or the sentence is wrong about it: {said}"
     );
     // and the ones the table ships holding to something else are named together rather than a
     // clause each, since they are one figure said once
-    assert!(said.contains("context:revise at 8,000"), "{said}");
+    assert!(
+        said.contains("context:note, context:revise at 8,000"),
+        "{said}"
+    );
     // and only the subjects this session's tools declare: no `fs` here, so no `fs:read` in the
     // answer, for the reason `if_offered` exists
     assert!(
@@ -577,13 +580,13 @@ async fn setup_permissions_lists_one_row_per_operation() {
     assert!(said.contains("context:read"), "{said}");
     assert!(said.contains("context:revise"), "{said}");
     // and each names the actions it decides for, which is what a model plans a call by
-    let trim = said
+    let moving = said
         .lines()
-        .find(|line| line.starts_with("context:trim"))
-        .expect("a row for trimming");
+        .find(|line| line.starts_with("context:move"))
+        .expect("a row for moving items");
     assert!(
-        trim.contains("context: elide, exclude, undo, redo"),
-        "{trim}"
+        moving.contains("context: elide, exclude, restore, undo, redo"),
+        "{moving}"
     );
     assert!(
         !said.contains("nothing here is judged by it"),

@@ -230,7 +230,7 @@ There are four kinds of rows, and the first two are the same thing at different 
 **domain** is what a tool acts on (`fs`, `exec`, `context`), and an answer for a domain covers
 everything done in it, which is what makes "always" work for tools `kamchatka` has never seen. An
 **operation** is one kind of thing done in a domain, written `<domain>:<operation>`: `fs:read` and
-`fs:write` are separate decisions, and so are `context:add`, which adds to your context, and
+`fs:write` are separate decisions, and so are `context:note`, which adds to your context, and
 `context:revise`, which rewrites an item. An operation is named by what a call does, not by which of
 a tool's actions it uses, so actions with the same effect are one decision:
 
@@ -240,32 +240,33 @@ a tool's actions it uses, so actions with the same effect are one decision:
 | `fs:write` | `fs`'s `write` and `edit` |
 | `exec:run` | `shell` |
 | `context:read` | `context`'s `look`, `budget`, `request` and `search` |
-| `context:trim` | `elide` and `exclude`, which make the request smaller |
-| `context:add` | `note`, `restore` and `pin`, which add to it or keep something in it |
-| `context:revise` | `revise` |
+| `context:move` | `elide`, `exclude` and `restore`, which change what of an item is sent and never what it says |
+| `context:pin` | `pin`, which keeps an item from the compactor |
+| `context:note` | `note`, which adds an item of the model's own |
+| `context:revise` | `revise`, which rewrites what an item says |
 | `log:read` | `log` |
 | `setup:read` | `setup`'s `model`, `tools`, `permissions` and `policy` |
 | `fork:ask` | `fork`'s `draft` and `ask` |
 
-`context`'s `undo` and `redo` can replay any change, so they need `context:trim`, `context:add` and
-`context:revise` together. A refused `fs:write` also makes the working directory and the
-`--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell` reading,
-since a shell that can't read its working directory can do almost nothing; refuse `exec:run` to keep
-commands away from the files. A **path rule** is more specific than either: `fs:read: allow` is a
-reasonable thing to want, `fs:read .env: allow` is not. It applies to every tool given a path:
-`grep` and `glob` can't ask, so they skip files a rule doesn't allow and say how many, and a symlink
-to such a file is refused and named. A **server** rule is about which MCP server a tool came from
-rather than what it does, which is the one thing about an MCP tool you don't have to take the
-server's word for.
+`context`'s `undo` and `redo` can replay any change, so they need `context:move`, `context:pin`,
+`context:note` and `context:revise` together. A refused `fs:write` also makes the working directory
+and the `--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell`
+reading, since a shell that can't read its working directory can do almost nothing; refuse
+`exec:run` to keep commands away from the files. A **path rule** is more specific than either:
+`fs:read: allow` is a reasonable thing to want, `fs:read .env: allow` is not. It applies to every
+tool given a path: `grep` and `glob` can't ask, so they skip files a rule doesn't allow and say how
+many, and a symlink to such a file is refused and named. A **server** rule is about which MCP server
+a tool came from rather than what it does, which is the one thing about an MCP tool you don't have
+to take the server's word for.
 
 The most specific rule with an answer decides, but a refusal at a broader level always wins.
-`--auto-allow context` allows everything in `context`; `--auto-allow context:add` allows notes,
-restoring and pinning and says nothing about the rest; `--auto-allow context --auto-deny
-context:revise` allows everything except that one. A more specific rule cannot overrule a refusal: a
-denied domain stays denied, however specifically an operation in it is allowed, because the
-strictest matching rule wins and `--auto-deny` always takes precedence. `net:reach` is declared by
-no tool: where the network is gated, a command is asked about when it opens an internet socket;
-where it is not, it is judged by the command's name.
+`--auto-allow context` allows everything in `context`; `--auto-allow context:note` allows notes and
+says nothing about the rest; `--auto-allow context --auto-deny context:revise` allows everything
+except that one. A more specific rule cannot overrule a refusal: a denied domain stays denied,
+however specifically an operation in it is allowed, because the strictest matching rule wins and
+`--auto-deny` always takes precedence. `net:reach` is declared by no tool: where the network is
+gated, a command is asked about when it opens an internet socket; where it is not, it is judged by
+the command's name.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or use <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
 directly, and it takes effect from the next call. Answering "always" at a permission prompt writes
@@ -362,14 +363,14 @@ including logs too large to hold in memory. The alternative, `sed -n` through `s
 
 **The output limit is set per permission**, so `fs:read` and `exec:run` each have their own. It
 starts at 32,000 bytes, and at 8,000 for fixed-format reports rather than session content:
-`fs:write` and `context:revise`. On a small model each limit is lower still, a tenth of the context
-window at about four bytes a token, so one answer cannot fill it. A limit set with `/limit` is kept
-whatever the window. `/limit` lists the limits numbered and changes one from its next call on, e.g.
-`/limit fs:read 64000`. A cut result keeps the full version next to it, excluded; <kbd>space</kbd>
-on it sends the full version instead. `fs read` and `grep` cut nothing: a read stops at a line and
-says where to read on from, and a `grep` too long for its limit says which files matched instead.
-The full version has its own limit, 8 MiB: beyond that, a command's extra output is discarded and
-the result says how much, and `fs` refuses to edit larger files.
+`fs:write`, `context:note` and `context:revise`. On a small model each limit is lower still, a tenth
+of the context window at about four bytes a token, so one answer cannot fill it. A limit set with
+`/limit` is kept whatever the window. `/limit` lists the limits numbered and changes one from its
+next call on, e.g. `/limit fs:read 64000`. A cut result keeps the full version next to it, excluded;
+<kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` cut nothing: a read
+stops at a line and says where to read on from, and a `grep` too long for its limit says which files
+matched instead. The full version has its own limit, 8 MiB: beyond that, a command's extra output is
+discarded and the result says how much, and `fs` refuses to edit larger files.
 
 ## 📎 putting something in, with or without a question
 
@@ -444,8 +445,8 @@ yours. Every change takes a `reason`, which is what you see in the context tab.
 
 Three things are always refused: changing a **pinned** item (the agent can only unpin items it
 pinned itself), changing a **system instruction**, and changing the turn the agent is currently in.
-The twelve actions come under four permissions, in the table in the permissions section above:
-`context:read` and `context:revise` are separate rows, and `--auto-allow context` covers all four.
+The twelve actions come under five permissions, in the table in the permissions section above:
+`context:read` and `context:revise` are separate rows, and `--auto-allow context` covers all five.
 
 **`fork`** is its own tool, because each use costs a request: `draft` and `ask`, both `fork:ask`,
 take a snapshot, resume it as a second kernel with **no tools**, ask it once, and return only its

@@ -640,7 +640,7 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
              of it without being asked - it cannot take anything pinned, it says exactly what it \
              moved{}.{}\n",
             short(compactor.name()),
-            if_reachable(kernel, policy, "context:add", || {
+            if_reachable(kernel, policy, "context:move", || {
                 ", and `context` with `restore` puts any of it back".to_owned()
             }),
             if_reachable(kernel, policy, "log:read", || {
