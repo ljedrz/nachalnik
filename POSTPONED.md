@@ -115,14 +115,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   is asked for every counter written against them. Unblocked by a counter that abstains on JSON, and
   deciding whether the trait splits blocks or documents that a counter must.
 
-- **A compaction report prices a removed item that was already elided at its whole size.**
-  `ReportItem::tokens` is documented as what the item was costing, and is filled from
-  `ContextItem::tokens`, the size of its content. An item already elided was costing only its
-  marker, so its row overstates what removing it freed. The report's own totals are taken from the
-  projection and are right, and nothing in this workspace shows the per-item figure. Getting it
-  right needs the projector's price for each item, or a decision that the field is the item's size.
-  Unblocked by deciding which the field means.
-
 - **What the copies of a failed observation had cost is lost.** `Ablation::observe` returns the
   first failed copy's error and nothing else, so the spend of the copies beside it that answered
   never reaches the run's total. A run that fails reports less than it spent. Carrying it needs an
