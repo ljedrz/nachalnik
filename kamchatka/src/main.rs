@@ -498,7 +498,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // the desk it is on and from a browser. For a served run the question decides only whether
     // there is a screen, since `--serve` conflicts with `--headless`
     let headless = headless(args.headless, piped);
-    if server.is_none() && headless && !args.headless {
+    // a headless run nobody is attached to, which is most of what `headless` is asked for
+    let unattended = headless && server.is_none();
+    if unattended && !args.headless {
         // note: written rather than `eprintln!`ed, which panics when nobody is reading and takes
         // the run with it. Saying which mode was chosen must not be able to end the run, and this
         // is said on the way into the mode where an unread stream is the ordinary case
@@ -524,7 +526,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // clock is none as well, rather than a panic
     let ends = args
         .max_run_seconds
-        .filter(|seconds| *seconds > 0 && headless && server.is_none())
+        .filter(|seconds| *seconds > 0 && unattended)
         .and_then(|seconds| begun.checked_add(std::time::Duration::from_secs(seconds)));
 
     // note: the checks run before the provider, which is a round trip and an API key away.
@@ -548,7 +550,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // fourteen seconds, since there is nobody to tell sooner and a limit several sessions share
     // lasts longer than that; `--max-run-seconds` still bounds the whole run. A restart keeps the
     // provider, and with it this
-    if headless && server.is_none() {
+    if unattended {
         provider.set_tries(UNWATCHED_TRIES);
     }
     let flagged = kamchatka::wiring::Flagged::of(&*provider);
@@ -697,7 +699,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // loop reads no lines of this program's and never consults `--on-ask`, so the opening would
         // tell every attaching client that a question is answered `deny`, beside a line saying the
         // session waits for one
-        if headless && server.is_none() {
+        if unattended {
             headless::opening(&mut app, on_ask);
         }
         if let Some(server) = &server {
@@ -770,7 +772,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // line a person needs before wondering where a setting came from. Not in a headless run
         // with nobody attached: its conversation is printed to the stream the line above already
         // went to
-        if let Some(path) = found.as_ref().filter(|_| !headless || server.is_some()) {
+        if let Some(path) = found.as_ref().filter(|_| !unattended) {
             app.say(
                 Speaker::Note,
                 format!("settings read from {}", path.display()),
@@ -886,13 +888,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
     };
 
-    finish(
-        &app,
-        base.record,
-        headless && server.is_none(),
-        base.leave_running,
-        outcome,
-    )
+    finish(&app, base.record, unattended, base.leave_running, outcome)
 }
 
 /// Starts recording the session as it goes, unless `--no-record` was given.
