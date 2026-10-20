@@ -149,7 +149,8 @@ fn model(kernel: &Kernel) -> String {
     let mut out = match kernel.model_info() {
         Some(info) => {
             let mut said = format!("you are `{}`", info.model);
-            if let Some(limit) = info.context_limit {
+            // `0` is what an endpoint that does not know says; see `Budget::fraction_used`
+            if let Some(limit) = info.context_limit.filter(|limit| *limit != 0) {
                 said.push_str(&format!(", with {} tokens of context", thousands(limit)));
             }
             said.push('\n');

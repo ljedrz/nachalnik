@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A context limit of 0 is said to be unknown to the model.** `0` is what an endpoint that does
+  not know its limit says, and the screen already read it so. The `context` tool's `look`,
+  `request` and `budget` gave it as a number - `budget` as "0% full, ~0 left" - and `setup`'s
+  `model` said the model had 0 tokens of context.
 - **A command's refusals are accounted for off the runtime's threads.** Judging the paths in its
   standard error can take seconds, and it ran on a worker of the async runtime; it runs on a
   blocking thread now.

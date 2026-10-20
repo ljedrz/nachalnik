@@ -817,6 +817,38 @@ async fn budget_says_the_turn_asking_is_not_yours() {
     assert!(row.contains("not yours"), "{row}");
 }
 
+/// A provider that gives its context limit as `0` is said not to report one.
+///
+/// note: `0` is what an endpoint that does not know says. Read as a number, `budget` told the model
+/// its context was full with nothing left, and `setup` that it had 0 tokens of context.
+#[tokio::test]
+async fn a_limit_of_nothing_is_no_limit() {
+    let (kernel, _provider, _anchor) = agent([]);
+    kernel.set_provider(Arc::new(
+        ScriptedProvider::new(one_turn(vec![
+            call("c1", "context", json!({ "action": "look" })),
+            call("c2", "context", json!({ "action": "request" })),
+            call("c3", "context", json!({ "action": "budget" })),
+            call("c4", "setup", json!({ "action": "model" })),
+        ]))
+        .with_info(nachalnik::ModelInfo::new("test", "test").with_context_limit(0)),
+    ));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answers_from(&kernel, &["context", "setup"]);
+    assert_eq!(said.len(), 4, "{said:?}");
+    for said in &said {
+        assert!(!said.contains(" of 0"), "{said}");
+    }
+    assert!(said[3].contains("you are `test`\n"), "{}", said[3]);
+    assert!(
+        said[2].contains("against a limit this provider does not report"),
+        "{}",
+        said[2]
+    );
+}
+
 /// The fifth column of the expensive list is the running total of the fourth.
 ///
 /// note: what the model is asked to read the list for. `budget` exists so a compaction decision
