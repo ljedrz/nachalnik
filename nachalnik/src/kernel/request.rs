@@ -213,12 +213,7 @@ impl Kernel {
             tools,
             params,
         };
-        let cost = Cost {
-            tokens: context.tokens + tool_cost.tokens,
-            uncounted: context.uncounted + tool_cost.uncounted,
-        };
-
-        Ok((request, projection, cost))
+        Ok((request, projection, context + tool_cost))
     }
 
     /// Whether a request this size is one the model will refuse to read, and by how much.
@@ -362,14 +357,7 @@ impl Kernel {
         let cost = projection_cost(&projection, &*counter);
         let limit = self.model_info().and_then(|info| info.context_limit);
 
-        self.oversized(
-            limit,
-            &Cost {
-                tokens: cost.tokens + tools.tokens,
-                uncounted: cost.uncounted + tools.uncounted,
-            },
-        )
-        .is_none()
+        self.oversized(limit, &(cost + tools)).is_none()
     }
 
     /// Projects the context and reports what the projection costs.
@@ -493,10 +481,11 @@ pub(super) fn projection_cost(projection: &Projection, counter: &dyn TokenCounte
     projection
         .messages
         .iter()
-        .fold(Cost::default(), |cost, message| Cost {
-            tokens: cost.tokens + counter.count_message(message),
-            uncounted: cost.uncounted + counter.uncounted_message(message),
+        .map(|message| Cost {
+            tokens: counter.count_message(message),
+            uncounted: counter.uncounted_message(message),
         })
+        .sum()
 }
 
 /// What a projection costs: the estimate, and how much of the request the estimate does not cover.
@@ -510,6 +499,23 @@ pub(super) struct Cost {
     /// The pieces of content the counter would not put a number on, so that `tokens` can be read
     /// as the floor it is.
     pub uncounted: usize,
+}
+
+impl std::ops::Add for Cost {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            tokens: self.tokens + other.tokens,
+            uncounted: self.uncounted + other.uncounted,
+        }
+    }
+}
+
+impl std::iter::Sum for Cost {
+    fn sum<I: Iterator<Item = Self>>(costs: I) -> Self {
+        costs.fold(Self::default(), std::ops::Add::add)
+    }
 }
 
 /// Estimates the size of the given tool definitions, the schemas plus the descriptions, and how
@@ -529,8 +535,5 @@ pub(super) fn tool_cost(specs: &[ToolSpec], counter: &dyn TokenCounter) -> Cost 
                     + counter.uncounted(&named),
             }
         })
-        .fold(Cost::default(), |cost, tool| Cost {
-            tokens: cost.tokens + tool.tokens,
-            uncounted: cost.uncounted + tool.uncounted,
-        })
+        .sum()
 }
