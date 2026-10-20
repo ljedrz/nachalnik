@@ -868,11 +868,10 @@ pub struct Printed {
 
 /// Whether an event is a fragment of something still arriving, not a thing that happened.
 ///
-/// note: the same two the kernel keeps out of its log unless asked. The runtime does not publish
-/// that list, so this copies `Kernel::emit`. If the runtime ever records a third kind of progress,
-/// this and `Kernel::emit` would disagree here, so this must move with it.
+/// note: the kernel's own list, [`Event::is_progress`], the events it keeps out of its log unless
+/// asked.
 pub fn is_progress(event: &Event) -> bool {
-    matches!(event, Event::ModelDelta { .. } | Event::ToolOutput { .. })
+    event.is_progress()
 }
 
 /// Reads a `scheme:rest` address, the one spelling both ends of this take.
