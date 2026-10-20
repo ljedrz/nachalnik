@@ -2692,7 +2692,7 @@ async fn reaching_out(dir: &str, on_ask: Grant) -> Option<crate::Run> {
             app.kernel.add_tool(Arc::new(kamchatka::tools::Shell {
                 policy: app.policy.clone(),
                 workdir: dir.clone(),
-                extra: Vec::new(),
+                writable: Vec::new(),
                 readable: Vec::new(),
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 confiner: Some(common::program()),

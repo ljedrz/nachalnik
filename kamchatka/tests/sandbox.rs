@@ -83,12 +83,12 @@ fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
     (output.status.success(), said)
 }
 
-fn sandbox(workdir: PathBuf, writable: bool, network: Network) -> Sandbox {
+fn sandbox(workdir: PathBuf, workdir_writable: bool, network: Network) -> Sandbox {
     Sandbox {
         workdir,
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable,
+        workdir_writable,
         network,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -115,9 +115,9 @@ fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
 
         let sandbox = Sandbox {
             workdir: root.join("work"),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
-            writable: false,
+            workdir_writable: false,
             network: Network::Open,
             devices: Vec::new(),
             closed: Vec::new(),
@@ -187,7 +187,7 @@ fn a_root_swapped_for_a_link_grants_the_next_command_nothing() {
 
     // a root beneath the working directory
     let nested = Sandbox {
-        extra: vec![work.join("shelf")],
+        writable: vec![work.join("shelf")],
         ..sandbox(work.clone(), true, Network::Open)
     };
     let (ok, said) = run(&nested, "mv shelf shelf-was && ln -s ../secret shelf");
@@ -204,7 +204,7 @@ fn a_root_swapped_for_a_link_grants_the_next_command_nothing() {
 
     // and the working directory beneath one
     let beneath = Sandbox {
-        extra: vec![work.clone()],
+        writable: vec![work.clone()],
         ..sandbox(work.join("proj"), true, Network::Open)
     };
     let (ok, said) = run(
@@ -274,7 +274,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
     let said = |policy: &Arc<Careful>| {
         Shell {
             workdir: dir.clone(),
-            extra: vec![opened.clone()],
+            writable: vec![opened.clone()],
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
@@ -335,7 +335,7 @@ fn a_path_the_ruleset_cannot_open_costs_its_own_rule_and_no_more() {
     let outside = common::scratch("sandbox-unopenable-outside");
 
     let mut asked = sandbox(dir.clone(), true, Network::NoTcp);
-    asked.extra = vec![shut.clone(), dir.join("gone")];
+    asked.writable = vec![shut.clone(), dir.join("gone")];
 
     let (ok, said) = run(&asked, "echo ran > ran.txt");
     assert!(
@@ -668,7 +668,7 @@ fn a_refused_write_stance_reaches_the_paths_opened_for_writing() {
     policy.set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
     let sandbox = Sandbox::of(&policy, dir, vec![opened.clone()], Vec::new(), false);
 
-    assert!(sandbox.extra.is_empty(), "{sandbox}");
+    assert!(sandbox.writable.is_empty(), "{sandbox}");
     assert!(
         sandbox
             .to_string()
@@ -1274,7 +1274,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
         layout: kamchatka::tools::Layout::Wrapped,
         policy: Arc::new(Careful::new()),
         workdir: workdir.to_path_buf(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
@@ -1336,7 +1336,7 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
         layout: kamchatka::tools::Layout::Wrapped,
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
@@ -1518,9 +1518,9 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
 
     let confined = Sandbox {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1728,7 +1728,7 @@ async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
         layout: kamchatka::tools::Layout::Wrapped,
         policy: Arc::new(Careful::new()),
         workdir: common::workdir("scratch-refusal"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
@@ -1782,7 +1782,7 @@ async fn a_command_reading_its_input_reads_end_of_file() {
     // thing standing between a command and a wait is what `shell` hands it
     let open = Shell {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
@@ -1819,7 +1819,7 @@ fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
         layout: kamchatka::tools::Layout::Wrapped,
         policy: policy.clone(),
         workdir: dir.to_path_buf(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
@@ -2284,7 +2284,7 @@ async fn a_confined_command_leads_a_session_of_its_own() {
     let dir = common::workdir("sandbox-session");
     let shell = Shell {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
@@ -2538,7 +2538,7 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
         layout: kamchatka::tools::Layout::Wrapped,
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
@@ -2589,7 +2589,7 @@ async fn a_job_is_given_a_grace_to_leave_and_no_more_than_it_needs() {
         layout: kamchatka::tools::Layout::Wrapped,
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
@@ -2653,7 +2653,7 @@ async fn a_job_that_left_its_group_is_stopped_too() {
         layout: kamchatka::tools::Layout::Wrapped,
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),

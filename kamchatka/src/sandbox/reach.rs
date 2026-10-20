@@ -30,9 +30,9 @@ use super::{SYSTEM, resolve, writes};
 pub struct Reach {
     /// The directory the tools may work in.
     pub workdir: PathBuf,
-    /// Extra paths the user opened up, read-write.
-    pub extra: Vec<PathBuf>,
-    /// Extra paths the user opened up for reading only.
+    /// Paths outside the working directory the user opened up, read-write.
+    pub writable: Vec<PathBuf>,
+    /// Paths outside the working directory the user opened up for reading only.
     pub readable: Vec<PathBuf>,
     /// Whether to hold them to it at all; `--no-sandbox` turns this off.
     pub confined: bool,
@@ -81,7 +81,7 @@ impl Reach {
             false => "read-only",
         };
         std::iter::once(&self.workdir)
-            .chain(self.extra.iter())
+            .chain(self.writable.iter())
             .map(|path| format!("{} {written}", path.display()))
             .chain(
                 self.readable
@@ -128,7 +128,7 @@ impl Reach {
     /// Everywhere it may change something, which is what a refused write needs to hear.
     fn writable(&self) -> String {
         std::iter::once(&self.workdir)
-            .chain(self.extra.iter())
+            .chain(self.writable.iter())
             .map(|path| path.display().to_string())
             .collect::<Vec<_>>()
             .join(", ")
@@ -498,7 +498,7 @@ impl Reach {
     fn roots(&self, doing: Access) -> impl Iterator<Item = &PathBuf> {
         let readable = matches!(doing, Access::Reading);
         std::iter::once(&self.workdir)
-            .chain(self.extra.iter())
+            .chain(self.writable.iter())
             .chain(self.readable.iter().filter(move |_| readable))
     }
 

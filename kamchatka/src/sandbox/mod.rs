@@ -98,17 +98,17 @@ pub const SESSION_FLAG: &str = "--in-a-session";
 pub struct Sandbox {
     /// The directory a command may work in; everything outside it is out of reach.
     pub workdir: PathBuf,
-    /// Extra paths the user asked for, read-write.
-    pub extra: Vec<PathBuf>,
-    /// Extra paths the user asked for, readable only.
+    /// Paths outside the working directory the user asked for, read-write.
+    pub writable: Vec<PathBuf>,
+    /// Paths outside the working directory the user asked for, readable only.
     ///
-    /// note: separate from `extra` because they are asked for by different flags for different
+    /// note: separate from `writable` because they are asked for by different flags for different
     /// reasons, and a command may hold both at once. What sends most people here is a toolchain:
     /// `cargo` cannot start without `~/.rustup`, and a model that can replace the toolchain it is
     /// about to run is a worse trade than anybody meant to make.
     pub readable: Vec<PathBuf>,
     /// Whether the working directory is writable, or only readable.
-    pub writable: bool,
+    pub workdir_writable: bool,
     /// What the command may do about the network.
     pub network: Network,
     /// The devices under `/dev` the command may read and write, and nothing else there; see
@@ -217,27 +217,27 @@ impl Sandbox {
     pub fn of(
         policy: &Careful,
         workdir: PathBuf,
-        extra: Vec<PathBuf>,
+        writable: Vec<PathBuf>,
         readable: Vec<PathBuf>,
         granted: bool,
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
         let tcp = confines_tcp();
-        let writable = writes(policy);
+        let workdir_writable = writes(policy);
         // note: it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is refused
         // a write there under the same refusal. A shell that could still write in them was two
         // tools disagreeing about one path; the one that could write was the one whose writes
         // nothing checks
-        let (extra, readable) = match writable {
-            true => (extra, readable),
-            false => (Vec::new(), extra.into_iter().chain(readable).collect()),
+        let (writable, readable) = match workdir_writable {
+            true => (writable, readable),
+            false => (Vec::new(), writable.into_iter().chain(readable).collect()),
         };
 
         Self {
             workdir,
-            extra,
-            readable,
             writable,
+            readable,
+            workdir_writable,
             network: Network::of(
                 granted || stance == Verdict::Allow,
                 !policy.permits(&Capability::net("reach")),
@@ -256,14 +256,14 @@ impl Sandbox {
             OsString::from(EXEC_FLAG),
             OsString::from(SESSION_FLAG),
             self.workdir.clone().into(),
-            OsString::from(match self.writable {
+            OsString::from(match self.workdir_writable {
                 true => "rw",
                 false => "ro",
             }),
             OsString::from(self.network.word()),
-            OsString::from(self.extra.len().to_string()),
+            OsString::from(self.writable.len().to_string()),
         ];
-        argv.extend(self.extra.iter().map(|path| path.clone().into()));
+        argv.extend(self.writable.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.readable.len().to_string()));
         argv.extend(self.readable.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.devices.len().to_string()));
@@ -290,10 +290,10 @@ impl Sandbox {
         }
         argv.next_if(|word| *word == SESSION_FLAG);
         let workdir = PathBuf::from(argv.next()?);
-        let writable = argv.next()? == "rw";
+        let workdir_writable = argv.next()? == "rw";
         let network = Network::from_word(argv.next()?)?;
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
-        let extra: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
+        let writable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let readable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
@@ -309,9 +309,9 @@ impl Sandbox {
         Some((
             Self {
                 workdir,
-                extra,
-                readable,
                 writable,
+                readable,
+                workdir_writable,
                 network,
                 devices,
                 closed,
@@ -356,7 +356,7 @@ impl Sandbox {
             .map(PathBuf::from)
             .chain(std::iter::once(self.workdir.clone()))
             .chain(scratch.map(Path::to_path_buf))
-            .chain(self.extra.iter().cloned())
+            .chain(self.writable.iter().cloned())
             .chain(self.readable.iter().cloned())
             .any(|allowed| match allowed.canonicalize() {
                 Ok(allowed) => resolved.starts_with(allowed),
@@ -569,11 +569,11 @@ impl Sandbox {
 
     /// Whether a resolved path is under one of the roots a confined command may write.
     fn writes(&self, resolved: &Path, scratch: Option<&Path>) -> bool {
-        self.writable
+        self.workdir_writable
             .then_some(self.workdir.as_path())
             .into_iter()
             .chain(scratch)
-            .chain(self.extra.iter().map(PathBuf::as_path))
+            .chain(self.writable.iter().map(PathBuf::as_path))
             .any(|root| {
                 root.canonicalize()
                     .is_ok_and(|root| resolved.starts_with(root))
@@ -867,12 +867,12 @@ impl fmt::Display for Sandbox {
             f,
             "{} {}",
             self.workdir.display(),
-            match self.writable {
+            match self.workdir_writable {
                 true => "read-write",
                 false => "read-only",
             }
         )?;
-        for path in &self.extra {
+        for path in &self.writable {
             write!(f, ", {} read-write", path.display())?;
         }
         for path in &self.readable {

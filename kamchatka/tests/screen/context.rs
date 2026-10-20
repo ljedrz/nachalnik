@@ -1695,7 +1695,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     for tool in kamchatka::tools::builtin(
         kamchatka::tools::Shell {
             workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: harness.app.policy.clone(),
@@ -1706,7 +1706,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             confined: true,
         },

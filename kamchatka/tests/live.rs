@@ -1105,7 +1105,7 @@ async fn agent(
     let limits = Limits::new();
     let reach = kamchatka::sandbox::Reach {
         workdir: dir.to_path_buf(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         // on, so that a relative path is resolved against `workdir` the way it is in the program,
         // where `workdir` *is* the process directory. Off, `Reach` hands back what it was given
@@ -1117,7 +1117,7 @@ async fn agent(
         kamchatka::tools::Shell {
             policy: policy.clone(),
             workdir: reach.workdir.clone(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             // no Landlock: what is under test is what the tools say, and a session that cannot

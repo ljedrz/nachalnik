@@ -270,7 +270,7 @@ mod tests {
         let reach = || {
             Arc::new(Reach {
                 workdir: std::env::temp_dir(),
-                extra: Vec::new(),
+                writable: Vec::new(),
                 readable: Vec::new(),
                 confined: true,
             })

@@ -22,7 +22,7 @@ fn the_file_tools_are_held_to_the_same_boundary() {
     let dir = common::workdir("reach").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
-        extra: vec![PathBuf::from("/usr/share")],
+        writable: vec![PathBuf::from("/usr/share")],
         readable: Vec::new(),
         confined: true,
     };
@@ -170,7 +170,7 @@ fn a_directory_that_may_only_be_searched_is_still_reached() {
         .expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -241,7 +241,7 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     std::fs::write(outside.join("notes.txt"), "not yours").expect("a file outside");
     let reach = Reach {
         workdir: inside.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -313,7 +313,7 @@ fn a_root_swapped_for_a_link_reaches_nothing() {
     std::fs::write(secret.join("key.txt"), "not yours").expect("a file outside");
     let reach = Reach {
         workdir: base.join("elsewhere"),
-        extra: vec![shelf.clone()],
+        writable: vec![shelf.clone()],
         readable: Vec::new(),
         confined: true,
     };
@@ -342,7 +342,7 @@ fn a_root_swapped_for_a_link_reaches_nothing() {
     // and the working directory, inside a root a command may write
     let swapped = Reach {
         workdir: work.join("proj"),
-        extra: vec![work.clone()],
+        writable: vec![work.clone()],
         readable: Vec::new(),
         confined: true,
     };
@@ -374,7 +374,7 @@ fn a_path_turned_into_a_link_within_after_it_was_checked_is_not_opened() {
     std::fs::write(inside.join("private").join("notes.txt"), "secret").expect("another");
     let reach = Reach {
         workdir: inside.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -419,7 +419,7 @@ fn a_directory_turned_into_a_link_out_is_not_made_through() {
     std::fs::create_dir_all(&outside).expect("a directory outside it");
     let reach = Reach {
         workdir: inside.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -456,7 +456,7 @@ fn a_directory_made_under_one_that_may_only_be_searched() {
         .expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -490,7 +490,7 @@ fn a_directory_that_cannot_be_searched_is_left_to_the_write() {
     std::fs::create_dir_all(inside.join("locked")).expect("a directory that cannot be searched");
     let reach = Reach {
         workdir: inside.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -530,7 +530,7 @@ fn a_refusal_names_what_was_opened_up() {
     let dir = common::workdir("named").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
-        extra: vec![PathBuf::from("/usr/share")],
+        writable: vec![PathBuf::from("/usr/share")],
         readable: vec![PathBuf::from("/usr/lib")],
         confined: true,
     };
@@ -591,7 +591,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
     let tools = kamchatka::tools::builtin(
         Shell {
             workdir: dir.clone(),
-            extra: vec![opened.clone()],
+            writable: vec![opened.clone()],
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
@@ -602,7 +602,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
         },
         Reach {
             workdir: dir.clone(),
-            extra: vec![opened.clone()],
+            writable: vec![opened.clone()],
             readable: Vec::new(),
             confined: true,
         },
@@ -656,7 +656,7 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
         let tools = kamchatka::tools::builtin(
             Shell {
                 workdir: dir.clone(),
-                extra: Vec::new(),
+                writable: Vec::new(),
                 readable: Vec::new(),
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 policy,
@@ -667,7 +667,7 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
             },
             Reach {
                 workdir: dir.clone(),
-                extra: Vec::new(),
+                writable: Vec::new(),
                 readable: Vec::new(),
                 confined: true,
             },
@@ -722,7 +722,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
     let dir = common::workdir("tilde").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -786,7 +786,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
     let fs = kamchatka::tools::builtin(
         Shell {
             workdir: dir.clone(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: Arc::new(Careful::new()),
@@ -1038,9 +1038,9 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     for network in [Network::Open, Network::NoTcp, Network::Shut, Network::Asked] {
         let sandbox = Sandbox {
             workdir: PathBuf::from("/tmp/work dir"),
-            extra: vec![PathBuf::from("/opt/one"), PathBuf::from("/opt/two")],
+            writable: vec![PathBuf::from("/opt/one"), PathBuf::from("/opt/two")],
             readable: vec![PathBuf::from("/opt/three")],
-            writable: false,
+            workdir_writable: false,
             network,
             devices: vec![PathBuf::from("/dev/null"), PathBuf::from("/dev/pts")],
             closed: vec![7878, 9],
@@ -1076,9 +1076,9 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
 
     let confined = Sandbox {
         workdir: PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1211,9 +1211,9 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
 fn the_punctuation_around_a_path_is_not_part_of_it() {
     let confined = Sandbox {
         workdir: common::workdir("stopped-path"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1256,9 +1256,9 @@ fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() 
 
     let confined = Sandbox {
         workdir: PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1308,9 +1308,9 @@ fn a_refusal_written_in_any_of_its_spellings_is_a_refusal() {
 
     let confined = Sandbox {
         workdir: PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1353,9 +1353,9 @@ fn an_absolute_path_that_looks_like_a_url_is_still_named() {
 
     let confined = Sandbox {
         workdir: PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1428,9 +1428,9 @@ fn the_gate_is_reported_only_where_the_child_said_it_went_on() {
 fn a_relative_path_is_judged_from_the_working_directory() {
     let confined = Sandbox {
         workdir: common::workdir("relative-refusal"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1454,9 +1454,9 @@ fn a_relative_path_is_judged_from_the_working_directory() {
 fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
     let confined = Sandbox {
         workdir: common::workdir("dev-accounts"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1486,15 +1486,15 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
 /// refused it.
 #[test]
 fn a_root_named_under_dev_is_reached() {
-    for (extra, readable) in [
+    for (writable, readable) in [
         (vec![PathBuf::from("/dev/pts")], Vec::new()),
         (Vec::new(), vec![PathBuf::from("/dev/pts")]),
     ] {
         let confined = Sandbox {
             workdir: common::workdir("dev-root"),
-            extra,
+            writable,
             readable,
-            writable: true,
+            workdir_writable: true,
             network: kamchatka::sandbox::Network::NoTcp,
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             closed: Vec::new(),
@@ -1644,9 +1644,9 @@ fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
     );
     let confined = Sandbox {
         workdir,
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1685,9 +1685,9 @@ fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
         .expect("it exists");
     let confined = Sandbox {
         workdir: workdir.clone(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1716,7 +1716,7 @@ fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
     let dir = common::scratch("climb").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.join("w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -1769,7 +1769,7 @@ fn a_chain_of_links_longer_than_the_bound_is_refused() {
     let dir = common::scratch("links").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.join("w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         confined: true,
     };
@@ -1817,9 +1817,9 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
 
     let confined = Sandbox {
         workdir: PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1849,9 +1849,9 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
 fn a_closed_port_is_part_of_what_a_command_is_said_to_reach() {
     let served = |network| Sandbox {
         workdir: PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network,
         devices: Vec::new(),
         closed: vec![18790],

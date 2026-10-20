@@ -214,9 +214,9 @@ pub struct Shell {
     pub policy: Arc<Careful>,
     /// The directory a command may work in.
     pub workdir: PathBuf,
-    /// Extra paths the user asked to open up, read-write.
-    pub extra: Vec<PathBuf>,
-    /// Extra paths the user asked to open up for reading only.
+    /// Paths outside the working directory the user asked to open up, read-write.
+    pub writable: Vec<PathBuf>,
+    /// Paths outside the working directory the user asked to open up for reading only.
     pub readable: Vec<PathBuf>,
     /// The devices under `/dev` a confined command may read and write; see
     /// [`DEVICES`](crate::sandbox::DEVICES) for the usual ones.
@@ -474,21 +474,23 @@ impl Tool for Shell {
             Sandbox::of(
                 &self.policy,
                 self.workdir.clone(),
-                self.extra.clone(),
+                self.writable.clone(),
                 self.readable.clone(),
                 false,
             )
         });
-        let read_only = confined.as_ref().is_some_and(|sandbox| !sandbox.writable);
+        let read_only = confined
+            .as_ref()
+            .is_some_and(|sandbox| !sandbox.workdir_writable);
         // note: the paths that were opened are named, because a model told only about "the working
         // directory and the system paths" has no reason to try `~/.rustup` even when somebody
         // opened it for that. Read the confinement the command runs under rather than the flags,
         // because a refusal of `fs:write` makes the paths `--sandbox-write` opened read-only there
-        let (extra, readable) = match &confined {
-            Some(sandbox) => (&sandbox.extra, &sandbox.readable),
-            None => (&self.extra, &self.readable),
+        let (writable, readable) = match &confined {
+            Some(sandbox) => (&sandbox.writable, &sandbox.readable),
+            None => (&self.writable, &self.readable),
         };
-        let opened: Vec<String> = extra
+        let opened: Vec<String> = writable
             .iter()
             .map(|path| format!("{} read-write", path.display()))
             .chain(
@@ -601,7 +603,7 @@ impl Tool for Shell {
             ..Sandbox::of(
                 &self.policy,
                 self.workdir.clone(),
-                self.extra.clone(),
+                self.writable.clone(),
                 self.readable.clone(),
                 self.policy.was_granted_the_network(&call.id),
             )
@@ -1573,7 +1575,7 @@ mod tests {
         Shell {
             policy: Arc::new(Careful::new()),
             workdir: std::env::temp_dir(),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
@@ -1894,7 +1896,7 @@ mod tests {
             Shell {
                 policy,
                 workdir: std::env::temp_dir(),
-                extra: Vec::new(),
+                writable: Vec::new(),
                 readable: Vec::new(),
                 devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
                 // the sentence is only written where there is a confinement to be confined by

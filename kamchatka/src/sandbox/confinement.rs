@@ -358,8 +358,8 @@ pub fn confine_saying(
         .map(|port| Ok::<_, RulesetError>(NetPort::new(port, AccessNet::ConnectTcp)));
 
     let writable: Vec<PathBuf> = std::iter::once(sandbox.workdir.clone())
-        .filter(|_| sandbox.writable)
-        .chain(sandbox.extra.iter().cloned())
+        .filter(|_| sandbox.workdir_writable)
+        .chain(sandbox.writable.iter().cloned())
         .collect();
     let scratch = scratch.map(|scratch| Ok(PathBeneath::new(scratch.held.as_fd(), rights)));
     let system: Vec<PathBuf> = SYSTEM.iter().map(PathBuf::from).collect();
@@ -609,9 +609,9 @@ pub struct Probed {
 pub fn available(program: &Path) -> Probed {
     let sandbox = Sandbox {
         workdir: std::env::temp_dir(),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
-        writable: true,
+        workdir_writable: true,
         network: Network::Shut,
         devices: DEVICES.iter().map(PathBuf::from).collect(),
         closed: Vec::new(),

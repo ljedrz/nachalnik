@@ -446,7 +446,7 @@ async fn the_shell_says_how_much_of_an_answer_it_will_hand_back() {
     let limits = Limits::default();
     let shell = kamchatka::tools::Shell {
         workdir: std::path::PathBuf::from("/w"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),

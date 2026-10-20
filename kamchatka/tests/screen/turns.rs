@@ -886,7 +886,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
     for tool in kamchatka::tools::builtin(
         kamchatka::tools::Shell {
             workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: harness.app.policy.clone(),
@@ -897,7 +897,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
+            writable: Vec::new(),
             readable: Vec::new(),
             confined: true,
         },

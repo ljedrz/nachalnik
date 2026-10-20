@@ -43,7 +43,7 @@ async fn a_line_that_never_ends_is_not_held_past_the_ceiling() {
     let _turn = ONE_AT_A_TIME.lock().await;
     let shell = Shell {
         workdir: common::scratch("ceiling"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
@@ -78,7 +78,7 @@ async fn output_that_is_not_text_is_held_to_the_ceiling_as_it_is_kept() {
     let _turn = ONE_AT_A_TIME.lock().await;
     let shell = Shell {
         workdir: common::scratch("unkept"),
-        extra: Vec::new(),
+        writable: Vec::new(),
         readable: Vec::new(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
