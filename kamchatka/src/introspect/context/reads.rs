@@ -88,8 +88,7 @@ pub(super) fn look(
             .filter(|item| going.costs.contains_key(&item.id) || Some(item.id) == own)
             .count(),
         thousands(budget.used()),
-        budget
-            .limit
+        known(budget.limit)
             .map(|limit| format!(
                 " of {} ({}%)",
                 thousands(limit),
@@ -770,7 +769,7 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
         .map(|item| going.held_back(item))
         .sum();
 
-    let room = match budget.limit {
+    let room = match known(budget.limit) {
         Some(limit) => format!(
             " of {} ({}% full, ~{} left)",
             thousands(limit),
@@ -891,6 +890,14 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
     out
 }
 
+/// The context limit, where the provider knows it.
+///
+/// note: a limit of `0` is what an endpoint that does not know says, and the budget reads it as no
+/// limit; said as a number, it told the model its context was full with nothing left.
+fn known(limit: Option<usize>) -> Option<usize> {
+    limit.filter(|limit| *limit != 0)
+}
+
 /// The request that would go next, as a shape rather than as its bytes.
 ///
 /// note: a summary and not the request itself, which must not be printed: the request *is* the
@@ -910,8 +917,7 @@ pub(super) fn request(kernel: &Kernel) -> String {
         request.messages.len(),
         request.tools.len(),
         thousands(budget.used()),
-        budget
-            .limit
+        known(budget.limit)
             .map(|limit| format!(" of {}", thousands(limit)))
             .unwrap_or_default(),
         "#",
