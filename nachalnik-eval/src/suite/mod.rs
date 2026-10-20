@@ -69,10 +69,8 @@ pub use crate::suite::{
 /// note: two copies rather than "would your answer change", for the reason given on
 /// [`COUNTERFACTUAL`](script::COUNTERFACTUAL).
 ///
-/// note: the session and its copies disagree in practice: a session can answer a dossier correctly
-/// while a copy of the same context answers it wrongly. A claim about the session's own answer
-/// would then be graded against a baseline the subject was never shown. Every record says which
-/// happened, in the line [`note_drift`] writes, which begins `the session`.
+/// note: the session and its copies can disagree, as the note on `COUNTERFACTUAL` says. Every
+/// record says which happened, in the line [`note_drift`] writes, which begins `the session`.
 pub(crate) fn counterfactual(question: &str, difference: &str) -> Probe {
     Probe::claim(script::fill(
         script::COUNTERFACTUAL,
