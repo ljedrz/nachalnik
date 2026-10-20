@@ -1745,10 +1745,10 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
 
     // the number the listing prints is a handle the command takes, or it is decoration: naming
-    // the row and naming the subject are the same instruction. `fs:read` is the seventh of the
+    // the row and naming the subject are the same instruction. `fs:read` is the eighth of the
     // sorted subjects - every `context:*`, `exec:*` and `fork:*` sorts before it, so the count
     // moves when those tools do
-    harness.send("/limit 7 48000").await;
+    harness.send("/limit 8 48000").await;
     assert_eq!(declared(&harness, "fs", "read"), Some(48_000));
     assert_eq!(
         declared(&harness, "fs", "write"),
@@ -1773,7 +1773,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     // and the listing is where the range is; every subject is in it, `exec:run` among them
     harness.send("/limit").await;
     let screen = harness.sized(120, 40).replace('\n', " ");
-    assert!(screen.contains("[5]  exec:run"), "{screen}");
+    assert!(screen.contains("[6]  exec:run"), "{screen}");
     harness.press(KeyCode::Esc).await;
 
     // and nought is not a limit, it is a tool that answers with a marker
@@ -1793,11 +1793,11 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "it lists the new one: {screen}"
     );
     assert!(
-        screen.contains("context:add"),
+        screen.contains("context:pin"),
         "and every other subject: {screen}"
     );
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[7]  fs:read"), "{screen}");
+    assert!(screen.contains("[8]  fs:read"), "{screen}");
 }
 
 /// The limit table gives every subject the same room, so a two-digit row number does not push the

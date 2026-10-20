@@ -41,7 +41,7 @@ async fn the_policy_that_grants_two_handles_grants_only_those_two() {
     assert_eq!(verdict(Vec::new()).await, Verdict::Deny);
     assert_eq!(verdict(vec![Capability::exec("run")]).await, Verdict::Deny);
     // and not another operation in one of the two domains, which another tool may well declare
-    for other in ["context:trim", "introspect:write"] {
+    for other in ["context:move", "introspect:write"] {
         assert_eq!(
             verdict(vec![Capability::parse(other).expect("a subject")]).await,
             Verdict::Deny,

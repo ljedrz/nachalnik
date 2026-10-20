@@ -81,7 +81,7 @@ pub struct Granted;
 impl PermissionPolicy for Granted {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         // note: the operation as well as the domain. The domains are shared - `kamchatka`'s own
-        // `context` tool declares `context:read` and `context:trim` - so matching on the domain
+        // `context` tool declares `context:read` and `context:move` - so matching on the domain
         // alone granted any tool that happened to use one
         let mine = |capability: &Capability| match &capability.domain {
             Domain::Other(name) => matches!(

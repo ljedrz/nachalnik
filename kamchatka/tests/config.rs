@@ -1840,11 +1840,11 @@ fn a_rule_nothing_is_judged_under_is_refused() {
         ("fs:grep", "`fs:read`"),
         ("fs:glob", "`fs:read`"),
         ("context:look", "`context:read`"),
-        ("context:exclude", "`context:trim`"),
-        ("context:note", "`context:add`"),
+        ("context:exclude", "`context:move`"),
+        ("context:restore", "`context:move`"),
         (
             "context:undo",
-            "`context:trim`, `context:add`, `context:revise`",
+            "`context:move`, `context:pin`, `context:note`, `context:revise`",
         ),
         ("setup:model", "`setup:read`"),
         ("fork:draft", "`fork:ask`"),
@@ -2473,14 +2473,14 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
     assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
 }
 
-/// The notice sends the model to `exclude` or `elide` while `context:trim` is open, whatever else
+/// The notice sends the model to `exclude` or `elide` while `context:move` is open, whatever else
 /// is refused, and tells the person to make room once it is not.
 ///
-/// note: `trim` is the one subject making room needs. A session that refused adding and rewriting
-/// can still be made room in, and one that refused trimming cannot, however much else is open: a
-/// model sent to exclude what it no longer needs is then sent to the tool it cannot use.
+/// note: `move` is the one subject making room needs. A session that refused pinning, notes and
+/// rewriting can still be made room in, and one that refused moving cannot, however much else is
+/// open: a model sent to exclude what it no longer needs is then sent to the tool it cannot use.
 #[tokio::test]
-async fn the_notice_sends_the_model_to_trim_while_trimming_is_open() {
+async fn the_notice_sends_the_model_to_make_room_while_moving_is_open() {
     use std::sync::Arc;
 
     use kamchatka::{tools::Subject, wiring::Setup};
@@ -2504,17 +2504,17 @@ async fn the_notice_sends_the_model_to_trim_while_trimming_is_open() {
         .expect("a notice with the compactor")
     };
 
-    let trimming = notice(&["context:add", "context:revise"]);
-    assert!(trimming.contains("`exclude` or `elide`"), "{trimming}");
-    assert!(!trimming.contains("Tell the person"), "{trimming}");
+    let moving = notice(&["context:pin", "context:note", "context:revise"]);
+    assert!(moving.contains("`exclude` or `elide`"), "{moving}");
+    assert!(!moving.contains("Tell the person"), "{moving}");
 
-    // without reading, it is sent to trim by id without being sent to `look` first
+    // without reading, it is sent to make room by id without being sent to `look` first
     let blind = notice(&["context:read"]);
     assert!(blind.contains("`exclude` or `elide`"), "{blind}");
     assert!(!blind.contains("`look`"), "{blind}");
 
-    // and the sentence about asking the person is for a session that cannot trim
-    let neither = notice(&["context:trim"]);
+    // and the sentence about asking the person is for a session that cannot move items
+    let neither = notice(&["context:move"]);
     assert!(neither.contains("Tell the person"), "{neither}");
 }
 
@@ -2840,7 +2840,7 @@ fn a_key_is_asked_for_only_where_the_address_checks_one() {
 /// `setup` and a refusal can name them.
 ///
 /// note: the policy learns it from the tools, and only where they are installed; a session that
-/// skipped it would ask `always, for context:trim` with nothing saying `exclude` came with it.
+/// skipped it would ask `always, for context:move` with nothing saying `restore` came with it.
 #[test]
 fn a_wired_session_knows_which_actions_each_subject_covers() {
     use std::sync::Arc;
@@ -2863,7 +2863,7 @@ fn a_wired_session_knows_which_actions_each_subject_covers() {
         ["read", "glob", "grep"]
     );
     assert_eq!(
-        policy.actions_for(&kamchatka::tools::domains::context("trim"), "context"),
-        ["elide", "exclude", "undo", "redo"]
+        policy.actions_for(&kamchatka::tools::domains::context("move"), "context"),
+        ["elide", "exclude", "restore", "undo", "redo"]
     );
 }

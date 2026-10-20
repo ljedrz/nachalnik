@@ -1856,7 +1856,7 @@ async fn a_waiting_question_can_be_left_and_come_back_to() {
     ]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("context", "elided")
-            .with_capabilities([kamchatka::tools::domains::context("trim")]),
+            .with_capabilities([kamchatka::tools::domains::context("move")]),
     ));
     harness
         .app
@@ -1946,7 +1946,7 @@ async fn a_question_naming_its_items_twice_is_not_described_as_a_move() {
         ]);
         harness.app.kernel.add_tool(Arc::new(
             ConstTool::new("context", "elided")
-                .with_capabilities([kamchatka::tools::domains::context("trim")]),
+                .with_capabilities([kamchatka::tools::domains::context("move")]),
         ));
         harness
             .app
