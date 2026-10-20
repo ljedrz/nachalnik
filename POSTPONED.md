@@ -97,14 +97,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   the rest. Unblocked by providers settling on a common way to report a request's price and a key's
   balance, or by deciding an OpenRouter-only figure is worth having.
 
-- **Two match arms in `Setup::check` can never be taken.** When a rule in `auto-allow` or
-  `auto-deny` names no tool that exists here, the refusal names the setting the rule came from, and
-  two match arms name `auto-allow-server` and `auto-deny-server` for a server's rule. `unreached`,
-  which finds those rules, never objects to a server's rule, so the two arms are never taken and
-  nothing can test them. Either the arms and their comment go, or a server rule that names no
-  configured server is also refused and the arms are tested with it. Unblocked by deciding whether
-  such a rule should be refused.
-
 - **An MCP call whose future is dropped is never cancelled at the server.** `McpTool::invoke` sends
   MCP's `notifications/cancelled` when the call is interrupted or times out. A caller that drops the
   step future while the call is with the server, rather than interrupting it, sends nothing, and the

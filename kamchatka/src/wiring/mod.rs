@@ -522,17 +522,12 @@ impl Setup {
             }
         }
 
+        // note: a server's rule is never refused here. `Args::setup_from` refuses a deny naming a
+        // server this run does not start, and says an allow of one, which grants nothing
         for (list, subjects) in [("auto-allow", &self.allow), ("auto-deny", &self.deny)] {
             for subject in subjects {
                 if let Some(objection) = unreached(subject) {
-                    // a server's rule came in as `auto-allow-server` or `auto-deny-server`, which
-                    // is where it was written; every other one is the list's own
-                    let setting = match (subject, list) {
-                        (tools::Subject::Server(_), "auto-allow") => "auto-allow-server",
-                        (tools::Subject::Server(_), _) => "auto-deny-server",
-                        _ => list,
-                    };
-                    return Err(refused(setting, objection));
+                    return Err(refused(list, objection));
                 }
             }
         }
