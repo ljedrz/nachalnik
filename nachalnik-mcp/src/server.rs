@@ -1,7 +1,4 @@
 //! A connection to one MCP server, and what installing its tools into a kernel did.
-//!
-//! note: the connection lives as long as the [`Server`]; dropping it ends the session, and a child
-//! process goes with it. `nachalnik` itself holds no processes open.
 
 use std::sync::Arc;
 
@@ -57,7 +54,7 @@ impl Installed {
 /// A connection to one MCP server.
 ///
 /// note: the connection lives as long as the [`Server`]; dropping it ends the session, and for a
-/// child process the process goes with it.
+/// child process the process goes with it. `nachalnik` itself holds no processes open.
 pub struct Server {
     name: String,
     prefix: bool,
