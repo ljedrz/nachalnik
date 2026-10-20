@@ -9,6 +9,8 @@ minor bump may break you.
 
 ### fixed
 
+- **An `--mcp` server named with no command is refused by its spec.** The refusal said only that
+  a server needs a command, so with several servers there was no telling which one was meant.
 - **A context limit of 0 is said to be unknown to the model.** `0` is what an endpoint that does
   not know its limit says, and the screen already read it so. The `context` tool's `look`,
   `request` and `budget` gave it as a number - `budget` as "0% full, ~0 left" - and `setup`'s

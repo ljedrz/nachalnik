@@ -489,6 +489,31 @@ async fn two_servers_under_one_name_are_refused() {
     assert!(left.is_empty(), "{left:?}");
 }
 
+/// A server named with no command is refused with the spec that named it, so one among several can
+/// be found.
+#[tokio::test]
+async fn a_server_with_no_command_is_refused_by_its_spec() {
+    let wired = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let refused = kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &["empty=".into()])
+        .await
+        .map(|servers| servers.len());
+    assert!(
+        refused.as_ref().is_err_and(|why| why.contains("`empty=`")),
+        "{refused:?}"
+    );
+}
+
 /// A server whose tools would take identifiers something else already has is refused, rather
 /// than quietly take its place - and the refusal leaves the kernel as it found it.
 ///
