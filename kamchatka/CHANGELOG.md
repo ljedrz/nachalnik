@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs` refusing a path under a root that is not there names the same file in the working
+  directory.** A model that guessed at a checkout's location, as `/workspace/AGENTS.md`, was told
+  only that the path was outside the reach, and sent its next reads to the same wrong root. Where
+  nothing is at the path and its end is in the working directory, the refusal now says to name it
+  that way.
 - **`--max-run-seconds` ends a run whose turn does not stop when it is interrupted.** The deadline
   interrupted the turn and then waited for it to end, so a tool that does not look at its interrupt
   kept the run going for as long as the tool ran. The run now leaves at the deadline after the same

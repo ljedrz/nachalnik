@@ -87,6 +87,30 @@ impl Reach {
             .join(", ")
     }
 
+    /// The end of `path` that is in the working directory, where `path` itself names nothing: what
+    /// a model that guessed at the working directory's own name meant.
+    ///
+    /// note: a model told nothing more guessed again. Given `/workspace/AGENTS.md` for a checkout
+    /// elsewhere, it sent its next reads under `/workspace` too, and each was refused the same way.
+    /// The longest end is tried first, and only where nothing is at the path asked for, so a file
+    /// that is there outside the reach is never answered with a different one of the same name.
+    fn meant_here(&self, path: &Path) -> Option<PathBuf> {
+        if !path.is_absolute() || path.symlink_metadata().is_ok() {
+            return None;
+        }
+        let parts: Vec<_> = path
+            .components()
+            .filter_map(|part| match part {
+                std::path::Component::Normal(part) => Some(part),
+                _ => None,
+            })
+            .collect();
+
+        (1..parts.len())
+            .map(|skip| parts[skip..].iter().collect::<PathBuf>())
+            .find(|tail| self.workdir.join(tail).symlink_metadata().is_ok())
+    }
+
     /// Everywhere it may change something, which is what a refused write needs to hear.
     fn writable(&self) -> String {
         std::iter::once(&self.workdir)
@@ -240,9 +264,16 @@ impl Reach {
             }
             false => Err(format!(
                 "{}: outside what this session reaches, which is {}. Work where it does, or ask \
-                 for this path to be opened up and say what you need it for.",
+                 for this path to be opened up and say what you need it for.{}",
                 path.display(),
-                self.range(writing)
+                self.range(writing),
+                self.meant_here(&path)
+                    .map(|tail| format!(
+                        " Nothing is at that path, but `{0}` is in the working directory; if that \
+                         is what you meant, name it as `{0}`.",
+                        tail.display()
+                    ))
+                    .unwrap_or_default()
             )),
         }
     }
