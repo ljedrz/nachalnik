@@ -1141,3 +1141,30 @@ async fn the_page_panel_is_as_wide_as_an_address_wider_than_its_code() {
     assert_eq!(right - left + 1, address.len() + 4, "{screen}");
     assert!(screen.contains(address), "{screen}");
 }
+
+/// A box drawn again in a narrower window folds its text to the new width, not to the old one.
+///
+/// note: what a box is folded to is kept between frames, by its words and the width. A fold kept
+/// by its words alone would draw the wide lines into the narrow box and cut every one of them off
+/// at its border.
+#[tokio::test]
+async fn a_box_folds_again_when_the_window_narrows() {
+    let mut harness = Harness::new([]);
+    harness.app.submit("/help").await;
+    let lines = |screen: &str| -> usize {
+        let (before, _) = screen
+            .split_once(" · any key closes")
+            .unwrap_or_else(|| panic!("a footer: {screen}"));
+        before
+            .split_whitespace()
+            .last()
+            .and_then(|count| count.parse().ok())
+            .unwrap_or_else(|| panic!("a count of lines: {screen}"))
+    };
+
+    let wide = lines(&harness.sized(140, 40));
+    let narrow = lines(&harness.sized(50, 40));
+    assert!(narrow > wide, "{narrow} lines at 50 columns, {wide} at 140");
+    // and back at the first width, the first folding again
+    assert_eq!(lines(&harness.sized(140, 40)), wide);
+}

@@ -1210,6 +1210,42 @@ mod tests {
         assert_eq!(stopped.spent(), 20 * 320, "every answer that came back");
     }
 
+    /// An answer whose usage gives only one of its two halves is said to have reported less than it
+    /// cost, as one with no usage is.
+    ///
+    /// note: half a figure is added to what the ceiling charges as though it were all of it, so a
+    /// run held to `--max-spend-tokens` would be charged less than it spent without a word.
+    #[tokio::test]
+    async fn an_answer_reporting_half_its_cost_is_unreported() {
+        struct HalfBilled;
+
+        #[async_trait]
+        impl SystemOne for HalfBilled {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+                Ok(nachalnik_providers::system1::Answers::read(json!({
+                    "model": "half-billed",
+                    "answers": { RATING: { "type": "score", "score": 0.1 } },
+                    "usage": { "input_tokens": 300 },
+                })))
+            }
+
+            fn named(&self) -> String {
+                "half-billed".to_owned()
+            }
+        }
+
+        let advised = Advised::new(Arc::new(Careful::new()), Arc::new(HalfBilled));
+        advised
+            .evaluate(&asking("shell", Capability::exec("run")))
+            .await;
+        assert_eq!(advised.spent(), 300, "the half that was said");
+        assert!(advised.unreported(), "and that the rest was not");
+    }
+
     /// A stop gives up on a rating at once, and the question says the advice was not waited for.
     ///
     /// note: an engine that never answers, which is a busy service's four tries and their waits at
