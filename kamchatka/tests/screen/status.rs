@@ -1429,12 +1429,11 @@ async fn the_budget_says_the_counter_has_learned_nothing_yet() {
 /// socket reads and a screen is what a person at a desk reads - and the keys that close a panel
 /// mean a test that reads the screen cannot press them afterwards.
 async fn budget_of(harness: &mut Harness) -> String {
-    let kamchatka::app::Overlay::Text { pages, .. } = harness
-        .app
-        .submit("/budget")
-        .await
-        .page
-        .expect("`/budget` answered with a page");
+    let Some(kamchatka::app::Overlay::Text { pages, .. }) =
+        harness.app.submit("/budget").await.page
+    else {
+        panic!("`/budget` answered with no page");
+    };
 
     pages
         .iter()

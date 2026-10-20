@@ -23,6 +23,7 @@ use crate::{sandbox::Confinement, tools::Subject};
 
 /// One row of the permissions tab: a capability, a path rule or a rule about one tool action, what
 /// the policy will answer about it, and the tools that would be affected.
+#[non_exhaustive]
 pub struct Stance {
     /// What the row is about: a capability, or a pattern the paths are matched against.
     pub subject: Subject,

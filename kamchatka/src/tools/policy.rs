@@ -34,6 +34,7 @@ use super::reaching::Reaching;
 /// path as its `path` argument. A tool from an MCP server names its own arguments; one calling its
 /// path `file_path` meets only the rules about its server. See [`Careful::judges`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum Subject {
     /// One operation in one domain: `fs:read`.
     Capability(Capability),

@@ -239,7 +239,7 @@ async fn main() -> Result<(), String> {
 ///
 /// note: a client decides this for itself, which is the reason `Speaker` is on the wire at all. The
 /// session hands over who was talking; how it looks is the client's business. This one uses seven
-/// characters.
+/// characters, and a speaker a newer session names is printed as a note.
 fn mark(speaker: kamchatka::app::Speaker) -> &'static str {
     use kamchatka::app::Speaker::*;
 
@@ -249,8 +249,8 @@ fn mark(speaker: kamchatka::app::Speaker) -> &'static str {
         Reasoning => "~",
         Call => "⟩",
         Result => "<",
-        Note => "·",
         Error => "!",
+        _ => "·",
     }
 }
 

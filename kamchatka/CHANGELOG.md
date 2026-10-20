@@ -34,6 +34,11 @@ minor bump may break you.
 - **`Careful::offers` takes the tool rather than its spec**, and asks it which of its actions need
   each subject, so a policy cannot be told what a tool declares without learning that too.
   `Setup::wire` calls it for every tool it installs.
+- **Types only this crate builds are `#[non_exhaustive]`, so adding to them later is not a break.**
+  The enums `Api`, `remote::protocol::Message`, `Command` and `Address`, `app::Speaker`, `Outcome`,
+  `Tab` and `Overlay`, and `tools::Subject`: a `match` on one outside this crate needs a `_` arm.
+  The structs `Settings`, `config::Compact`, `args::Filed`, `app::Stance`, `Entry`, `Reply`,
+  `Anchor` and `When`, and `help::Section`, which a caller reads and does not build.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.

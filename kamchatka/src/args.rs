@@ -1075,6 +1075,7 @@ pub struct Given {
 /// from a flag on the command line, which decides whether the refusal names the file. A value that
 /// failed after the merge is a value somebody wrote down, and a file applies because of where they
 /// are standing as much as anything else.
+#[non_exhaustive]
 pub struct Filed {
     /// The file read, named the way `Settings::read` names it on its own errors.
     pub at: std::path::PathBuf,

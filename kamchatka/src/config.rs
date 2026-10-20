@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 /// somebody is looking for is worth less than none, because they stop looking.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[non_exhaustive]
 pub struct Settings {
     /// The model to talk to.
     pub model: Option<String>,
@@ -138,6 +139,7 @@ pub struct Settings {
 /// one, and three switches could say two at once, which had to be refused after the fact.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum Api {
     /// OpenAI's chat completions, which OpenRouter and most local servers speak.
     #[default]
@@ -165,6 +167,7 @@ pub const BORDER_COLOR: &str = "#1A936F";
 /// whole, as a list on the command line replaces a file's, so a file that says what the program
 /// does unasked changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct Compact {
     /// How full the context may get, as a fraction of the limit.
     pub threshold: f64,
