@@ -380,11 +380,10 @@ complete.
 
 `/budget` is about the next request; `/spend` is about the session. `/spend` adds up what the
 provider charged for every response (measured, never estimated) and compares it with the limit, if
-one was set with `--max-spend-tokens` or `/spend N`. The total starts at zero for every session: one
-carried on with `-r`, and a fresh one after `/restart`. The session stops at that limit; see
-[running without a screen](#-the-same-program-without-a-screen). The `--rate-shell-commands`
-advisor's reported costs are included too, whichever key pays for them, and `/spend` shows how much
-of the total was the advisor's.
+one was set with `--max-spend-tokens` or `/spend N`. The session stops at that limit; see [running
+without a screen](#-the-same-program-without-a-screen). The `--rate-shell-commands` advisor's
+reported costs are included too, whichever key pays for them, and `/spend` shows how much of the
+total was the advisor's.
 
 ## 🗜️ when the context fills
 
@@ -409,16 +408,16 @@ every item it would remove, with its id, what it is and what it contains. It the
 screen, so you can switch to the context tab and <kbd>p</kbd> anything you want to keep. Answering
 yes recalculates the compaction, so items you pinned while reading the list are respected.
 
-The compactor doesn't touch the turn in progress or pinned items, so if those make up most of the
-context, it can't help. When the context is past the `--compact-context-at` threshold and there's
-nothing left it's allowed to remove, the session says the context is full, once, while there's still
-room below the limit. You can `/exclude`, or the model can exclude with its `context` tool. The
-model is also told, by a note added to the context before its next request, within the turn that
-filled it, so an unattended run can make room itself instead of hitting the limit. If the model
-can't make room with the `context` tool (it's turned off, a rule refuses `exclude` and `elide`, or a
-headless run would refuse them because nobody is there to ask), the note asks the model to tell you
-instead, and it's reworded, including any copy already in the context, whenever that changes. Once
-there's room again, the session says so and the note is excluded.
+If the turn in progress and pinned items make up most of the context, the compactor can't help. When
+the context is past the `--compact-context-at` threshold and there's nothing left it's allowed to
+remove, the session says the context is full, once, while there's still room below the limit. You
+can `/exclude`, or the model can exclude with its `context` tool. The model is also told, by a note
+added to the context before its next request, within the turn that filled it, so an unattended run
+can make room itself instead of hitting the limit. If the model can't make room with the `context`
+tool (it's turned off, a rule refuses `exclude` and `elide`, or a headless run would refuse them
+because nobody is there to ask), the note asks the model to tell you instead, and it's reworded,
+including any copy already in the context, whenever that changes. Once there's room again, the
+session says so and the note is excluded.
 
 In a headless run, making room is a permission question like any other: every `context` call is
 asked about, including `look`, and `--on-ask deny` refuses all of them, so the note doesn't send the
