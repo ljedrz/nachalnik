@@ -1107,7 +1107,7 @@ async fn what_an_edit_takes_out_and_what_it_puts_in_are_a_diff_s_two_colours() {
         }),
     )])]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("edit", "done").with_capabilities([Capability::fs("edit")]),
+        ConstTool::new("edit", "done").with_capabilities([Capability::fs("write")]),
     ));
 
     harness.send("change it").await;

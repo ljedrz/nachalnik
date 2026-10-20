@@ -710,19 +710,17 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
 /// its own, and telling its caller that such a call named no operation would invent a vocabulary it
 /// never claimed.
 pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) -> Option<String> {
-    let offered = &spec.schema["properties"];
-    let layout = match offered.get(WRAPPER) {
+    let properties = &spec.schema["properties"];
+    let layout = match properties.get(WRAPPER) {
         Some(_) => Layout::Wrapped,
-        None if offered["action"]["enum"].is_array() => Layout::Flat,
+        None if properties["action"]["enum"].is_array() => Layout::Flat,
         None => return None,
     };
 
-    let ops: Vec<&str> = spec
-        .capabilities
-        .iter()
-        .map(|capability| capability.op.as_str())
-        .collect();
-    if ops.len() < 2 || request.capabilities != spec.capabilities {
+    // note: the operations from the schema, not the capabilities. `fs` has five operations and
+    // two subjects, so its capabilities name `write` and not `edit`
+    let ops: Vec<&str> = offered(&spec.schema);
+    if spec.capabilities.len() < 2 || request.capabilities != spec.capabilities {
         return None;
     }
 
@@ -806,8 +804,8 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
     };
 
     Some(format!(
-        "{why} - a rule about one of them, like `{}:{}`, does not answer it",
-        spec.capabilities[0].domain, ops[0]
+        "{why} - a rule about one of them, like `{}`, does not answer it",
+        spec.capabilities[0]
     ))
 }
 
@@ -904,10 +902,9 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 
 /// The operations a built schema offers, in the order it offers them.
 ///
-/// note: for the test every one of these tools keeps - that the vocabulary the schema is written
-/// in and the vocabulary the permissions are written in are one list. Both come off the same
-/// table, so this guards against that ceasing to be true.
-#[cfg(test)]
+/// note: read off the schema rather than a tool's capabilities, because the two are not one list:
+/// `fs` has five operations and judges them by two subjects. It is what a call can name, which is
+/// what [`unnamed_operation`] and a rule naming an operation are about.
 pub(crate) fn offered(schema: &Value) -> Vec<&str> {
     let inside = match Layout::of(schema) {
         Layout::Flat => schema,
@@ -919,15 +916,12 @@ pub(crate) fn offered(schema: &Value) -> Vec<&str> {
         None => vec![inside],
     };
 
+    // a schema written anywhere else, such as a server's, may have no `action` to read
     branches
         .into_iter()
-        .flat_map(|branch| {
-            branch["properties"]["action"]["enum"]
-                .as_array()
-                .expect("a branch names the actions it covers")
-                .iter()
-                .map(|it| it.as_str().expect("an action is a word"))
-        })
+        .filter_map(|branch| branch["properties"]["action"]["enum"].as_array())
+        .flatten()
+        .filter_map(Value::as_str)
         .collect()
 }
 

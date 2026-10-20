@@ -326,7 +326,7 @@ fn read(
              this is its start{}]",
             policy
                 .ways(&[
-                    (Capability::fs("grep"), "`grep` finds what is in it"),
+                    (Capability::fs("read"), "`grep` finds what is in it"),
                     (Capability::exec("run"), "`shell` can read the rest"),
                 ])
                 .map(|ways| format!("; {ways}"))
@@ -434,7 +434,7 @@ fn untext(
             policy
                 .ways(&[
                     (
-                        Capability::fs("grep"),
+                        Capability::fs("read"),
                         "`grep` searches a file whatever it holds"
                     ),
                     (Capability::exec("run"), "`shell` can read it as bytes"),

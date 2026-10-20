@@ -567,7 +567,7 @@ impl App {
 
             // note: and a rule about one operation answers for that operation and nothing wider.
             // Naming the tools, with one tool to a domain, reads back the subject's own first
-            // half: `fs:glob  allow  fs` puts the narrow rule over the whole tool, the one
+            // half: `fs:read  allow  fs` puts the narrow rule over the whole tool, the one
             // direction it cannot go. What a rule reaches is never broader than the rule.
             //
             // note: an empty list is how the row says nothing here is judged by it, and that is

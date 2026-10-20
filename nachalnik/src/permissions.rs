@@ -108,7 +108,7 @@ impl Capability {
         }
     }
 
-    /// One in [`Domain::Fs`]: `read`, `glob`, `grep`, `write`, `edit`.
+    /// One in [`Domain::Fs`]: `read` or `write`, by what a call does to the files.
     ///
     /// note: one constructor for each domain this crate can name, since every agent has them. The
     /// operation stays a string, because which acts a filesystem has is the client's vocabulary.

@@ -1001,7 +1001,7 @@ function draw() {
   }
   for (const rule of latest.permissions) {
     // note: `covers:` where the tab has a column header saying so. A rule about one tool is
-    // usually named for it, and without the word the row read `fs:glob` twice
+    // usually named for it, and without the word the row read `fs:read` twice
     const covers = rule.tools.length
       ? `covers: ${rule.tools.join(", ")}`
       : "nothing registered needs it";

@@ -253,10 +253,11 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
             "context:note",
         ),
         ("fs", json!({ "action": "read", "path": "a.rs" }), "fs:read"),
+        ("fs", json!({ "action": "grep", "pattern": "x" }), "fs:read"),
         (
             "fs",
             json!({ "action": "edit", "path": "a.rs", "old": "x", "new": "y" }),
-            "fs:edit",
+            "fs:write",
         ),
         ("shell", json!({ "action": "run", "cmd": "ls" }), "exec:run"),
         ("log", json!({ "action": "read" }), "log:read"),
@@ -325,9 +326,9 @@ async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
 ///
 /// note: `Limits` holds two numbers - 32,000 bytes for an answer made of what the session holds,
 /// 8,000 for one that is a report of a fixed shape - and which tier a subject is in is a claim
-/// about how its answer is built. This is that claim, checked: the same seven calls against ten
-/// items and against a thousand, with two hundred more tools registered for the two `setup` ones,
-/// and none of the answers may move. A `budget` that listed every item, or a `revise` that quoted
+/// about how its answer is built. This is that claim, checked: the same seven calls, under six
+/// subjects, against ten items and against a thousand, with two hundred more tools registered for
+/// the two `setup` ones, and none of the answers may move. A `budget` that listed every item, or a `revise` that quoted
 /// what it wrote, would be a subject that had quietly changed tier, and the first anybody would
 /// otherwise know of it is a cut answer in a live session.
 ///
@@ -339,7 +340,7 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
     let dir = common::scratch("bounded-answers");
     std::fs::write(dir.join("w.rs"), "x".repeat(40_000)).expect("a file to act on");
 
-    // the seven, and one from each tool that has any, so a whole tool moving tier is visible here
+    // the six, `fs:write` by both its operations, so a whole tool moving tier is visible here
     let calls = |path: &std::path::Path| -> Vec<(&'static str, serde_json::Value)> {
         vec![
             (
@@ -414,8 +415,8 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
     }
 
     let names = [
-        "fs:write",
-        "fs:edit",
+        "fs:write (write)",
+        "fs:write (edit)",
         "context:budget",
         "context:note",
         "context:revise",

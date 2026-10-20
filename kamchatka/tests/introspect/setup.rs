@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// `setup tools` says how much of an answer reaches the model, by subject and not by tool.
 ///
 /// note: the figure they share and then whichever ones do not, rather than a column. A column
-/// would have had one number standing for `fs:read` and `fs:grep` alike, which is the thing
+/// would have had one number standing for `fs:read` and `fs:write` alike, which is the thing
 /// keying a limit by subject exists to stop - and this is the one place a model can find out what
 /// its own answers are being cut at, so a number that is wrong here is one it cannot check.
 #[tokio::test]

@@ -371,6 +371,22 @@ fn unreached(subject: &Subject) -> Option<String> {
         });
     }
     match op {
+        // note: an operation of `fs` named as though it were a subject, which each of them once
+        // was. Told only that `fs` is `read` and `write`, a settings file written for an older
+        // version reads as a typing mistake
+        Some(op)
+            if domain == "fs"
+                && !ops.contains(&op.as_str())
+                && specs.iter().any(|spec| {
+                    spec.id == "fs" && tools::ops::offered(&spec.schema).contains(&op.as_str())
+                }) =>
+        {
+            Some(format!(
+                "`{subject}` names an operation, and a rule names what a call does to the files: \
+                 `{op}` is judged as `{}`",
+                tools::fs_subject(op)
+            ))
+        }
         Some(op) if !ops.contains(&op.as_str()) => {
             let mut ops = ops;
             ops.sort();

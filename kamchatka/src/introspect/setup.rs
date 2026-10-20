@@ -257,8 +257,8 @@ fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<Con
 /// differently, so tell them apart before the call, not after.
 ///
 /// note: limits are a sentence under the table, not a column, because they are keyed by subject and
-/// a tool has several subjects. A column would give `fs:read` and `fs:grep` one number; keying by
-/// subject stops that. A row per subject would repeat the shared figure. So: the shared number,
+/// a tool has several subjects. A column would give `fs:read` and `fs:write` one number; keying
+/// by subject stops that. A row per subject would repeat the shared figure. So: the shared number,
 /// then the subjects that differ.
 fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
     let specs = kernel.tool_specs();

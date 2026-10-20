@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **`Trust::Annotations` gives a tool that is not read-only `fs:write` alone.** It gave `fs:write`
+  and `fs:edit`, the names `kamchatka` used for its two ways of changing a file, and `kamchatka`
+  judges both as `fs:write` now. A rule about `fs:write` judges such a tool as before; a rule about
+  `fs:edit` no longer matches it.
+
 ### fixed
 
 - **An answer that arrives as an interrupt or a timeout lands is kept.** A call waits on the

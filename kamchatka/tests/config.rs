@@ -1833,6 +1833,19 @@ fn a_rule_nothing_is_judged_under_is_refused() {
     assert!(typo.contains("write"), "{typo}");
     let nowhere = checked("network").expect_err("a domain nothing is judged under");
     assert!(nowhere.contains("exec"), "{nowhere}");
+    // and an operation of `fs`, which each was once a subject of its own, is told what it is
+    // judged as rather than read as a typing mistake
+    for (operation, judged) in [
+        ("fs:edit", "`fs:write`"),
+        ("fs:grep", "`fs:read`"),
+        ("fs:glob", "`fs:read`"),
+    ] {
+        let refusal = checked(operation).expect_err("an operation is not a subject");
+        assert!(
+            refusal.contains(&format!("is judged as {judged}")),
+            "{refusal}"
+        );
+    }
 
     for rule in [
         "exec",

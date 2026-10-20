@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### breaking
 
+- **`fs` is judged by what a call does to the files: `fs:read` for `read`, `glob` and `grep`, and
+  `fs:write` for `write` and `edit`.** Each operation was a subject of its own, so `--auto-deny
+  fs:write` made the shell read-only and left `edit` changing files, and `--auto-deny fs:read` left
+  `grep` printing them. `fs:edit`, `fs:grep` and `fs:glob` are refused where they are given, in a
+  flag or a settings file, with the subject the operation is judged as now, and `/limit` has one row
+  for reading and one for writing. A refused `fs:read` still lets `shell` read; the guide says that
+  refusing `exec:run` is what keeps commands away from the files.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.

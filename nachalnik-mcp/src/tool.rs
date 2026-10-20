@@ -52,9 +52,8 @@ pub enum Trust {
     Fixed(Vec<Capability>),
     /// Believe the server's annotations.
     ///
-    /// A tool claiming `readOnlyHint` gets `fs:read`; anything else gets `fs:write` and
-    /// `fs:edit`, because the specification's default for that hint is `false` and an absent hint
-    /// is not a reassurance. `openWorldHint` adds `net:reach`, and so does its absence: the
+    /// A tool claiming `readOnlyHint` gets `fs:read`; anything else gets `fs:write`, because the
+    /// specification's default for that hint is `false` and an absent hint is not a reassurance. `openWorldHint` adds `net:reach`, and so does its absence: the
     /// specification's default for that one is `true`.
     ///
     /// note: Reasonable for a server you run yourself, and a mistake for one you do not.
@@ -76,9 +75,7 @@ impl Trust {
                 let read_only = annotations.and_then(|a| a.read_only_hint).unwrap_or(false);
                 match read_only {
                     true => capabilities.push(Capability::fs("read")),
-                    false => {
-                        capabilities.extend([Capability::fs("write"), Capability::fs("edit")]);
-                    }
+                    false => capabilities.push(Capability::fs("write")),
                 }
                 if annotations.and_then(|a| a.open_world_hint).unwrap_or(true) {
                     capabilities.push(Capability::net("reach"));

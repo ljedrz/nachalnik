@@ -2,9 +2,13 @@
 //!
 //! note: one tool per object rather than per verb. Reading, listing, searching, writing and
 //! changing part of a file are five operations on one thing, and a model choosing between five
-//! tools must know which is the filesystem before it can choose. The permission subjects come from
-//! the same decision: `fs:read`, `fs:write` and the rest. A rule is about the filesystem and an
-//! operation on it, not about whatever served it.
+//! tools must know which is the filesystem before it can choose.
+//!
+//! note: two permission subjects for the five, named for what a call does to the files rather than
+//! for how it asks: `fs:read` for `read`, `glob` and `grep`, and `fs:write` for `write` and `edit`;
+//! see [`subject`]. They are the two words the shell's confinement grants a path under, so a rule
+//! means the same to both tools. One subject per operation let `--auto-deny fs:write` leave `edit`
+//! changing files, and `--auto-deny fs:read` leave `grep` printing them.
 //!
 //! note: it dispatches to the five implementations rather than reimplementing them. Each already
 //! knows how to ask [`Reach`](crate::sandbox::Reach) for a path, how to walk a directory and what
@@ -28,6 +32,15 @@ use crate::{
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
     },
 };
+
+/// What a call to `action` needs: writing for the operations that change a file, reading for the
+/// rest.
+pub(crate) fn subject(action: &str) -> Capability {
+    match action {
+        "write" | "edit" => Capability::fs("write"),
+        _ => Capability::fs("read"),
+    }
+}
 
 /// The five operations, what each is for, and what each reads.
 ///
@@ -185,20 +198,15 @@ impl Tool for Fs {
             ),
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(
-            actions(&self.ops)
-                .into_iter()
-                .map(Capability::fs)
-                .collect::<Vec<_>>(),
-        )
+        .with_capabilities([Capability::fs("read"), Capability::fs("write")])
     }
 
     /// note: `action` and nothing else, so a rule about `fs:read` is about reading whichever way a
-    /// call asked for it. A call naming no operation it has declares all five, the strictest
+    /// call asked for it. A call naming no operation it has declares both subjects, the strictest
     /// reading of a call nobody can place, and `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match self.op(call) {
-            Some(action) => vec![Capability::fs(action)],
+            Some(action) => vec![subject(&action)],
             None => self.spec().capabilities,
         }
     }
@@ -279,27 +287,42 @@ mod tests {
         )
     }
 
-    /// The schema and the permission subjects are one vocabulary.
+    /// Every operation needs one of the subjects the tool declares, and every subject is needed by
+    /// some operation; reading needs `fs:read` and changing a file needs `fs:write`.
     ///
-    /// note: the operations and their arguments are one `Vec<Op>`, and the branch an argument
-    /// appears in is the operation that reads it. What can drift: a subject with no branch to reach
-    /// it by, or a branch the policy was never told about - a call that cannot be refused by name.
+    /// note: what can drift: a subject no operation reaches, which a rule can name and nothing
+    /// ever asks about, or an operation needing a subject the policy was never told about - a call
+    /// that cannot be refused by name.
     #[test]
-    fn the_schema_and_the_subjects_are_one_vocabulary() {
+    fn every_operation_needs_a_subject_the_tool_declares() {
         let tool = tool();
 
         let spec = tool.spec();
-        let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
+        let needed: Vec<(&str, String)> = crate::tools::ops::offered(&spec.schema)
             .into_iter()
-            .map(|action| Capability::fs(action).to_string())
+            .map(|action| {
+                let call = ToolCall::new(
+                    "c1",
+                    "fs",
+                    serde_json::json!({ "call": { "action": action } }),
+                );
+                let needs: Vec<String> =
+                    tool.needs(&call).iter().map(ToString::to_string).collect();
+                (action, needs.join(" "))
+            })
             .collect();
-        let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
-
-        assert_eq!(offered, declared, "one list of operations, in one order");
         assert_eq!(
-            offered,
-            ["fs:read", "fs:glob", "fs:grep", "fs:write", "fs:edit"]
+            needed,
+            [
+                ("read", "fs:read".to_owned()),
+                ("glob", "fs:read".to_owned()),
+                ("grep", "fs:read".to_owned()),
+                ("write", "fs:write".to_owned()),
+                ("edit", "fs:write".to_owned()),
+            ]
         );
+        let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
+        assert_eq!(declared, ["fs:read", "fs:write"]);
     }
 
     /// An argument belongs to the operations that read it, and to no others.

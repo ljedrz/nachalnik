@@ -270,7 +270,7 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         .expect("a decided capability is listed");
     assert!(shell.contains("deny"), "{shell}");
     // and names what it covers, which for a rule about one operation is that operation. It named
-    // the tool, and a tool is wider than an operation of it: `fs:glob  allow  fs` reads as the
+    // the tool, and a tool is wider than an operation of it: `fs:read  allow  fs` reads as the
     // narrow rule answering for the whole thing
     assert_eq!(
         shell.matches("exec:run").count(),
@@ -1998,7 +1998,7 @@ async fn a_question_about_more_items_than_it_can_list_says_how_many_it_left_out(
             ModelResponse::text("done"),
         ]);
         harness.app.kernel.add_tool(Arc::new(
-            ConstTool::new("context", "elided").with_capabilities([Capability::fs("glob")]),
+            ConstTool::new("context", "elided").with_capabilities([Capability::fs("read")]),
         ));
         // pushed before the question, so they hold the identifiers 1 to `items` that the
         // arguments name; the message that asks for it is one more, and is not named

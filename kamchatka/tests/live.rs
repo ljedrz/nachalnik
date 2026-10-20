@@ -1096,7 +1096,6 @@ async fn agent(
     for capability in [
         Capability::fs("read"),
         Capability::fs("write"),
-        Capability::fs("edit"),
         Capability::exec("run"),
     ] {
         policy.set(&Subject::Capability(capability), Verdict::Allow);

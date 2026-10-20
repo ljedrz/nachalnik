@@ -139,14 +139,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .map(Subject::Capability)
         .collect(),
-        // Write and edit are refused outright rather than left to be asked about, and the refusal
-        // reaches the shell: `Sandbox::of` leaves the working directory writable unless they are
-        // refused, and a recorded demo is no reason to let a model edit the repository it is
-        // reading
-        deny: [Capability::fs("write"), Capability::fs("edit")]
-            .into_iter()
-            .map(Subject::Capability)
-            .collect(),
+        // Writing is refused outright rather than left to be asked about, and the refusal reaches
+        // the shell: `Sandbox::of` leaves the working directory writable unless it is refused, and
+        // a recorded demo is no reason to let a model edit the repository it is reading
+        deny: vec![Subject::Capability(Capability::fs("write"))],
         // the two that are about something other than this session, named rather than a flag
         // turned off: which tools a session offers is one list, and this is what the control
         // arm's looks like
