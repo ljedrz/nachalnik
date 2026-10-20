@@ -514,10 +514,9 @@ fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
 /// break typed into a string is written `\n`, which a model told only that the JSON was invalid can
 /// send again unchanged.
 ///
-/// note: nothing for an `invalid escape`, which is a regex's `\(` put into a string as it stands.
-/// Measured on three models, a sentence about writing the backslash twice made retries worse than
-/// the kernel's answer alone, because a model told to double a backslash doubled it in the value as
-/// well as in the JSON.
+/// note: nothing for an `invalid escape`, which is a regex's `\(` put into a string as it stands. A
+/// sentence about writing the backslash twice makes retries worse than the kernel's answer alone,
+/// because a model told to double a backslash doubles it in the value as well as in the JSON.
 pub(crate) fn advice(written: &str, layout: Layout) -> Option<String> {
     let why = serde_json::from_str::<Value>(written).err()?;
     if why.to_string().starts_with("invalid escape") {
