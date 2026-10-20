@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // table, and a rule that can do that belongs somewhere with a test on it
     let mut loaded: Vec<(Report, String)> = Vec::new();
     for path in &paths {
-        let text = fs::read_to_string(path)?;
+        let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
         let report: Report = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
         loaded.push((report, path.clone()));
     }

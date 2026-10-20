@@ -31,8 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut runs: Vec<(String, Report)> = Vec::new();
     for file in &files {
-        let text = fs::read_to_string(file)?;
-        let report: Report = serde_json::from_str(&text)?;
+        let text = fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
+        let report: Report = serde_json::from_str(&text).map_err(|e| format!("{file}: {e}"))?;
         runs.push((file.clone(), report));
     }
 
