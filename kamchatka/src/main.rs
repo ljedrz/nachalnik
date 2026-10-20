@@ -577,10 +577,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     }
     start_recording(&mut app, base.record);
 
-    // the servers must outlive every session this run has, not just the first: dropping one takes
-    // its child process with it and leaves its tools unable to answer. A restart installs the tools
-    // they already offer into the new kernel rather than spawning them again, because the handshake
-    // is a round trip and a `npx` server is seconds of it.
+    // the servers must outlive every session this run has, not just the first; see `mcp::attach`.
+    // A restart installs the tools they already offer into the new kernel rather than spawning them
+    // again, because the handshake is a round trip and a `npx` server is seconds of it.
     //
     // note: each one is named before it is started, because an unbounded handshake is otherwise a
     // run that says nothing while it waits - and a server named by a file found underfoot is a

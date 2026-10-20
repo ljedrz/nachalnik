@@ -7,10 +7,9 @@
 //! not running it.
 //!
 //! note: every field is optional and every one of them is a *default*. The command line is the
-//! thing in front of somebody's hands, so it wins, and it wins for a list by replacing it rather
-//! than adding to it: one rule for every key, which is the only kind anybody can predict. See
-//! `Args::under` in `args.rs`, where the two meet, because the merge has to know which arguments
-//! were typed and only clap can say.
+//! thing in front of somebody's hands, so it wins, a list included. See `Args::under` in `args.rs`,
+//! where the two meet, because the merge has to know which arguments were typed and only clap can
+//! say.
 //!
 //! note: unknown keys are refused rather than skipped. A settings file whose `modle` key does
 //! nothing is the failure this format is most likely to have, and serde names the offending field
