@@ -99,6 +99,7 @@ pub enum Focus {
 /// are read and operated rather than typed into, and a prompt there would be a mode: every letter
 /// on those tabs would mean one of two things depending on where the focus was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Tab {
     /// The conversation.
     Chat,
@@ -166,6 +167,7 @@ pub struct Traced {
 
 /// What is being shown over the top of everything else.
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum Overlay {
     /// Something long enough to need its own screen.
     Text {
@@ -227,6 +229,7 @@ pub struct Proposed {
 /// sent - a `Content::Blob` the counter refuses to price is inside this number, so it stops being
 /// unaccounted for once it has gone out.
 #[derive(Default)]
+#[non_exhaustive]
 pub struct Anchor {
     /// The items whose own content was in that request.
     ///
@@ -287,6 +290,7 @@ pub enum Did {
 /// note: it carries a copy rather than a move. The lines stay in [`App::loose`] and the page stays
 /// in [`App::overlay`], because the terminal reads them from there. A reply nobody collected must
 /// not take a command's output off the screen.
+#[non_exhaustive]
 pub struct Reply {
     /// What the line did.
     pub did: Did,

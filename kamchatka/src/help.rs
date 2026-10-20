@@ -15,6 +15,7 @@
 /// `g` should not have to read past screens of keys that do nothing there. Nothing is lost:
 /// sections that do not apply are still one `←` away.
 #[derive(Clone, Copy)]
+#[non_exhaustive]
 pub struct Section {
     /// What to call it on the strip along the top, in the tab strip's own words where it has one.
     pub name: &'static str,

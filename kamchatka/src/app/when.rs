@@ -64,6 +64,7 @@ fn read_at(wall: SystemTime, recorded: Option<i32>) -> When {
 }
 
 /// A rendered wall clock.
+#[non_exhaustive]
 pub struct When {
     /// `YYYY-MM-DD`.
     pub date: String,

@@ -11,6 +11,7 @@ use super::{
 };
 
 /// What the kernel's task reports when it stops, or what a command's request came back with.
+#[non_exhaustive]
 pub enum Outcome {
     /// The turn ended in this state.
     Stopped(State),

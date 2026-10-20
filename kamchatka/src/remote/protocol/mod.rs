@@ -52,6 +52,7 @@ pub const VERSION: u32 = 1;
 /// anything new is whether a person could type it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Command {
     /// Begin or resume watching the session.
     ///
@@ -231,6 +232,7 @@ pub enum Command {
 /// is best-effort, and is gone once it has gone past.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "is", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Message {
     /// Where the session stands, for a client that has just arrived.
     ///
@@ -887,6 +889,7 @@ pub fn address(text: &str) -> Result<Address<'_>, String> {
 
 /// Where a session listens, or where a client goes looking for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Address<'a> {
     /// A socket file, whose permissions are the whole of its authentication.
     Unix(&'a str),

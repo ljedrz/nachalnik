@@ -32,6 +32,7 @@ use serde_json::Value;
 /// the reader is not always in this process; see [`crate::remote`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Speaker {
     /// The person at the terminal.
     User,
@@ -59,6 +60,7 @@ pub enum Speaker {
 /// note: the first kind is [`Entry::transient`] and is dropped the moment the item exists; the
 /// second stays for the session. Neither carries an identifier, because neither has one.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Entry {
     /// Who is saying it.
     pub speaker: Speaker,
