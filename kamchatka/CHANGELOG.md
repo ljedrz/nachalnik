@@ -163,6 +163,11 @@ minor bump may break you.
   the earlier records end and the session's own begin. The next resume copies that log forward, so
   the gap is then in the middle, and `log` did not mention it. It reports every gap in the log now.
 
+### changed
+
+- **The `context` tool's operations that move items say twice, not three times, that `ids` and
+  `select` do not go together.** The arguments' own descriptions still say it in both directions.
+
 ## [0.21.0] - 2026-10-18
 
 ### breaking

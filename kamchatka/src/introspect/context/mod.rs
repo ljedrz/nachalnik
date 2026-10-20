@@ -144,8 +144,8 @@ fn ops() -> Vec<Op> {
         &["elide", "exclude", "pin", "restore"],
         "moves items, and each of the four is named for the state it leaves - which is the word \
          you will read back on the item afterwards. Name them with `ids`, or a class of them with \
-         `select`, and never with both in one call; `look` with the same `select` lists what it \
-         comes to, if you want to see them before they move. `elide` replaces what an item says \
+         `select`; `look` with the same `select` lists what it comes to, if you want to see them \
+         before they move. `elide` replaces what an item says \
          with a short marker: the call it answers stays answered and stops costing what it holds, \
          which is what to reach for once a tool result has served its purpose. `exclude` takes it \
          out of the request altogether, and takes down the call that asked for it - reach for it \
