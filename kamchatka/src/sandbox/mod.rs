@@ -30,10 +30,9 @@
 //! out, while `systemd-run --user` carries a command out and hands back the whole filesystem.
 //! [`confines_unix_sockets`] asks about that.
 //!
-//! note: an abstract unix socket has no path for that right to name, and the X server listens on
-//! one that accepts any of the user's processes without a cookie - a connection that can type into
-//! the person's terminal. Linux 6.12 scopes it: a command may connect to an abstract socket made
-//! inside its own confinement, and to no other. [`confines_abstract_sockets`] asks.
+//! note: an abstract unix socket has no path for that right to name. Linux 6.12 scopes it: a command
+//! may connect to an abstract socket made inside its own confinement, and to no other.
+//! [`confines_abstract_sockets`] asks, and says why it matters.
 //!
 //! note: signals have a scope of the same age, and it is not in a command's own ruleset: each
 //! command confines itself in its own domain, so it would refuse a command stopping a server an
