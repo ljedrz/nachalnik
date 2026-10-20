@@ -240,7 +240,10 @@ impl Kernel {
             if let Some(refusal) = refused {
                 return refusal;
             }
-            self.started(&prepared.call);
+            self.emit(Event::ToolStarted {
+                call: prepared.call.id.clone(),
+                tool: prepared.call.tool.clone(),
+            });
         }
 
         self.run(prepared.tool.clone(), prepared.call.clone()).await
@@ -266,13 +269,6 @@ impl Kernel {
         };
 
         Some(ToolOutput::error(refusal(source, why)))
-    }
-
-    fn started(&self, call: &ToolCall) {
-        self.emit(Event::ToolStarted {
-            call: call.id.clone(),
-            tool: call.tool.clone(),
-        });
     }
 
     /// Runs a call that may run and has been announced as started.
