@@ -884,7 +884,9 @@ impl Setup {
         let introspect = building
             .then(|| introspect::install(&kernel, policy.clone(), limits.clone(), self.layout));
         for spec in kernel.tool_specs() {
-            policy.offers(spec);
+            if let Some(tool) = kernel.tool(&spec.id) {
+                policy.offers_tool(&*tool);
+            }
         }
         // Record the rules before anything is in the context, so a later call allowed by one of
         // them says where its permission came from, whether a flag or a settings file set it.

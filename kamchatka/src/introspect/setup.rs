@@ -418,9 +418,11 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     for spec in kernel.tool_specs() {
         for capability in spec.capabilities {
             let bound = policy.decides(&Subject::Capability(capability.clone()), &spec.id);
-            let tools = binds.entry(capability).or_default();
             if bound {
-                tools.push(spec.id.clone());
+                let named = policy.named_for(&capability, &spec.id);
+                binds.entry(capability).or_default().push(named);
+            } else {
+                binds.entry(capability).or_default();
             }
         }
     }
@@ -487,7 +489,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         // could not give both. The useful one is the one a rule is read for
         out.push_str(&format!(
             "\n{:<28}  {:<8}  {}\n",
-            "capability", "verdict", "the tools it decides for"
+            "capability", "verdict", "what it decides for"
         ));
         for (capability, tools) in &binds {
             let verdict = policy.stance(&Subject::Capability(capability.clone()));

@@ -266,9 +266,9 @@ fn glob(pattern: &str, name: &str) -> bool {
 ///
 /// note: a domain is the whole of what is done in it, and a rule finer than one is about the
 /// operation it names. `context` allows every operation in that domain; `context:trim` allows
-/// eliding and excluding and says nothing about the rest. Against that, the strictest of everything consulted wins:
-/// `fs:read` stays `allow` while `.env` is a question, and a refused domain stays refused however
-/// finely an operation in it is named. See [`Careful::judges`].
+/// eliding and excluding and says nothing about the rest. Against that, the strictest of
+/// everything consulted wins: `fs:read` stays `allow` while `.env` is a question, and a refused
+/// domain stays refused however finely an operation in it is named. See [`Careful::judges`].
 ///
 /// note: path rules - see [`Subject`] - bind `fs`, and not `shell`. A command names its files
 /// inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"` and `base64 <.env`
@@ -311,6 +311,15 @@ pub struct Careful {
     /// arguments are wrong. Knowing the tool's declaration is how a refusal can tell - see
     /// `ops::unnamed_operation` - and whoever installs the tools tells it here.
     offered: Mutex<BTreeMap<String, ToolSpec>>,
+    /// Which actions of a tool with several need each subject, by the subject: `fs:read` is needed
+    /// by `fs`'s `read`, `glob` and `grep`.
+    ///
+    /// note: a subject names what a call does rather than which action asks for it, so one answers
+    /// for several. Wherever one is put to somebody deciding - the question, the permissions tab,
+    /// `setup`, a refusal - the actions are named beside it, or an `always` for `fs:read` given to
+    /// a `grep` would allow `read` with nobody having said so. Each tool says which, through
+    /// [`nachalnik::Tool::needs`]; see [`Careful::offers_tool`].
+    covered: Mutex<BTreeMap<Capability, Vec<(String, String)>>>,
     /// The tools among [`Careful::offered`] taken off offer for now, by `/tools toggle`.
     withdrawn: Mutex<BTreeSet<String>>,
     /// What a question comes to where nobody is there to answer it - a headless run's `--on-ask` -
@@ -371,6 +380,7 @@ impl Careful {
             ),
             networked: Mutex::new(BTreeSet::new()),
             offered: Mutex::new(BTreeMap::new()),
+            covered: Mutex::new(BTreeMap::new()),
             withdrawn: Mutex::new(BTreeSet::new()),
             unanswered: Mutex::new(None),
             refusals: Mutex::new(VecDeque::new()),
@@ -697,6 +707,82 @@ impl Careful {
         self.offered.lock().insert(spec.id.clone(), spec);
     }
 
+    /// [`Careful::offers`], and which of the tool's actions need each subject it declares, as the
+    /// tool answers for a call naming each one. A tool with one action has nothing to say beyond
+    /// its subject, and is not asked.
+    pub fn offers_tool(&self, tool: &dyn nachalnik::Tool) {
+        let spec = tool.spec();
+        let actions = super::ops::offered(&spec.schema);
+        {
+            let mut covered = self.covered.lock();
+            for actions in covered.values_mut() {
+                actions.retain(|(id, _)| *id != spec.id);
+            }
+            if actions.len() > 1 {
+                for action in actions {
+                    let call = nachalnik::ToolCall::new(
+                        "c",
+                        spec.id.as_str(),
+                        serde_json::json!({ super::ops::WRAPPER: { "action": action } }),
+                    );
+                    for capability in tool.needs(&call) {
+                        covered
+                            .entry(capability)
+                            .or_default()
+                            .push((spec.id.clone(), action.to_owned()));
+                    }
+                }
+            }
+            covered.retain(|_, actions| !actions.is_empty());
+        }
+        self.offers(spec);
+    }
+
+    /// The actions of `tool` that need `capability`, where it has several; empty where it has one,
+    /// or none that need it.
+    pub fn actions_for(&self, capability: &Capability, tool: &str) -> Vec<String> {
+        self.covered
+            .lock()
+            .get(capability)
+            .into_iter()
+            .flatten()
+            .filter(|(id, _)| id == tool)
+            .map(|(_, action)| action.clone())
+            .collect()
+    }
+
+    /// What a rule about `capability` decides for in `tool`: the tool's name, and the actions of it
+    /// that need the capability where it has several - `fs: read, glob, grep`.
+    pub fn named_for(&self, capability: &Capability, tool: &str) -> String {
+        let actions = self.actions_for(capability, tool);
+        match actions.is_empty() {
+            true => tool.to_owned(),
+            false => format!("{tool}: {}", actions.join(", ")),
+        }
+    }
+
+    /// The actions that need `capability`, said for a model to read - "`fs`'s `read`, `glob` and
+    /// `grep`" - or `None` where no tool with several actions declares it.
+    pub fn needed_by(&self, capability: &Capability) -> Option<String> {
+        let covered = self.covered.lock();
+        let actions = covered.get(capability)?;
+        let mut tools: Vec<&str> = actions.iter().map(|(id, _)| id.as_str()).collect();
+        tools.dedup();
+        let said: Vec<String> = tools
+            .into_iter()
+            .map(|tool| {
+                let named: Vec<String> = actions
+                    .iter()
+                    .filter(|(id, _)| id == tool)
+                    .map(|(_, action)| format!("`{action}`"))
+                    .collect();
+                format!("`{tool}`'s {}", crate::reconcile::listed(&named))
+            })
+            .collect();
+
+        Some(crate::reconcile::listed(&said))
+    }
+
     /// Says that a tool [`Careful::offers`] was told about is off offer for now, or back on it.
     pub fn withdraw(&self, tool: &str, withdrawn: bool) {
         let mut off = self.withdrawn.lock();
@@ -826,6 +912,11 @@ impl PermissionPolicy for Careful {
                     }
                     Subject::Path(pattern) => format!("the rule for `{pattern}`"),
                     Subject::Server(name) => format!("the rule for the `{name}` server"),
+                    // the actions it is the rule for, which a model would otherwise try one by one
+                    Subject::Capability(capability) => match self.needed_by(capability) {
+                        Some(actions) => format!("`{subject}`, which {actions} need"),
+                        None => format!("`{subject}`"),
+                    },
                     subject => format!("`{subject}`"),
                 })
                 .collect();

@@ -3070,3 +3070,49 @@ async fn cycling_the_picked_row_away_leaves_it_on_a_row_of_the_tab() {
         harness.app.permissions().len()
     );
 }
+
+/// The question names every action its subject covers, and the row an `always` leaves names them
+/// too.
+///
+/// note: a subject answers for every action that does the same thing - `fs:read` for `read`,
+/// `glob` and `grep` - so `a` pressed for a `grep` allows a `read` as well. Named alone, the
+/// question said `always, for fs:read`, and only somebody who had read the guide knew what else
+/// that let through.
+#[tokio::test]
+async fn the_question_names_every_action_its_answer_covers() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fs",
+            json!({ "call": { "action": "grep", "pattern": "TODO" } }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    for tool in crate::common::builtin_under(
+        &crate::common::scratch("question-covers"),
+        true,
+        harness.app.limits.clone(),
+        harness.app.policy.clone(),
+    ) {
+        harness.app.policy.offers_tool(&*tool);
+        harness.app.kernel.add_tool(tool);
+    }
+
+    harness.send("find the todos").await;
+    harness.settle().await;
+    let asked = harness.sized(110, 30);
+    assert!(
+        asked.contains("[a] always, for fs:read (read, glob, grep)"),
+        "{asked}"
+    );
+
+    harness.answer(KeyCode::Char('a')).await;
+    harness.settle().await;
+    harness.tab(Tab::Permissions);
+    let tab = harness.sized(110, 30);
+    let row = tab
+        .lines()
+        .find(|line| line.contains("fs:read"))
+        .expect("the answer is a row");
+    assert!(row.contains("fs: read, glob, grep"), "{row}");
+}

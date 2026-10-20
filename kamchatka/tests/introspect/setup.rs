@@ -576,6 +576,15 @@ async fn setup_permissions_lists_one_row_per_operation() {
     // two tools act on one object, and the rows say so rather than naming the tools
     assert!(said.contains("context:read"), "{said}");
     assert!(said.contains("context:revise"), "{said}");
+    // and each names the actions it decides for, which is what a model plans a call by
+    let trim = said
+        .lines()
+        .find(|line| line.starts_with("context:trim"))
+        .expect("a row for trimming");
+    assert!(
+        trim.contains("context: elide, exclude, undo, redo"),
+        "{trim}"
+    );
     assert!(
         !said.contains("nothing here is judged by it"),
         "every operation here decides for something: {said}"

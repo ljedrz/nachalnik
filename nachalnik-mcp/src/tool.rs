@@ -53,8 +53,9 @@ pub enum Trust {
     /// Believe the server's annotations.
     ///
     /// A tool claiming `readOnlyHint` gets `fs:read`; anything else gets `fs:write`, because the
-    /// specification's default for that hint is `false` and an absent hint is not a reassurance. `openWorldHint` adds `net:reach`, and so does its absence: the
-    /// specification's default for that one is `true`.
+    /// specification's default for that hint is `false` and an absent hint is not a reassurance.
+    /// `openWorldHint` adds `net:reach`, and so does its absence: the specification's default for
+    /// that one is `true`.
     ///
     /// note: Reasonable for a server you run yourself, and a mistake for one you do not.
     Annotations,

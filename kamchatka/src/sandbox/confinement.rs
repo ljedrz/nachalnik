@@ -6,6 +6,7 @@
 use std::{
     ffi::OsString,
     fmt,
+    os::fd::OwnedFd,
     path::{Path, PathBuf},
 };
 
@@ -404,20 +405,19 @@ pub fn confine_saying(
 /// a link; a root that cannot be opened that way is left out.
 ///
 /// note: the roots were resolved once, when the session started, and are never followed again. A
-/// root inside a directory a command may write - one beneath the working directory, or the working
-/// directory beneath a `--sandbox-write` path - can be renamed by one command and a link left at its
-/// name, and opened by its path the next command was granted wherever the link pointed. Such a root
-/// is left out and said on standard error, which the model reads. The system directories are opened
-/// as `path_beneath_rules` opens them, following links: `/bin` is one on most systems, and nothing
-/// confined can write beside them.
+/// root inside a directory a command may write - one beneath the working directory, or the
+/// working directory beneath a `--sandbox-write` path - can be renamed by one command and a link
+/// left at its name, and opened by its path the next command was granted wherever the link
+/// pointed. Such a root is left out and said on standard error, which the model reads. The system
+/// directories are opened as `path_beneath_rules` opens them, following links: `/bin` is one on
+/// most systems, and nothing confined can write beside them.
 ///
 /// note: where the kernel has no `openat2` (before 5.6), or a container's seccomp filter refuses
 /// it, the root is opened following links, with the window SECURITY.md describes.
 fn unlinked(
     roots: &[PathBuf],
     access: landlock::BitFlags<landlock::AccessFs>,
-) -> impl Iterator<Item = Result<landlock::PathBeneath<std::os::fd::OwnedFd>, landlock::RulesetError>>
-{
+) -> impl Iterator<Item = Result<landlock::PathBeneath<OwnedFd>, landlock::RulesetError>> {
     use rustix::{
         fs::{Mode, OFlags, ResolveFlags},
         io::Errno,

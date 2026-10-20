@@ -20,6 +20,7 @@ use crate::{
         App, Focus, Overlay, Page, Tab,
         text::{plural, thousands},
     },
+    tools::Subject,
     ui::text::{refit, wrapped},
 };
 
@@ -65,11 +66,23 @@ fn question_parts(
     // what the policy will actually consult, not what the tool declared: `shell` reaching for the
     // network and `read` handed a path there is a rule about are both judged against something the
     // spec does not mention. A question naming only the spec answers for less than it decides
+    //
+    // note: with the actions of this tool a subject covers, where it covers several, because `a`
+    // answers for all of them: an `always` for `fs:read` given to a `grep` allows `read` as well
     let judged: Vec<String> = app
         .policy
         .judges(&request)
         .iter()
-        .map(|subject| subject.to_string())
+        .map(|subject| match subject {
+            Subject::Capability(capability) => {
+                let actions = app.policy.actions_for(capability, &request.tool);
+                match actions.is_empty() {
+                    true => subject.to_string(),
+                    false => format!("{subject} ({})", actions.join(", ")),
+                }
+            }
+            subject => subject.to_string(),
+        })
         .collect();
     // two lines of options: answers on the first, and the options for looking closer or giving up
     // on the lot on the second. `pgup / pgdn` joins them when there are arguments below the fold

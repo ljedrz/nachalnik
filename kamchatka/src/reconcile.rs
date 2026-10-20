@@ -786,7 +786,7 @@ fn stamp(item: &mut ContextItem, reconciled: Value) {
 }
 
 /// `a`, `a and b`, `a, b and c`.
-fn listed<S: AsRef<str>>(names: &[S]) -> String {
+pub(crate) fn listed<S: AsRef<str>>(names: &[S]) -> String {
     match names {
         [] => String::new(),
         [one] => one.as_ref().to_owned(),
