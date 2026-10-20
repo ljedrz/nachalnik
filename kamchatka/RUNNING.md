@@ -45,7 +45,7 @@ refuses that call and every other call the same rule asks about for as long as t
 model neither retries it nor tries another call the rule covers.
 
 MCP servers are allowed the same way, and which server a tool came from is a separate permission.
-`--mcp files=… --auto-allow-server files` allows one server: the same rule the permissions tab
+`--mcp files=… --auto-allow-servers files` allows one server: the same rule the permissions tab
 records for **always**. Without it, the tools are offered but every call is refused, because naming
 a server on the command line does not mean trusting it to run. An allow for a server this run does
 not start is taken and said at startup, so a settings file can allow your usual servers; a deny for
@@ -496,7 +496,7 @@ lines is told when the limit is reached instead of being billed without notice. 
   "mcp": ["files=npx -y @modelcontextprotocol/server-filesystem /srv"],
   "sandbox-read": ["~/.rustup", "~/.cargo"],
   "auto-allow": ["fs:read"],
-  "auto-allow-server": ["files"],
+  "auto-allow-servers": ["files"],
   "max-spend-tokens": 200000
 }
 ```
@@ -776,8 +776,8 @@ so everything it starts runs with `no_new_privs`, including MCP servers. Set-use
 
 **In `/dev`, a command can reach five devices** (`null`, `zero`, `full`, `random` and `urandom`) and
 nothing else: the rest of `/dev` includes your other terminals, which a command could read your
-typing from, shared memory, and on a desktop the camera and microphone. `--sandbox-device` and the
-settings file's `sandbox-device` replace this list rather than adding to it. A command that needs a
+typing from, shared memory, and on a desktop the camera and microphone. `--sandbox-devices` and the
+settings file's `sandbox-devices` replace this list rather than adding to it. A command that needs a
 pseudo-terminal (`script`, `expect`) needs `/dev/ptmx` and `/dev/pts`, which give access to all your
 other terminals too.
 

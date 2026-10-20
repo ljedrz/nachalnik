@@ -819,7 +819,7 @@ impl Listed {
 /// `--auto-deny "$(a row off this list)"` means what it says. A second wire shape for it would be a
 /// second thing to keep in step with `Subject::parse`. A server's row is the exception, and it is
 /// `Subject`'s rather than this type's: it prints as `server files` and is given back with
-/// `--auto-allow-server`, because a server's name and a domain are both bare words and nothing in
+/// `--auto-allow-servers`, because a server's name and a domain are both bare words and nothing in
 /// either says which.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]

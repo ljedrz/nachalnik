@@ -64,7 +64,7 @@ r rules rules.txt --auto-allow fs,exec:run --auto-deny '.env*,secrets/'
 r spend spend.txt --max-spend-tokens 6000 --auto-allow fs        # exit statuses: 3, 4, 124, 130, 143, 129
 r requests requests.txt --max-requests-per-turn 2 --auto-allow fs
 SIG="INT 2" r sigint coding.txt --auto-allow fs,exec:run
-r mcp mcp.txt --mcp "arith=python3 <repo>/kamchatka/tests/mcp_server.py" --auto-allow-server arith
+r mcp mcp.txt --mcp "arith=python3 <repo>/kamchatka/tests/mcp_server.py" --auto-allow-servers arith
 FIX=empty LIMIT=40000 DEADLINE=2400 r build build.txt --auto-allow fs,exec:run,context --max-requests-per-turn 30
 ```
 

@@ -418,8 +418,8 @@ async fn an_operation_the_domain_above_it_answers_for_has_no_row_of_its_own() {
 /// A rule about an MCP server names the tools that came from it.
 ///
 /// note: the same fault as the domain row, on the subject that had it worse - the policy's list of
-/// servers existed to answer this and had no caller at all, so `--auto-allow-server files` listed a
-/// row saying nothing registered needed it while every tool it covered sat above it.
+/// servers existed to answer this and had no caller at all, so `--auto-allow-servers files` listed
+/// a row saying nothing registered needed it while every tool it covered sat above it.
 #[tokio::test]
 async fn a_rule_about_a_server_names_the_tools_that_came_from_it() {
     let mut harness = Harness::new(Vec::new());
@@ -454,7 +454,7 @@ async fn a_rule_about_a_server_names_the_tools_that_came_from_it() {
 ///
 /// note: the coverage column was filled from what a tool *declares* while `Careful::judges` decides
 /// from something narrower: every tool from a server declares `mcp:call`, and `judges` swaps it for
-/// the server's own name so that `--auto-allow-server files` is one flag rather than two. So a
+/// the server's own name so that `--auto-allow-servers files` is one flag rather than two. So a
 /// session run `--auto-allow mcp --mcp big=...` was shown `mcp:call allow big__spew` and then
 /// refused the very call - a table that reads as a rule in force over a tool the rule is never
 /// consulted about, and the table somebody checks their flags against.

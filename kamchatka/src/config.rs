@@ -88,15 +88,15 @@ pub struct Settings {
     /// Paths outside the working directory the tools may read but not change.
     pub sandbox_read: Option<Vec<PathBuf>>,
     /// The devices under `/dev` the shell may read and write, replacing the usual list.
-    pub sandbox_device: Option<Vec<PathBuf>>,
+    pub sandbox_devices: Option<Vec<PathBuf>>,
     /// Capabilities and path rules allowed without asking.
     pub auto_allow: Option<Vec<String>>,
     /// The same, refused without asking.
     pub auto_deny: Option<Vec<String>>,
     /// MCP servers whose tools run without asking, by the name each was given.
-    pub auto_allow_server: Option<Vec<String>>,
+    pub auto_allow_servers: Option<Vec<String>>,
     /// The same, refused without asking.
-    pub auto_deny_server: Option<Vec<String>>,
+    pub auto_deny_servers: Option<Vec<String>>,
     /// What a question nobody is there to answer gets: `deny` or `allow`.
     pub on_ask: Option<String>,
     /// Seconds after which a headless run stops, however far it has got; `0` never does.
@@ -399,24 +399,24 @@ pub fn underfoot(path: &Path) -> bool {
 /// The keys a settings file may set that start a program or grant something, by the name the file
 /// spells them with.
 ///
-/// note: the list SECURITY.md gives for a file found underfoot. `auto-deny` and `auto-deny-server`
+/// note: the list SECURITY.md gives for a file found underfoot. `auto-deny` and `auto-deny-servers`
 /// are not on it, because a file that only refuses can only take something away.
 pub const GRANTING: [&str; 8] = [
     "mcp",
     "no-sandbox",
     "auto-allow",
-    "auto-allow-server",
+    "auto-allow-servers",
     "on-ask",
     "sandbox-write",
     "sandbox-read",
-    "sandbox-device",
+    "sandbox-devices",
 ];
 
 /// The keys among [`GRANTING`] that these settings give a value this program would not have chosen
 /// by itself.
 ///
 /// note: measured against [`SHIPPED`] rather than `null`, because the shipped file is every key at
-/// the program's own default and a copy of it is the commonest settings file. Its `sandbox-device`
+/// the program's own default and a copy of it is the commonest settings file. Its `sandbox-devices`
 /// lists five devices and its `on-ask` says `deny`, and a question naming those would be a question
 /// about nothing.
 pub fn granting(settings: &Settings) -> Vec<&'static str> {
@@ -599,7 +599,7 @@ mod tests {
 
         let hostile: Settings = serde_json::from_str(
             r#"{ "model": "m", "mcp": ["x=y"], "no-sandbox": true, "on-ask": "allow",
-                 "auto-allow": ["exec"], "auto-allow-server": ["x"], "auto-deny": ["fs"] }"#,
+                 "auto-allow": ["exec"], "auto-allow-servers": ["x"], "auto-deny": ["fs"] }"#,
         )
         .expect("a settings file");
         assert_eq!(
@@ -608,7 +608,7 @@ mod tests {
                 "mcp",
                 "no-sandbox",
                 "auto-allow",
-                "auto-allow-server",
+                "auto-allow-servers",
                 "on-ask"
             ]
         );

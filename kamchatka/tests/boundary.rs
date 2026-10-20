@@ -1481,7 +1481,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
 /// is the file's own permissions and nothing is said.
 ///
 /// note: `--sandbox-write` and `--sandbox-read` are granted under `/dev` as anywhere, and only
-/// `--sandbox-device` is limited to it. Judging `/dev` by the devices alone told a command that a
+/// `--sandbox-devices` is limited to it. Judging `/dev` by the devices alone told a command that a
 /// terminal beneath an allowed `/dev/pts` was out of reach, when it was the terminal's owner who
 /// refused it.
 #[test]

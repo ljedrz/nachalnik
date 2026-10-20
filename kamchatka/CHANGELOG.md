@@ -27,6 +27,10 @@ minor bump may break you.
   choose what goes into its requests is `--auto-allow context:read,context:move`. `fs:write`,
   `context:note` and `context:revise` start on the lower output limit; every other subject has an
   operation whose answer grows.
+- **A setting that takes a list of things is named in the plural: `--sandbox-devices`,
+  `--auto-allow-servers` and `--auto-deny-servers`**, flag and settings-file key together, with no
+  aliases; the singular is refused. `Args` and `Settings` have `sandbox_devices`,
+  `auto_allow_servers` and `auto_deny_servers` fields in their place.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.

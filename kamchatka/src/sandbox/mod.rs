@@ -733,7 +733,7 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// The device a path given to `--sandbox-device` names, resolved; `None` where it lands anywhere
+/// The device a path given to `--sandbox-devices` names, resolved; `None` where it lands anywhere
 /// but beneath `/dev`, or is `/dev` itself.
 ///
 /// note: resolved rather than read off the spelling, because `Path::starts_with` compares
@@ -908,7 +908,7 @@ const SYSTEM: &[&str] = &[
 ];
 
 /// The devices a confined command may read and write unless somebody says otherwise, by name;
-/// nothing else under `/dev`. `--sandbox-device` and the settings file's `sandbox-device` replace
+/// nothing else under `/dev`. `--sandbox-devices` and the settings file's `sandbox-devices` replace
 /// the list, which is how a pty is had back - `/dev/ptmx` and `/dev/pts` - at the price below.
 ///
 /// note: by name rather than `/dev` beneath, because beneath reaches more than a command needs.

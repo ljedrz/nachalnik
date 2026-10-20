@@ -806,7 +806,7 @@ async fn a_run_with_no_sandbox_signals_whatever_it_can_reach() {
     );
 }
 
-/// `--sandbox-device` reaches the shell the program wires: a command that reads `/dev/zero`
+/// `--sandbox-devices` reaches the shell the program wires: a command that reads `/dev/zero`
 /// succeeds under the usual list and fails where only `/dev/null` was named.
 ///
 /// note: read out of a `/save`, since a headless run prints no tool's output and a command that
@@ -868,7 +868,7 @@ async fn the_devices_the_program_is_given_are_the_shells() {
     assert!(usual.contains("exit: 0"), "{usual}");
     let narrowed = run(
         "program-devices-narrowed",
-        &["--sandbox-device", "/dev/null"],
+        &["--sandbox-devices", "/dev/null"],
     )
     .await;
     assert!(narrowed.contains("exit: 1"), "{narrowed}");
@@ -1247,7 +1247,7 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
     );
     let mut child = common::command()
         .args(["--headless", "--no-record", "-m", "nothing"])
-        .args(["--mcp", &server, "--auto-allow-server", "py", "go"])
+        .args(["--mcp", &server, "--auto-allow-servers", "py", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
         .stdin(std::process::Stdio::piped())

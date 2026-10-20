@@ -766,7 +766,7 @@ async fn setup_tools_reports_the_kernel_ceiling_only_where_it_is_what_cuts() {
 /// note: live, on a session run `--auto-allow mcp --mcp big=...`. The answer read
 /// `mcp:call allow big__add, big__spew` and the very next call to `big__spew` was refused:
 /// `Careful::judges` takes `mcp:call` back out for a tool whose server it knows and puts the
-/// server's own name in its place, so that `--auto-allow-server` is one flag rather than two. The
+/// server's own name in its place, so that `--auto-allow-servers` is one flag rather than two. The
 /// table was filled from what the tools *declare*, which is the list before that swap - so it named
 /// a rule as being in force over two tools it is never consulted about, in the one answer a model
 /// has for checking what it may do.
