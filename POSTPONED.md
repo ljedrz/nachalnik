@@ -9,18 +9,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
 
 ---
 
-- **A sandbox root inside a writable root can be swapped for a link to anywhere.** The roots from
-  `--sandbox-write` and `--sandbox-read` are kept as written and resolved again each time they are
-  used: by the ruleset of every confined command, which opens each by its path and follows links,
-  and by `Reach` on every `fs` call. When a root lies inside one a command may write - beneath a
-  writable working directory, say - one command can rename it and leave a symlink in its place, and
-  every later command, and `fs`, is granted wherever the link points, read-only or read-write as the
-  root was. The scratch directory is not affected, being granted from a descriptor held since it was
-  made. Resolving each root once at start-up, and opening it in the child without following links
-  (`openat2` with `RESOLVE_NO_SYMLINKS`, dropping a root that no longer opens that way), closes it.
-  That changes what a root that does not exist yet means, since one made later would never be
-  granted, and refusing nested roots outright is the other choice. Unblocked by deciding which.
-
 - **A hard link to a protected file is read under its other name without a question.** Path rules
   match the name a tool is given, and a hard link has no target to follow, so `alias` sharing
   `.env`'s inode reads as an ordinary file. Catching it means finding a file's other names, which

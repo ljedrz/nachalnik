@@ -9,6 +9,16 @@ minor bump may break you.
 
 ### fixed
 
+- **A path opened up for the tools no longer reaches wherever a link put at its name points.** The
+  working directory and the `--sandbox-write` and `--sandbox-read` paths were resolved again on
+  every call and for every command. A command that renamed one it could write beside - a path
+  beneath the working directory, or the working directory beneath a `--sandbox-write` path - and
+  left a link in its place had `fs` and every later command reach wherever the link pointed,
+  read-only or read-write as the path was. They are resolved once, when the session starts, and one
+  with a link on the way to it is not reached; a command is told when one was left out. A path named
+  through a link is opened up where the link pointed at the start, and `shell` names it that way.
+  `Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them: one given through a
+  link reaches nothing.
 - **`fs` refusing a path outside the reach names the same file in the working directory.** A
   model that guessed at a checkout's location, as `/workspace/AGENTS.md`, was told only that the
   path was outside the reach, and sent its next reads to the same wrong root. Where the path's end

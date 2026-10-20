@@ -292,6 +292,68 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     assert_eq!(said, "mine");
 }
 
+/// A root swapped for a link reaches nothing: not where the link points, and not through it.
+///
+/// note: a root inside a directory a command may write can be renamed by one command and a link
+/// left at its name. The roots were resolved again on every call, so `fs` then reached wherever the
+/// link pointed, read-only or read-write as the root was. They are resolved once when the session
+/// starts, and a root with a link on the way to it is no root. That holds whether the swap came
+/// before the check, between the check and the open, or was made to the working directory itself.
+#[test]
+fn a_root_swapped_for_a_link_reaches_nothing() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let base = common::scratch("root-swap")
+        .canonicalize()
+        .expect("it exists");
+    let (work, shelf, secret) = (base.join("w"), base.join("w/shelf"), base.join("secret"));
+    std::fs::create_dir_all(&shelf).expect("a root inside the working directory");
+    std::fs::create_dir_all(&secret).expect("a directory nobody opened up");
+    std::fs::write(shelf.join("book.txt"), "mine").expect("a file in the root");
+    std::fs::write(secret.join("key.txt"), "not yours").expect("a file outside");
+    let reach = Reach {
+        workdir: base.join("elsewhere"),
+        extra: vec![shelf.clone()],
+        readable: Vec::new(),
+        confined: true,
+    };
+    std::fs::create_dir_all(&reach.workdir).expect("a working directory");
+    let checked = reach
+        .allows(&shelf.join("book.txt").to_string_lossy(), Access::Reading)
+        .expect("it is in the root");
+
+    // swapped after the check: the open refuses the link on the way to the root
+    std::fs::rename(&shelf, work.join("shelf-was")).expect("moved aside");
+    std::os::unix::fs::symlink(&secret, &shelf).expect("and a link in its place");
+    std::fs::rename(secret.join("key.txt"), secret.join("book.txt")).expect("the same name");
+    reach
+        .open(&checked, Access::Reading)
+        .expect_err("the root is a link now");
+
+    // and checked after the swap: neither the link nor where it points is in reach
+    for path in [shelf.join("book.txt"), secret.join("book.txt")] {
+        for doing in [Access::Reading, Access::Writing] {
+            reach
+                .allows(&path.to_string_lossy(), doing)
+                .expect_err("a root with a link on the way to it reaches nothing");
+        }
+    }
+
+    // and the working directory, inside a root a command may write
+    let swapped = Reach {
+        workdir: work.join("proj"),
+        extra: vec![work.clone()],
+        readable: Vec::new(),
+        confined: true,
+    };
+    std::fs::create_dir_all(&swapped.workdir).expect("a working directory");
+    std::fs::rename(&swapped.workdir, work.join("proj-was")).expect("moved aside");
+    std::os::unix::fs::symlink(&secret, &swapped.workdir).expect("and a link in its place");
+    swapped
+        .allows("book.txt", Access::Reading)
+        .expect_err("the working directory is a link now");
+}
+
 /// A path turned after it was checked into a link to somewhere else inside the reach is not
 /// opened either.
 ///

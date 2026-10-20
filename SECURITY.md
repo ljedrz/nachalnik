@@ -46,6 +46,13 @@ What changes to this workspace must keep true about what is and isn't enforced.
   new file are made the same way, one at a time from the one before, refusing a symlink. On
   kernels older than 5.6 it is an ordinary open, and such a swap isn't caught. A directory swapped
   during a directory walk is only caught for the files opened inside it.
+  The allowed directories themselves (the working directory and the `--sandbox-write` and
+  `--sandbox-read` paths) are resolved once, when the session starts, and are used only while no
+  symlink stands on the way to them: `fs` checks that on every call, and the sandboxed child opens
+  each with `openat2` and `RESOLVE_NO_SYMLINKS`. A command that renames an allowed directory it can
+  write beside and leaves a symlink at its name gets nothing through it; the directory is left out
+  until the symlink is gone, and the command is told so. On kernels older than 5.6 the child opens
+  each one following symlinks, and such a swap isn't caught there.
 - **Network access is asked about when a command tries to use it, not based on the command's name.**
   The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
   `socket()` call (the first step of any network use, DNS lookups included), and every

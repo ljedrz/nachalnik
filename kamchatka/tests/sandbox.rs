@@ -163,6 +163,67 @@ fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
     assert!(!root.join("elsewhere/planted.txt").exists());
 }
 
+/// A root a command swapped for a link grants the next command nothing: not where the link
+/// points, and not through it - whether the root was one beneath the working directory or the
+/// working directory beneath a root.
+///
+/// note: the ruleset opened each root by its path and followed whatever was there, so one command
+/// could rename a root it could write beside and put a link at its name, and every later command
+/// was granted wherever the link pointed, read-only or read-write as the root was. A root is now
+/// opened without following a link, and one that cannot be is left out and said.
+#[test]
+fn a_root_swapped_for_a_link_grants_the_next_command_nothing() {
+    if !enforced() {
+        return;
+    }
+    let base = common::scratch("root-swap")
+        .canonicalize()
+        .expect("it exists");
+    let (work, secret) = (base.join("w"), base.join("secret"));
+    std::fs::create_dir_all(work.join("shelf")).expect("a root inside the working directory");
+    std::fs::create_dir_all(work.join("proj")).expect("a working directory inside a root");
+    std::fs::create_dir_all(&secret).expect("a directory nobody opened up");
+    std::fs::write(secret.join("key.txt"), "not yours").expect("a file outside");
+
+    // a root beneath the working directory
+    let nested = Sandbox {
+        extra: vec![work.join("shelf")],
+        ..sandbox(work.clone(), true, Network::Open)
+    };
+    let (ok, said) = run(&nested, "mv shelf shelf-was && ln -s ../secret shelf");
+    assert!(ok, "the working directory is writable: {said}");
+    let (ok, said) = run(
+        &nested,
+        "cat shelf/key.txt; echo planted > shelf/planted.txt",
+    );
+    assert!(
+        !ok && !said.contains("not yours"),
+        "read through the link: {said}"
+    );
+    assert!(said.contains("not granted to this command"), "{said}");
+
+    // and the working directory beneath one
+    let beneath = Sandbox {
+        extra: vec![work.clone()],
+        ..sandbox(work.join("proj"), true, Network::Open)
+    };
+    let (ok, said) = run(
+        &beneath,
+        "cd .. && mv proj proj-was && ln -s ../secret proj",
+    );
+    assert!(ok, "the root above it is writable: {said}");
+    let (ok, said) = run(&beneath, "cat key.txt; echo planted > planted.txt");
+    assert!(
+        !ok && !said.contains("not yours"),
+        "read through the link: {said}"
+    );
+
+    assert!(
+        !secret.join("planted.txt").exists(),
+        "written through a link"
+    );
+}
+
 /// Whether this kernel has the one right in the ruleset that is newer than the rest; the socket
 /// tests say so and stop, the way `enforced` does, rather than failing on a kernel that cannot.
 fn sockets() -> bool {
@@ -1156,6 +1217,46 @@ fn two_paths_go_in_as_one_flag() {
     ] {
         assert!(said.contains(path), "`{path}` did not arrive: {said}");
     }
+}
+
+/// A path opened up through a link is opened up where the link pointed when the session started.
+///
+/// note: a root is used only while no link stands on the way to it, so one named through a link -
+/// a toolchain kept on another disk, say - would reach nothing if it were taken as typed. It is
+/// resolved once, at the start, which is what `shell`'s own description names.
+#[test]
+fn a_root_named_through_a_link_is_opened_where_it_points() {
+    if !enforced() {
+        return;
+    }
+    let base = common::scratch("root-through-link")
+        .canonicalize()
+        .expect("it exists");
+    let (real, named) = (base.join("real"), base.join("named"));
+    std::fs::create_dir_all(&real).expect("a directory");
+    std::os::unix::fs::symlink(&real, &named).expect("a link to it");
+
+    let mut child = common::command()
+        .args(["-m", "nothing-serves-this", "--no-record", "--sandbox-read"])
+        .arg(&named)
+        .current_dir(common::scratch("root-through-link-work"))
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().expect("stdin is a pipe");
+        stdin.write_all(b"/tools\n").expect("the line was not sent");
+    }
+    let out = child.wait_with_output().expect("the program never ended");
+    let said = String::from_utf8_lossy(&out.stderr);
+
+    let opened = format!("{} read-only", real.display());
+    assert!(said.contains(&opened), "`{opened}` did not arrive: {said}");
 }
 
 /// A kernel whose one tool is the confined `shell`, answering with a fixed script.

@@ -361,10 +361,8 @@ pub fn confine_saying(
         .chain(sandbox.extra.iter().cloned())
         .collect();
     let scratch = scratch.map(|scratch| Ok(PathBeneath::new(scratch.held.as_fd(), rights)));
-    let readable: Vec<PathBuf> = SYSTEM
-        .iter()
-        .map(PathBuf::from)
-        .chain(std::iter::once(sandbox.workdir.clone()))
+    let system: Vec<PathBuf> = SYSTEM.iter().map(PathBuf::from).collect();
+    let readable: Vec<PathBuf> = std::iter::once(sandbox.workdir.clone())
         .chain(sandbox.readable.iter().cloned())
         .collect();
     let devices: Vec<PathBuf> = sandbox
@@ -376,15 +374,16 @@ pub fn confine_saying(
     let restricted = ruleset
         .create()
         .and_then(|created| {
-            created.add_rules(path_beneath_rules(&readable, AccessFs::from_read(abi)))
+            created.add_rules(path_beneath_rules(&system, AccessFs::from_read(abi)))
         })
+        .and_then(|created| created.add_rules(unlinked(&readable, AccessFs::from_read(abi))))
         .and_then(|created| {
             created.add_rules(path_beneath_rules(
                 &devices,
                 AccessFs::ReadFile | AccessFs::WriteFile,
             ))
         })
-        .and_then(|created| created.add_rules(path_beneath_rules(&writable, rights)))
+        .and_then(|created| created.add_rules(unlinked(&writable, rights)))
         .and_then(|created| created.add_rules(scratch))
         .and_then(|created| created.add_rules(open))
         .and_then(|created| created.restrict_self());
@@ -399,6 +398,63 @@ pub fn confine_saying(
         },
         Err(e) => unavailable(format!("the ruleset could not be applied: {e}")),
     }
+}
+
+/// Rules granting `access` beneath each of the session's own roots, each opened without following
+/// a link; a root that cannot be opened that way is left out.
+///
+/// note: the roots were resolved once, when the session started, and are never followed again. A
+/// root inside a directory a command may write - one beneath the working directory, or the working
+/// directory beneath a `--sandbox-write` path - can be renamed by one command and a link left at its
+/// name, and opened by its path the next command was granted wherever the link pointed. Such a root
+/// is left out and said on standard error, which the model reads. The system directories are opened
+/// as `path_beneath_rules` opens them, following links: `/bin` is one on most systems, and nothing
+/// confined can write beside them.
+///
+/// note: where the kernel has no `openat2` (before 5.6), or a container's seccomp filter refuses
+/// it, the root is opened following links, with the window SECURITY.md describes.
+fn unlinked(
+    roots: &[PathBuf],
+    access: landlock::BitFlags<landlock::AccessFs>,
+) -> impl Iterator<Item = Result<landlock::PathBeneath<std::os::fd::OwnedFd>, landlock::RulesetError>>
+{
+    use rustix::{
+        fs::{Mode, OFlags, ResolveFlags},
+        io::Errno,
+    };
+
+    roots.iter().filter_map(move |root| {
+        let flags = OFlags::PATH | OFlags::CLOEXEC;
+        let opened = match rustix::fs::openat2(
+            rustix::fs::CWD,
+            root,
+            flags,
+            Mode::empty(),
+            ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
+        ) {
+            Err(Errno::NOSYS | Errno::PERM) => rustix::fs::open(root, flags, Mode::empty()),
+            Err(Errno::LOOP) => {
+                eprintln!(
+                    "{}: not granted to this command, because a link now stands on the way to it \
+                     where there was none when the session started",
+                    root.display()
+                );
+                return None;
+            }
+            opened => opened,
+        };
+        let opened = opened.ok()?;
+        // a file allowed on its own takes only the rights a file can have, as
+        // `path_beneath_rules` grants one
+        let access = match rustix::fs::fstat(&opened) {
+            Ok(stat) if !rustix::fs::FileType::from_raw_mode(stat.st_mode).is_dir() => {
+                access & landlock::AccessFs::from_file(landlock::ABI::V9)
+            }
+            _ => access,
+        };
+
+        Some(Ok(landlock::PathBeneath::new(opened, access)))
+    })
 }
 
 /// A confinement that did not take, and why.
