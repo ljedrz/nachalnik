@@ -452,6 +452,19 @@ fn unreadable(written: &str, layout: Layout) -> String {
     )
 }
 
+/// What the parser said of `written`, where in it to quote, and what to write instead; or nothing
+/// to say and `parsed` to quote from, where it parsed after all.
+fn fault(written: &str, layout: Layout, parsed: usize) -> (String, usize, String) {
+    match serde_json::from_str::<Value>(written) {
+        Err(e) => (
+            format!(" ({e})"),
+            at(written, e.line(), e.column()),
+            remedy(written, &e, layout),
+        ),
+        Ok(_) => (String::new(), parsed, String::new()),
+    }
+}
+
 /// What to write instead, where a model makes a fault without seeing it: a regex's `\(` put into a
 /// string as it stands, a line break typed into one, or the action written bare where the wrapper's
 /// object goes.
@@ -724,14 +737,7 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         // model told only that it was not JSON and shown the end of the payload has nothing to
         // change if the fault is in the middle - such as a `\(` in a pattern - and sends the same
         // call again
-        let (why, at, rule) = match serde_json::from_str::<Value>(written) {
-            Err(e) => (
-                format!(" ({e})"),
-                at(written, e.line(), e.column()),
-                remedy(written, &e, layout),
-            ),
-            Ok(_) => (String::new(), written.len(), String::new()),
-        };
+        let (why, at, rule) = fault(written, layout, written.len());
         return Some(format!(
             "the arguments were not JSON{why} - what arrived there was `{}` - so no operation \
              could be read from them, and the call is judged against all {} `{}` has; send it \
@@ -748,14 +754,7 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
     if let Some(Value::String(written)) = request.args.get(WRAPPER)
         && !matches!(serde_json::from_str::<Value>(written), Ok(Value::Object(_)))
     {
-        let (why, at, rule) = match serde_json::from_str::<Value>(written) {
-            Err(e) => (
-                format!(" ({e})"),
-                at(written, e.line(), e.column()),
-                remedy(written, &e, layout),
-            ),
-            Ok(_) => (String::new(), 0, String::new()),
-        };
+        let (why, at, rule) = fault(written, layout, 0);
         let again = match layout {
             Layout::Flat => format!(
                 "with every argument at the top level, since this tool takes no `{WRAPPER}`"
