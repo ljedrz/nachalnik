@@ -1333,3 +1333,32 @@ async fn a_tool_schema_a_counter_cannot_price_is_unpriced() {
         "taught a request it could not price"
     );
 }
+
+/// A counter that abstains on everything has both halves of a tool's definition counted as
+/// unpriced: the schema, and the name with the description.
+#[test]
+fn a_tool_a_counter_abstains_on_entirely_is_two_pieces_unpriced() {
+    struct Nothing;
+
+    impl TokenCounter for Nothing {
+        fn count(&self, _content: &Content) -> usize {
+            0
+        }
+
+        fn uncounted(&self, _content: &Content) -> usize {
+            1
+        }
+    }
+
+    let kernel = kernel();
+    kernel.set_counter(Arc::new(Nothing));
+    kernel.push(ContextItem::user("a question"));
+    let without = kernel.budget().uncounted;
+    kernel.add_tool(Arc::new(ConstTool::new("scan", Content::text("ok"))));
+
+    assert_eq!(
+        kernel.budget().uncounted,
+        without + 2,
+        "the schema and the description"
+    );
+}
