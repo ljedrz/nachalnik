@@ -4611,3 +4611,57 @@ fn two_sessions_in_one_log_are_read_as_two_and_the_count_is_the_later_one() {
         "{findings:?}"
     );
 }
+
+/// A tool that never looks at its interrupt.
+struct Deaf;
+
+#[async_trait]
+impl Tool for Deaf {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("deaf", "waits ten minutes whatever it is told")
+    }
+
+    async fn invoke(&self, _call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+        Ok(ToolOutput::new("done waiting"))
+    }
+}
+
+/// The deadline ends a run whose turn does not stop when it is interrupted.
+///
+/// note: the deadline interrupted the turn and then waited for it to end, so a tool that does not
+/// look at its interrupt kept the run going for as long as the tool ran. It leaves now, after the
+/// wait a `/quit` gets.
+#[tokio::test]
+async fn the_deadline_ends_a_run_whose_turn_will_not_stop() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(
+        vec![
+            ModelResponse::tool_calls(vec![call("c1", "deaf", json!({}))]),
+            ModelResponse::text("never"),
+        ],
+        None,
+    );
+    app.kernel.add_tool(Arc::new(Deaf));
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let mut headless = Headless::new(Grant::Allow, &mut records, &mut prose)
+        .deadline(std::time::Duration::from_secs(1));
+    tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        headless.run(&mut app, &mut events, &mut finished, &b"wait\n"[..]),
+    )
+    .await
+    .expect("the run went on past its deadline")
+    .expect("the run failed");
+
+    assert_eq!(
+        headless.stopped(),
+        Some(kamchatka::headless::Stop::Deadline)
+    );
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("was left"), "{prose}");
+}
