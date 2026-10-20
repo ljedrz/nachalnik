@@ -90,10 +90,10 @@ impl Reach {
     /// The end of `path` that is in the working directory, where `path` itself names nothing: what
     /// a model that guessed at the working directory's own name meant.
     ///
-    /// note: a model told nothing more guessed again. Given `/workspace/AGENTS.md` for a checkout
-    /// elsewhere, it sent its next reads under `/workspace` too, and each was refused the same way.
-    /// The longest end is tried first, and only where nothing is at the path asked for, so a file
-    /// that is there outside the reach is never answered with a different one of the same name.
+    /// note: a model told only that the path is outside the reach guesses again under the same
+    /// root, and is refused the same way each time. The longest end is tried first, and only where
+    /// nothing is at the path asked for, so a file that is there outside the reach is never
+    /// answered with a different one of the same name.
     fn meant_here(&self, path: &Path) -> Option<PathBuf> {
         if !path.is_absolute() || path.symlink_metadata().is_ok() {
             return None;
