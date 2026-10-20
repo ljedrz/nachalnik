@@ -171,6 +171,12 @@ minor bump may break you.
 
 ### changed
 
+- **A headless run under `--on-ask deny` gives commands no network instead of asking about it.**
+  A command that reached for the network was asked about and refused by the run, and the model was
+  told this was one answer to one command and to say why it needed the network before trying again.
+  With nobody there, it ran the same command into the same refusal. The network is now shut, as
+  under `--auto-deny net:reach`, and the shell's description and the note on a refused command say
+  so. `--on-ask allow` still asks and answers.
 - **The `context` tool's operations that move items say twice, not three times, that `ids` and
   `select` do not go together.** The arguments' own descriptions still say it in both directions.
 

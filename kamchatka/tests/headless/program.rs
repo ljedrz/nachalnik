@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use kamchatka::tools::Subject;
 use nachalnik::{
-    ContextItem, ContextKind, ModelResponse, Record, Verdict,
+    ContextItem, ContextKind, Grant, ModelResponse, Record, Verdict,
     test::{ScriptedProvider, call},
 };
 use serde_json::json;
 
-use crate::{common, priced, run, wired};
+use crate::{common, priced, run_with, wired};
 
 /// The program itself runs headless, and keeps its two streams apart.
 ///
@@ -598,7 +598,7 @@ fn a_resumed_run_says_the_spend_is_this_runs() {
 
 /// The program finds the gate for itself and puts the shell behind it: a command that opens a
 /// socket under `--auto-allow exec:run` is asked about when it tries, and a run with nobody at it
-/// answers `deny`.
+/// answers with `--on-ask`.
 ///
 /// note: through the binary, because the half this is about is `Setup::wire` - the probe finding
 /// that the gate holds, and the policy being told so. Everything past that is tested in process,
@@ -630,6 +630,8 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
             "nothing",
             "--auto-allow",
             "exec:run",
+            "--on-ask",
+            "allow",
             "go",
         ])
         .current_dir(common::workdir("program-gate"))
@@ -654,7 +656,7 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
     let said = heard(&watched, "reached for the network");
 
     assert!(
-        said.contains("reached for the network: deny, because nobody is here to be asked"),
+        said.contains("reached for the network: allow, because nobody is here to be asked"),
         "{said}"
     );
     // `python3` is no name a policy reading the command would have asked about
@@ -2587,8 +2589,8 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
     );
 }
 
-/// A running command that reaches for the network is answered by `--on-ask`, while the turn it is
-/// in is still running, and the answer is in the record and in what the model is handed.
+/// A running command that reaches for the network is answered by `--on-ask allow`, while the turn
+/// it is in is still running, and the answer is in the record and in what the model is handed.
 ///
 /// note: the one question a headless run answers while busy. The kernel's questions wait for the
 /// kernel to rest, because answering one mid-turn would decide a question the kernel had not
@@ -2596,26 +2598,95 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
 /// be waiting for the command that is waiting on the answer.
 #[tokio::test]
 async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
+    let Some(run) = reaching_out("headless-gate", Grant::Allow).await else {
+        return;
+    };
+
+    assert!(
+        run.prose
+            .contains("reached for the network: allow, because nobody is here to be asked"),
+        "{}",
+        run.prose
+    );
+    // an allowed `exec:run` is not a question, whatever the command is called
+    assert!(!run.names().contains(&"permission.requested".to_owned()));
+    let ruled = run.log().into_iter().any(|record| {
+        matches!(
+            record.event,
+            nachalnik::Event::PolicyRuled { ref subject, verdict: Verdict::Allow, once: true, .. }
+                if subject == "net:reach"
+        )
+    });
+    assert!(ruled, "the answer is in the record: {:?}", run.names());
+    assert!(
+        told(&run).contains("let through when it was asked about"),
+        "the model was not told it was let through"
+    );
+}
+
+/// A run that answers every question `deny` shuts the network rather than asking about it, as it
+/// refuses the kernel's questions rather than asking them, and the model is told so.
+///
+/// note: asked, the refusal reached the model as one answer to one command, with an invitation to
+/// say why it needed the network and try again, and the shell's description said a person would be
+/// asked. With nobody there, a model ran the same command into the same refusal for the rest of
+/// the run.
+#[tokio::test]
+async fn a_run_that_refuses_every_question_shuts_the_network_rather_than_asking() {
+    let Some(run) = reaching_out("headless-shut", Grant::Deny).await else {
+        return;
+    };
+
+    assert!(
+        !run.prose.contains("reached for the network:"),
+        "{}",
+        run.prose
+    );
+    let ruled = run.log().into_iter().any(|record| {
+        matches!(record.event, nachalnik::Event::PolicyRuled { ref subject, .. }
+            if subject == "net:reach")
+    });
+    assert!(!ruled, "a question was answered: {:?}", run.names());
+    let told = told(&run);
+    assert!(told.contains("which this session refuses"), "{told}");
+    assert!(!told.contains("before trying again"), "{told}");
+    let shell = run
+        .app
+        .kernel
+        .tool_specs()
+        .into_iter()
+        .find(|spec| spec.id == "shell")
+        .expect("the shell is on offer");
+    assert!(
+        shell.description.contains("it has no network"),
+        "{}",
+        shell.description
+    );
+}
+
+/// A headless run answering with `on_ask`, whose one call runs a command that opens a socket
+/// behind the gate; `None` where the gate does not hold here.
+async fn reaching_out(dir: &str, on_ask: Grant) -> Option<crate::Run> {
     let probed = kamchatka::sandbox::available(&common::program());
     if probed.confinement != kamchatka::sandbox::Confinement::Full || !probed.gated {
         eprintln!("skipped: the network gate does not hold here");
-        return;
+        return None;
     }
-    let dir = common::workdir("headless-gate");
+    let dir = common::workdir(dir);
     let script = vec![
         ModelResponse::tool_calls(vec![call(
             "c1",
             "shell",
             json!({ "cmd": "python3 -c \"import socket; socket.socket()\"" }),
         )]),
-        ModelResponse::text("it was refused"),
+        ModelResponse::text("done"),
     ];
 
     // bounded, because the failure this is about is a command waiting on an answer nobody gives,
     // and that is a suite that hangs rather than one that fails
     let run = tokio::time::timeout(
         std::time::Duration::from_secs(30),
-        run("fetch it\n", script, |app| {
+        run_with("fetch it\n", script, on_ask, |app| {
             app.policy.gate_the_network();
             app.policy.set(&Subject::parse("exec:run"), Verdict::Allow);
             app.kernel.add_tool(Arc::new(kamchatka::tools::Shell {
@@ -2634,28 +2705,18 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
     .await
     .expect("the command was left waiting on a question nobody answered");
 
-    assert!(
-        run.prose
-            .contains("reached for the network: deny, because nobody is here to be asked"),
-        "{}",
-        run.prose
-    );
-    // an allowed `exec:run` is not a question, whatever the command is called
-    assert!(!run.names().contains(&"permission.requested".to_owned()));
-    let ruled = run.log().into_iter().any(|record| {
-        matches!(
-            record.event,
-            nachalnik::Event::PolicyRuled { ref subject, verdict: Verdict::Deny, once: true, .. }
-                if subject == "net:reach"
-        )
-    });
-    assert!(ruled, "the answer is in the record: {:?}", run.names());
-    let told = run.app.kernel.items().iter().any(|item| {
-        item.content
-            .to_text()
-            .contains("refused when it was asked about")
-    });
-    assert!(told, "the model was not told it was refused");
+    Some(run)
+}
+
+/// What the model was told about the network, in every item that tells it.
+fn told(run: &crate::Run) -> String {
+    run.app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .filter(|text| text.contains("reached for the network"))
+        .collect()
 }
 
 /// `-r` carries on with the model the session was talking to, which is in its record and not in

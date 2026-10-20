@@ -208,6 +208,12 @@ impl Sandbox {
     /// a person who was asked about it. A stance of `ask` that nobody has been asked about yet is
     /// not permission. Where the gate holds, the command still runs and is asked about if it
     /// reaches out, so the stance is not a refusal either. See [`Careful::gates_the_network`].
+    ///
+    /// note: except where nobody is there to ask and the run refuses every question, which is
+    /// `--on-ask deny`. The network is then shut, as [`Careful`] refuses the kernel's questions
+    /// there rather than asking them. Asked, the refusal reached the model as an answer to one
+    /// command, and a model told to say why it needs the network and try again ran the same
+    /// command into the same refusal for the rest of the run.
     pub fn of(
         policy: &Careful,
         workdir: PathBuf,
@@ -234,7 +240,7 @@ impl Sandbox {
             writable,
             network: Network::of(
                 granted || stance == Verdict::Allow,
-                stance == Verdict::Deny,
+                !policy.permits(&Capability::net("reach")),
                 policy.gates_the_network(),
                 tcp,
             ),
