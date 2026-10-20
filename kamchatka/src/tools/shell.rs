@@ -917,10 +917,22 @@ impl Tool for Shell {
         // reason the status line says whether the command was stopped: an output limit cuts from
         // the end, and a note accounting for a permission error is worth nothing if the
         // truncation takes the note and leaves the error. The top of the output survives anything
-        let note = match sandbox
-            .as_ref()
-            .and_then(|sandbox| sandbox.note_for_in(&errors, scratch.as_deref()))
-        {
+        //
+        // note: on a blocking thread, since judging a refused path is a dozen `canonicalize` calls
+        // and the note judges up to `LOOKED` of them: seconds of a runtime worker, otherwise
+        let note = match sandbox {
+            Some(sandbox) => {
+                let (errors, scratch) = (errors.clone(), scratch.clone());
+                tokio::task::spawn_blocking(move || {
+                    sandbox.note_for_in(&errors, scratch.as_deref())
+                })
+                .await
+                .ok()
+                .flatten()
+            }
+            None => None,
+        };
+        let note = match note {
             Some(note) => format!("{note}\n"),
             None => String::new(),
         };
