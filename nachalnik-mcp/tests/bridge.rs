@@ -206,6 +206,13 @@ fn kernel() -> Kernel {
     Kernel::new(Config::default())
 }
 
+/// A kernel with `server`'s tools installed.
+async fn installed(server: &Server) -> Kernel {
+    let kernel = kernel();
+    server.install(&kernel).await.unwrap();
+    kernel
+}
+
 // --------------------------------------------------------------------------------- what it offers
 
 #[tokio::test]
@@ -337,8 +344,7 @@ async fn installing_twice_says_what_it_displaced() {
 #[tokio::test]
 async fn by_default_a_tool_says_only_where_it_came_from() {
     let (server, _) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     // the server claims `delete_everything` is read-only. Believing that would mean taking the
     // word of the thing being gated, so by default nothing is inferred from it at all
@@ -484,8 +490,7 @@ async fn a_call_nobody_answers_is_given_up_on_within_its_limit() {
 #[tokio::test]
 async fn a_call_reaches_the_server_and_the_answer_comes_back() {
     let (server, calls) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let echo = kernel.tool("files__echo").unwrap();
     let output = invoke(&echo, json!({ "text": "hello" })).await;
@@ -504,8 +509,7 @@ async fn a_call_reaches_the_server_and_the_answer_comes_back() {
 #[tokio::test]
 async fn arguments_that_never_parsed_are_not_sent_as_arguments() {
     let (server, calls) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
     let echo = kernel.tool("files__echo").unwrap();
 
     let output = invoke(&echo, json!({ "_unparsed": "{\"text\": \"hello\"" })).await;
@@ -549,8 +553,7 @@ async fn a_call_to_a_server_that_has_gone_says_its_other_tools_have_gone_too() {
     let server = Server::connect("files", ours)
         .await
         .expect("the handshake completes");
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
     serving.abort();
 
     let echo = kernel.tool("files__echo").unwrap();
@@ -574,8 +577,7 @@ async fn a_call_to_a_server_that_has_gone_says_its_other_tools_have_gone_too() {
 #[tokio::test]
 async fn structured_content_stays_structured() {
     let (server, _) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let output = invoke(&kernel.tool("files__counts").unwrap(), json!({})).await;
 
@@ -590,8 +592,7 @@ async fn structured_content_stays_structured() {
 #[tokio::test]
 async fn a_tool_that_fails_is_an_error_result_rather_than_a_broken_loop() {
     let (server, _) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let output = invoke(&kernel.tool("files__explodes").unwrap(), json!({})).await;
 
@@ -604,8 +605,7 @@ async fn a_tool_that_fails_is_an_error_result_rather_than_a_broken_loop() {
 #[tokio::test]
 async fn an_image_is_carried_and_what_cannot_be_is_named() {
     let (server, _) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let output = invoke(&kernel.tool("files__draws").unwrap(), json!({})).await;
 
@@ -638,8 +638,7 @@ async fn an_image_is_carried_and_what_cannot_be_is_named() {
 #[tokio::test]
 async fn an_image_too_large_to_send_is_named() {
     let (server, _) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let output = invoke(
         &kernel.tool("files__draws").unwrap(),
@@ -657,8 +656,7 @@ async fn an_image_too_large_to_send_is_named() {
 #[tokio::test]
 async fn the_largest_image_an_api_takes_is_carried() {
     let (server, _) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let output = invoke(
         &kernel.tool("files__draws").unwrap(),
@@ -674,8 +672,7 @@ async fn the_largest_image_an_api_takes_is_carried() {
 #[tokio::test]
 async fn arguments_that_are_not_an_object_are_reported_not_reshaped() {
     let (server, calls) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
 
     let output = invoke(&kernel.tool("files__echo").unwrap(), json!("just a string")).await;
 
@@ -688,8 +685,7 @@ async fn arguments_that_are_not_an_object_are_reported_not_reshaped() {
 #[tokio::test]
 async fn a_model_calls_a_tool_on_a_server_it_has_never_heard_of() {
     let (server, calls) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
     kernel.set_policy(Arc::new(AllowAll));
     kernel.set_provider(Arc::new(ScriptedProvider::new([
         ModelResponse::tool_calls(vec![call(
@@ -718,8 +714,7 @@ async fn a_model_calls_a_tool_on_a_server_it_has_never_heard_of() {
 #[tokio::test]
 async fn the_policy_gates_a_whole_server_in_one_line() {
     let (server, calls) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
     // nothing from this server runs without being asked about, whatever it says about itself
     kernel.set_policy(Arc::new(DenyAll));
     kernel.set_provider(Arc::new(ScriptedProvider::new([
@@ -749,8 +744,7 @@ async fn the_policy_gates_a_whole_server_in_one_line() {
 #[tokio::test]
 async fn a_denied_call_can_still_be_allowed_by_the_person_watching() {
     let (server, calls) = bench("files").await;
-    let kernel = kernel();
-    server.install(&kernel).await.unwrap();
+    let kernel = installed(&server).await;
     kernel.set_provider(Arc::new(ScriptedProvider::new([
         ModelResponse::tool_calls(vec![call("c1", "files__echo", json!({ "text": "may i" }))]),
         ModelResponse::text("done"),
@@ -965,7 +959,8 @@ async fn a_call_the_server_never_answers_is_stopped_by_an_interrupt() {
     }
 }
 
-/// A listing whose server always has another page gives up rather than listing for ever.
+/// A listing of tools or of resources whose server always has another page gives up rather than
+/// listing for ever.
 #[tokio::test]
 async fn a_listing_that_never_ends_gives_up() {
     let server = serve(
@@ -976,34 +971,17 @@ async fn a_listing_that_never_ends_gives_up() {
         },
     )
     .await;
+    let patience = std::time::Duration::from_secs(30);
 
-    let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.tools())
-        .await
-        .expect("it listed for ever");
-    let Err(e) = listed else {
-        panic!("an endless listing is not a list");
+    let tools = tokio::time::timeout(patience, server.tools()).await;
+    let Err(e) = tools.expect("tools were listed for ever") else {
+        panic!("an endless listing of tools is not a list");
     };
     assert!(e.to_string().contains("pages"), "{e}");
-}
 
-/// A listing of resources whose server always has another page gives up as a listing of tools
-/// does, rather than listing for ever.
-#[tokio::test]
-async fn a_listing_of_resources_that_never_ends_gives_up() {
-    let server = serve(
-        "wedged",
-        Wedged {
-            endless: true,
-            ..Wedged::default()
-        },
-    )
-    .await;
-
-    let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.resources())
-        .await
-        .expect("it listed for ever");
-    let Err(e) = listed else {
-        panic!("an endless listing is not a list");
+    let resources = tokio::time::timeout(patience, server.resources()).await;
+    let Err(e) = resources.expect("resources were listed for ever") else {
+        panic!("an endless listing of resources is not a list");
     };
     assert!(e.to_string().contains("pages"), "{e}");
 }
