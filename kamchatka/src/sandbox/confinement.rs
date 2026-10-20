@@ -56,12 +56,9 @@ impl fmt::Display for Confinement {
 /// `HardRequirement` makes a right the kernel lacks an error instead of quietly dropping it, and a
 /// `Ruleset` that is only built restricts nothing: this applies no ruleset and confines no process.
 pub fn confines_unix_sockets() -> bool {
-    use landlock::{AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
+    use landlock::RulesetAttr;
 
-    Ruleset::default()
-        .set_compatibility(CompatLevel::HardRequirement)
-        .handle_access(AccessFs::ResolveUnix)
-        .is_ok()
+    takes(|ruleset| ruleset.handle_access(landlock::AccessFs::ResolveUnix))
 }
 
 /// Whether this kernel can refuse a confined command a TCP connection.
@@ -69,12 +66,9 @@ pub fn confines_unix_sockets() -> bool {
 /// note: put to the kernel through the crate, as [`confines_unix_sockets`] is, and applying
 /// nothing: the right is ABI 4, which is Linux 6.7.
 pub fn confines_tcp() -> bool {
-    use landlock::{AccessNet, CompatLevel, Compatible, Ruleset, RulesetAttr};
+    use landlock::RulesetAttr;
 
-    Ruleset::default()
-        .set_compatibility(CompatLevel::HardRequirement)
-        .handle_access(AccessNet::ConnectTcp)
-        .is_ok()
+    takes(|ruleset| ruleset.handle_access(landlock::AccessNet::ConnectTcp))
 }
 
 /// Whether this kernel refuses a confined command a connection to an abstract unix socket made
@@ -86,12 +80,9 @@ pub fn confines_tcp() -> bool {
 /// the person's terminal included. Landlock scopes it from ABI 6, which is Linux 6.12, and the
 /// question is put to the kernel the way that one is.
 pub fn confines_abstract_sockets() -> bool {
-    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr, Scope};
+    use landlock::RulesetAttr;
 
-    Ruleset::default()
-        .set_compatibility(CompatLevel::HardRequirement)
-        .scope(Scope::AbstractUnixSocket)
-        .is_ok()
+    takes(|ruleset| ruleset.scope(landlock::Scope::AbstractUnixSocket))
 }
 
 /// Whether this kernel can refuse a process a signal to anything outside its Landlock domain.
@@ -99,12 +90,19 @@ pub fn confines_abstract_sockets() -> bool {
 /// note: put to the kernel through the crate, as [`confines_abstract_sockets`] is, and applying
 /// nothing: the scope is ABI 6, which is Linux 6.12.
 pub fn confines_signals() -> bool {
-    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr, Scope};
+    use landlock::RulesetAttr;
 
-    Ruleset::default()
-        .set_compatibility(CompatLevel::HardRequirement)
-        .scope(Scope::Signal)
-        .is_ok()
+    takes(|ruleset| ruleset.scope(landlock::Scope::Signal))
+}
+
+/// Whether this kernel takes what `asked` adds to a ruleset, asked under `HardRequirement` so that
+/// a right it lacks is an error rather than dropped. Nothing is created or applied.
+fn takes(
+    asked: impl FnOnce(landlock::Ruleset) -> Result<landlock::Ruleset, landlock::RulesetError>,
+) -> bool {
+    use landlock::{CompatLevel, Compatible, Ruleset};
+
+    asked(Ruleset::default().set_compatibility(CompatLevel::HardRequirement)).is_ok()
 }
 
 /// What this kernel leaves out of a confined command's sandbox, in a sentence for the person; `None`
@@ -119,13 +117,10 @@ pub fn confines_signals() -> bool {
 /// socket files Landlock covers from Linux 7.1 are not among them, since a kernel that recent is
 /// still the exception, and a warning most people get is one nobody reads.
 pub fn weaker_here() -> Option<String> {
-    use landlock::{ABI, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
+    use landlock::{ABI, Access, AccessFs, RulesetAttr};
 
     weaker(Kernel {
-        landlock: Ruleset::default()
-            .set_compatibility(CompatLevel::HardRequirement)
-            .handle_access(AccessFs::from_all(ABI::V1))
-            .is_ok(),
+        landlock: takes(|ruleset| ruleset.handle_access(AccessFs::from_all(ABI::V1))),
         tcp: confines_tcp(),
         abstract_sockets: confines_abstract_sockets(),
         signals: confines_signals(),
