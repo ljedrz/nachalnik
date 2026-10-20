@@ -1716,8 +1716,8 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     }
 
     // note: asked of the *call* rather than of the spec, because a tool that does several things
-    // has a limit per thing - `fs:read` and `fs:grep` are one tool and two reasonable answer
-    // sizes. See `Tool::limit`
+    // has a limit per thing - `fs:read` and `fs:write` are one tool and two answer sizes. See
+    // `Tool::limit`
     let declared = |harness: &Harness, tool: &str, action: &str| {
         let call = nachalnik::ToolCall::new("c", tool, json!({ "action": action }));
         harness.app.kernel.tool(tool).and_then(|it| it.limit(&call))
@@ -1730,8 +1730,10 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         Some(64_000),
         "the tool has to declare the new one, or the command changed nothing"
     );
-    // and the rest of `fs` is untouched: one operation was named, one operation moved
-    assert_eq!(declared(&harness, "fs", "grep"), Some(32_000));
+    // and the operations reading under the same subject move with it, while the rest of `fs` is
+    // untouched: one subject was named, one subject moved
+    assert_eq!(declared(&harness, "fs", "grep"), Some(64_000));
+    assert_eq!(declared(&harness, "fs", "write"), Some(8_000));
     // the one place a tool and its domain are spelled differently: `shell` runs `exec:run`
     assert_eq!(declared(&harness, "shell", "run"), Some(32_000));
 
@@ -1743,13 +1745,14 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
 
     // the number the listing prints is a handle the command takes, or it is decoration: naming
-    // the row and naming the subject are the same instruction. `fs:read` is the nineteenth of the
-    // sorted subjects - every `context:*` sorts before it, so the count moves when that tool does
-    harness.send("/limit 19 48000").await;
+    // the row and naming the subject are the same instruction. `fs:read` is the sixteenth of the
+    // sorted subjects - every `context:*`, `exec:*` and `fork:*` sorts before it, so the count
+    // moves when those tools do
+    harness.send("/limit 16 48000").await;
     assert_eq!(declared(&harness, "fs", "read"), Some(48_000));
     assert_eq!(
-        declared(&harness, "fs", "grep"),
-        Some(32_000),
+        declared(&harness, "fs", "write"),
+        Some(8_000),
         "one row moved"
     );
     assert!(
@@ -1794,7 +1797,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "and every other subject: {screen}"
     );
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[19] fs:read"), "{screen}");
+    assert!(screen.contains("[16] fs:read"), "{screen}");
 }
 
 /// The limit table gives every subject the same room, so a two-digit row number does not push the

@@ -547,7 +547,7 @@ fn irregular(doing: Access, policy: Option<&Careful>) -> std::io::Error {
             .and_then(|policy| {
                 policy.ways(&[
                     (
-                        Capability::fs("glob"),
+                        Capability::fs("read"),
                         "`glob` lists what a directory holds",
                     ),
                     (

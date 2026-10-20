@@ -35,7 +35,6 @@ mod shell;
 
 #[cfg(feature = "shell-advisor")]
 pub use crate::tools::advice::{Advised, Rated, Rating};
-pub(crate) use crate::tools::search::barred;
 pub use crate::tools::{
     files::COUNTED,
     ops::Layout,
@@ -44,6 +43,7 @@ pub use crate::tools::{
     shedder::Shedder,
     shell::{CALL_VAR, Exit, Shell, Stragglers, joints},
 };
+pub(crate) use crate::tools::{fs::subject as fs_subject, search::barred};
 
 /// The domains this program's own tools act in, beside the three the runtime names.
 ///
@@ -246,17 +246,17 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// The limit for one call's output when the answer is a fixed-shape report rather than a piece of
 /// the session, in bytes.
 ///
-/// note: the distinction is measured, not guessed. Seven answers do not change between a small
-/// session and a large one with many more tools registered: `fs:write` and `fs:edit` are one line
-/// each; `context:revise` says what it replaced without quoting it; `context:note`, `setup:model`,
+/// note: the distinction is measured, not guessed. Six answers do not change between a small
+/// session and a large one with many more tools registered: `fs:write`'s, for `write` and `edit`,
+/// is one line; `context:revise` says what it replaced without quoting it; `context:note`, `setup:model`,
 /// and `setup:policy` are a short paragraph; and `context:budget` is a fixed report with the ten
 /// most expensive rows under it. Every other answer grows with what the session holds, especially
 /// `context:look` and `log`'s records.
 ///
-/// note: a lower number buys a tripwire where the limit never fires anyway. The seven answers are
+/// note: a lower number buys a tripwire where the limit never fires anyway. The six answers are
 /// bounded because of how each is built, so if one arrives cut, that has silently stopped being
 /// true: a `budget` that listed every item, or a `revise` that echoed what it wrote.
-/// `tests/introspect/shared.rs` holds the seven to this size, so such a change should be caught
+/// `tests/introspect/shared.rs` holds the six to this size, so such a change should be caught
 /// there; this is what happens if it is not.
 pub(crate) const REPORT: usize = 8_000;
 
@@ -265,11 +265,11 @@ pub(crate) const REPORT: usize = 8_000;
 ///
 /// note: each row is keyed by subject, the same `<domain>:<operation>` string the permissions table
 /// uses. A call's limit is looked up by the subject its permission was decided by, so permissions
-/// and limits use one set of names: `--auto-allow fs:grep` and `/limit fs:grep` name the same
+/// and limits use one set of names: `--auto-allow fs:read` and `/limit fs:read` name the same
 /// thing, and anyone who has read either table can read the other.
 ///
-/// note: rows are not keyed by tool id, because a tool can do several things. `fs` covers five
-/// operations whose answers range from a whole file to a repo-wide search, and `context` covers
+/// note: rows are not keyed by tool id, because a tool can do several things. `fs` reads and
+/// writes, and its reading answers range from a whole file to a repo-wide search; `context` covers
 /// twelve, from a listing of items to a line confirming a pin. A number per tool would fit
 /// whichever operation somebody thought of first.
 ///
@@ -341,20 +341,19 @@ impl Limits {
     /// number per row: a number per row would be a set of opinions nobody asked for, and one number
     /// for every row would treat a line confirming a write and a whole log as the same kind of
     /// answer. The tier is decided by whether the answer grows with the session, not by importance:
-    /// seven subjects have answers that do not, and every other one does. The table exists so a
+    /// six subjects have answers that do not, and every other one does. The table exists so a
     /// person can change the row that matters to them.
     ///
-    /// note: `fs:grep` and `fs:glob` are in the default table for `/limit` to list and raise.
-    /// Neither row normally shapes its own answer: both cut at a number of matches or paths and say
-    /// so, which a byte limit cannot do; a byte limit takes the tail of the last file searched and
-    /// leaves nothing saying there was more. These rows are the fallback for the one line that is a
-    /// megabyte wide.
+    /// note: `grep` and `glob` answer under `fs:read`'s row with `read`, and it rarely shapes their
+    /// answers: both cut at a number of matches or paths and say so, which a byte limit cannot do;
+    /// a byte limit takes the tail of the last file searched and leaves nothing saying there was
+    /// more. For them the row is the fallback for the one line that is a megabyte wide.
     ///
     /// note: the row is `exec:run`, not `shell`, the tool's name, because a limit row is a subject
     /// and a `shell` call is judged by `exec:run`. It is the one place in this program where a
     /// tool's name and its domain come apart.
     pub fn new() -> Self {
-        let rows = ["read", "glob", "grep", "write", "edit"]
+        let rows = ["read", "write"]
             .map(Capability::fs)
             .into_iter()
             .chain([Capability::exec("run")])
@@ -373,7 +372,6 @@ impl Limits {
                 let bounded = matches!(
                     subject.as_str(),
                     "fs:write"
-                        | "fs:edit"
                         | "context:budget"
                         | "context:note"
                         | "context:revise"
@@ -510,7 +508,7 @@ mod tests {
 
         // 14,000 tokens: a tenth is 1,400, at four bytes a token
         limits.window(Some(14_000));
-        for subject in ["fs:read", "exec:run", "fs:grep", "context:look", "log:read"] {
+        for subject in ["fs:read", "exec:run", "context:look", "log:read"] {
             assert_eq!(limits.of(subject), Some(5_600), "{subject}");
         }
         assert_eq!(

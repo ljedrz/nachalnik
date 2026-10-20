@@ -10,8 +10,8 @@
 //!
 //! note: what the pair buys is which capability they ride. Without them, finding a symbol means
 //! `shell`, which subsumes every other capability, so a session that only wants to be asked about
-//! the repository has to hand over the one permission that answers for everything. These declare
-//! `fs:grep` and `fs:glob`, and the path rules that bind a read bind them too: see
+//! the repository has to hand over the one permission that answers for everything. These need
+//! `fs:read`, as reading a file does, and the path rules that bind a read bind them too: see
 //! [`Looking::barred`], which is the part that had to be built rather than linked.
 
 use std::{
@@ -778,7 +778,7 @@ impl Grep {
         let over = self
             .0
             .limits
-            .of("fs:grep")
+            .of("fs:read")
             .is_some_and(|limit| answer.len() > limit);
         let answer = match over && !files_only && !found.by_file.is_empty() {
             true => instead(&found, &pattern, &asked, answer.len()),

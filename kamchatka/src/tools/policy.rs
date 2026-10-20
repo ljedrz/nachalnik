@@ -543,7 +543,7 @@ impl Careful {
     ///
     /// note: the most specific rule that has an answer decides, and a `deny` above it overrules.
     /// `--auto-allow fs` covers `fs:read` because nothing finer was said;
-    /// `--auto-allow fs --auto-deny fs:edit` refuses the edit and allows the rest;
+    /// `--auto-allow fs --auto-deny fs:write` refuses changing files and allows the rest;
     /// `--auto-allow fs:read` allows reading while `fs` is still a question, which is what naming
     /// one operation plainly means. A domain somebody denied stays denied however finely
     /// an operation of it is named, so `--auto-deny` is the last word and the strictest of

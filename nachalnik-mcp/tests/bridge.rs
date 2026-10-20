@@ -377,7 +377,6 @@ async fn trusting_the_annotations_is_something_you_have_to_say() {
     // a tool that said nothing about itself is not thereby harmless
     let unannotated = kernel.tool("files__counts").unwrap().spec();
     assert!(unannotated.capabilities.contains(&Capability::fs("write")));
-    assert!(unannotated.capabilities.contains(&Capability::fs("edit")));
     // nor closed off from the world: `openWorldHint` is `true` unless a tool says otherwise, so
     // only the one that said `false` goes without `net:reach`
     assert!(unannotated.capabilities.contains(&Capability::net("reach")));

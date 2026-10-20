@@ -231,7 +231,12 @@ A **domain** is what a tool acts on (`fs`, `exec`, `context`), and an answer for
 everything done in it, which is what makes "always" work for tools `kamchatka` has never seen. An
 **operation** is one action in a domain, written `<domain>:<operation>`: `fs:read` and `fs:write`
 are separate decisions, and so are `context:note`, which adds an item to your context, and
-`context:revise`, which rewrites one. A **path rule** is more specific than either: `fs:read: allow`
+`context:revise`, which rewrites one. `fs` is named by what a call does to the files rather than by
+which of its five actions it uses: `read`, `glob` and `grep` are `fs:read`, and `write` and `edit`
+are `fs:write`. A refused `fs:write` also makes the working directory and the `--sandbox-write`
+paths read-only for `shell`. A refused `fs:read` does not stop `shell` reading, since a shell that
+can't read its working directory can do almost nothing; refuse `exec:run` to keep commands away
+from the files. A **path rule** is more specific than either: `fs:read: allow`
 is a reasonable thing to want, `fs:read .env: allow` is not. It applies to every tool given a path:
 `grep` and `glob` can't ask, so they skip files a rule doesn't allow and say how many, and a
 symlink to such a file is refused and named. A **server** rule is about which MCP server a tool
@@ -314,8 +319,8 @@ look like a broken network. `deny` refuses every internet socket without asking,
 ## 🔦 finding things without a shell
 
 `fs`'s `grep` and `glob` let the model explore a repository without `exec:run`, which implies every
-other capability: they declare `fs:grep` and `fs:glob`, and the path rules that apply to reading
-apply to them too. They use ripgrep's libraries.
+other capability: they need `fs:read`, as reading a file does, and the path rules that apply to
+reading apply to them too. They use ripgrep's libraries.
 
 A result starts with a line counting the matches, the files they are in, and the files searched, so
 "the symbol isn't there" is distinguishable from "nothing was searched"; a `skipped:` line counts
@@ -340,17 +345,17 @@ with `grep` or `shell` named as the way to the rest. `from` and `lines` read any
 including logs too large to hold in memory. The alternative, `sed -n` through `shell`, needs
 `exec:run`, even for a file the session is already allowed to read.
 
-**The output limit is set per permission**, so `fs:read` and `fs:grep` each have their own. It
+**The output limit is set per permission**, so `fs:read` and `exec:run` each have their own. It
 starts at 32,000 bytes, and at 8,000 for fixed-format reports rather than session content:
-`fs:write`, `fs:edit`, `context:budget`, `context:note`, `context:revise`, `setup:model` and
-`setup:policy`. On a small model each limit is lower still, a tenth of the context window at about
-four bytes a token, so one answer cannot fill it. A limit set with `/limit` is kept whatever the
-window. `/limit` lists the limits numbered and changes one from its next call on, e.g. `/limit
-fs:read 64000`. A cut result keeps the full version next to it, excluded; <kbd>space</kbd> on it
-sends the full version instead. `fs read` and `grep` cut nothing: a read stops at a line and says
-where to read on from, and a `grep` too long for its limit says which files matched instead. The
-full version has its own limit, 8 MiB: beyond that, a command's extra output is discarded and the
-result says how much, and `fs` refuses to edit larger files.
+`fs:write`, `context:budget`, `context:note`, `context:revise`, `setup:model` and `setup:policy`. On
+a small model each limit is lower still, a tenth of the context window at about four bytes a token,
+so one answer cannot fill it. A limit set with `/limit` is kept whatever the window. `/limit` lists
+the limits numbered and changes one from its next call on, e.g. `/limit fs:read 64000`. A cut result
+keeps the full version next to it, excluded; <kbd>space</kbd> on it sends the full version instead.
+`fs read` and `grep` cut nothing: a read stops at a line and says where to read on from, and a
+`grep` too long for its limit says which files matched instead. The full version has its own limit,
+8 MiB: beyond that, a command's extra output is discarded and the result says how much, and `fs`
+refuses to edit larger files.
 
 ## 📎 putting something in, with or without a question
 

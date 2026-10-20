@@ -782,17 +782,19 @@ async fn the_same_search_twice_is_the_same_answer() {
     assert_eq!(once, twice);
 }
 
-/// Each of them rides a capability of its own, and neither rides `shell`.
+/// Each of them needs reading, as `read` does, and neither rides `shell`.
 ///
 /// note: the whole point of the pair. Finding a symbol used to mean `shell`, which subsumes every
 /// other capability - so a session that only wanted to be asked about a repository had to hand
-/// over the one permission that answers for everything.
+/// over the one permission that answers for everything. They need `fs:read` rather than a subject
+/// each, because `grep` prints what is in a file as `read` does, and a refused `fs:read` that left
+/// `grep` printing files refused nothing.
 ///
 /// note: asked of the `fs` tool, call by call, because that is where they live now. This looked
 /// for tools called `grep` and `glob`, which stopped existing when they became operations of `fs`,
 /// and went on passing with nothing left for its loop to check.
 #[tokio::test]
-async fn finding_things_costs_its_own_operation_and_not_shell() {
+async fn finding_things_needs_reading_and_not_shell() {
     let dir = tree("search-capability");
     let fs = tools(&dir)
         .into_iter()
@@ -802,8 +804,8 @@ async fn finding_things_costs_its_own_operation_and_not_shell() {
         let asked = call("c1", "fs", json!({ "action": action, "pattern": "Kernel" }));
         assert_eq!(
             fs.needs(&asked),
-            vec![nachalnik::Capability::fs(action)],
-            "`{action}` should need itself and nothing else"
+            vec![nachalnik::Capability::fs("read")],
+            "`{action}` should need reading and nothing else"
         );
     }
 }
@@ -1159,7 +1161,7 @@ async fn lines_that_will_not_fit_come_back_as_the_files_they_were_in() {
 /// answered as the files those lines were in.
 ///
 /// note: the cut is a byte count and the answer is a string, so the line either side of it is a
-/// real case rather than a rounding argument: `/limit fs:grep <n>` is a number somebody typed, and
+/// real case rather than a rounding argument: `/limit fs:read <n>` is a number somebody typed, and
 /// an answer of exactly that many bytes is the largest one that fits. Swapping `>` for `>=` turns
 /// every limit into one below the size of what it admits, which is a search that reports it ran
 /// out of room on a call that did not.
@@ -1168,7 +1170,7 @@ async fn an_answer_of_exactly_the_limit_is_left_as_the_lines_it_found() {
     let dir = tree("grep-at-the-limit");
     let lines = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
     let exact_limits = Limits::default();
-    exact_limits.set("fs:grep", lines.len());
+    exact_limits.set("fs:read", lines.len());
     let exact = ask_within(&dir, exact_limits, "grep", json!({ "pattern": "Kernel" })).await;
 
     assert_eq!(
@@ -1178,7 +1180,7 @@ async fn an_answer_of_exactly_the_limit_is_left_as_the_lines_it_found() {
 
     // and one byte shorter is over the limit, which is the other side of the same comparison
     let limits = Limits::default();
-    limits.set("fs:grep", lines.len() - 1);
+    limits.set("fs:read", lines.len() - 1);
     let over = ask_within(&dir, limits, "grep", json!({ "pattern": "Kernel" })).await;
     assert!(
         over.contains("more than this answers with, so here is where they are"),

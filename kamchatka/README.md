@@ -135,9 +135,10 @@ whitespace and nothing is unquoted, so an argument cannot hold a space. A path w
 arguments; a script that starts the server works around that.
 
 `fs`'s `grep` and `glob` use ripgrep's libraries directly instead of running `rg`. Without them,
-searching for a symbol would need `exec:run`, which implies every other permission. `fs:grep` and
-`fs:glob` are limited by the same path rules as reading files, so they let the model explore a
-repository without that all-powerful permission ([what they cut and what they skip][guide-find]).
+searching for a symbol would need `exec:run`, which implies every other permission. They need
+`fs:read`, as reading a file does, and are limited by the same path rules, so they let the model
+explore a repository without that all-powerful permission ([what they cut and what they
+skip][guide-find]).
 
 Four tools are about the session itself: `context` reads and changes the context, `log` reads the
 session record, `setup` shows the session's configuration, and `fork` asks a copy of the session a

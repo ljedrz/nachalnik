@@ -548,7 +548,7 @@ async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
 
 /// A call a standing rule refused because it named no operation is told that, not only the rule.
 ///
-/// note: the refusal reached the model as `refused by \`fs:write\` and \`fs:edit\`. That is a
+/// note: the refusal reached the model as `refused by \`fs:write\`. That is a
 /// standing rule`, for a call whose operation could not be read, and a model told that retries the
 /// same call: the rule is the wrong thing to blame, and the arguments are the thing to fix. The real
 /// `fs`, wired, because what is being checked is that the policy knows what the session's own
