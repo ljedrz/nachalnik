@@ -7,6 +7,23 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
+  only while no link stands on the way to it, so one given through a link reaches nothing; see the
+  fix below.
+
+### changed
+
+- **A headless run under `--on-ask deny` gives commands no network instead of asking about it.**
+  A command that reached for the network was asked about and refused by the run, and the model was
+  told this was one answer to one command and to say why it needed the network before trying again.
+  With nobody there, it ran the same command into the same refusal. The network is now shut, as
+  under `--auto-deny net:reach`, and the shell's description and the note on a refused command say
+  so. `--on-ask allow` still asks and answers.
+- **The `context` tool's operations that move items say twice, not three times, that `ids` and
+  `select` do not go together.** The arguments' own descriptions still say it in both directions.
+
 ### fixed
 
 - **A path opened up for the tools no longer reaches wherever a link put at its name points.** The
@@ -17,8 +34,6 @@ minor bump may break you.
   read-only or read-write as the path was. They are resolved once, when the session starts, and one
   with a link on the way to it is not reached; a command is told when one was left out. A path named
   through a link is opened up where the link pointed at the start, and `shell` names it that way.
-  `Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them: one given through a
-  link reaches nothing.
 - **`fs` refusing a path outside the reach names the same file in the working directory.** A
   model that guessed at a checkout's location, as `/workspace/AGENTS.md`, was told only that the
   path was outside the reach, and sent its next reads to the same wrong root. Where the path's end
@@ -178,17 +193,6 @@ minor bump may break you.
   snapshot are left out of the resumed session's log, and `log` said so, but it only looked where
   the earlier records end and the session's own begin. The next resume copies that log forward, so
   the gap is then in the middle, and `log` did not mention it. It reports every gap in the log now.
-
-### changed
-
-- **A headless run under `--on-ask deny` gives commands no network instead of asking about it.**
-  A command that reached for the network was asked about and refused by the run, and the model was
-  told this was one answer to one command and to say why it needed the network before trying again.
-  With nobody there, it ran the same command into the same refusal. The network is now shut, as
-  under `--auto-deny net:reach`, and the shell's description and the note on a refused command say
-  so. `--on-ask allow` still asks and answers.
-- **The `context` tool's operations that move items say twice, not three times, that `ids` and
-  `select` do not go together.** The arguments' own descriptions still say it in both directions.
 
 ## [0.21.0] - 2026-10-18
 
