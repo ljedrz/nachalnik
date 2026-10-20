@@ -298,7 +298,9 @@ impl Server {
             .map_err(|e| format!("`{host}` is nowhere: {e}"))?
             .next()
             .ok_or_else(|| format!("`{host}` is nowhere"))?;
-        if !address.ip().is_loopback() {
+        // note: canonical first, since `is_loopback` is true of no IPv4-mapped address, and
+        // `[::ffff:127.0.0.1]` is the loopback interface spelled the way an IPv6 socket names it
+        if !address.ip().to_canonical().is_loopback() {
             return Err(format!(
                 "{address} is not a loopback address, and this protocol carries no \
                  authentication: whatever reaches the port runs the `shell` tool as you. Listen on \

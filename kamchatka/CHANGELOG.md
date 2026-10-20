@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--serve` accepts `[::ffff:127.0.0.1]` as loopback.** It checked the address without unmapping
+  it from IPv6 first, so the loopback interface written that way was refused as reachable by
+  anybody, while `--web` accepted it. A mapped address that is not loopback is still refused.
 - **Writing the record no longer searches the log on every streamed fragment.** The session record
   and a headless run's records looked for new records on every event, under the lock every event
   waits on, and nearly always found none. They read the log's last number first now, as a served
