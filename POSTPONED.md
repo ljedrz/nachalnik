@@ -28,6 +28,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   a build directory is full of them. It waits on choosing between that walk, refusing every file
   with more than one link under a path rule, or leaving it as SECURITY.md describes.
 
+- **`--auto-deny fs:write` leaves `fs: edit` writing.** A refused `fs:write` makes the working
+  directory and the `--sandbox-write` paths read-only for `shell`, so that `fs` and `shell` agree
+  about them, and RUNNING.md says it removes everything writable. `fs:edit` is an operation of its
+  own, so an edit allowed or answered `yes` still changes files there. Either an edit is judged as a
+  write too, which makes `--auto-allow fs:edit` beside `--auto-deny fs:write` mean nothing, or the
+  docs say that `fs:write` is the shell's switch and `fs:edit` needs refusing on its own. Unblocked
+  by choosing which.
+
 - **A turn recorded by another dialect goes to Gemini with its thinking unsigned.** A turn kept as
   `content` and `reasoning` rather than as blocks, which is how the OpenAI dialects record one, is
   sent to Gemini as a `thought: true` part with no `thoughtSignature`, and its calls without one
