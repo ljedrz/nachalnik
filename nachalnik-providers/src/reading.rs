@@ -298,12 +298,15 @@ pub(crate) async fn read(
             // is how nearly every server sends one and some send no blank line between them; only
             // what does not parse alone waits for the blank line
             let event = match line.strip_prefix("data:").map(str::trim) {
+                // note: a value that is not an object is no dialect's event, but it may be a line
+                // of one spread over several, such as the `"stop"` a pretty-printer puts on a line
+                // of its own. Taken for an event, it threw away the lines before it
                 Some(data) => match serde_json::from_str::<Value>(data) {
-                    Ok(event) => {
+                    Ok(event) if event.is_object() || spread.is_empty() => {
                         spread.clear();
                         event
                     }
-                    Err(_) => {
+                    _ => {
                         if !spread.is_empty() {
                             spread.push('\n');
                         }
