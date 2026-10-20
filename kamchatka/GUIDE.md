@@ -130,8 +130,7 @@ in place: same number, same state, the old text kept as `v1`, and one <kbd>u</kb
 a 2,000-line file down to the one function that matters is a few keystrokes.
 
 **trace** is every event the runtime emits, as it happens, with the same names as in the session
-log. Each is one line: when it happened, the time since the line above, the event's name, and its
-details.
+log. Each is one line: the event's name and its details.
 
 Every state machine transition is there, and each line shows the event's contents, not just its
 name. It's the same stream `/save` writes to a `.jsonl` file, except for streamed output, which the
