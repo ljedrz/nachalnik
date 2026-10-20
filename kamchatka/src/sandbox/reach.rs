@@ -215,14 +215,11 @@ impl Reach {
         }
 
         let readable = matches!(doing, Access::Reading);
-        match std::iter::once(&self.workdir)
-            .chain(self.extra.iter())
-            .chain(self.readable.iter().filter(|_| readable))
-            .any(|allowed| {
-                allowed
-                    .canonicalize()
-                    .is_ok_and(|allowed| resolved.starts_with(allowed))
-            }) {
+        match self.roots(doing).any(|allowed| {
+            allowed
+                .canonicalize()
+                .is_ok_and(|allowed| resolved.starts_with(allowed))
+        }) {
             true => Ok(resolved),
             // note: written for the model, which reads it. The model cannot restart this program or
             // pass it a flag, so telling it to is worse than telling it nothing. It can work inside
@@ -474,12 +471,18 @@ impl Reach {
         }
     }
 
-    /// The allowed directory `path` is under, as `open` and `replace` start from it.
-    fn root(&self, path: &Path, doing: Access) -> std::io::Result<PathBuf> {
+    /// The directories `doing` may happen beneath: the working directory and what
+    /// `--sandbox-write` opened, and for reading what `--sandbox-read` opened as well.
+    fn roots(&self, doing: Access) -> impl Iterator<Item = &PathBuf> {
         let readable = matches!(doing, Access::Reading);
         std::iter::once(&self.workdir)
             .chain(self.extra.iter())
-            .chain(self.readable.iter().filter(|_| readable))
+            .chain(self.readable.iter().filter(move |_| readable))
+    }
+
+    /// The allowed directory `path` is under, as `open` and `replace` start from it.
+    fn root(&self, path: &Path, doing: Access) -> std::io::Result<PathBuf> {
+        self.roots(doing)
             .filter_map(|allowed| allowed.canonicalize().ok())
             .find(|allowed| path.starts_with(allowed))
             .ok_or_else(|| {
