@@ -18,6 +18,22 @@ use crate::{
     model::{Content, Message, ToolCall},
 };
 
+/// Returns the tokens a turn's tool calls cost: each call's tool, arguments and whatever else it
+/// carries, as [`TokenCounter::count_item`] and [`TokenCounter::count_message`] charge for them.
+fn count_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) -> usize {
+    calls
+        .iter()
+        .map(|call| {
+            counter.count(&Content::text(&*call.tool))
+                + counter.count(&Content::Json(call.args.clone()))
+                + match call.extra.is_null() {
+                    true => 0,
+                    false => counter.count(&Content::Json(call.extra.clone())),
+                }
+        })
+        .sum()
+}
+
 /// Returns how many pieces of a turn's tool calls `counter` would not count: the parts
 /// [`TokenCounter::count_item`] and [`TokenCounter::count_message`] charge for in each.
 fn uncounted_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) -> usize {
@@ -74,13 +90,7 @@ pub trait TokenCounter: Send + Sync {
             reasoning,
         } = &item.kind
         {
-            for call in tool_calls {
-                tokens += self.count(&Content::text(&*call.tool))
-                    + self.count(&Content::Json(call.args.clone()));
-                if !call.extra.is_null() {
-                    tokens += self.count(&Content::Json(call.extra.clone()));
-                }
-            }
+            tokens += count_calls(self, tool_calls);
             if let Some(reasoning) = reasoning {
                 tokens += self.count(reasoning);
             }
@@ -97,13 +107,7 @@ pub trait TokenCounter: Send + Sync {
     fn count_message(&self, message: &Message) -> usize {
         let mut tokens = message.content.as_ref().map_or(0, |c| self.count(c));
 
-        for call in &message.tool_calls {
-            tokens += self.count(&Content::text(&*call.tool))
-                + self.count(&Content::Json(call.args.clone()));
-            if !call.extra.is_null() {
-                tokens += self.count(&Content::Json(call.extra.clone()));
-            }
-        }
+        tokens += count_calls(self, &message.tool_calls);
         if let Some(reasoning) = &message.reasoning {
             tokens += self.count(reasoning);
         }
