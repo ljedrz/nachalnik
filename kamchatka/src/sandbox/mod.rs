@@ -412,8 +412,9 @@ impl Sandbox {
         // note: a line naming no path is judged on its own. A path elsewhere in the output that was
         // refused by its own permissions says nothing about it, so it still gets the general
         // sentence: counted for the whole output, one `/etc/shadow` silenced a refusal beside it
-        // that may have been the boundary
-        let pathless = refusals.iter().any(|line| paths_in(line).is_empty());
+        // that may have been the boundary. Only asked where nothing was named, the one case its
+        // answer decides, since it reads every line
+        let pathless = || refusals.iter().any(|line| !names_a_path(line));
         let (mut named, mut mentioned): (Vec<(String, Why)>, bool) = (Vec::new(), false);
         let (mut judged, mut stopped) = (std::collections::HashSet::new(), false);
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
@@ -451,7 +452,10 @@ impl Sandbox {
                 .collect()
         };
         let (sockets, read_only, outside) = (of(Why::Socket), of(Why::ReadOnly), of(Why::Outside));
-        match (named.is_empty(), !mentioned || stopped || pathless) {
+        match (
+            named.is_empty(),
+            named.is_empty() && (!mentioned || stopped || pathless()),
+        ) {
             // every path it named is one this reaches, so the refusal is the file's own
             (true, false) => None,
             (true, true) => Some(format!(
@@ -805,12 +809,19 @@ fn are(named: &[String]) -> &'static str {
 fn paths_in(line: &str) -> Vec<String> {
     line.split_whitespace()
         .map(bare)
-        .filter(|token| {
-            (token.starts_with('/') && token.len() > 1)
-                || (token.contains('/') && !token.contains("://"))
-        })
+        .filter(|token| is_path(token))
         .map(str::to_owned)
         .collect()
+}
+
+/// Whether a line names any path, as [`paths_in`] reads one.
+fn names_a_path(line: &str) -> bool {
+    line.split_whitespace().map(bare).any(is_path)
+}
+
+/// Whether a token, its punctuation taken off, is a path.
+fn is_path(token: &str) -> bool {
+    (token.starts_with('/') && token.len() > 1) || (token.contains('/') && !token.contains("://"))
 }
 
 /// A token with the punctuation a message wraps a path in taken off; see [`paths_in`].
