@@ -271,37 +271,7 @@ impl Kernel {
     /// note: an undo that removes the answer [`State::Finished`] names moves the machine to
     /// [`State::Idle`], so the state never names a missing item.
     pub fn undo(&self) -> Result<bool> {
-        // the machine first, for the lock order, and held with the context so that no turn starts
-        // between the look and the undo
-        let mut machine = self.0.machine.lock();
-        if Self::holds_calls(&machine.state) {
-            return Err(Error::Busy);
-        }
-        // the counter between the two, for the lock order: what comes back was counted on the scale
-        // in force when its checkpoint was taken, and is counted again on this one
-        let held = self.0.counter.read();
-        let mut context = self.0.context.write();
-        let before = context.items().to_vec();
-        if !context.undo() {
-            return Ok(false);
-        }
-        let tokens_before = context.tokens();
-        let recounted = context.recount(&**held);
-        let diff = Self::diff(&before, context.items());
-        let answer_gone =
-            matches!(machine.state, State::Finished { item, .. } if diff.gone.contains(&item));
-
-        self.emit(Event::ContextUndone {
-            items: diff.items,
-            removed: diff.gone,
-            changed: diff.changed,
-        });
-        self.recounted(recounted, tokens_before, &context);
-        if answer_gone {
-            self.transition(&mut machine, State::Idle);
-        }
-
-        Ok(true)
+        self.walk(true)
     }
 
     /// Whether the machine is part-way through a turn that has, or will have, calls of its own.
@@ -323,26 +293,53 @@ impl Kernel {
     ///
     /// note: [`Error::Busy`] while a turn holds calls, as for [`Kernel::undo`].
     pub fn redo(&self) -> Result<bool> {
-        let machine = self.0.machine.lock();
+        self.walk(false)
+    }
+
+    /// [`Kernel::undo`] where `back`, [`Kernel::redo`] otherwise: the two differ only in the way
+    /// they go, the event that says so, and undo's answer to taking away the answer the machine
+    /// names.
+    fn walk(&self, back: bool) -> Result<bool> {
+        // the machine first, for the lock order, and held with the context so that no turn starts
+        // between the look and the move
+        let mut machine = self.0.machine.lock();
         if Self::holds_calls(&machine.state) {
             return Err(Error::Busy);
         }
+        // the counter between the two, for the lock order: what comes back was counted on the scale
+        // in force when its checkpoint was taken, and is counted again on this one
         let held = self.0.counter.read();
         let mut context = self.0.context.write();
         let before = context.items().to_vec();
-        if !context.redo() {
+        let moved = match back {
+            true => context.undo(),
+            false => context.redo(),
+        };
+        if !moved {
             return Ok(false);
         }
         let tokens_before = context.tokens();
         let recounted = context.recount(&**held);
         let diff = Self::diff(&before, context.items());
+        let answer_gone = back
+            && matches!(machine.state, State::Finished { item, .. } if diff.gone.contains(&item));
 
-        self.emit(Event::ContextRedone {
-            items: diff.items,
-            restored: diff.appeared,
-            changed: diff.changed,
+        self.emit(match back {
+            true => Event::ContextUndone {
+                items: diff.items,
+                removed: diff.gone,
+                changed: diff.changed,
+            },
+            false => Event::ContextRedone {
+                items: diff.items,
+                restored: diff.appeared,
+                changed: diff.changed,
+            },
         });
         self.recounted(recounted, tokens_before, &context);
+        if answer_gone {
+            self.transition(&mut machine, State::Idle);
+        }
 
         Ok(true)
     }
