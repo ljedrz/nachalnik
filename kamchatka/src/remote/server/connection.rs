@@ -553,11 +553,7 @@ async fn progress<W: AsyncWrite + Unpin>(
     after: u64,
     event: Event,
 ) -> Result<(), String> {
-    let line = protocol::framed(&Message::Progress { after, event })?;
-    match protocol::overlong(&line) {
-        Some(_) => protocol::write(write, &Message::Missed { frames: 1 }).await,
-        None => protocol::write_frame(write, &line).await,
-    }
+    voiced(write, &Message::Progress { after, event }).await
 }
 
 /// Writes one of the program's own lines, or says one was missed where it is too long to read.
