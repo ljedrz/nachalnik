@@ -205,6 +205,10 @@ pub fn joints(cmd: &str) -> Vec<(usize, usize)> {
 /// note: it holds the policy rather than being handed a verdict, because the kernel only answers
 /// whether the call may run at all. What it may reach is a separate question that the policy
 /// answers: [`Sandbox::of`](crate::sandbox::Sandbox::of).
+///
+/// note: the paths are given resolved, as `Setup::wire` gives them. A confined command is granted
+/// each only while no link stands on the way to it, for the reason [`Reach`](crate::sandbox::Reach)
+/// gives, so one given through a link is granted nothing.
 pub struct Shell {
     /// The stances the confinement is built from.
     pub policy: Arc<Careful>,

@@ -21,6 +21,11 @@ use super::{SYSTEM, resolve, writes};
 /// weaker in kind: it is this program refusing rather than the kernel refusing, and a bug here is a
 /// way out where a bug in the ruleset is not. It is still the difference between an `fs` that will
 /// hand a model `~/.ssh/id_rsa` and one that will not.
+///
+/// note: the roots are used only while no link stands on the way to them, so they are given
+/// resolved, as `Setup::wire` gives them. A root inside a directory a command may write can be
+/// renamed and a link left at its name; resolved again on each call, it would reach wherever the
+/// link pointed. The confined child holds the shell to the same rule.
 #[derive(Debug, Clone)]
 pub struct Reach {
     /// The directory the tools may work in.
@@ -100,7 +105,7 @@ impl Reach {
         if !path.is_absolute() {
             return None;
         }
-        let workdir = self.workdir.canonicalize().ok()?;
+        let workdir = self.unlinked(&self.workdir)?;
         let parts: Vec<_> = path
             .components()
             .filter_map(|part| match part {
@@ -245,11 +250,11 @@ impl Reach {
             // cannot use. The useful fact - that this one is read-only - is one this code knows
             false
                 if !readable
-                    && self.readable.iter().any(|allowed| {
-                        allowed
-                            .canonicalize()
-                            .is_ok_and(|allowed| resolved.starts_with(allowed))
-                    }) =>
+                    && self
+                        .readable
+                        .iter()
+                        .filter_map(|allowed| self.unlinked(allowed))
+                        .any(|allowed| resolved.starts_with(allowed)) =>
             {
                 Err(format!(
                     "{}: opened for reading only, so it cannot be changed. This session may write \
@@ -499,17 +504,15 @@ impl Reach {
 
     /// Whether `resolved` is beneath a directory `doing` may happen in.
     fn within(&self, resolved: &Path, doing: Access) -> bool {
-        self.roots(doing).any(|allowed| {
-            allowed
-                .canonicalize()
-                .is_ok_and(|allowed| resolved.starts_with(allowed))
-        })
+        self.roots(doing)
+            .filter_map(|allowed| self.unlinked(allowed))
+            .any(|allowed| resolved.starts_with(allowed))
     }
 
     /// The allowed directory `path` is under, as `open` and `replace` start from it.
     fn root(&self, path: &Path, doing: Access) -> std::io::Result<PathBuf> {
         self.roots(doing)
-            .filter_map(|allowed| allowed.canonicalize().ok())
+            .filter_map(|allowed| self.unlinked(allowed))
             .find(|allowed| path.starts_with(allowed))
             .ok_or_else(|| {
                 std::io::Error::new(
@@ -517,6 +520,17 @@ impl Reach {
                     "outside what this session reaches",
                 )
             })
+    }
+
+    /// A root as it is used: the path to it, absolute, where no link stands on the way to it;
+    /// `None` where one does. A root not made yet is judged by the part of it that is there.
+    ///
+    /// note: compared with its resolution rather than opened, because a root is asked about on
+    /// every call and opened only by the call that goes ahead. The open refuses a link put there
+    /// in between; see `opened_beneath`.
+    fn unlinked(&self, root: &Path) -> Option<PathBuf> {
+        let absolute = lexical(&self.workdir.join(root));
+        resolve(&absolute).filter(|resolved| *resolved == absolute)
     }
 }
 
@@ -665,9 +679,9 @@ fn made_beneath(root: &Path, missing: &Path) -> Option<std::io::Result<()>> {
     };
 
     let directory = OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC;
-    let mut held = match rustix::fs::open(root, directory, Mode::empty()) {
+    let mut held = match held_root(root, directory)? {
         Ok(held) => held,
-        Err(e) => return Some(Err(e.into())),
+        Err(e) => return Some(Err(e)),
     };
     for name in missing.components() {
         let std::path::Component::Normal(name) = name else {
@@ -718,7 +732,7 @@ fn opened_beneath(
     mode: rustix::fs::Mode,
 ) -> Option<std::io::Result<rustix::fd::OwnedFd>> {
     use rustix::{
-        fs::{Mode, OFlags, ResolveFlags},
+        fs::{OFlags, ResolveFlags},
         io::Errno,
     };
 
@@ -730,13 +744,9 @@ fn opened_beneath(
         true => root.parent().unwrap_or(root),
         false => root,
     };
-    let dir = match rustix::fs::open(
-        root,
-        OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,
-        Mode::empty(),
-    ) {
+    let dir = match held_root(root, OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC)? {
         Ok(dir) => dir,
-        Err(e) => return Some(Err(e.into())),
+        Err(e) => return Some(Err(e)),
     };
     let relative = match path.strip_prefix(root) {
         Ok(relative) if !relative.as_os_str().is_empty() => relative,
@@ -763,6 +773,38 @@ fn opened_beneath(
             std::io::ErrorKind::PermissionDenied,
             "a part of this path has become a link out of what this session reaches since it \
              was checked, so it was not opened",
+        ))),
+        Err(e) => Some(Err(e.into())),
+    }
+}
+
+/// Opens the directory everything beneath it is opened from, refusing a link anywhere on the way
+/// to it; `None` where the kernel will not, as for [`beneath`].
+///
+/// note: the root was checked to have no link on the way to it before this was called. One put
+/// there since would be followed by an ordinary open, and everything beneath it opened from
+/// wherever it pointed.
+fn held_root(
+    root: &Path,
+    flags: rustix::fs::OFlags,
+) -> Option<std::io::Result<rustix::fd::OwnedFd>> {
+    use rustix::{
+        fs::{Mode, ResolveFlags},
+        io::Errno,
+    };
+
+    match rustix::fs::openat2(
+        rustix::fs::CWD,
+        root,
+        flags,
+        Mode::empty(),
+        ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
+    ) {
+        Ok(held) => Some(Ok(held)),
+        Err(Errno::NOSYS | Errno::PERM) => None,
+        Err(Errno::LOOP) => Some(Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "a link now stands on the way to where this was allowed, so it was not opened",
         ))),
         Err(e) => Some(Err(e.into())),
     }

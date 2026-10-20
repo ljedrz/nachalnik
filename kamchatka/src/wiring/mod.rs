@@ -789,11 +789,24 @@ impl Setup {
                     policy.gate_the_network();
                 }
             }
+            // note: the roots are resolved here, once, and never followed again: from here on a
+            // root is used only while no link stands on the way to it. See `sandbox::Reach`. The
+            // working directory as the system reports it has none
+            let workdir = std::env::current_dir()
+                .map_err(|e| format!("could not find the working directory: {e}"))?;
+            let resolved = |roots: Vec<std::path::PathBuf>| -> Vec<std::path::PathBuf> {
+                roots
+                    .into_iter()
+                    .map(|root| {
+                        let root = workdir.join(root);
+                        sandbox::resolve(&root).unwrap_or(root)
+                    })
+                    .collect()
+            };
             let reach = sandbox::Reach {
-                workdir: std::env::current_dir()
-                    .map_err(|e| format!("could not find the working directory: {e}"))?,
-                extra: self.reachable,
-                readable: self.readable,
+                extra: resolved(self.reachable),
+                readable: resolved(self.readable),
+                workdir,
                 confined: self.confine,
             };
             for tool in tools::builtin(
