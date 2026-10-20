@@ -36,7 +36,7 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     );
 
     // one subject held to something else, which is what the sentence has to be able to say
-    limits.set("context:search", 4_000).expect("a row for it");
+    limits.set("context:add", 4_000).expect("a row for it");
 
     kernel.push(ContextItem::user("what are you running with?"));
     kernel.turn().await.expect("the turn failed");
@@ -44,18 +44,12 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     let said = answered(&kernel);
     assert!(said.contains("cut at 32,000 bytes"), "{said}");
     assert!(
-        said.contains("context:search at 4,000"),
+        said.contains("context:add at 4,000"),
         "the one somebody changed is named, or the sentence is wrong about it: {said}"
     );
     // and the ones the table ships holding to something else are named together rather than a
     // clause each, since they are one figure said once
-    assert!(
-        said.contains(
-            "context:budget, context:note, context:revise, setup:model, setup:policy \
-                       at 8,000"
-        ),
-        "{said}"
-    );
+    assert!(said.contains("context:revise at 8,000"), "{said}");
     // and only the subjects this session's tools declare: no `fs` here, so no `fs:read` in the
     // answer, for the reason `if_offered` exists
     assert!(
@@ -91,7 +85,7 @@ async fn setup_says_what_each_answer_is_cut_at_because_it_is_cut_at_it() {
     );
 
     // held below what the answer weighs, which is the whole of what this is about
-    limits.set("setup:tools", 400).expect("a row for it");
+    limits.set("setup:read", 400).expect("a row for it");
 
     kernel.push(ContextItem::user("what are you offered?"));
     kernel.turn().await.expect("the turn failed");
@@ -580,7 +574,7 @@ async fn setup_permissions_lists_one_row_per_operation() {
 
     let said = answered(&kernel);
     // two tools act on one object, and the rows say so rather than naming the tools
-    assert!(said.contains("context:look"), "{said}");
+    assert!(said.contains("context:read"), "{said}");
     assert!(said.contains("context:revise"), "{said}");
     assert!(
         !said.contains("nothing here is judged by it"),

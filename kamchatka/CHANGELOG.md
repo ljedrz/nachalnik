@@ -16,6 +16,15 @@ minor bump may break you.
   flag or a settings file, with the subject the operation is judged as now, and `/limit` has one row
   for reading and one for writing. A refused `fs:read` still lets `shell` read; the guide says that
   refusing `exec:run` is what keeps commands away from the files.
+- **`context`, `setup` and `fork` are judged by what a call does, as `fs` is.** `context`'s twelve
+  operations come under four subjects: `context:read` for `look`, `budget`, `request` and `search`;
+  `context:trim` for `elide` and `exclude`; `context:add` for `note`, `restore` and `pin`; and
+  `context:revise`. `undo` and `redo` need the three that change the context. `setup`'s four are
+  `setup:read`, and `fork`'s `draft` and `ask` are both `fork:ask`. A refused `context:look` left
+  `search` reading the items somebody had excluded. The old names are refused where they are given,
+  with the subjects the operation is judged as now. A run that should make room and change nothing
+  else is `--auto-allow context:read,context:trim`. Only `fs:write` and `context:revise` start on
+  the lower output limit, since every other subject has an operation whose answer grows.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.

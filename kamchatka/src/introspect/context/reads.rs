@@ -325,7 +325,7 @@ fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>], policy: &Careful) -> S
          written by whatever model that session ran, which nothing in the turn records{}.\n\n",
         carried.len(),
         carried.join(", "),
-        crate::introspect::if_reachable(kernel, policy, "setup:model", || {
+        crate::introspect::if_reachable(kernel, policy, "setup:read", || {
             " - `setup` with `model` says what this one is".to_owned()
         }),
     )

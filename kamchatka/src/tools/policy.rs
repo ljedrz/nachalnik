@@ -265,8 +265,8 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// replaceable.
 ///
 /// note: a domain is the whole of what is done in it, and a rule finer than one is about the
-/// operation it names. `context` allows every operation in that domain; `context:note` allows a
-/// note and says nothing about the rest. Against that, the strictest of everything consulted wins:
+/// operation it names. `context` allows every operation in that domain; `context:trim` allows
+/// eliding and excluding and says nothing about the rest. Against that, the strictest of everything consulted wins:
 /// `fs:read` stays `allow` while `.env` is a question, and a refused domain stays refused however
 /// finely an operation in it is named. See [`Careful::judges`].
 ///

@@ -585,7 +585,7 @@ impl Query {
              log begins, so nothing in it says where {them} came from or who wrote {them}. {}{}\n",
             numbered(&unborn),
             earlier(read),
-            if_reachable(kernel, policy, "setup:model", || {
+            if_reachable(kernel, policy, "setup:read", || {
                 " `setup` with `model` says whether this one did.".to_owned()
             }),
         )

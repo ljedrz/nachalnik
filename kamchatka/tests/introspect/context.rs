@@ -1113,7 +1113,7 @@ async fn look_says_which_items_this_session_did_not_produce() {
     )]))));
     let policy = Arc::new(Careful::new());
     policy.set(
-        &Subject::Capability(kamchatka::tools::domains::context("look")),
+        &Subject::Capability(kamchatka::tools::domains::context("read")),
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());

@@ -35,6 +35,7 @@ mod shell;
 
 #[cfg(feature = "shell-advisor")]
 pub use crate::tools::advice::{Advised, Rated, Rating};
+pub(crate) use crate::tools::search::barred;
 pub use crate::tools::{
     files::COUNTED,
     ops::Layout,
@@ -43,7 +44,6 @@ pub use crate::tools::{
     shedder::Shedder,
     shell::{CALL_VAR, Exit, Shell, Stragglers, joints},
 };
-pub(crate) use crate::tools::{fs::subject as fs_subject, search::barred};
 
 /// The domains this program's own tools act in, beside the three the runtime names.
 ///
@@ -246,18 +246,17 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// The limit for one call's output when the answer is a fixed-shape report rather than a piece of
 /// the session, in bytes.
 ///
-/// note: the distinction is measured, not guessed. Six answers do not change between a small
-/// session and a large one with many more tools registered: `fs:write`'s, for `write` and `edit`,
-/// is one line; `context:revise` says what it replaced without quoting it; `context:note`, `setup:model`,
-/// and `setup:policy` are a short paragraph; and `context:budget` is a fixed report with the ten
-/// most expensive rows under it. Every other answer grows with what the session holds, especially
-/// `context:look` and `log`'s records.
+/// note: the distinction is measured, not guessed. Two subjects' answers do not change between a
+/// small session and a large one with many more tools registered: `fs:write`'s, for `write` and
+/// `edit`, are one line, and `context:revise`'s says what it replaced without quoting it. Every
+/// other subject has at least one operation whose answer grows with what the session holds:
+/// `context:read` has `look`, `context:add` and `context:trim` list what they moved, and
+/// `setup:read` has the tools and the permissions.
 ///
-/// note: a lower number buys a tripwire where the limit never fires anyway. The six answers are
-/// bounded because of how each is built, so if one arrives cut, that has silently stopped being
-/// true: a `budget` that listed every item, or a `revise` that echoed what it wrote.
-/// `tests/introspect/shared.rs` holds the six to this size, so such a change should be caught
-/// there; this is what happens if it is not.
+/// note: a lower number buys a tripwire where the limit never fires anyway. The answers are bounded
+/// because of how each is built, so if one arrives cut, that has silently stopped being true: a
+/// `revise` that echoed what it wrote. `tests/introspect/shared.rs` holds them to this size, so
+/// such a change should be caught there; this is what happens if it is not.
 pub(crate) const REPORT: usize = 8_000;
 
 /// How much of a call's output the model is shown, by subject. A person can change the rows
@@ -341,7 +340,7 @@ impl Limits {
     /// number per row: a number per row would be a set of opinions nobody asked for, and one number
     /// for every row would treat a line confirming a write and a whole log as the same kind of
     /// answer. The tier is decided by whether the answer grows with the session, not by importance:
-    /// six subjects have answers that do not, and every other one does. The table exists so a
+    /// two subjects have answers that do not, and every other one does. The table exists so a
     /// person can change the row that matters to them.
     ///
     /// note: `grep` and `glob` answer under `fs:read`'s row with `read`, and it rarely shapes their
@@ -357,27 +356,13 @@ impl Limits {
             .map(Capability::fs)
             .into_iter()
             .chain([Capability::exec("run")])
-            .chain(
-                [
-                    "look", "budget", "request", "search", "elide", "exclude", "pin", "restore",
-                    "revise", "note", "undo", "redo",
-                ]
-                .map(domains::context),
-            )
-            .chain(["draft", "ask"].map(domains::fork))
+            .chain(["read", "trim", "add", "revise"].map(domains::context))
+            .chain([domains::fork("ask")])
             .chain([domains::log("read")])
-            .chain(["model", "tools", "permissions", "policy"].map(domains::setup))
+            .chain([domains::setup("read")])
             .map(|subject| {
                 let subject = subject.to_string();
-                let bounded = matches!(
-                    subject.as_str(),
-                    "fs:write"
-                        | "context:budget"
-                        | "context:note"
-                        | "context:revise"
-                        | "setup:model"
-                        | "setup:policy"
-                );
+                let bounded = matches!(subject.as_str(), "fs:write" | "context:revise");
 
                 (subject, if bounded { REPORT } else { CEILING })
             });
@@ -504,15 +489,15 @@ mod tests {
     fn every_row_is_held_to_a_small_window_until_somebody_sets_it() {
         let limits = Limits::new();
         assert_eq!(limits.of("fs:read"), Some(CEILING), "no window known");
-        assert_eq!(limits.of("context:budget"), Some(REPORT));
+        assert_eq!(limits.of("context:revise"), Some(REPORT));
 
         // 14,000 tokens: a tenth is 1,400, at four bytes a token
         limits.window(Some(14_000));
-        for subject in ["fs:read", "exec:run", "context:look", "log:read"] {
+        for subject in ["fs:read", "exec:run", "context:read", "log:read"] {
             assert_eq!(limits.of(subject), Some(5_600), "{subject}");
         }
         assert_eq!(
-            limits.of("context:budget"),
+            limits.of("context:revise"),
             Some(5_600),
             "a report is held too"
         );
@@ -522,7 +507,7 @@ mod tests {
         );
         // a window large enough leaves a report where it was, and a large one raises nothing
         limits.window(Some(40_000));
-        assert_eq!(limits.of("context:budget"), Some(REPORT));
+        assert_eq!(limits.of("context:revise"), Some(REPORT));
         assert_eq!(limits.of("exec:run"), Some(16_000));
         limits.window(Some(1_000_000));
         assert_eq!(limits.of("exec:run"), Some(CEILING));

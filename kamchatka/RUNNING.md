@@ -27,7 +27,7 @@ Since there's no prompt to ask questions at, answers are given in advance:
 
 | flag | what it does |
 | --- | --- |
-| `--auto-allow fs,exec:run` | answer `allow` for a whole domain, one operation (`--auto-allow context:note`) or a path rule (`--auto-allow '*.rs'`, `--auto-allow 'vendor/'`) |
+| `--auto-allow fs,exec:run` | answer `allow` for a whole domain, one operation (`--auto-allow context:trim`) or a path rule (`--auto-allow '*.rs'`, `--auto-allow 'vendor/'`) |
 | `--auto-deny fs:write,.env*` | the same, refused; the strictest matching rule still wins |
 | `--on-ask deny` | what to do with questions not answered in advance; `deny` is the default |
 
@@ -422,8 +422,7 @@ session says so and the note is excluded.
 In a headless run, making room is a permission question like any other: every `context` call is
 asked about, including `look`, and `--on-ask deny` refuses all of them, so the note doesn't send the
 model somewhere it can't go. `--auto-allow context` lets it make room, or
-`--auto-allow context:look,context:exclude,context:elide` for a run that should free space and
-change nothing else.
+`--auto-allow context:read,context:trim` for a run that should free space and change nothing else.
 
 The same applies to every message that points the model at a tool: a refusal from `fs` mentions
 `shell`, `grep` or `write`, and an answer from `setup`, `log` or `fork` mentions `context` or `log`,

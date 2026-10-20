@@ -224,18 +224,19 @@ pub struct Wired {
 /// `nachalnik::Kernel::set_full_notice`.
 ///
 /// note: the `context` tool is named only where the model could use it to make room now - offered,
-/// and with `exclude` or `elide` not refused, by a rule or by a question nobody is there to
-/// answer - and `look` only where that is too. A notice sending the model to a tool it does not have was
-/// followed to one that does not exist; the other wording asks it to tell the person, the one thing
-/// left that it can do. Worked out again whenever what the model could use changes - see
-/// `App::refresh_full_notice`.
+/// and with `context:trim`, which is `exclude` and `elide`, not refused, by a rule or by a question
+/// nobody is there to answer - and `look` only where `context:read` is open too. A notice sending
+/// the model to a tool it does not have was followed to one that does not exist; the other wording
+/// asks it to tell the person, the one thing left that it can do. Worked out again whenever what
+/// the model could use changes - see `App::refresh_full_notice`.
 pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
-    let can = |op: &str| crate::introspect::reachable(kernel, policy, &format!("context:{op}"));
+    let can =
+        |subject: &str| crate::introspect::reachable(kernel, policy, &format!("context:{subject}"));
     // note: both say what is left - this turn, what is pinned and the notes - because a model told
     // only that the context was full went looking for tool results to elide, and one told to ask
     // the person wrote a file larger than the room. Both say what not to do, since a request over
     // the limit is not sent
-    let said = match (can("exclude") || can("elide"), can("look")) {
+    let said = match (can("trim"), can("read")) {
         (true, looks) => format!(
             "The context is full, and nothing more will be taken from it automatically: what \
              fills it now is this turn, what is pinned and the notes you kept. Before anything \
@@ -272,6 +273,11 @@ pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
 /// is not a tool. Building them costs six schemas at startup, once for `tools` and once for each
 /// rule checked.
 fn offered() -> Vec<nachalnik::ToolSpec> {
+    built().iter().map(|tool| tool.spec()).collect()
+}
+
+/// This program's own tools, built as [`offered`] builds them, for asking one what a call needs.
+fn built() -> Vec<Arc<dyn nachalnik::Tool>> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
     for tool in tools::builtin(
@@ -298,7 +304,35 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
     }
     let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
-    kernel.tool_specs()
+    kernel
+        .tool_specs()
+        .iter()
+        .filter_map(|spec| kernel.tool(&spec.id))
+        .collect()
+}
+
+/// What a rule naming `op`, an operation of one of this program's tools in `domain`, should have
+/// named: the subjects a call to it needs, as the tool answers.
+fn judged_as(domain: &str, op: &str) -> Option<String> {
+    built().into_iter().find_map(|tool| {
+        let spec = tool.spec();
+        let here = spec
+            .capabilities
+            .iter()
+            .any(|it| it.domain.to_string() == domain);
+        (here && tools::ops::offered(&spec.schema).contains(&op)).then(|| {
+            let call = nachalnik::ToolCall::new(
+                "c",
+                spec.id.as_str(),
+                serde_json::json!({ "call": { "action": op } }),
+            );
+            tool.needs(&call)
+                .iter()
+                .map(|it| format!("`{it}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+    })
 }
 
 /// What is wrong with a rule about a capability or domain no tool here has, where something is.
@@ -371,20 +405,16 @@ fn unreached(subject: &Subject) -> Option<String> {
         });
     }
     match op {
-        // note: an operation of `fs` named as though it were a subject, which each of them once
-        // was. Told only that `fs` is `read` and `write`, a settings file written for an older
-        // version reads as a typing mistake
+        // note: an operation of a tool named as though it were a subject, which each of them
+        // once was. Told only which subjects the domain has, a settings file written for an
+        // older version reads as a typing mistake
         Some(op)
-            if domain == "fs"
-                && !ops.contains(&op.as_str())
-                && specs.iter().any(|spec| {
-                    spec.id == "fs" && tools::ops::offered(&spec.schema).contains(&op.as_str())
-                }) =>
+            if !ops.contains(&op.as_str())
+                && let Some(judged) = judged_as(&domain, op) =>
         {
             Some(format!(
-                "`{subject}` names an operation, and a rule names what a call does to the files: \
-                 `{op}` is judged as `{}`",
-                tools::fs_subject(op)
+                "`{subject}` names an operation, and a rule names what a call does: `{op}` is \
+                 judged as {judged}"
             ))
         }
         Some(op) if !ops.contains(&op.as_str()) => {

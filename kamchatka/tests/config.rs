@@ -1833,12 +1833,21 @@ fn a_rule_nothing_is_judged_under_is_refused() {
     assert!(typo.contains("write"), "{typo}");
     let nowhere = checked("network").expect_err("a domain nothing is judged under");
     assert!(nowhere.contains("exec"), "{nowhere}");
-    // and an operation of `fs`, which each was once a subject of its own, is told what it is
-    // judged as rather than read as a typing mistake
+    // and an operation named as a subject, which each was once, is told what it is judged as
+    // rather than read as a typing mistake
     for (operation, judged) in [
         ("fs:edit", "`fs:write`"),
         ("fs:grep", "`fs:read`"),
         ("fs:glob", "`fs:read`"),
+        ("context:look", "`context:read`"),
+        ("context:exclude", "`context:trim`"),
+        ("context:note", "`context:add`"),
+        (
+            "context:undo",
+            "`context:trim`, `context:add`, `context:revise`",
+        ),
+        ("setup:model", "`setup:read`"),
+        ("fork:draft", "`fork:ask`"),
     ] {
         let refusal = checked(operation).expect_err("an operation is not a subject");
         assert!(
@@ -2464,24 +2473,22 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
     assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
 }
 
-/// The notice is sent to `exclude` or `elide` while either of them is open, and tells the person to
-/// make room only once neither is.
+/// The notice sends the model to `exclude` or `elide` while `context:trim` is open, whatever else
+/// is refused, and tells the person to make room once it is not.
 ///
-/// note: one of the two being refused is the case this is about. `exclude` and `elide` are one
-/// operation each and separately grantable, so a rule about one of them does not close the other -
-/// and a model told to go and exclude what it no longer needs, when the session has refused it
-/// every exclusion it has, is sent to the tool it cannot use. The same holds the other way round,
-/// which is why both are here.
+/// note: `trim` is the one subject making room needs. A session that refused adding and rewriting
+/// can still be made room in, and one that refused trimming cannot, however much else is open: a
+/// model sent to exclude what it no longer needs is then sent to the tool it cannot use.
 #[tokio::test]
-async fn the_notice_sends_the_model_to_either_operation_while_either_is_open() {
+async fn the_notice_sends_the_model_to_trim_while_trimming_is_open() {
     use std::sync::Arc;
 
     use kamchatka::{tools::Subject, wiring::Setup};
     use nachalnik_providers::OpenAiCompatible;
 
-    let notice = |denied: &str| {
+    let notice = |denied: &[&str]| {
         Setup {
-            deny: vec![Subject::parse(denied)],
+            deny: denied.iter().map(|it| Subject::parse(it)).collect(),
             ..Setup::default()
         }
         .wire(Arc::new(OpenAiCompatible::new(
@@ -2497,20 +2504,17 @@ async fn the_notice_sends_the_model_to_either_operation_while_either_is_open() {
         .expect("a notice with the compactor")
     };
 
-    for refused in ["context:exclude", "context:elide"] {
-        let said = notice(refused);
-        assert!(
-            said.contains("`exclude` or `elide`"),
-            "{refused} leaves the other one open, and the model is sent to that one: {said}"
-        );
-        assert!(
-            !said.contains("Tell the person"),
-            "{refused} refuses one operation, not both: {said}"
-        );
-    }
+    let trimming = notice(&["context:add", "context:revise"]);
+    assert!(trimming.contains("`exclude` or `elide`"), "{trimming}");
+    assert!(!trimming.contains("Tell the person"), "{trimming}");
 
-    // and the sentence about asking the person is for a session with neither of them
-    let neither = notice("context");
+    // without reading, it is sent to trim by id without being sent to `look` first
+    let blind = notice(&["context:read"]);
+    assert!(blind.contains("`exclude` or `elide`"), "{blind}");
+    assert!(!blind.contains("`look`"), "{blind}");
+
+    // and the sentence about asking the person is for a session that cannot trim
+    let neither = notice(&["context:trim"]);
     assert!(neither.contains("Tell the person"), "{neither}");
 }
 

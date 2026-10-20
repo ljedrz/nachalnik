@@ -227,9 +227,9 @@ async fn the_file_selectors_advice_names_no_tool_that_has_been_taken_away() {
 ///
 /// note: the regression this is here for. These tools take their arguments inside a `call` object,
 /// and `Tool::needs` on `context` was reading the outside of it - so it found no `action`, took
-/// the branch meant for a call nobody can place, and declared all twelve subjects. A `look` at
-/// three items asked the person to allow `context:revise` and `context:elide` along with it, and a
-/// session holding `--auto-allow context:look` and nothing else could not look at all.
+/// the branch meant for a call nobody can place, and declared every subject. A `look` at three
+/// items asked the person to allow `context:revise` and `context:trim` along with it, and a session
+/// allowed to read the context and nothing else could not look at all.
 ///
 /// note: over every tool this program installs rather than over `context`, because the bug was not
 /// `context`'s. It was that `needs` and `invoke` read the arguments two different ways, which is
@@ -245,12 +245,17 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
         (
             "context",
             json!({ "action": "look", "ids": [14, 15, 17], "whole": true }),
-            "context:look",
+            "context:read",
         ),
         (
             "context",
             json!({ "action": "note", "content": "x", "reason": "y" }),
-            "context:note",
+            "context:add",
+        ),
+        (
+            "context",
+            json!({ "action": "exclude", "ids": [3], "reason": "y" }),
+            "context:trim",
         ),
         ("fs", json!({ "action": "read", "path": "a.rs" }), "fs:read"),
         ("fs", json!({ "action": "grep", "pattern": "x" }), "fs:read"),
@@ -261,8 +266,8 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
         ),
         ("shell", json!({ "action": "run", "cmd": "ls" }), "exec:run"),
         ("log", json!({ "action": "read" }), "log:read"),
-        ("setup", json!({ "action": "tools" }), "setup:tools"),
-        ("fork", json!({ "action": "draft" }), "fork:draft"),
+        ("setup", json!({ "action": "tools" }), "setup:read"),
+        ("fork", json!({ "action": "draft" }), "fork:ask"),
     ];
 
     for (id, args, subject) in wanted {
@@ -326,11 +331,11 @@ async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
 ///
 /// note: `Limits` holds two numbers - 32,000 bytes for an answer made of what the session holds,
 /// 8,000 for one that is a report of a fixed shape - and which tier a subject is in is a claim
-/// about how its answer is built. This is that claim, checked: the same seven calls, under six
-/// subjects, against ten items and against a thousand, with two hundred more tools registered for
-/// the two `setup` ones, and none of the answers may move. A `budget` that listed every item, or a `revise` that quoted
-/// what it wrote, would be a subject that had quietly changed tier, and the first anybody would
-/// otherwise know of it is a cut answer in a live session.
+/// about how its answer is built. This is that claim, checked: every operation of the two
+/// subjects on it, `fs:write` and `context:revise`, against ten items and against a thousand, and
+/// none of the answers may move. A `revise` that quoted what it wrote would be a subject that had
+/// quietly changed tier, and the first anybody would otherwise know of it is a cut answer in a live
+/// session.
 ///
 /// note: the figures are the point of the pairing rather than the absolute sizes, so it asserts
 /// both: no answer grows by more than the identifiers in it can (`[3]` becomes `[997]`), and every
@@ -340,7 +345,7 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
     let dir = common::scratch("bounded-answers");
     std::fs::write(dir.join("w.rs"), "x".repeat(40_000)).expect("a file to act on");
 
-    // the six, `fs:write` by both its operations, so a whole tool moving tier is visible here
+    // `fs:write` by both its operations, and `context:revise`
     let calls = |path: &std::path::Path| -> Vec<(&'static str, serde_json::Value)> {
         vec![
             (
@@ -356,25 +361,17 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
                 json!({"call": {"action": "edit", "path": path.join("w.rs"),
                                    "old": "z".repeat(300), "new": "w".repeat(300)}}),
             ),
-            ("context", json!({"call": {"action": "budget"}})),
-            (
-                "context",
-                json!({"call": {"action": "note", "content": "a note",
-                                        "reason": "measuring"}}),
-            ),
             (
                 "context",
                 json!({"call": {"action": "revise", "ids": [3],
                                         "content": "q".repeat(30_000), "reason": "measuring"}}),
             ),
-            ("setup", json!({"call": {"action": "model"}})),
-            ("setup", json!({"call": {"action": "policy"}})),
         ]
     };
 
     // one session of each size, answering the same calls
     let mut sizes: Vec<Vec<usize>> = Vec::new();
-    for (items, extra) in [(10, 0), (1_000, 200)] {
+    for items in [10, 1_000] {
         let (kernel, _provider, _anchor) = agent(Vec::new());
         for tool in common::builtin(&dir, false, Limits::default()) {
             kernel.add_tool(tool);
@@ -385,12 +382,6 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
                 _ => format!("item number {n}, saying a sentence about what it holds"),
             };
             kernel.push(ContextItem::file(format!("src/file_{n}.rs"), body));
-        }
-        for n in 0..extra {
-            kernel.add_tool(Arc::new(
-                nachalnik::test::ConstTool::new(format!("server__tool_{n}"), "did it")
-                    .with_capabilities([nachalnik::Capability::fs("read")]),
-            ));
         }
 
         let mut answers = Vec::new();
@@ -414,15 +405,7 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
         sizes.push(answers);
     }
 
-    let names = [
-        "fs:write (write)",
-        "fs:write (edit)",
-        "context:budget",
-        "context:note",
-        "context:revise",
-        "setup:model",
-        "setup:policy",
-    ];
+    let names = ["fs:write (write)", "fs:write (edit)", "context:revise"];
     for ((name, small), big) in names.iter().zip(&sizes[0]).zip(&sizes[1]) {
         assert!(
             *big <= small + 256,

@@ -5,9 +5,13 @@
 //! family its word and giving each tool the thing it is about.
 //!
 //! note: one tool reads and changes the context because separate permissions do not need separate
-//! tools: [`Tool::needs`] lets a call declare its subject, so `context:look` and `context:revise`
+//! tools: [`Tool::needs`] lets a call declare its subject, so `context:read` and `context:revise`
 //! are separate questions with separate rows whether they arrive under one tool's name or two. Two
 //! tools would cost two descriptions in every request.
+//!
+//! note: four subjects for the twelve operations, named for what a call does to the context; see
+//! [`subjects`]. One subject per operation let a refused `context:look` leave `search` reading the
+//! items somebody took out, as a refused `fs:read` once left `grep` printing files.
 //!
 //! note: a directory. `changes.rs` holds the journal `undo` walks, the refusals, and the accounting
 //! of what a change cost. `reads.rs` holds what only reads. This file holds the schema and the
@@ -28,6 +32,25 @@ use crate::tools::{
 };
 
 use super::{Reach, action, ids, named, unknown};
+
+/// What a call to `op` needs, by what it does to the context: `read` for the four that only read
+/// it, `trim` for the two that make the request smaller, `add` for the three that add to it or keep
+/// something in it, and `revise` for rewriting what an item says. `undo` and `redo` walk back and
+/// forth through any of the changes, so they need all three that change it, as does a word this
+/// tool does not have.
+///
+/// note: `trim` on its own is what a run that should make room and change nothing else is granted,
+/// with `read` to see what to take.
+pub(crate) fn subjects(op: &str) -> Vec<Capability> {
+    let one = |subject| vec![domains::context(subject)];
+    match op {
+        "look" | "budget" | "request" | "search" => one("read"),
+        "elide" | "exclude" => one("trim"),
+        "note" | "restore" | "pin" => one("add"),
+        "revise" => one("revise"),
+        _ => ["trim", "add", "revise"].map(domains::context).to_vec(),
+    }
+}
 
 mod changes;
 mod reads;
@@ -283,22 +306,17 @@ impl Tool for Context {
              `label:<text>`. Anything else is read as a label.",
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(
-            actions(&self.ops)
-                .into_iter()
-                .map(domains::context)
-                .collect::<Vec<_>>(),
-        )
+        .with_capabilities(["read", "trim", "add", "revise"].map(domains::context))
     }
 
-    /// note: decided by `action` and nothing else, so a rule about `context:look` covers looking
+    /// note: decided by `action` and nothing else, so a rule about `context:read` covers reading
     /// however a call asked for it, and the reading half and changing half stay separately
     /// grantable although they are one tool. A call naming no operation this tool has declares all
-    /// twelve, which is the strictest reading of a call nobody can place, and `invoke` then refuses
-    /// it by name.
+    /// four subjects, which is the strictest reading of a call nobody can place, and `invoke` then
+    /// refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
-            Some(op) => vec![domains::context(op)],
+            Some(op) => subjects(&op),
             // a word this tool does not have is refused by `invoke` with a list of the ones it
             // does; what it must not be is a call that needed nothing and was therefore allowed
             None => self.spec().capabilities,
@@ -408,24 +426,60 @@ impl Tool for Context {
 mod tests {
     use super::*;
 
-    /// The schema and the permission subjects are one vocabulary.
+    /// Every operation needs subjects the tool declares, and every subject is needed by some
+    /// operation.
     ///
     /// note: an argument the schema offers that no operation reads cannot happen - they are the
     /// same `Vec<Op>`, and the branch an argument appears in is the operation that reads it. What
-    /// can still drift is a subject with no branch to reach it by, or a branch the policy was
-    /// never told about, which is a call that cannot be refused by name.
+    /// can still drift is a subject no operation reaches, which a rule can name and nothing ever
+    /// asks about, or an operation needing a subject the policy was never told about, which is a
+    /// call that cannot be refused by name.
     #[test]
-    fn the_schema_and_the_subjects_are_one_vocabulary() {
-        let spec = tool().spec();
+    fn every_operation_needs_subjects_the_tool_declares() {
+        let tool = tool();
+        let spec = tool.spec();
 
-        let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
+        let needed: Vec<(&str, String)> = crate::tools::ops::offered(&spec.schema)
             .into_iter()
-            .map(|action| domains::context(action).to_string())
+            .map(|action| {
+                let call = ToolCall::new(
+                    "c1",
+                    "context",
+                    serde_json::json!({ "call": { "action": action } }),
+                );
+                let needs: Vec<String> =
+                    tool.needs(&call).iter().map(ToString::to_string).collect();
+                (action, needs.join(" "))
+            })
             .collect();
+        let wanted = [
+            ("look", "context:read"),
+            ("budget", "context:read"),
+            ("request", "context:read"),
+            ("search", "context:read"),
+            ("elide", "context:trim"),
+            ("exclude", "context:trim"),
+            ("pin", "context:add"),
+            ("restore", "context:add"),
+            ("revise", "context:revise"),
+            ("note", "context:add"),
+            ("undo", "context:trim context:add context:revise"),
+            ("redo", "context:trim context:add context:revise"),
+        ];
+        assert_eq!(
+            needed,
+            wanted.map(|(action, needs)| (action, needs.to_owned()))
+        );
         let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
-
-        assert_eq!(offered, declared, "one list of operations, in one order");
-        assert_eq!(offered.len(), 12, "four that read and eight that change");
+        assert_eq!(
+            declared,
+            [
+                "context:read",
+                "context:trim",
+                "context:add",
+                "context:revise"
+            ]
+        );
     }
 
     /// The eight changing branches require a `reason`; the four read-only branches do not mention
