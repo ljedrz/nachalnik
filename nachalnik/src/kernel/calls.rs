@@ -47,12 +47,10 @@ impl Kernel {
             // joins the turn's checkpoint, as a call nobody can run does. See
             // `Kernel::set_call_ceiling`
             if let Some(ceiling) = ceiling.filter(|ceiling| asked >= *ceiling) {
-                self.record_tool_result(
+                self.refuse(
                     call,
                     None,
-                    ToolOutput::error(over_the_ceiling(calls.len(), ceiling)),
-                    None,
-                    None,
+                    over_the_ceiling(calls.len(), ceiling),
                     &mut turn,
                 );
                 continue;
@@ -66,12 +64,10 @@ impl Kernel {
                 // joins the checkpoint the turn was recorded under: the turn and the kernel's
                 // answer to a call nobody can run are one event, and separate checkpoints would let
                 // one `undo` leave a call answered and its neighbour not
-                self.record_tool_result(
+                self.refuse(
                     call,
                     None,
-                    ToolOutput::error(unknown_tool(&call.tool, &self.tool_ids())),
-                    None,
-                    None,
+                    unknown_tool(&call.tool, &self.tool_ids()),
                     &mut turn,
                 );
                 continue;
@@ -95,14 +91,8 @@ impl Kernel {
                     });
                     None
                 });
-                self.record_tool_result(
-                    call,
-                    Some(&*tool),
-                    ToolOutput::error(unparsed_answer(call, written, &error, advice)),
-                    None,
-                    None,
-                    &mut turn,
-                );
+                let said = unparsed_answer(call, written, &error, advice);
+                self.refuse(call, Some(&*tool), said, &mut turn);
                 continue;
             }
 
@@ -118,14 +108,7 @@ impl Kernel {
                         call: call.id.clone(),
                         tool: call.tool.clone(),
                     });
-                    self.record_tool_result(
-                        call,
-                        None,
-                        ToolOutput::error(panicked_needing(&*panic)),
-                        None,
-                        None,
-                        &mut turn,
-                    );
+                    self.refuse(call, None, panicked_needing(&*panic), &mut turn);
                     continue;
                 }
             };
@@ -169,6 +152,11 @@ impl Kernel {
         self.settle(&mut machine, announcements, to.clone());
 
         to
+    }
+
+    /// Answers a call that is not run with `said`, as an error joining the turn's checkpoint.
+    fn refuse(&self, call: &ToolCall, tool: Option<&dyn Tool>, said: String, turn: &mut Batch) {
+        self.record_tool_result(call, tool, ToolOutput::error(said), None, None, turn);
     }
 
     /// Runs the claimed calls, and records their results in the order the model asked for them.
