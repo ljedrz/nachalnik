@@ -214,6 +214,10 @@ impl<'a> Headless<'a> {
             .deadline
             .and_then(|after| Instant::now().checked_add(after));
         let mut stopping = false;
+        // note: the deadline leaves the loop, as `/quit` does, rather than waiting for the turn to
+        // stop. A turn whose tool does not look at its interrupt went on for as long as the tool
+        // ran, past the deadline; left here, it is waited for under `LEAVING`
+        let mut expired = false;
         // subscribed once, because a second press while the first is being handled means leave; see
         // `crate::stopping`
         //
@@ -297,6 +301,7 @@ impl<'a> Headless<'a> {
                 // read while a command is out
                 app.release().await;
                 if app.leaving()
+                    || expired
                     || (!reading && !app.busy && (!app.in_flight() || self.stopped.is_some()))
                 {
                     break;
@@ -452,6 +457,7 @@ impl<'a> Headless<'a> {
                         // every time round the loop for ever
                         ends = None;
                         reading = false;
+                        expired = true;
                         self.stopped.get_or_insert(Stop::Deadline);
                         app.interrupt();
                         self.prose.fresh_line()?;

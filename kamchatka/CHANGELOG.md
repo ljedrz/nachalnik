@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`--max-run-seconds` ends a run whose turn does not stop when it is interrupted.** The deadline
+  interrupted the turn and then waited for it to end, so a tool that does not look at its interrupt
+  kept the run going for as long as the tool ran. The run now leaves at the deadline after the same
+  five-second wait a `/quit` gets, and says the turn was left.
 - **Tool calls running side by side are counted apart on the trace.** One count of a call's output
   was begun again at every call's start, so with calls running together one call's bytes were
   added to another's line, under whichever tool spoke last. Each call has its own count and its own
