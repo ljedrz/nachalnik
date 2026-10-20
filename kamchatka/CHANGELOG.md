@@ -46,6 +46,8 @@ minor bump may break you.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.
+- **`Earlier::read` takes where the session numbers on from, beside the snapshot's path.** It is
+  where the log is cut when the snapshot cannot be read; see the fix below.
 
 ### added
 
