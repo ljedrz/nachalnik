@@ -159,13 +159,3 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   not been done. Doing it means carrying one projection and its cost from the budget through the
   compactor to the request, and making a fresh one only where something changed in between.
   Worth doing together with the next change to `maybe_compact` or `build_request`.
-
-- **A command refused the network in a run nobody is watching is told to explain and try again.**
-  Under `--on-ask deny`, a command's network attempt is answered by the flag, and the note the model
-  reads says it was "refused when it was asked about" and to "say what you need the network for
-  before trying again". Nobody can be told, so a model retries a command that will be refused the
-  same way every time. The note avoids saying who answered on purpose, because the shell cannot
-  tell: `Reaching::answer` takes only whether to let the command through. Saying "nobody is here to
-  be asked, so the same command is refused again, and allowing `net:reach` is the person's to do"
-  needs the answer to carry who gave it. Unblocked by deciding whether `Reaching::answer` takes
-  that, which is a change to a public type.

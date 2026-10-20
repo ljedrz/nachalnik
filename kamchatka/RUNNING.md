@@ -802,14 +802,11 @@ Landlock rules, and the filter pauses every `socket()` or `socketpair()` call fo
 while `python3 fetch.py` is asked about as soon as it does a DNS lookup, which couldn't be told
 apart from the command alone.
 
-An unattended run answers with `--on-ask` immediately while the turn is running, since the command
-is waiting on the answer and waiting for the turn to end would wait forever:
-
-```console
-$ kamchatka --headless --auto-allow exec:run 'fetch the release notes'
-```
-
-reports on stderr which command tried to use the network and what it was told. A served session
+An unattended run has nobody to ask. Under `--on-ask allow` it answers at once, while the turn is
+still running, since the command is waiting on the answer and waiting for the turn to end would wait
+forever; stderr says which command tried to use the network and what it was told. Under `--on-ask
+deny`, the default, nothing is asked: commands get no network, as under `--auto-deny net:reach`, and
+the model is told that this session refuses the network, so it doesn't try again. A served session
 sends the question to its client as `reaching`, answered with `reach`, and the browser page shows it
 in the same panel as the kernel's questions.
 
