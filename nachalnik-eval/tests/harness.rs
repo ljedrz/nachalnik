@@ -2339,3 +2339,81 @@ async fn what_a_caller_asks_of_repair_is_what_the_run_does() {
         "{made:?}"
     );
 }
+
+/// The depot's model, except that a copy of the subject the harness raised, made without the
+/// annex note, goes silent. The sibling's copies, which do not carry the caller's item, answer.
+struct SilentWithoutTheAnnexHere {
+    rulebook: Arc<Rulebook>,
+    /// What only the subject the harness raised is carrying.
+    of_the_callers: &'static str,
+}
+
+#[async_trait]
+impl Provider for SilentWithoutTheAnnexHere {
+    fn info(&self) -> ModelInfo {
+        self.rulebook.info()
+    }
+
+    async fn respond(
+        &self,
+        request: ModelRequest,
+        deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        let read: String = request
+            .messages
+            .iter()
+            .filter_map(|message| message.content.as_ref())
+            .map(|content| content.to_text().into_owned())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if read.contains("You are a copy of this session")
+            && read.contains(self.of_the_callers)
+            && !read.contains("The Omsk annex was handed over")
+        {
+            return Err("the copy went silent".into());
+        }
+        self.rulebook.respond(request, deltas).await
+    }
+}
+
+/// A first-session ablation going silent stops the ladder, and the second session's copy for the
+/// same note is still on the record, beside every other copy that answered.
+///
+/// note: the second session's copies are paired with the first's by label, and the one whose
+/// partner failed is recorded where the failure is met. Recording another label's copy there
+/// instead left the failed note's second copy off the record, and the other label without its
+/// own.
+#[tokio::test]
+async fn a_ladder_whose_first_session_copy_failed_keeps_the_second_sessions() {
+    const CALLERS: &str = "an item the caller put in the subject's own context";
+    let model = Arc::new(SilentWithoutTheAnnexHere {
+        rulebook: Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)),
+        of_the_callers: CALLERS,
+    });
+    let subject = subject("subject", model);
+    subject
+        .kernel()
+        .push(ContextItem::memory("caller", CALLERS).because("put by the test"));
+    // the annex and one decoy
+    let experiment = Instrumented::new().on(&DEPOT).battery(2).tests(1);
+    let trial = Trial::new(experiment.name(), &subject);
+    let failed = experiment.run(&subject, &trial).await;
+    assert!(failed.is_err(), "the silent copy stops the ladder");
+    let outcome = Outcome::of(&trial, None);
+
+    // the first session's decoy copy, and both of the second session's
+    let ablations = outcome
+        .steps
+        .iter()
+        .filter(|step| {
+            matches!(
+                step,
+                Step::Measured {
+                    change: Some(_),
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(ablations, 3, "every ablation but the silent one");
+}
