@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A command's refusals are accounted for in a fifth of the time.** Whether any refusal names no
+  path was worked out for every line of standard error, even where a refused path was named and the
+  answer could not change the note. It is now asked only where nothing was named, and stops at the
+  first path in a line rather than collecting them.
 - **`--serve` accepts `[::ffff:127.0.0.1]` as loopback.** It checked the address without unmapping
   it from IPv6 first, so the loopback interface written that way was refused as reachable by
   anybody, while `--web` accepted it. A mapped address that is not loopback is still refused.
