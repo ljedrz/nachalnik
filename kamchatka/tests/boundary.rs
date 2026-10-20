@@ -1639,7 +1639,8 @@ fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
 }
 
 /// A path that climbs with `..` out of a directory that is not there is refused, rather than
-/// checked as though it were still inside.
+/// checked as though it were still inside, and refused as outside the reach the way a climb through
+/// a directory that is there is.
 ///
 /// note: `resolve` peels off what does not exist and stops at a `..` it cannot peel, so the path
 /// came back with its `..`s in it and the working directory at its front - which a comparison by
@@ -1659,14 +1660,33 @@ fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
     };
     std::fs::create_dir_all(dir.join("w")).expect("the working directory");
 
+    std::fs::create_dir_all(dir.join("w").join("here")).expect("a directory");
     for doing in [Access::Reading, Access::Writing] {
         let refused = reach
             .allows("nope/../../../etc/passwd", doing)
             .expect_err("it climbs out through a directory that is not there");
-        assert!(refused.contains("`..`"), "{refused}");
+        // refused as a climb through a directory that is there is, so the two do not say which
+        // directories exist
+        let through = reach
+            .allows("here/../../../etc/passwd", doing)
+            .expect_err("it climbs out through a directory that is there");
+        assert!(
+            refused.contains("outside what this session reaches"),
+            "{refused}"
+        );
+        assert_eq!(
+            refused.replacen("nope", "here", 1),
+            through,
+            "a missing directory is told apart from one that is there"
+        );
+
+        // where it would land inside, the `..` it cannot follow is what is said
+        let inside = reach
+            .allows("nope/../notes.txt", doing)
+            .expect_err("it goes up through a directory that is not there");
+        assert!(inside.contains("`..`"), "{inside}");
     }
     // and a `..` through a directory that is there is resolved as it always was
-    std::fs::create_dir_all(dir.join("w").join("here")).expect("a directory");
     assert!(reach.allows("here/../notes.txt", Access::Writing).is_ok());
 }
 

@@ -35,6 +35,7 @@ mod shell;
 
 #[cfg(feature = "shell-advisor")]
 pub use crate::tools::advice::{Advised, Rated, Rating};
+pub(crate) use crate::tools::search::barred;
 pub use crate::tools::{
     files::COUNTED,
     ops::Layout,
