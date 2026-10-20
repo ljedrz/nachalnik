@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A line of an event spread over several `data:` lines is kept in it, even where it is JSON on
+  its own.** A line that parsed alone was taken for an event, so a pretty-printed event with a value
+  such as `"stop"` on a line of its own threw away the lines before it and failed the turn. A line
+  read alone is an event now only if it is an object, or nothing is waiting to be joined.
 - **A stop that lands after the server finished leaves the turn finished.** An endpoint can send
   its finish and hold the stream open before `[DONE]` or the usage, and a stop in that pause wrote
   `interrupted` over the server's own reason, as though the answer had been cut short. The answer

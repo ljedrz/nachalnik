@@ -223,6 +223,43 @@ async fn an_event_spread_over_several_lines_is_one_event() {
     }
 }
 
+/// A line of a spread event that is JSON on its own, but not an object, is still part of the event.
+///
+/// note: a line that parsed alone was taken for an event, so a pretty-printed event with a value on
+/// a line of its own lost the lines before it.
+#[tokio::test]
+async fn a_line_of_a_spread_event_that_parses_alone_stays_in_it() {
+    for (dialect, body) in [
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"},\"finish_reason\":\n\
+             data:  \"stop\"\n\
+             data: }]}\n\n",
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]},\"finishReason\":\n\
+             data:  \"STOP\"\n\
+             data: }]}\n\n",
+        ),
+    ] {
+        let url = server(
+            "200 OK",
+            "Content-Type: text/event-stream\r\n",
+            body,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .await;
+        let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect) else {
+            continue;
+        };
+
+        let response = asked(provider).await.expect("an answer");
+        assert_eq!(said(&response), "all of it", "{dialect}");
+        assert_eq!(response.stop, StopReason::EndTurn, "{dialect}");
+    }
+}
+
 /// A comment between the lines of a spread event does not end it.
 ///
 /// note: the format allows a comment anywhere, a keep-alive among them, and only a blank line ends
