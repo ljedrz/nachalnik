@@ -66,8 +66,8 @@ What changes to this workspace must keep true about what is and isn't enforced.
   left running, after the call has finished and with nothing decided, is refused without asking,
   since there's no command left to ask about. Where the gate can't be installed (under
   `--no-sandbox`, or on a kernel that can't pause calls), the question is based on the command's
-  name, and the permissions tab says so. `gate` is the only module in the workspace with `unsafe`
-  code, each block with a comment explaining why it's sound.
+  name, and the permissions tab says so. `gate` is the only module outside the tests with
+  `unsafe` code, each block with a comment explaining why it's sound.
 - **Commands the model runs don't get this program's API keys.** Every variable `kamchatka` reads a
   key from (`endpoint::KEYS`) is removed from the `shell` tool's environment, sandboxed or not, and
   so is an address variable (`endpoint::ADDRESSES`) that carries a `user:password@`. The sandbox
