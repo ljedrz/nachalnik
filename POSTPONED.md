@@ -176,3 +176,13 @@ don't know, and `Attached::version` tells them what the server speaks.
   either holding streamed records back until the history has arrived, so a watching client writes
   nothing live, or fetching the history on every attach, which the client avoids on purpose for
   somebody watching. Unblocked by choosing which.
+
+- **A step projects and prices the whole context more than once.** With a compactor installed,
+  `maybe_compact` asks for the budget, which projects every item and prices it, and
+  `build_request` then projects and prices the same items again. A step that compacts adds two
+  more projections, one before the plan and one after it, and a step that changes whether the
+  context is full adds another. Each is linear in the context, so a long session pays it a few
+  times per request. That is milliseconds against a request that takes seconds, which is why it has
+  not been done. Doing it means carrying one projection and its cost from the budget through the
+  compactor to the request, and making a fresh one only where something changed in between.
+  Worth doing together with the next change to `maybe_compact` or `build_request`.
