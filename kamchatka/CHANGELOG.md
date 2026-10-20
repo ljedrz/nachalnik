@@ -56,6 +56,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.10.1, `nachalnik-mcp` 0.11 and `nachalnik-providers` 0.10.2. The
+  runtime's `Event::is_progress` is how a served session tells the events it keeps only when asked
+  from the rest; the bridge and the providers are the ones released beside it, with their fixes.
 - **Wherever a subject is put to somebody deciding, the actions it covers are named beside it.**
   The question reads `[a] always, for fs:read (read, glob, grep)`, the permissions tab's row reads
   `fs:read  allow  fs: read, glob, grep`, `setup permissions` gives the model the same list, and a
