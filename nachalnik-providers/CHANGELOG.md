@@ -23,6 +23,10 @@ minor bump may break you.
 - **A Responses stream that numbers none of its items no longer says each one twice.** An
   `output_item.done` without an `output_index` was filed as one more item rather than as the one
   its `output_item.added` opened, so a message streamed that way came back with its text repeated.
+- **A Workers AI address naming another vendor's model no longer asks that model.** An address
+  was used unchanged when it ended in the model's short name, so `.../ai/run/@cf/meta/clef` with
+  the model `@cf/cloudflare/clef` asked meta's model. Now it is used unchanged only when it ends in
+  the model's whole name, as every address the docs describe does.
 - **A Gemini turn stopped by a safety filter after it asked for a tool is a refusal.** It was
   reported as `ToolUse`, so nothing said the filter had stopped it. The call is still in the turn.
 

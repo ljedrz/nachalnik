@@ -97,14 +97,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   the rest. Unblocked by providers settling on a common way to report a request's price and a key's
   balance, or by deciding an OpenRouter-only figure is worth having.
 
-- **`system1::Client::url` keeps a Workers AI address that names a different model.** On Workers AI
-  an address is used as it is when it already ends in the model's name, whole or short. Every
-  address the docs describe that ends in the short name also ends in the whole one, so the short
-  name matters only for an address like `.../ai/run/@cf/meta/clef` used with the model
-  `@cf/cloudflare/clef`; the request then goes to meta's model. The short-name check could go, so
-  the model is added to such an address, or it could stay and be tested. Unblocked by deciding
-  which.
-
 - **Two match arms in `Setup::check` can never be taken.** When a rule in `auto-allow` or
   `auto-deny` names no tool that exists here, the refusal names the setting the rule came from, and
   two match arms name `auto-allow-server` and `auto-deny-server` for a server's rule. `unreached`,
