@@ -330,13 +330,6 @@ impl Paced {
             rate: None,
         }
     }
-
-    /// And no more than a rate allows are started, sharing one window with everything else that
-    /// was given the same [`Rate`].
-    fn limited(mut self, rate: Option<Arc<Rate>>) -> Self {
-        self.rate = rate;
-        self
-    }
 }
 
 /// The shared state one run's ceiling and rate are enforced through.
@@ -362,7 +355,10 @@ impl Governor {
 
     /// Wraps a provider so that it runs under this run's ceiling and rate.
     pub fn over(&self, inner: Arc<dyn Provider>) -> Paced {
-        Paced::new(inner, self.permits.clone()).limited(self.rate.clone())
+        Paced {
+            rate: self.rate.clone(),
+            ..Paced::new(inner, self.permits.clone())
+        }
     }
 }
 
