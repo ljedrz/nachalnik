@@ -435,7 +435,10 @@ impl Careful {
         // Consulting `net:reach` here too would ask about `git status` a second time for nothing
         if request.capabilities.contains(&Capability::exec("run"))
             && !self.gates_the_network()
-            && command(&args).is_some_and(reaches_the_network)
+            && args
+                .get("cmd")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(reaches_the_network)
         {
             judged.push(Subject::Capability(Capability::net("reach")));
         }
@@ -867,11 +870,6 @@ impl PermissionPolicy for Careful {
 
         verdict
     }
-}
-
-/// The command a `shell` call was asked to run, if it was asked to run one.
-fn command(args: &serde_json::Value) -> Option<&str> {
-    args.get("cmd")?.as_str()
 }
 
 /// The programs counted as going out to the network.
