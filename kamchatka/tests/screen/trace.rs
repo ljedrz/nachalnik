@@ -89,6 +89,53 @@ async fn the_output_count_begins_again_at_every_call_that_starts() {
     );
 }
 
+/// Calls running side by side are counted apart, each on a line of its own.
+///
+/// note: one count, begun again at every start, put the first call's bytes on the second call's
+/// line once the two ran together.
+#[tokio::test]
+async fn calls_running_side_by_side_are_counted_apart() {
+    let mut harness = Harness::new([]);
+    let (first, second) = (
+        nachalnik::ToolCallId("c1".to_owned()),
+        nachalnik::ToolCallId("c2".to_owned()),
+    );
+
+    for (call, tool) in [(&first, "shell"), (&second, "fs")] {
+        harness.app.on_event(Event::ToolStarted {
+            call: call.clone(),
+            tool: tool.to_owned(),
+        });
+    }
+    for (call, tool, chunk) in [
+        (&first, "shell", "a line of it\n"),
+        (&second, "fs", "ab"),
+        (&first, "shell", "a line of it\n"),
+    ] {
+        harness.app.on_event(Event::ToolOutput {
+            call: call.clone(),
+            tool: tool.to_owned(),
+            chunk: chunk.to_owned(),
+        });
+    }
+
+    let lines: Vec<String> = harness
+        .app
+        .trace
+        .iter()
+        .filter(|line| line.name == "tool.output")
+        .map(|line| line.detail.clone())
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "shell, 13 bytes so far",
+            "fs, 2 bytes so far",
+            "shell, 26 bytes so far"
+        ]
+    );
+}
+
 /// A row on the trace is written in the colour the thing it accounts for is written in elsewhere:
 /// a tool call is cyan on the chat tab and cyan here, a permission is the yellow the question is
 /// drawn in. Two schemes for one session would mean learning which pane you were looking at before

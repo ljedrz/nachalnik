@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Tool calls running side by side are counted apart on the trace.** One count of a call's output
+  was begun again at every call's start, so with calls running together one call's bytes were
+  added to another's line, under whichever tool spoke last. Each call has its own count and its own
+  line now.
 - **An `--mcp` server named with no command is refused by its spec.** The refusal said only that
   a server needs a command, so with several servers there was no telling which one was meant.
 - **A context limit of 0 is said to be unknown to the model.** `0` is what an endpoint that does

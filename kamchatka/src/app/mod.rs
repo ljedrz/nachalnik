@@ -643,8 +643,14 @@ pub struct App {
     /// build with no screen does not have. Every use of it is in `keys`.
     #[cfg(feature = "tui")]
     recalled: Option<String>,
-    /// How much the running tool has said so far, for the one trace line that counts it.
-    streamed_bytes: usize,
+    /// How much each running call has said so far, and which call the trace's last line counts.
+    ///
+    /// note: per call, since calls run in parallel. One count, begun again at every start, put one
+    /// call's bytes on another's line.
+    streamed_bytes: (
+        Option<nachalnik::ToolCallId>,
+        BTreeMap<nachalnik::ToolCallId, usize>,
+    ),
     /// Where a finished turn reports itself.
     outcomes: UnboundedSender<Outcome>,
     /// The session's record on disk, written as it goes, where one was started.
@@ -831,7 +837,7 @@ impl App {
             last_sent: None,
             #[cfg(feature = "tui")]
             recalled: None,
-            streamed_bytes: 0,
+            streamed_bytes: (None, BTreeMap::new()),
             outcomes,
             recorder: None,
             previews: 0,
