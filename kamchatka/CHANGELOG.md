@@ -31,16 +31,17 @@ minor bump may break you.
   `--auto-allow-servers` and `--auto-deny-servers`**, flag and settings-file key together, with no
   aliases; the singular is refused. `Args` and `Settings` have `sandbox_devices`,
   `auto_allow_servers` and `auto_deny_servers` fields in their place.
+- **`Careful::offers` takes the tool rather than its spec**, and asks it which of its actions need
+  each subject, so a policy cannot be told what a tool declares without learning that too.
+  `Setup::wire` calls it for every tool it installs.
 - **`Reach` and `Shell` take their paths resolved, as `Setup::wire` gives them.** A path is used
   only while no link stands on the way to it, so one given through a link reaches nothing; see the
   fix below.
 
 ### added
 
-- **`Careful::offers_tool`** tells the policy about a tool and asks it which of its actions need
-  each subject, which `Careful::actions_for`, `Careful::named_for` and `Careful::needed_by` then
-  say. `Setup::wire` calls it for every tool it installs; an embedder installing tools of its own
-  calls it where it called `Careful::offers`.
+- **`Careful::actions_for`, `Careful::named_for` and `Careful::needed_by`** say which actions of a
+  tool need a subject, as the tool told `Careful::offers`.
 
 ### changed
 

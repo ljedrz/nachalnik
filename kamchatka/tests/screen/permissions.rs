@@ -3094,7 +3094,7 @@ async fn the_question_names_every_action_its_answer_covers() {
         harness.app.limits.clone(),
         harness.app.policy.clone(),
     ) {
-        harness.app.policy.offers_tool(&*tool);
+        harness.app.policy.offers(&*tool);
         harness.app.kernel.add_tool(tool);
     }
 

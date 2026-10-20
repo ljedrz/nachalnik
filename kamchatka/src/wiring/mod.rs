@@ -885,7 +885,7 @@ impl Setup {
             .then(|| introspect::install(&kernel, policy.clone(), limits.clone(), self.layout));
         for spec in kernel.tool_specs() {
             if let Some(tool) = kernel.tool(&spec.id) {
-                policy.offers_tool(&*tool);
+                policy.offers(&*tool);
             }
         }
         // Record the rules before anything is in the context, so a later call allowed by one of

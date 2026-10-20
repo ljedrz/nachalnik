@@ -111,7 +111,7 @@ fn agent(
     // what `Setup::wire` tells the policy about the tools it installs
     for spec in kernel.tool_specs() {
         if let Some(tool) = kernel.tool(&spec.id) {
-            policy.offers_tool(&*tool);
+            policy.offers(&*tool);
         }
     }
 

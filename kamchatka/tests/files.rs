@@ -1628,7 +1628,7 @@ async fn fs_sends_the_model_only_where_it_could_go() {
     let policy = std::sync::Arc::new(Careful::new());
     let tools = common::builtin_under(&dir, true, Limits::default(), policy.clone());
     for tool in &tools {
-        policy.offers(tool.spec());
+        policy.offers(&**tool);
     }
     let fs = tools
         .iter()
