@@ -722,6 +722,10 @@ impl Client {
     /// and the model's whole URL from its page, which already ends in the name. A base short of
     /// both (`.../ai/run` with the model named `clef`) is not guessed at, since that would need to
     /// know which vendor's `@cf/` prefix to add.
+    ///
+    /// note: an address is used unchanged only when it ends in the model's name as given. One
+    /// ending in another vendor's model of the same short name, `.../@cf/meta/clef` with the model
+    /// `@cf/cloudflare/clef`, gets the model added and fails, rather than asking meta's model.
     fn url(&self) -> String {
         let base = self.endpoint();
         if !is_workers_ai(&base) {
@@ -729,9 +733,7 @@ impl Client {
         }
 
         let model = self.model();
-        match base.ends_with(&format!("/{model}"))
-            || base.ends_with(&format!("/{}", short_name(&model)))
-        {
+        match base.ends_with(&format!("/{model}")) {
             true => base,
             false => format!("{base}/{model}"),
         }
@@ -1304,6 +1306,13 @@ mod tests {
                 "{base} asking {model}"
             );
         }
+
+        // an address naming another vendor's model of the same short name is not that model
+        let theirs = format!("{account}/@cf/meta/clef");
+        assert_eq!(
+            Client::new("@cf/cloudflare/clef", &theirs, "k").url(),
+            format!("{theirs}/@cf/cloudflare/clef")
+        );
 
         // and nowhere else is the name shortened: OpenRouter's identifiers carry their vendor
         let elsewhere = Client::new("vendor/decider", DEFAULT_BASE_URL, "k");
