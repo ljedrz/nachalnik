@@ -20,6 +20,12 @@ minor bump may break you.
   what the counter abstained on, so a counter that could not price JSON had a request with tools
   passed to `TokenCounter::observe` as fully priced, and `Budget::uncounted` left the tools out.
 
+### added
+
+- **`Event::is_progress`** says whether an event is a fragment of something still arriving, the
+  two the log keeps only under `Config::record_progress`, so a client sorting events does not keep
+  a copy of the kernel's list.
+
 ## [0.10.0] - 2026-10-14
 
 ### breaking

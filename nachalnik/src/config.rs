@@ -21,8 +21,8 @@ pub struct Config {
     /// note: A subscriber that falls this far behind starts losing events; the session log
     /// ([`Kernel::history`]) is the authoritative record, the event stream is the live one.
     pub event_queue_depth: usize,
-    /// Whether [`Event::ModelDelta`] and [`Event::ToolOutput`] events are appended to the session
-    /// log.
+    /// Whether [`Event::ModelDelta`] and [`Event::ToolOutput`] events, the ones
+    /// [`Event::is_progress`] names, are appended to the session log.
     ///
     /// note: they are always broadcast; this decides only whether streaming fragments are also
     /// kept, which is rarely useful (the assembled result is recorded either way) and can dominate

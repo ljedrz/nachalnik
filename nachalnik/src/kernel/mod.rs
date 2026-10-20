@@ -642,8 +642,7 @@ impl Kernel {
     pub(crate) fn emit(&self, event: Event) {
         let mut session = self.0.session.lock();
 
-        let is_progress = matches!(event, Event::ModelDelta { .. } | Event::ToolOutput { .. });
-        if !is_progress || self.0.config.record_progress {
+        if !event.is_progress() || self.0.config.record_progress {
             session.append(event.clone());
         }
         // an error only means nobody is listening; `send` does not block
