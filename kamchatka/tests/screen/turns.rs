@@ -11,7 +11,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{app::Tab, tools::Limits};
 use nachalnik::{
     Block, Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
-    Tool,
     test::{ConstTool, call},
 };
 use ratatui::style::{Color, Modifier};
@@ -704,7 +703,7 @@ async fn a_tool_that_is_off_is_not_what_a_refusal_points_the_model_at() {
     let mut harness = Harness::new([]);
     let run = Capability::exec("run");
     let shell = Arc::new(ConstTool::new("shell", "ran").with_capabilities([run.clone()]));
-    harness.app.policy.offers(shell.spec());
+    harness.app.policy.offers(&*shell);
     harness.app.kernel.add_tool(shell);
     assert!(
         harness.app.policy.reachable(&run),

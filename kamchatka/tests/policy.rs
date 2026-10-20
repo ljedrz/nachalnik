@@ -14,7 +14,7 @@ use kamchatka::{
 };
 use nachalnik::{
     Capability, Domain, PermissionId, PermissionPolicy, PermissionRequest, ToolCall, ToolCallId,
-    Verdict,
+    Verdict, test::ConstTool,
 };
 use serde_json::json;
 
@@ -530,8 +530,6 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
 /// since its `call` may mean something else.
 #[test]
 fn a_call_that_cannot_be_read_is_not_asked_about() {
-    use nachalnik::ToolSpec;
-
     let ask = |tool: &str, args: serde_json::Value| PermissionRequest {
         id: PermissionId(1),
         call: ToolCallId("c1".to_owned()),
@@ -540,8 +538,8 @@ fn a_call_that_cannot_be_read_is_not_asked_about() {
         args: std::sync::Arc::new(args),
     };
     let policy = Careful::new();
-    policy.offers(ToolSpec::new("shell", "runs").with_capabilities([Capability::exec("run")]));
-    policy.offers(ToolSpec::new("remote", "runs").with_capabilities([Capability::exec("run")]));
+    policy.offers(&ConstTool::new("shell", "runs").with_capabilities([Capability::exec("run")]));
+    policy.offers(&ConstTool::new("remote", "runs").with_capabilities([Capability::exec("run")]));
     policy.came_from("remote", "box");
 
     // a wrapper holding text that is not JSON is no call anybody can read
@@ -824,8 +822,8 @@ fn a_capability_is_reachable_only_where_the_model_could_use_it() {
         "told nothing of what is offered, it goes by its rules alone"
     );
 
-    policy.offers(nachalnik::ToolSpec::new("shell", "runs").with_capabilities([run.clone()]));
-    policy.offers(nachalnik::ToolSpec::new("fs", "files"));
+    policy.offers(&ConstTool::new("shell", "runs").with_capabilities([run.clone()]));
+    policy.offers(&ConstTool::new("fs", "files"));
     assert!(policy.reachable(&run), "asked about, with somebody to ask");
 
     policy.withdraw("shell", true);
@@ -862,7 +860,7 @@ async fn a_subject_is_named_with_the_actions_it_covers() {
         Default::default(),
         policy.clone(),
     ) {
-        policy.offers_tool(&*tool);
+        policy.offers(&*tool);
     }
 
     assert_eq!(

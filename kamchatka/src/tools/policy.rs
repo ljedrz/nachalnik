@@ -318,7 +318,7 @@ pub struct Careful {
     /// for several. Wherever one is put to somebody deciding - the question, the permissions tab,
     /// `setup`, a refusal - the actions are named beside it, or an `always` for `fs:read` given to
     /// a `grep` would allow `read` with nobody having said so. Each tool says which, through
-    /// [`nachalnik::Tool::needs`]; see [`Careful::offers_tool`].
+    /// [`nachalnik::Tool::needs`]; see [`Careful::offers`].
     covered: Mutex<BTreeMap<Capability, Vec<(String, String)>>>,
     /// The tools among [`Careful::offered`] taken off offer for now, by `/tools toggle`.
     withdrawn: Mutex<BTreeSet<String>>,
@@ -702,15 +702,13 @@ impl Careful {
     }
 
     /// Remembers what one of the session's own tools declares, so that a call to it that names no
-    /// operation is refused saying so.
-    pub fn offers(&self, spec: ToolSpec) {
-        self.offered.lock().insert(spec.id.clone(), spec);
-    }
-
-    /// [`Careful::offers`], and which of the tool's actions need each subject it declares, as the
-    /// tool answers for a call naming each one. A tool with one action has nothing to say beyond
-    /// its subject, and is not asked.
-    pub fn offers_tool(&self, tool: &dyn nachalnik::Tool) {
+    /// operation is refused saying so, and which of its actions need each subject it declares, as
+    /// the tool answers for a call naming each one. A tool with one action has nothing to say
+    /// beyond its subject, and is not asked.
+    ///
+    /// note: the tool rather than its spec, so nothing can tell the policy what a tool declares
+    /// without it also learning which actions each subject covers; see [`Careful::named_for`].
+    pub fn offers(&self, tool: &dyn nachalnik::Tool) {
         let spec = tool.spec();
         let actions = super::ops::offered(&spec.schema);
         {
@@ -735,7 +733,7 @@ impl Careful {
             }
             covered.retain(|_, actions| !actions.is_empty());
         }
-        self.offers(spec);
+        self.offered.lock().insert(spec.id.clone(), spec);
     }
 
     /// The actions of `tool` that need `capability`, where it has several; empty where it has one,

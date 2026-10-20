@@ -528,7 +528,7 @@ async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
     let run = run("read it\n", script, |app| {
         app.kernel.add_tool(Arc::new(Several));
         // told what the tool declares, as `wiring` tells it about every tool a session has
-        app.policy.offers(Several.spec());
+        app.policy.offers(&Several);
         app.policy
             .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     })
