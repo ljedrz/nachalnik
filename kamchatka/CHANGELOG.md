@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A command's refusals are accounted for off the runtime's threads.** Judging the paths in its
+  standard error can take seconds, and it ran on a worker of the async runtime; it runs on a
+  blocking thread now.
 - **A command's refusals are accounted for in a fifth of the time.** Whether any refusal names no
   path was worked out for every line of standard error, even where a refused path was named and the
   answer could not change the note. It is now asked only where nothing was named, and stops at the
