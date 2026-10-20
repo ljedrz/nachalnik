@@ -42,7 +42,7 @@ use nachalnik::{
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{save, thousands, wrap};
+use common::{heading, save, thousands, wrap};
 
 const USAGE: &str = "\
 usage: compare_models [-m MODEL].. [-f FILE].. [-s SYSTEM] [options] [prompt...]
@@ -108,10 +108,6 @@ fn stop_name(stop: &StopReason) -> String {
 
 fn count(n: Option<u64>) -> String {
     n.map(thousands).unwrap_or_else(|| "-".to_owned())
-}
-
-fn heading(text: &str) {
-    println!("\n\x1b[1m{text}\x1b[0m");
 }
 
 fn prompt(text: &str) -> Option<String> {

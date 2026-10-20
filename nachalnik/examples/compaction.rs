@@ -20,7 +20,10 @@ use parking_lot::Mutex;
 use serde_json::json;
 use tokio::sync::broadcast::Receiver;
 
-const WIDTH: usize = 78;
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{WIDTH, note, stage, textwrap, thousands};
 
 /// A provider that answers from a script; a real one would speak HTTP.
 struct Script(Mutex<VecDeque<ModelResponse>>);
@@ -137,45 +140,6 @@ impl Compactor for Summarizer {
 
 // -------------------------------------------------------------------------------- the rendering
 
-fn thousands(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-
-    out
-}
-
-/// A numbered stage, with a sentence saying what it is for.
-fn stage(number: usize, title: &str, note: &str) {
-    println!("\n\x1b[1m{number} · {title}\x1b[0m");
-    for line in textwrap(note, WIDTH - 4) {
-        println!("   \x1b[2m{line}\x1b[0m");
-    }
-    println!();
-}
-
-fn textwrap(text: &str, width: usize) -> Vec<String> {
-    let mut lines = vec![String::new()];
-    for word in text.split_whitespace() {
-        let line = lines.last_mut().expect("there is always one");
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
-            lines.push(word.to_owned());
-        } else {
-            if !line.is_empty() {
-                line.push(' ');
-            }
-            line.push_str(word);
-        }
-    }
-
-    lines
-}
-
 /// Lists the context. Every column is labelled, because a number whose meaning you have to guess
 /// at is not transparency.
 fn render_context(kernel: &Kernel, caption: &str) {
@@ -219,14 +183,6 @@ fn render_context(kernel: &Kernel, caption: &str) {
         thousands(budget.limit.unwrap_or_default()),
     );
     note(caption);
-}
-
-/// A remark under a table, in the same voice as the stage headings.
-fn note(text: &str) {
-    for (i, line) in textwrap(text, WIDTH - 6).into_iter().enumerate() {
-        let lead = if i == 0 { "→" } else { " " };
-        println!("   \x1b[2m{lead} {line}\x1b[0m");
-    }
 }
 
 /// Prints one event as a name and a detail, clipped so that nothing wraps.
