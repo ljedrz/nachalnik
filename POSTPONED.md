@@ -60,12 +60,11 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
 - **Serving clients older than the session, which `protocol::VERSION` promises.** A session should
   serve the older protocol versions it knows. `watermark` checks a client's version without storing
   it, so once `VERSION` is `2`, nothing knows a connection is a version-1 client and nothing stops
-  version-2 messages being sent to it.
-
-Nothing is needed while the version is `1`. When it changes, each connection must remember its
-version. Every write in `remote::server::connection::attend` must check it, so each message type
-must declare the version it was added in. `Message::Unknown` lets clients survive messages they
-don't know, and `Attached::version` tells them what the server speaks.
+  version-2 messages being sent to it. Nothing is needed while the version is `1`. When it changes,
+  each connection must remember its version. Every write in `remote::server::connection::attend`
+  must check it, so each message type must declare the version it was added in. `Message::Unknown`
+  lets clients survive messages they don't know, and `Attached::version` tells them what the server
+  speaks.
 
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning appears only there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it. No
@@ -84,12 +83,10 @@ don't know, and `Attached::version` tells them what the server speaks.
 
 - **The Anthropic client and signed thinking after an edited history.** The
   `nachalnik_providers::anthropic` docs describe it, with the models it affects; neither the code
-  nor the tests handle it. Some models reject a signed thinking block sent back after anything
-  before it was edited, which pruning, rewriting and eliding all do, on accounts created on or after
-  2026-08-31. Possible fixes are retrying on that one 400 error message, or a beta header no
-  parameter can set. Neither OpenRouter, which rewrites the message and is not what checks the
-  signature, nor an older account shows the refusal. Unblocked by an Anthropic account created on or
-  after 2026-08-31, to see it rejected by the real API and then fixed.
+  nor the tests handle it. Possible fixes are retrying on the 400 those docs quote, or a beta header
+  no parameter can set. Neither OpenRouter, which rewrites the message and is not what checks
+  the signature, nor an older account shows the refusal. Unblocked by an Anthropic account created
+  on or after 2026-08-31, to see it rejected by the real API and then fixed.
 
 - **What a session costs in money, and what is left of the balance.** OpenRouter reports each
   request's cost in credits in `usage.cost` on every response, in the last chunk of a stream;
