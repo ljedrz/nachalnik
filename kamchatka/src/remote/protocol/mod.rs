@@ -182,13 +182,9 @@ pub enum Command {
     Project,
     /// Ask what one context item actually says.
     ///
-    /// note: this is why the protocol is not "events, and render them however you like". The
-    /// session log names things rather than copying them: `context.added` carries an identifier, a
-    /// kind, a label and a token count, and no content, which keeps a log affordable enough to keep
-    /// for ever. A client fed only events can render a turn as it streams, but not one word of
-    /// anything that happened before it connected. It gets the conversation from [`Attached`] and
-    /// the *whole* of any one item from here, on demand, rather than from a stream fattened until
-    /// it carried both.
+    /// note: the session log names items rather than copying them, so a client fed only events
+    /// cannot read anything that happened before it connected. It gets the conversation from
+    /// [`Attached`] and the *whole* of any one item from here, on demand; see [`crate::remote`].
     Inspect {
         /// Which item.
         id: ContextId,
@@ -259,10 +255,8 @@ pub enum Message {
     /// One entry of the session log that is longer than the other end will read, named instead of
     /// sent.
     ///
-    /// note: the record still exists and is still in the log - this is a gap in what was *sent*,
-    /// not in what happened, and `context.replaced` is the only event that can grow one. Without it
-    /// a session that wrote such a record would be unattachable for the rest of its life: a client
-    /// resumes by sequence, so it would come back to the same record on every attempt.
+    /// note: the record is still in the log - this is a gap in what was *sent*, not in what
+    /// happened. [`MAX_LINE`] says why it is named rather than sent.
     ///
     /// note: numbered, which is what lets a client get past it: it takes the `seq` as seen and
     /// resumes after it. What it has is a hole it knows the size and position of, and
