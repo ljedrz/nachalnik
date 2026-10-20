@@ -407,7 +407,7 @@ impl Changes {
             return ToolOutput::error(match selected {
                 Some(input) => format!(
                     "`{input}` is a selector, and nothing in your context matches it.{}{}",
-                    crate::introspect::if_reachable(kernel, &self.policy, "context:look", || {
+                    crate::introspect::if_reachable(kernel, &self.policy, "context:read", || {
                         " `context` with `look` lists what there is.".to_owned()
                     }),
                     crate::introspect::unmatched(kernel, input)
@@ -532,11 +532,11 @@ impl Changes {
                 // that has it: a rule may be about one of its operations and not the others
                 let ways = self.policy.ways(&[
                     (
-                        Capability::parse("context:search").expect("a capability"),
+                        Capability::parse("context:read").expect("a capability"),
                         "`search` reads a line of one without putting it back",
                     ),
                     (
-                        Capability::parse("context:restore").expect("a capability"),
+                        Capability::parse("context:add").expect("a capability"),
                         "`restore` returns the whole",
                     ),
                 ]);
@@ -548,7 +548,7 @@ impl Changes {
                 out.push_str(&crate::introspect::if_reachable(
                     kernel,
                     &self.policy,
-                    "context:note",
+                    "context:add",
                     || {
                         "`note` writes a finding down in an item of its own, which this move does \
                          not touch.\n"

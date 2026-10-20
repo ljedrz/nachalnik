@@ -3,9 +3,8 @@
 //! note: its own tool rather than two more actions on the context, because it is the one thing in
 //! here that neither reads nor changes a context - it makes a second session and pays a provider
 //! for an answer. Letting something read its own items should not let it buy another request, which
-//! allowing `context` would if these were actions of it. The subjects say so too: `fork:draft` and
-//! `fork:ask` are a domain of their own, and a tool that declares two domains is a tool that is two
-//! things.
+//! allowing `context` would if these were actions of it. The subject says so too: `fork:ask` is a
+//! domain of its own, and a tool that declares two domains is a tool that is two things.
 //!
 //! note: nothing in the runtime knows what a fork is. It is `snapshot` and `resume`, which the
 //! runtime documents as the way to carry a session on somewhere else, pointed at a copy that is
@@ -13,8 +12,8 @@
 //! compactor and one request.
 
 use nachalnik::{
-    BoxError, Capability, Config, ContextId, ContextItem, ContextKind, ContextState, Delta, Event,
-    Kernel, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
+    BoxError, Config, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Kernel,
+    OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
 };
 use serde_json::Value;
 use std::{
@@ -29,7 +28,7 @@ use crate::{
     app::text::thousands,
     tools::{
         Limits, domains,
-        ops::{Arg, Layout, Op, action_of, actions, inner, schema},
+        ops::{Arg, Layout, Op, actions, inner, schema},
     },
 };
 
@@ -120,24 +119,10 @@ impl Tool for Fork {
              context is said when it gave one fork something the other did not have.",
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(
-            actions(&self.ops)
-                .into_iter()
-                .map(domains::fork)
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    /// note: per operation, because they cost the same and mean different things. `draft` asks what
-    /// this session would say next, a question about this context; `ask` puts the model's own words
-    /// to a copy, which is not.
-    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match action_of(call, &self.ops) {
-            Some(op) => vec![domains::fork(op)],
-            // `invoke` refuses an operation this tool does not have, with a list of the ones it
-            // does. Such a call must not be one that needed nothing and was therefore allowed
-            None => self.spec().capabilities,
-        }
+        // note: one subject for both, because both do the same to the session: spend a request on
+        // a copy that sees this context. What the copy is asked is the model's to choose; whether
+        // it may ask one is the person's
+        .with_capabilities([domains::fork("ask")])
     }
 
     fn limit(&self, call: &ToolCall) -> Option<usize> {
@@ -192,7 +177,7 @@ impl Tool for Fork {
                 // not there is the whole context answering again, paid for as an ablation
                 if let Some(missing) = without.iter().find(|id| kernel.item(**id).is_none()) {
                     let numbers =
-                        if_reachable(&kernel, self.reach.policy(), "context:look", || {
+                        if_reachable(&kernel, self.reach.policy(), "context:read", || {
                             " `context` prints".to_owned()
                         });
                     return Ok(ToolOutput::error(format!(

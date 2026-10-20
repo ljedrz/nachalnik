@@ -29,7 +29,7 @@ use crate::{
     app::text::{short, thousands, verdict_word},
     tools::{
         Careful, Limits, Subject, domains,
-        ops::{Layout, Op, action_of, actions, inner, schema},
+        ops::{Layout, Op, actions, inner, schema},
     },
 };
 
@@ -93,19 +93,9 @@ impl Tool for Setup {
              the projector will do to your context unasked.",
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(
-            actions(&self.ops)
-                .into_iter()
-                .map(domains::setup)
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match action_of(call, &self.ops) {
-            Some(action) => vec![domains::setup(action)],
-            None => self.spec().capabilities,
-        }
+        // note: one subject for the four, because each reads and none changes anything. A person
+        // deciding about `setup` decides whether the model may read what it runs with
+        .with_capabilities([domains::setup("read")])
     }
 
     fn limit(&self, call: &ToolCall) -> Option<usize> {
@@ -637,7 +627,7 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
          which items become which messages, in what order, and which are left out or repaired to \
          keep the request valid.{}\n",
         short(kernel.projector().name()),
-        if_reachable(kernel, policy, "context:request", || {
+        if_reachable(kernel, policy, "context:read", || {
             " `context` with `request` says what it did to the next one.".to_owned()
         }),
     );
@@ -648,7 +638,7 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
              of it without being asked - it cannot take anything pinned, it says exactly what it \
              moved{}.{}\n",
             short(compactor.name()),
-            if_reachable(kernel, policy, "context:restore", || {
+            if_reachable(kernel, policy, "context:add", || {
                 ", and `context` with `restore` puts any of it back".to_owned()
             }),
             if_reachable(kernel, policy, "log:read", || {
@@ -668,7 +658,7 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
         out.push_str(&format!(
             "the budget it is measured against is {} tokens{}.\n",
             thousands(limit),
-            if_reachable(kernel, policy, "context:budget", || {
+            if_reachable(kernel, policy, "context:read", || {
                 "; `context` with `budget` is where you stand against it".to_owned()
             }),
         ));
@@ -684,7 +674,7 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
         },
     ));
     if config.keep_truncated_output {
-        out.push_str(&if_reachable(kernel, policy, "context:search", || {
+        out.push_str(&if_reachable(kernel, policy, "context:read", || {
             "`context` with `search` reaches what was cut without putting it back.\n".to_owned()
         }));
     }

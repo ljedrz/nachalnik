@@ -16,7 +16,7 @@
 //!
 //! note: `kamchatka` has the same pair as one tool, for a reason that does not apply here. There a
 //! call declares which operation it is - `Tool::needs` reads the `action` and answers
-//! `context:look` or `context:revise` - so one tool is twelve separately grantable subjects. These
+//! `context:read` or `context:revise` - so one tool is four separately grantable subjects. These
 //! two answer for every call alike, and a tool that cannot say which of its operations a call is
 //! has only its own name to be granted by.
 //!
@@ -81,7 +81,7 @@ pub struct Granted;
 impl PermissionPolicy for Granted {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         // note: the operation as well as the domain. The domains are shared - `kamchatka`'s own
-        // `context` tool declares `context:look` and `context:elide` - so matching on the domain
+        // `context` tool declares `context:read` and `context:trim` - so matching on the domain
         // alone granted any tool that happened to use one
         let mine = |capability: &Capability| match &capability.domain {
             Domain::Other(name) => matches!(

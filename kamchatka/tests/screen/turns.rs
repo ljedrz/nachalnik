@@ -245,13 +245,13 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
     ));
     let offered = harness.app.kernel.tool_ids();
     assert_eq!(offered, ["context", "fork", "log", "setup"]);
-    // the policy has one more subject to ask about per *operation* these tools offer, because
-    // the tab reads what the registered tools declare and what they declare is what they do.
-    // Reading your own items, reading the record beside them and rewriting one are different
-    // questions, and each is answerable on its own row - which is the whole point of a subject
-    // being `context:look` rather than the name of whichever tool happened to serve it
-    // context's twelve, fork's two, setup's four and log's one
-    let operations = 12 + 2 + 4 + 1;
+    // the policy has one more subject to ask about per subject these tools declare, because the
+    // tab reads what the registered tools declare and what they declare is what they do. Reading
+    // your own items, reading the record beside them and rewriting one are different questions,
+    // and each is answerable on its own row - which is the whole point of a subject being
+    // `context:read` rather than the name of whichever tool happened to serve it: context's four,
+    // and one each for fork, setup and log
+    let operations = 4 + 1 + 1 + 1;
     harness.tab(Tab::Permissions);
     assert_eq!(harness.app.undecided(), before + operations);
     let screen = harness.screen();

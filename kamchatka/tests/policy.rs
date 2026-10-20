@@ -349,21 +349,18 @@ async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
     assert_eq!(policy.why(&ToolCallId::from("call_0")), None);
 }
 
-/// What the policy would answer about a call doing this to the context.
+/// What the policy would answer about a call to the context needing `subject`: `read`, `trim`,
+/// `add` or `revise`.
 ///
-/// note: one operation, which is what a tool reports through `Tool::needs`. The policy no longer
+/// note: one subject, which is what a tool reports through `Tool::needs`. The policy no longer
 /// reads the `action` argument itself - it is handed what the call needs and answers about that.
-fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
-    let call = ToolCall::new(
-        "c1",
-        "context",
-        json!({ "action": action, "reason": "why" }),
-    );
+fn asking_about_action(policy: &Careful, subject: &str) -> Verdict {
+    let call = ToolCall::new("c1", "context", json!({ "reason": "why" }));
     let request = PermissionRequest {
         id: PermissionId(1),
         call: call.id.clone(),
         tool: "context".to_owned(),
-        capabilities: vec![domains::context(action)],
+        capabilities: vec![domains::context(subject)],
         args: call.args.clone(),
     };
 
@@ -380,9 +377,7 @@ fn allowing_a_tool_allows_every_action_of_it() {
     let policy = Careful::new();
     policy.set(&Subject::parse("context"), Verdict::Allow);
 
-    for action in [
-        "note", "pin", "restore", "undo", "elide", "exclude", "revise",
-    ] {
+    for action in ["read", "trim", "add", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Allow,
@@ -395,14 +390,14 @@ fn allowing_a_tool_allows_every_action_of_it() {
 #[test]
 fn allowing_one_action_allows_only_that_action() {
     let policy = Careful::new();
-    policy.set(&Subject::parse("context:note"), Verdict::Allow);
+    policy.set(&Subject::parse("context:add"), Verdict::Allow);
 
-    assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
-    for action in ["elide", "exclude", "revise"] {
+    assert_eq!(asking_about_action(&policy, "add"), Verdict::Allow);
+    for action in ["read", "trim", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Ask,
-            "only `note` was allowed, so `{action}` is still a question"
+            "only `add` was allowed, so `{action}` is still a question"
         );
     }
     assert_eq!(
@@ -420,7 +415,7 @@ fn refusing_one_action_refuses_only_that_action() {
     policy.set(&Subject::parse("context:revise"), Verdict::Deny);
 
     assert_eq!(asking_about_action(&policy, "revise"), Verdict::Deny);
-    assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
+    assert_eq!(asking_about_action(&policy, "add"), Verdict::Allow);
 }
 
 /// A tool somebody refused stays refused, however finely an action of it is named.
@@ -432,9 +427,9 @@ fn refusing_one_action_refuses_only_that_action() {
 fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     let policy = Careful::new();
     policy.set(&Subject::parse("context"), Verdict::Deny);
-    policy.set(&Subject::parse("context:elide"), Verdict::Allow);
+    policy.set(&Subject::parse("context:trim"), Verdict::Allow);
 
-    assert_eq!(asking_about_action(&policy, "elide"), Verdict::Deny);
+    assert_eq!(asking_about_action(&policy, "trim"), Verdict::Deny);
 }
 
 /// A rule is spelled the way it is read out, so `--auto-deny "$(a row off the permissions tab)"`
@@ -479,13 +474,13 @@ fn the_policy_is_told_what_a_call_needs_rather_than_reading_it() {
         id: PermissionId(1),
         call: call.id.clone(),
         tool: "context".to_owned(),
-        capabilities: vec![domains::context("look")],
+        capabilities: vec![domains::context("read")],
         args: call.args.clone(),
     };
 
     assert_eq!(
         policy.judges(&request),
-        vec![Subject::Capability(domains::context("look"))]
+        vec![Subject::Capability(domains::context("read"))]
     );
     assert_eq!(policy.verdict(&request), Verdict::Allow);
 }
@@ -494,17 +489,13 @@ fn the_policy_is_told_what_a_call_needs_rather_than_reading_it() {
 /// the answer: the tool, unless somebody has written a rule finer than one.
 #[test]
 fn always_answers_at_the_grain_the_rules_are_written_at() {
-    let asked_about = |action: &str| {
-        let call = ToolCall::new(
-            "c1",
-            "context",
-            json!({ "action": action, "reason": "why" }),
-        );
+    let asked_about = |subject: &str| {
+        let call = ToolCall::new("c1", "context", json!({ "reason": "why" }));
         PermissionRequest {
             id: PermissionId(1),
             call: call.id.clone(),
             tool: "context".to_owned(),
-            capabilities: vec![domains::context(action)],
+            capabilities: vec![domains::context(subject)],
             args: call.args.clone(),
         }
     };
@@ -512,7 +503,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     // the question was about one operation, so that is what the answer is about, and the rest of
     // the domain is untouched by it
     let policy = Careful::new();
-    let request = asked_about("exclude");
+    let request = asked_about("trim");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
     assert_eq!(asking_about_action(&policy, "revise"), Verdict::Ask);
@@ -521,7 +512,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     // credential path survives an `always` for `read`
     let policy = Careful::new();
     policy.set(&Subject::parse("context:revise"), Verdict::Deny);
-    let request = asked_about("exclude");
+    let request = asked_about("trim");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
     assert_eq!(

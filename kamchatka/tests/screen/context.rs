@@ -1745,10 +1745,10 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
 
     // the number the listing prints is a handle the command takes, or it is decoration: naming
-    // the row and naming the subject are the same instruction. `fs:read` is the sixteenth of the
+    // the row and naming the subject are the same instruction. `fs:read` is the seventh of the
     // sorted subjects - every `context:*`, `exec:*` and `fork:*` sorts before it, so the count
     // moves when those tools do
-    harness.send("/limit 16 48000").await;
+    harness.send("/limit 7 48000").await;
     assert_eq!(declared(&harness, "fs", "read"), Some(48_000));
     assert_eq!(
         declared(&harness, "fs", "write"),
@@ -1773,7 +1773,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     // and the listing is where the range is; every subject is in it, `exec:run` among them
     harness.send("/limit").await;
     let screen = harness.sized(120, 40).replace('\n', " ");
-    assert!(screen.contains("[13] exec:run"), "{screen}");
+    assert!(screen.contains("[5]  exec:run"), "{screen}");
     harness.press(KeyCode::Esc).await;
 
     // and nought is not a limit, it is a tool that answers with a marker
@@ -1793,11 +1793,11 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "it lists the new one: {screen}"
     );
     assert!(
-        screen.contains("context:note"),
+        screen.contains("context:add"),
         "and every other subject: {screen}"
     );
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[16] fs:read"), "{screen}");
+    assert!(screen.contains("[7]  fs:read"), "{screen}");
 }
 
 /// The limit table gives every subject the same room, so a two-digit row number does not push the
@@ -1869,7 +1869,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     };
 
     harness.send("/limit").await;
-    let marked = row(&mut harness, "context:look");
+    let marked = row(&mut harness, "context:read");
     assert!(
         marked.contains("not offered"),
         "a row nothing here declares is marked as one: {marked}"
@@ -1891,7 +1891,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     harness.press(KeyCode::Esc).await;
 
     // setting one still takes, because that is the point of the row being there at all
-    harness.send("/limit context:look 8000").await;
+    harness.send("/limit context:read 8000").await;
     let screen = harness.flat();
     assert!(screen.contains("is now cut at 8,000"), "{screen}");
     assert!(
@@ -1917,10 +1917,10 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
         "the limit set before the tool existed is the one it reads"
     );
 
-    // and `fork` reads its own two rows rather than nothing at all. A fork's answer ends with its
+    // and `fork` reads its own row rather than nothing at all. A fork's answer ends with its
     // deliberation, which is the part a limit cuts, and a row the tool does not consult is a
     // number a person changed with no effect on the thing they changed it for
-    harness.send("/limit fork:draft 12000").await;
+    harness.send("/limit fork:ask 12000").await;
     let drafting = nachalnik::ToolCall::new("c", "fork", json!({ "action": "draft" }));
     assert_eq!(
         harness
@@ -1929,7 +1929,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
             .tool("fork")
             .and_then(|tool| tool.limit(&drafting)),
         Some(12_000),
-        "`fork:draft` was raised to 12,000 and the tool does not declare it"
+        "`fork:ask` was raised to 12,000 and a draft does not read it"
     );
 
     // and its row is no longer marked. This harness installs no builtin tools, so `fs` and
@@ -1937,7 +1937,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     // than of the whole listing, and why the sentence under the table does not claim to account
     // for every mark
     harness.send("/limit").await;
-    let marked = row(&mut harness, "context:look");
+    let marked = row(&mut harness, "context:read");
     assert!(
         !marked.contains("not offered"),
         "the tool is installed now: {marked}"

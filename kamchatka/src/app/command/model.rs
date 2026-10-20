@@ -334,7 +334,7 @@ impl App {
     /// Nothing is lost either way: the whole of a shortened result is excluded beside the copy the
     /// model was shown, and one keystroke on the context tab sends it instead.
     ///
-    /// note: a row is a **subject** - `fs:read`, `context:look` - which is the same string the
+    /// note: a row is a **subject** - `fs:read`, `context:read` - which is the same string the
     /// permissions tab is keyed on, so a person who has read one table can read the other and
     /// `--auto-allow fs:read` and `/limit fs:read` name the same thing. A tool id is not enough
     /// once one tool does things of different sizes.

@@ -131,10 +131,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         allow: [
             Capability::fs("read"),
             Capability::exec("run"),
-            kamchatka::tools::domains::context("look"),
+            kamchatka::tools::domains::context("read"),
             kamchatka::tools::domains::log("read"),
-            kamchatka::tools::domains::setup("permissions"),
-            kamchatka::tools::domains::context("elide"),
+            kamchatka::tools::domains::setup("read"),
+            kamchatka::tools::domains::context("trim"),
         ]
         .into_iter()
         .map(Subject::Capability)
