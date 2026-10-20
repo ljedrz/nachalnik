@@ -117,7 +117,12 @@ pub struct ReportItem {
     pub id: ContextId,
     /// The item's label.
     pub label: String,
-    /// What it was costing.
+    /// The item's size, its [`ContextItem::tokens`]: what it costs when sent whole.
+    ///
+    /// note: not always what it was costing. An item already elided was costing only its marker, so
+    /// the row of one that was then removed is more than removing it saved.
+    /// [`CompactionReport::tokens_before`] and [`CompactionReport::tokens_after`] say what the
+    /// pass saved.
     pub tokens: usize,
 }
 
