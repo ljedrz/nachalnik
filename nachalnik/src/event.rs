@@ -568,6 +568,13 @@ pub enum Event {
 }
 
 impl Event {
+    /// Whether this is a fragment of something still arriving rather than a thing that happened:
+    /// [`Event::ModelDelta`] and [`Event::ToolOutput`], which the log keeps only under
+    /// [`Config::record_progress`](crate::Config::record_progress).
+    pub fn is_progress(&self) -> bool {
+        matches!(self, Self::ModelDelta { .. } | Self::ToolOutput { .. })
+    }
+
     /// Returns the event's dotted name, e.g. `model.requested`.
     pub fn name(&self) -> &'static str {
         match self {
