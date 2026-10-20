@@ -12,10 +12,8 @@
 //! is the record beside it. [`Setup`] is what the session runs with. [`Fork`] is a copy of this
 //! session.
 //!
-//! note: reading and changing are one tool because [`nachalnik::Tool::needs`] lets a call declare
-//! its subject, so `context:look` and `context:revise` are separate rows on the permissions tab
-//! either way. [`Fork`] is its own tool: neither a reading nor a change, but a second session and a
-//! cost.
+//! note: reading and changing are one tool, for the reason the `context` module gives. [`Fork`] is
+//! its own tool: neither a reading nor a change, but a second session and a cost.
 //!
 //! note: each is also separately revocable, by design. A session can take back the agent's ability
 //! to check the record halfway through, and how a model behaves then is worth watching.
