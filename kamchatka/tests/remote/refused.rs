@@ -145,6 +145,8 @@ async fn a_session_will_not_listen_where_anybody_could_reach_it() {
         "tcp:10.0.0.1:7878",
         "tcp:0.0.0.0:0",
         "tcp:[::]:0",
+        "tcp:[::ffff:192.168.1.5]:7878",
+        "tcp:[::ffff:0.0.0.0]:0",
     ] {
         let Err(refused) = Server::bind(address).await else {
             panic!("it bound {address}");
@@ -156,6 +158,17 @@ async fn a_session_will_not_listen_where_anybody_could_reach_it() {
         assert!(
             refused.contains("ssh -L"),
             "{address}: it refused without a way out"
+        );
+    }
+}
+
+/// The loopback interface spelled as an IPv4-mapped address is loopback, as `--web` reads it.
+#[tokio::test]
+async fn a_mapped_loopback_address_is_loopback() {
+    if let Err(refused) = Server::bind("tcp:[::ffff:127.0.0.1]:0").await {
+        assert!(
+            !refused.contains("not a loopback address"),
+            "it took the loopback interface for another: {refused}"
         );
     }
 }
