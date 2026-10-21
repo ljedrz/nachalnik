@@ -254,8 +254,14 @@ impl Projector for LinearProjector {
         match (self.send_blocks, self.send_reasoning) {
             (false, true) => concat!(module_path!(), "::LinearProjector"),
             (true, true) => concat!(module_path!(), "::LinearProjector (blocks)"),
-            (false, false) => concat!(module_path!(), "::LinearProjector (reasoning not sent back)"),
-            (true, false) => concat!(module_path!(), "::LinearProjector (blocks, reasoning not sent back)"),
+            (false, false) => concat!(
+                module_path!(),
+                "::LinearProjector (reasoning not sent back)"
+            ),
+            (true, false) => concat!(
+                module_path!(),
+                "::LinearProjector (blocks, reasoning not sent back)"
+            ),
         }
     }
 }
