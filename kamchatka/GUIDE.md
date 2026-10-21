@@ -258,19 +258,23 @@ a tool's actions it uses, so actions with the same effect are one decision:
 `context:note` and `context:revise` together. A refused `fs:write` also makes the working directory
 and the `--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell`
 reading, since a shell that can't read its working directory can do almost nothing; refuse
-`exec:run` to keep commands away from the files. A **path rule** is more specific than either:
-`fs:read: allow` is a reasonable thing to want, `fs:read .env: allow` is not. It applies to every
-tool given a path: `grep` and `glob` can't ask, so they skip files a rule doesn't allow and say how
+`exec:run` to keep commands away from the files. A **path rule** is about the file a call is given,
+not about what the call does: with `fs:read` allowed, the default `.env*` rule still asks before
+`.env` is read. It applies to every tool given a path: `grep` and `glob` can't ask, so they skip files a rule doesn't allow and say how
 many, and a symlink to such a file is refused and named. A **server** rule is about which MCP server
 a tool came from rather than what it does, which is the one thing about an MCP tool you don't have
 to take the server's word for.
 
-The most specific rule with an answer decides, but a refusal at a broader level always wins.
-`--auto-allow context` allows everything in `context`; `--auto-allow context:note` allows notes and
-says nothing about the rest; `--auto-allow context --auto-deny context:revise` allows everything
-except that one. A more specific rule cannot overrule a refusal: a denied domain stays denied,
-however specifically an operation in it is allowed, because the strictest matching rule wins and
-`--auto-deny` always takes precedence. `net:reach` is declared by no tool: where the network is
+Two rules decide a call. **Within a domain**, an answer for an operation counts over an answer for
+the whole domain: `--auto-allow context` allows everything in `context`; `--auto-allow
+context:note` allows notes and says nothing about the rest; `--auto-allow context --auto-deny
+context:revise` allows everything except that one. A deny wins at either level, so `--auto-deny
+context --auto-allow context:read` still refuses `look`. **Across rules**, a call is judged by its
+operation, by every path rule that matches the path it was given, and by the server it came from,
+and the strictest answer wins: deny over ask, and ask over allow. So allowing a path rule does not
+let a file through while its operation still asks: `--auto-allow '*.rs'` on its own still asks
+before reading `main.rs`. What allowing a path rule can do is lift a question that another path
+rule asks, such as `.env*`. `net:reach` is declared by no tool: where the network is
 gated, a command is asked about when it opens an internet socket; where it is not, it is judged by
 the command's name.
 
