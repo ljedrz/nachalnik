@@ -92,6 +92,8 @@ minor bump may break you.
   unix socket by its process ID. A browser tab shows the `--web` relay's connection, not the
   browser's address. The lines no longer say that one client is served at a time or that the
   session carries on, since RUNNING.md says both.
+- **The date on the trace tab is a rule across the whole pane**, `──── 2026-10-21 ─────…`. It was
+  a short line starting at the left edge, which looked like a row that had lost its columns.
 - **The guide lists every domain and its operations, and how a rule is spelled**: a whole domain,
   one operation, a path rule, or a server, which has settings of its own.
 
