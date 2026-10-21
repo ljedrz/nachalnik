@@ -383,6 +383,7 @@ fn attaching(since: Option<u64>, session: Option<&str>) -> Command {
         since,
         session: session.map(str::to_owned),
         version: Some(protocol::VERSION),
+        relaying: None,
     }
 }
 

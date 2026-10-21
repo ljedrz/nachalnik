@@ -344,6 +344,7 @@ async fn a_client_from_a_later_version_is_refused_and_one_that_says_nothing_is_n
             since: None,
             session: None,
             version: Some(protocol::VERSION + 1),
+            relaying: None,
         })
         .await;
     let Message::Failed { about, error } = ahead.recv().await else {
@@ -448,6 +449,59 @@ async fn the_trace_says_once_when_the_session_changes_hands() {
             line: "/quit".to_owned(),
         })
         .await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A relay is named on the trace by the browser it relays for, and only a relay is: a client that
+/// sends the same field is named by the address the session sees.
+///
+/// note: the session believes the field from a connection out of its own process, which is what
+/// the `--web` relay is, and what this test is over a socket file. Over a port it believes only
+/// connections the relay has listed, and this test's are not.
+#[tokio::test]
+async fn a_relay_is_named_by_the_browser_it_relays_for_and_nobody_else_is() {
+    use crate::{Peer, served_over_a_socket};
+
+    let relaying = || Command::Attach {
+        since: None,
+        session: None,
+        version: Some(protocol::VERSION),
+        relaying: Some("192.0.2.7:51234".to_owned()),
+    };
+    // the first attach is on the trace that the next client's projection carries
+    let said = |attached: &protocol::Attached| -> Vec<String> {
+        attached
+            .trace
+            .iter()
+            .filter(|line| line.name == "client.attached")
+            .map(|line| line.detail.clone())
+            .collect()
+    };
+
+    let session = served_over_a_socket("client-relaying", Vec::new(), |_| {}).await;
+    let mut relay = crate::Socket::connect(&session.at).await;
+    relay.send(relaying()).await;
+    while !matches!(relay.recv().await, Message::Attached(_)) {}
+    let (mut next, attached) = attached(&session.at).await;
+    assert_eq!(said(&attached), ["192.0.2.7:51234 through the web page"]);
+    next.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+
+    let session = served(vec![], |_| {}).await;
+    let mut pretender = Peer::connect(&session.at).await;
+    pretender.send(relaying()).await;
+    while !matches!(pretender.recv().await, Message::Attached(_)) {}
+    let (next, attached) = Peer::attached(&session.at).await;
+    let named = said(&attached);
+    assert!(
+        named.len() == 1 && named[0].starts_with("127.0.0.1:"),
+        "{named:?}"
+    );
+    drop((pretender, next));
+    quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
 }
 

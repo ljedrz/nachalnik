@@ -7,6 +7,20 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Command::Attach` has a new field, `relaying`**, so code that builds one must set it: `None`
+  for anything but a relay. On the wire the field is optional, so older clients and sessions still
+  talk to newer ones.
+
+### added
+
+- **The trace names a browser tab by the browser's address**: "192.168.1.7:51234 through the web
+  page". The session sees only the `--web` relay's own connection, so the relay sends the browser's
+  address in the attach, as `relaying`. The session believes it only from its own relay, which it
+  recognises by the connection. From any other client the field is ignored, and the client is named
+  by the address the session sees.
+
 ### fixed
 
 - **A note or revision left out of a fork with `without` is left out of the call that wrote it.**
@@ -89,8 +103,7 @@ minor bump may break you.
   is one line, "127.0.0.1:53422, by 127.0.0.1:53430". `client.attached` is said only when nobody had
   the session, and `client.left` only when the client that had it goes. A connection that never
   attaches is not on the trace. A TCP client is named by its address and port, and a client on a
-  unix socket by its process ID. A browser tab shows the `--web` relay's connection, not the
-  browser's address. The lines no longer say that one client is served at a time or that the
+  unix socket by its process ID. The lines no longer say that one client is served at a time or that the
   session carries on, since RUNNING.md says both.
 - **The date on the trace tab is a rule across the whole pane**, `──── 2026-10-21 ─────…`. It was
   a short line starting at the left edge, which looked like a row that had lost its columns.

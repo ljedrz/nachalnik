@@ -342,6 +342,7 @@ async fn watermark<W: AsyncWrite + Unpin>(
         since,
         session,
         version,
+        relaying,
     } = attach
     else {
         return Err("that is not an attach".to_owned().into());
@@ -368,6 +369,7 @@ async fn watermark<W: AsyncWrite + Unpin>(
                 since: None,
                 session: None,
                 version: None,
+                relaying,
             },
         )
         .await?;
@@ -444,6 +446,7 @@ async fn watermark<W: AsyncWrite + Unpin>(
             since: Some(since),
             session: None,
             version: None,
+            relaying,
         },
     )
     .await
