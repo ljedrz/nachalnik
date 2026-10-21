@@ -82,13 +82,16 @@ minor bump may break you.
   operations, `context:move, context:note, ...`, while `fs:read` listed actions, `fs: read, glob,
   grep`. Now `context` lists `context: look, budget, ...`. A tool with one action is shown by its
   name: `log` for `log`, and `shell` for `exec:run`, which showed `exec:run` a second time.
-- **The trace names a client by where it came from.** `client.replaced` said "client 1, by client
-  2; one client at a time is served", and nothing said what the numbers counted. It now says
-  "127.0.0.1:53422, by 127.0.0.1:53430", and `client.attached` and `client.left` name clients the
-  same way. A TCP client is named by its address and port, and a client on a unix socket by its
-  process ID. A browser tab shows the `--web` relay's connection, not the browser's address.
-  `client.replaced` no longer says that one client is served at a time, and `client.left` no longer
-  says that the session carries on: RUNNING.md says both.
+- **The trace says once when the session changes hands, and names a client by where it came
+  from.** One client taking over from another was three lines: `client.attached` for the new one,
+  `client.replaced` saying "client 1, by client 2; one client at a time is served", and
+  `client.left` when the old one's connection closed. Nothing said what the numbers counted. Now it
+  is one line, "127.0.0.1:53422, by 127.0.0.1:53430". `client.attached` is said only when nobody had
+  the session, and `client.left` only when the client that had it goes. A connection that never
+  attaches is not on the trace. A TCP client is named by its address and port, and a client on a
+  unix socket by its process ID. A browser tab shows the `--web` relay's connection, not the
+  browser's address. The lines no longer say that one client is served at a time or that the
+  session carries on, since RUNNING.md says both.
 - **The guide lists every domain and its operations, and how a rule is spelled**: a whole domain,
   one operation, a path rule, or a server, which has settings of its own.
 

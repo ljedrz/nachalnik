@@ -128,27 +128,6 @@ async fn attaching_answers_with_a_projection_and_then_the_records() {
             .any(|line| line.text == "what is 2+2"),
         "the conversation did not carry the item"
     );
-    // note: the session says when somebody attaches, and says it on the *trace*, which is where a
-    // thing that happens once a second belongs. It was in the conversation and that is what a
-    // browser reconnecting on a flaky link filled with arrivals: the chat is the context and the
-    // trace is the ring. What matters is that a session two people can type into still says so
-    // somewhere both of them can read, which every projection carries
-    assert!(
-        !attached
-            .conversation
-            .iter()
-            .any(|line| line.text.contains("127.0.0.1:")),
-        "an arrival is not part of the conversation: {:?}",
-        attached.conversation
-    );
-    assert!(
-        attached
-            .trace
-            .iter()
-            .any(|line| line.name == "client.attached" && line.detail.starts_with("127.0.0.1:")),
-        "the session did not say a client had arrived: {:?}",
-        attached.trace
-    );
     assert_eq!(attached.items.len(), 1);
     assert!(
         attached.seq > 0,
@@ -411,31 +390,33 @@ async fn a_command_before_attaching_is_refused() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// The trace names each client by where it came from, and a client that takes the session from
-/// another is named with both.
+/// The trace says when the session changes hands, once each time, naming each client by where it
+/// came from.
 ///
 /// note: over a socket file, where a client is the process at the other end, so every one is this
-/// test's own. The line about the second taking the session from the first is written as it is
-/// seated, after its projection was taken, so a third client is the one that reads it.
+/// test's own. A client is seated after its projection is taken, so a third client is the one that
+/// reads the first two lines.
+///
+/// note: the whole list, so that a handover said twice fails: the first client is let go when the
+/// second attaches and its connection closes, and that is not a line of its own. Nor is a
+/// connection that never attaches.
+///
+/// note: on the trace and not in the conversation, which a browser reconnecting once a second
+/// would fill with arrivals.
 #[tokio::test]
-async fn the_trace_says_where_each_client_came_from() {
-    use crate::{Socket, served_over_a_socket};
+async fn the_trace_says_once_when_the_session_changes_hands() {
+    use crate::served_over_a_socket;
 
-    async fn attached(at: &str) -> (Socket, Box<protocol::Attached>) {
-        let mut socket = Socket::connect(at).await;
-        socket.send(attaching(None, None)).await;
-        loop {
-            if let Message::Attached(attached) = socket.recv().await {
-                break (socket, attached);
-            }
-        }
-    }
-
-    let session = served_over_a_socket("client-from", Vec::new(), |_| {}).await;
+    let session = served_over_a_socket("client-hands", Vec::new(), |_| {}).await;
     let pid = std::process::id();
 
+    let idle = crate::Socket::connect(&session.at).await;
     let (first, _) = attached(&session.at).await;
     let (second, _) = attached(&session.at).await;
+    // the first is let go as the second is seated; waited for, so its leaving is in the trace
+    // the third reads if it is said at all
+    let mut first = first;
+    while first.next().await.is_some() {}
     let (mut third, attached) = attached(&session.at).await;
 
     let said: Vec<(&str, &str)> = attached
@@ -444,19 +425,77 @@ async fn the_trace_says_where_each_client_came_from() {
         .filter(|line| line.name.starts_with("client."))
         .map(|line| (line.name.as_str(), line.detail.as_str()))
         .collect();
-    let named = format!("pid {pid}");
-    let replaced = format!("pid {pid}, by pid {pid}");
+    let (named, replaced) = (format!("pid {pid}"), format!("pid {pid}, by pid {pid}"));
+    assert_eq!(
+        said,
+        [
+            ("client.attached", named.as_str()),
+            ("client.replaced", replaced.as_str())
+        ]
+    );
     assert!(
-        said.contains(&("client.attached", &named))
-            && said.contains(&("client.replaced", &replaced)),
-        "{said:?}"
+        !attached
+            .conversation
+            .iter()
+            .any(|line| line.text.contains(&named)),
+        "a client is not part of the conversation: {:?}",
+        attached.conversation
     );
 
-    drop((first, second));
+    drop((idle, second));
     third
         .send(Command::Submit {
             line: "/quit".to_owned(),
         })
         .await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A client that has the session says on the trace when it goes, so nobody has it.
+#[tokio::test]
+async fn the_trace_says_when_the_client_with_the_session_goes() {
+    use crate::served_over_a_socket;
+
+    let session = served_over_a_socket("client-goes", Vec::new(), |_| {}).await;
+    let named = format!("pid {}", std::process::id());
+
+    let (first, _) = attached(&session.at).await;
+    drop(first);
+    // the session hears of it on its own time, so the next client may have to look again
+    let said = loop {
+        let (mut next, attached) = attached(&session.at).await;
+        let said: Vec<(String, String)> = attached
+            .trace
+            .iter()
+            .filter(|line| line.name.starts_with("client."))
+            .map(|line| (line.name.clone(), line.detail.clone()))
+            .collect();
+        if said.iter().any(|(name, _)| name == "client.left") {
+            next.send(Command::Submit {
+                line: "/quit".to_owned(),
+            })
+            .await;
+            break said;
+        }
+    };
+
+    // the last line, since a client that looked too early took the session rather than finding it
+    // empty, and its own leaving is the one said
+    assert_eq!(
+        said.first(),
+        Some(&("client.attached".to_owned(), named.clone()))
+    );
+    assert_eq!(said.last(), Some(&("client.left".to_owned(), named)));
+    session.ended().await.1.expect("the session failed");
+}
+
+/// Attaches over a socket file, and hands back the projection.
+async fn attached(at: &str) -> (crate::Socket, Box<protocol::Attached>) {
+    let mut socket = crate::Socket::connect(at).await;
+    socket.send(attaching(None, None)).await;
+    loop {
+        if let Message::Attached(attached) = socket.recv().await {
+            break (socket, attached);
+        }
+    }
 }
