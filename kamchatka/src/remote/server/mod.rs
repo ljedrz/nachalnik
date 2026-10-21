@@ -32,7 +32,7 @@ use tokio::{
 };
 
 use crate::{
-    app::{App, NOTICES, Outcome, Overlay, Speaker, text},
+    app::{App, NOTICES, Outcome, Overlay, Speaker},
     remote::protocol::{
         self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
         Unjudged,
@@ -1394,38 +1394,23 @@ fn project(app: &App) -> Attached {
     attached
 }
 
-/// The trace as the pane draws it, with the gap between lines worked out the pane's way.
+/// The trace as the pane draws it.
 ///
 /// note: the whole ring rather than what a search left, because `App::traced` answers for a screen
 /// with a query typed into it. A client's view is its own; a filter is the client's to apply.
 ///
-/// note: the gap is computed here rather than sent as two timestamps, because the rule for when
-/// there is one is a decision, not a format: nothing under a tenth of a second, and nothing after a
-/// line that ended a wait for a person. However long somebody took to answer a question, that is
-/// not a step this program spent. A client left to work that out would see a column whose largest
-/// figure is how long the operator was thinking.
 fn tracing(app: &App) -> Vec<Tracing> {
-    let mut before = None;
     app.trace
         .iter()
-        .map(|event| {
-            let gap = match before.replace(event.at) {
-                Some(previous) if !event.after_a_person => {
-                    text::waited_since(event.at.saturating_duration_since(previous))
-                }
-                _ => None,
-            };
-
-            Tracing {
-                name: event.name.clone(),
-                detail: event.detail.clone(),
-                gap,
-                at: event
-                    .wall
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|since| since.as_millis() as u64)
-                    .unwrap_or(0),
-            }
+        .map(|event| Tracing {
+            name: event.name.clone(),
+            detail: event.detail.clone(),
+            gap: None,
+            at: event
+                .wall
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_millis() as u64)
+                .unwrap_or(0),
         })
         .collect()
 }
@@ -1568,76 +1553,6 @@ mod tests {
 
         // and a whole rest past the retry with nothing failing is the end of it
         assert!(run_is_over(resting, at(2_000)));
-    }
-
-    /// The gap column shows where the program spent time, not where a person did.
-    ///
-    /// note: this is the client reading it, not a pane drawing it. A client given two timestamps
-    /// works out the rule itself and gets a column whose largest figure is the operator reading.
-    /// Both halves of the guard are in one trace because either alone is satisfied by a gap column
-    /// that is always empty.
-    #[test]
-    fn the_gap_column_leaves_out_the_wait_that_was_a_person() {
-        use crate::app::Traced;
-        use std::time::{Duration, Instant, SystemTime};
-
-        let (outcomes, _finished) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(
-            nachalnik::Kernel::new(nachalnik::Config::default()),
-            Arc::new(crate::tools::Careful::new()),
-            Arc::new(nachalnik_providers::OpenAiCompatible::new(
-                "no",
-                "http://127.0.0.1:1",
-                "",
-            )),
-            crate::tools::Limits::new(),
-            outcomes,
-        );
-        let start = Instant::now();
-        let wall = SystemTime::now();
-
-        // four seconds of somebody reading a question and a quarter of a second of the program are
-        // both longer than the tenth of a second the column reports, so the only difference is
-        // whose wait they were
-        for (name, after, theirs) in [
-            ("permission.requested", 0, false),
-            ("permission.decided", 4_000, true),
-            ("tool.started", 4_010, false),
-            ("tool.finished", 4_260, false),
-        ] {
-            app.trace.push_back(Traced {
-                name: name.to_owned(),
-                detail: "shell".to_owned(),
-                at: start + Duration::from_millis(after),
-                wall: wall + Duration::from_millis(after),
-                after_a_person: theirs,
-            });
-        }
-
-        let lines = tracing(&app);
-        let gap_of = |name: &str| {
-            lines
-                .iter()
-                .find(|line| line.name == name)
-                .map(|line| line.gap.clone())
-        };
-
-        // the four seconds somebody spent is on no line at all
-        let decided = gap_of("permission.decided");
-        assert_eq!(
-            decided,
-            Some(None),
-            "how long a person took went out as a gap: {lines:?}"
-        );
-
-        // and the quarter of a second the program spent is, on the line it ended on
-        assert_eq!(
-            gap_of("tool.finished")
-                .as_ref()
-                .and_then(|gap| gap.as_deref()),
-            Some("+250ms"),
-            "a wait the program spent went out as no gap: {lines:?}"
-        );
     }
 
     /// The first `ctrl+c` stops what is running and does not leave; the second one leaves at once.

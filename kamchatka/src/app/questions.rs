@@ -89,9 +89,6 @@ impl App {
                     .record_rule(subject.to_string(), Verdict::Allow, Some(id), false);
             }
         }
-        // the other thing a session waits on somebody for. Whatever the question cost in wall time
-        // was spent reading it, and `permission.decided` is the line it lands on
-        self.acted = true;
         self.answer(&request, grant)?;
         if remember {
             for waiting in self.kernel.pending_permissions() {
@@ -156,7 +153,6 @@ impl App {
             None,
             !remember,
         );
-        self.acted = true;
 
         Ok(())
     }

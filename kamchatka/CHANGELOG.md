@@ -97,6 +97,15 @@ minor bump may break you.
 - **The guide lists every domain and its operations, and how a rule is spelled**: a whole domain,
   one operation, a path rule, or a server, which has settings of its own.
 
+### removed
+
+- **The trace no longer shows how long after the line above each line arrived**, on the trace tab
+  or the web page. The line above was often not the wait anybody was asking about: a client
+  replaced, or a question somebody sat reading. Each line still says when it happened, and the
+  difference between two of those is the time between them. `Tracing::gap` is always `None` now,
+  and `Traced::after_a_person` is always `false`. Both stay, with `Traced::at`, until a release
+  that breaks the API anyway.
+
 ## [0.22.0] - 2026-10-21
 
 ### breaking

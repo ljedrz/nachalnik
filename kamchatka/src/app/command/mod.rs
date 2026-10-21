@@ -82,9 +82,6 @@ impl App {
 
             return self.replied(Did::Queued, from, pages);
         }
-        // whatever this line turns into, the time before it was somebody deciding what to type.
-        // The next line the trace draws is the one that gap belongs to
-        self.acted = true;
         // and it is the line `up` puts back, whatever it turns out to be. Kept here rather than
         // read off the newest user item, because they are not the same thing: a command never
         // becomes an item, and an item can be rewritten afterwards. The item answers "what does the

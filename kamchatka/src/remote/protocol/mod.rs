@@ -742,11 +742,6 @@ impl Line {
 /// `CompactionReport`; the trace line says what that pass took and what it left, in this program's
 /// words, because a reader wants the sentence and not the structure. A client that rendered the
 /// records itself would write a second vocabulary for the same events.
-///
-/// note: the gap rather than two timestamps. It is `app::text::waited_since`, the formatter the
-/// pane uses, so the column reads the same in a browser as in a terminal. It is `None` under a
-/// tenth of a second, and `None` after a line that ended a wait for a *person*: however long
-/// somebody took to answer a question, it is not a step this program spent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Tracing {
@@ -754,14 +749,17 @@ pub struct Tracing {
     pub name: String,
     /// The rest of it.
     pub detail: String,
-    /// How long after the line above this one arrived, where that is worth saying.
+    /// Always `None`. It was how long after the line above this one arrived, and the trace no
+    /// longer says that: the line above was often not the wait anybody was asking about.
+    ///
+    /// note: kept so that removing it waits for a release that breaks the API anyway. A client that
+    /// wants the time between two lines has `at` on both.
     pub gap: Option<String>,
     /// When it arrived, in milliseconds since the Unix epoch.
     ///
-    /// note: the wall clock rather than the monotonic one, because this is the half a reader
-    /// matches against a server log or their own memory, and an `Instant` has no rendering as a
-    /// time of day. The gap above is the other half, worked out from the monotonic clock, which a
-    /// system clock being set cannot drag backwards.
+    /// note: the wall clock rather than the monotonic one, because this is what a reader matches
+    /// against a server log or their own memory, and an `Instant` has no rendering as a time of
+    /// day.
     pub at: u64,
 }
 

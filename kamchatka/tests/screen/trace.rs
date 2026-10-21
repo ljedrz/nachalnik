@@ -4,7 +4,7 @@
 //! events under the same names, in the order they were applied, with nothing invented and nothing
 //! a chatty tool can push off the end.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use crossterm::event::KeyCode;
 use kamchatka::app::Tab;
@@ -293,7 +293,7 @@ async fn every_event_the_session_recorded_is_on_the_trace_tab() {
 }
 
 #[tokio::test]
-async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
+async fn the_trace_says_what_each_event_carries() {
     let mut harness = Harness::new([
         ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
         ModelResponse::text("a bone"),
@@ -340,23 +340,10 @@ async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
         );
     }
     assert!(read > 0, "no event names on the trace: {screen}");
-
-    // the gap column: blank for the frame-to-frame majority, and there for the few that waited
-    harness.tab(Tab::Trace);
-    let last = harness.app.trace.len() - 1;
-    harness.app.trace[last].at = std::time::Instant::now()
-        .checked_add(Duration::from_secs(4))
-        .expect("a clock");
-    let screen = harness.sized(110, 30);
-    assert!(screen.contains("+4.0s"), "{screen}");
-
-    // and a window with no room for it spends its columns on what happened instead
-    let narrow = harness.sized(46, 30);
-    assert!(!narrow.contains("+4.0s"), "{narrow}");
 }
 
 #[tokio::test]
-async fn every_line_says_when_it_happened_and_not_only_how_long_it_took() {
+async fn every_line_says_when_it_happened() {
     /// `HH:MM:SS` anywhere in a line - the pane is drawn inside a border, so it does not start
     /// in the first column.
     fn stamped(line: &str) -> bool {
@@ -374,8 +361,7 @@ async fn every_line_says_when_it_happened_and_not_only_how_long_it_took() {
     harness.settle().await;
     harness.tab(Tab::Trace);
 
-    // wide enough for both columns: the time of day answers "when", the gap answers "which step
-    // was slow", and neither can be got from the other
+    // wide enough for the clock
     let screen = harness.sized(120, 30);
     // a line naming an event, `model.requested` and the like
     let names_an_event = |line: &str| {
@@ -412,8 +398,8 @@ async fn every_line_says_when_it_happened_and_not_only_how_long_it_took() {
 /// note: the one pane whose promise is that a detail wraps rather than being cut, so the hang is
 /// what makes a wrapped detail readable: the second row of a detail has to come back to where
 /// the first one began, or the pane is a paragraph of prose with a couple of words of name
-/// against its left. The columns in front are the clock and the gap; the width of those is what
-/// is being asserted, and it is what a pane that puts one under and not the other gets wrong.
+/// against its left. The column in front is the clock; its width is what is being asserted, and it
+/// is what a pane that puts the clock in front of one row and not the other gets wrong.
 #[tokio::test]
 async fn a_detail_that_wraps_hangs_under_the_column_its_name_is_in() {
     use std::time::{Instant, SystemTime};
@@ -447,9 +433,13 @@ async fn a_detail_that_wraps_hangs_under_the_column_its_name_is_in() {
         line[..line.find(needle).unwrap()].chars().count()
     };
 
-    // `mike` is the first word of the continuation, so where it is is where that row begins. It
-    // has to be a row of its own for any of this to be about hanging
-    let hanging = screen.lines().filter(|line| line.contains("mike")).count() == 1
+    // `november` is the first word of the continuation, so where it is is where that row begins.
+    // It has to be a row of its own for any of this to be about hanging
+    let hanging = screen
+        .lines()
+        .filter(|line| line.contains("november"))
+        .count()
+        == 1
         && screen.lines().any(|line| line.contains("oscar"));
     assert!(
         hanging,
@@ -457,7 +447,7 @@ async fn a_detail_that_wraps_hangs_under_the_column_its_name_is_in() {
     );
     assert_eq!(
         column("X0"),
-        column("mike"),
+        column("november"),
         "the continuation hangs where the detail began: {screen}"
     );
     // ... and that is out past the name's column, so a detail can never be read as part of the
@@ -617,74 +607,6 @@ async fn the_trace_pages_a_window_at_a_time_and_end_returns_to_the_newest_line()
              that arrived"
         );
     }
-}
-
-/// The gap column answers "which step was slow", and a session spends most of its wall time in
-/// two places where nothing is stepping: a question nobody has answered yet, and the wait for the
-/// next message. `+11.0s permission.decided` is a person reading, and it was the biggest figure
-/// in the column - so the one number nobody should act on was the one the eye went to first.
-#[tokio::test]
-async fn the_gap_column_says_nothing_about_how_long_a_person_took() {
-    use std::time::{Duration, Instant, SystemTime};
-
-    use kamchatka::app::Traced;
-
-    let mut harness = Harness::new([ModelResponse::text("done")]);
-
-    // eleven seconds of somebody reading a question, and then four of the program doing the thing
-    // they allowed. Both are real waits; only one of them is a step
-    let start = Instant::now();
-    let wall = SystemTime::now();
-    harness.app.trace.clear();
-    for (name, after, theirs) in [
-        ("permission.requested", 0, false),
-        ("permission.decided", 11_000, true),
-        ("tool.started", 11_010, false),
-        ("tool.finished", 15_010, false),
-    ] {
-        harness.app.trace.push_back(Traced {
-            name: name.to_owned(),
-            detail: "shell".to_owned(),
-            at: start + Duration::from_millis(after),
-            wall: wall + Duration::from_millis(after),
-            after_a_person: theirs,
-        });
-    }
-
-    harness.tab(Tab::Trace);
-    let screen = harness.sized(120, 30);
-
-    // the eleven seconds somebody spent deciding is drawn nowhere
-    assert!(
-        !screen.contains("11.0s"),
-        "how long a person took is not a step: {screen}"
-    );
-
-    // and the four the tool spent is drawn, on the line it belongs to
-    let gapped: Vec<&str> = screen
-        .lines()
-        .filter(|line| line.contains("+4.0s"))
-        .collect();
-    assert_eq!(
-        gapped.len(),
-        1,
-        "the program's wait is still drawn: {screen}"
-    );
-    assert!(
-        gapped[0].contains("tool.finished"),
-        "beside the line it ended on: {screen}"
-    );
-
-    // the clock stays on the answered question, because *when* it was answered is a real question
-    // - it is only *how long* that is nobody's business
-    let decided = screen
-        .lines()
-        .find(|line| line.contains("permission.decided"))
-        .unwrap_or_else(|| panic!("the line is drawn: {screen}"));
-    assert!(
-        decided.chars().filter(|c| *c == ':').count() >= 2,
-        "the wall clock stays: {decided}"
-    );
 }
 
 /// A switch of model says the address beside each name, and only where the two differ by it.

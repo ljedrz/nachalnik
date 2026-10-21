@@ -134,34 +134,22 @@ pub struct Traced {
     pub detail: String,
     /// When it arrived, on a clock that only goes forwards.
     ///
-    /// note: without a clock, a log cannot say which step was slow. Kept as an `Instant` rather
-    /// than a rendered string because the pane shows the gap to the line above, which is not a
-    /// property of either line alone, and because an `Instant` cannot be dragged backwards by the
-    /// system clock, which a duration from wall time can be.
+    /// note: nothing here reads it since the pane stopped showing the time since the line above.
+    /// Kept so that removing it waits for a release that breaks the API anyway.
     pub at: Instant,
     /// When it arrived, on the clock a person reads.
     ///
-    /// note: both, because they answer different questions. `at` says how long a step took; this
-    /// says when it happened, which is what somebody matching the pane against a server log, a
-    /// ticket or their own memory needs. An `Instant` is opaque and has no rendering as a time of
-    /// day.
+    /// note: what somebody matching the pane against a server log, a ticket or their own memory
+    /// needs. An `Instant` is opaque and has no rendering as a time of day.
     ///
     /// note: a `SystemTime` rather than something already formatted, so that nothing in `app` has
     /// to know about time zones or column widths. Turning it into digits is the screen's job, and
     /// the screen is the only thing that has a width.
     pub wall: SystemTime,
-    /// Whether the time before this line was somebody thinking rather than the program working.
+    /// Always `false`. It marked the line whose gap to the one above was a person thinking rather
+    /// than the program working, and the pane no longer shows gaps.
     ///
-    /// note: the pane draws no gap where this is set, however long the gap was. The column exists
-    /// to answer *which step was slow*, and a session spends most of its wall time in two places
-    /// where nothing is stepping: a permission question nobody has answered yet, and the wait
-    /// between one turn and the next message. The gap beside `permission.decided` is a person
-    /// reading the question, not the runtime working, and it is usually the largest figure in the
-    /// column, which would draw the eye to the one number nobody should act on.
-    ///
-    /// note: set on the line that ends the wait rather than the one that begins it, because the gap
-    /// belongs to the line it is drawn beside. `App::trace` takes it, so it marks exactly one line:
-    /// the first thing that happens after somebody acts.
+    /// note: kept so that removing it waits for a release that breaks the API anyway.
     pub after_a_person: bool,
 }
 
@@ -492,18 +480,6 @@ pub struct App {
     /// later failures with the same words, so a model with one canned refusal would fail silently
     /// from its second refusal on.
     failed: Option<String>,
-    /// Whether a person has just done something the trace has not drawn a line for yet.
-    ///
-    /// note: private, and set at the two places a person comes through: `submit`, where a line is
-    /// handed in, and the answer to a permission question. [`Traced::after_a_person`] is what it
-    /// becomes, and `App::trace` takes it, so it marks the one line whose gap is somebody's
-    /// thinking rather than the program's working.
-    ///
-    /// note: set where the program learns a person acted, not where the waiting begins. A question
-    /// opens, `state.changed`, a recount, and the question itself all arrive at once, so a flag set
-    /// at the opening would be spent on one of those and the person's wait would still be drawn
-    /// beside `permission.decided`.
-    acted: bool,
     /// Whether it is time to leave.
     pub quit: bool,
     /// Whether the session is to be written out and started again from nothing.
@@ -811,7 +787,6 @@ impl App {
             tab: Tab::Chat,
             trace_scroll: 0,
             busy: false,
-            acted: false,
             quit: false,
             restart: false,
             clipboard: None,
