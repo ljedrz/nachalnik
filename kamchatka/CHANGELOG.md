@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- **`setup` with `model` names who wrote a resumed session's inherited turns, where the record that
+  came with the snapshot says.** It said "nothing in a turn records which" either way, while the
+  carried `log` named the model for each of them. It now says which model wrote which items, and
+  whether that is the model running now; without a carried record it says no record came with the
+  snapshot.
+- **`session.finished` reads "the session ended; anything after this is a resume of it"** in the
+  trace and the `log` tool. It said "nothing more will be recorded", which the next record of a
+  resumed session's log contradicted.
 - **A call refused because nobody is here to answer says the refusal lasts the run.** It said "this
   run refuses it", and the runtime went on to call that "a standing rule", though the rule only
   asks. It now says the run refuses this call and every other call that rule asks about for as
