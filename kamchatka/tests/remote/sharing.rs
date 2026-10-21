@@ -288,13 +288,14 @@ async fn a_retry_reaches_a_client_before_the_answer_it_held_up() {
     quit(&at).await;
 }
 
-/// A client's `/copy` is said not to have been copied, rather than said to have gone to a clipboard
-/// nothing hands it to.
+/// A client's `/copy` sends the text back to that client, for its own clipboard, rather than to the
+/// session's terminal.
 ///
-/// note: the served loop has no terminal of the client's to write the sequence to, and nothing in
-/// it took the text, so the client read `to the clipboard` and found nothing in its paste.
+/// note: the served loop has no terminal of the client's to write the sequence to. It said the
+/// text went to the clipboard, and the client found nothing in its paste; then it said the text was
+/// not copied and pointed at `?N`, which only `--connect` understands.
 #[tokio::test]
-async fn a_clients_copy_is_said_not_to_be_copied() {
+async fn a_clients_copy_is_sent_back_to_the_client() {
     let session = served(vec![ModelResponse::text("worth keeping")], |_| {}).await;
     let (mut peer, _) = Peer::attached(&session.at).await;
     peer.send(Command::Submit {
@@ -309,7 +310,18 @@ async fn a_clients_copy_is_said_not_to_be_copied() {
         line: "/copy".to_owned(),
     })
     .await;
-    let heard = peer.until(|message| said(message, "was not copied")).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Replied { .. }))
+        .await;
+    assert!(
+        heard.iter().any(
+            |message| matches!(message, Message::Copy { text, .. } if text == "worth keeping")
+        ),
+        "the text, for the client's clipboard: {heard:?}"
+    );
+    let heard = peer
+        .until(|message| said(message, "sent to the client that asked for it"))
+        .await;
     assert!(
         !heard
             .iter()
@@ -326,7 +338,8 @@ async fn a_clients_copy_is_said_not_to_be_copied() {
     );
 }
 
-/// A client's `/copy` held behind a switch and handed in after the turn is still the client's.
+/// A client's `/copy` held behind a switch and handed in after the turn is said not to be copied,
+/// since the reply that would have carried the text back has already gone.
 #[tokio::test]
 async fn a_clients_copy_held_for_later_is_still_not_copied() {
     let script = vec![ModelResponse::tool_calls(vec![call(
@@ -358,7 +371,8 @@ async fn a_clients_copy_held_for_later_is_still_not_copied() {
     assert!(
         !heard
             .iter()
-            .any(|message| said(message, "to the clipboard:")),
+            .any(|message| said(message, "to the clipboard:")
+                || matches!(message, Message::Copy { .. })),
         "{heard:?}"
     );
 

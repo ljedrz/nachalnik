@@ -574,6 +574,15 @@ impl<'a> Client<'a> {
                     _ => self.tell(&text),
                 }
             }
+            // this client runs in the terminal of whoever typed `/copy`, so the sequence goes to
+            // that terminal. Not counted as an answer: the answer to the line comes after it
+            Message::Copy { id, text } => match crate::clipboard::hand_over(&text) {
+                Ok(()) => Ok(()),
+                Err(why) => {
+                    self.prose.fresh_line()?;
+                    self.tell(&format!("[{id}] was not copied: {why}"))
+                }
+            },
             Message::Replied { page, busy, .. } => {
                 self.busy = busy;
                 self.answered();

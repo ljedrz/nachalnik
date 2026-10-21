@@ -116,7 +116,8 @@ struct Answered {
     message: Option<Message>,
     /// The program's own voice, from this moment on.
     voice: Option<broadcast::Receiver<Arc<Message>>>,
-    /// Where the session stands on what the voice says only when it changes, for a resume.
+    /// What goes to this client alone, ahead of the answer: where the session stands on what the
+    /// voice says only when it changes, for a resume, and the text of a `/copy` it asked for.
     ///
     /// note: a resume is answered with no projection, and the model and the questions a running
     /// command is waiting on are not recorded. A client that was away when either changed would
@@ -866,12 +867,40 @@ impl Serving {
                 // order is which way to be wrong if anything ever does
                 let voice =
                     matches!(command, Command::Attach { .. }).then(|| self.voice.subscribe());
-                let standing = match command {
+                let mut standing = match command {
                     Command::Attach { since: Some(_), .. } => standing(app),
                     _ => Vec::new(),
                 };
                 let attaching = matches!(command, Command::Attach { .. });
                 let message = apply(app, command).await;
+                // a `/copy` goes back to the client that typed it, ahead of the answer to the line
+                if let Some((id, text)) = app.handed.take() {
+                    let length = text.len();
+                    let copy = Message::Copy { id, text };
+                    match protocol::framed(&copy)
+                        .ok()
+                        .and_then(|it| protocol::overlong(&it))
+                    {
+                        Some(bytes) => app.say(
+                            Speaker::Note,
+                            format!(
+                                "[{id}] was not copied: it is {} bytes, more than a connection \
+                                 carries in one message",
+                                crate::app::text::thousands(bytes)
+                            ),
+                        ),
+                        None => {
+                            app.say(
+                                Speaker::Note,
+                                format!(
+                                    "[{id}] sent to the client that asked for it: {} bytes",
+                                    crate::app::text::thousands(length)
+                                ),
+                            );
+                            standing.push(copy);
+                        }
+                    }
+                }
                 // note: seated only with a projection it can be sent. One too long for a frame is
                 // refused by the connection, by name - see `connection::watermark` - and seated
                 // first, the client there before was let go for a newcomer that was then refused,

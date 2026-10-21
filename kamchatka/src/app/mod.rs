@@ -527,6 +527,12 @@ pub struct App {
     /// a mouse over the pane gives text that is not wrapped to a window, has no frame down either
     /// side, and is all there whether or not it fits on a screen.
     pub clipboard: Option<String>,
+    /// An item a client asked `/copy` for, and its text, for the served loop to send back to that
+    /// client and nobody else.
+    ///
+    /// note: not [`App::clipboard`], which goes to this session's own terminal. The client's
+    /// clipboard is on the client's machine: a browser's, or the terminal `--connect` runs in.
+    pub handed: Option<(ContextId, String)>,
     /// The line [`App::copy`] said about what is in [`App::clipboard`], and the item it was about,
     /// for [`App::not_copied`] to take back.
     ///
@@ -809,6 +815,7 @@ impl App {
             quit: false,
             restart: false,
             clipboard: None,
+            handed: None,
             receipt: None,
             spend: None,
             rendered: 0,

@@ -249,6 +249,18 @@ impl App {
             let reply = Box::pin(self.submitted(&line, true)).await;
             self.keys = had;
             self.remote = was;
+            // a client's `/copy` is sent back with the answer to the line, and that answer went
+            // when the line was held
+            if let Some((id, _)) = self.handed.take() {
+                self.say(
+                    Speaker::Note,
+                    format!(
+                        "[{id}] was not copied: `/copy` had to wait for the command before it, and \
+                         by then the reply it would have been sent back in was gone. Type \
+                         `/copy {id}` again"
+                    ),
+                );
+            }
             if !keys && let Some(Overlay::Text { title, pages, .. }) = reply.page {
                 let pages: Vec<String> = pages
                     .iter()

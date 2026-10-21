@@ -109,6 +109,12 @@ it works over `ssh`, but terminals that don't support it ignore it silently (`tm
 `set-clipboard on`); the line it prints gives the byte count, so you can compare it with what you
 paste.
 
+`/copy` typed in the web page puts the text on the browser's clipboard. Some browsers only allow
+that straight after a click, and then the page shows a **copy** button to click. Typed in
+`--connect`, it goes to the clipboard of the terminal `--connect` runs in, the same way as above.
+If a `/copy` from either of them has to wait behind a `/model` switch, `/models` or a compaction,
+it isn't copied, and the session tells you to type it again.
+
 An oversized tool result is kept as two items: the truncated copy the model saw, and the full output
 next to it, marked `- excluded` and not sent. <kbd>space</kbd> or <kbd>p</kbd> on that row (or
 `/restore` with its number) sends the full output; the row's token count is the cost.

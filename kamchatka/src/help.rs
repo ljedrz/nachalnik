@@ -295,9 +295,10 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         the context tab are the same two acts
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
-    /copy [N]           hand the last thing the model said to the terminal, for
-                        the clipboard, or item N. `y` on the context tab is the
-                        same act on the row it is standing on
+    /copy [N]           put the last thing the model said on the clipboard, or
+                        item N: the terminal's, or the browser's when typed in
+                        the web page. `y` on the context tab is the same act on
+                        the row it is standing on
     /compact            what the compactor would take, listed, and then `y` or
                         `n`. The list waits, so `p` on the context tab keeps
                         something out of it and the pass is worked out again

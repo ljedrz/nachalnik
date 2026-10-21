@@ -16,6 +16,11 @@ minor bump may break you.
 
 ### changed
 
+- **`/copy` from the web page puts the text on the browser's clipboard, and `/copy` from
+  `--connect` on the clipboard of the terminal it runs in.** Both used to say "was not copied" and
+  point at `?N`, which only `--connect` understands. The session sends the text to the client that
+  asked, in a new `Message::Copy`. Where a browser only copies straight after a click, the page
+  shows a button to click.
 - **Every row on the permissions tab names the actions it lets run.** `context` listed its
   operations, `context:move, context:note, ...`, while `fs:read` listed actions, `fs: read, glob,
   grep`. Now `context` lists `context: look, budget, ...`. A tool with one action is shown by its
