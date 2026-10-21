@@ -31,6 +31,7 @@ use crate::{
         Careful, Limits, Subject, domains,
         ops::{Layout, Op, actions, inner, schema},
     },
+    wiring::Earlier,
 };
 
 use super::{Reach, action, if_reachable, unknown};
@@ -56,6 +57,8 @@ fn ops() -> Vec<Op> {
 /// Reads what the session is running with: the model, the tools, the policy, the rules.
 pub struct Setup {
     reach: Reach,
+    /// The records of the session this one was resumed from, for who wrote the turns it inherited.
+    earlier: Earlier,
     policy: Arc<Careful>,
     limits: Limits,
     ops: Vec<Op>,
@@ -64,10 +67,17 @@ pub struct Setup {
 
 impl Setup {
     /// Builds one; see [`super::install`], which is the only caller.
-    pub(super) fn new(reach: Reach, policy: Arc<Careful>, limits: Limits, layout: Layout) -> Self {
+    pub(super) fn new(
+        reach: Reach,
+        policy: Arc<Careful>,
+        limits: Limits,
+        layout: Layout,
+        earlier: Earlier,
+    ) -> Self {
         let ops = ops();
         Self {
             reach,
+            earlier,
             policy,
             limits,
             schema: Arc::new(schema(&ops, layout)),
@@ -120,7 +130,7 @@ impl Tool for Setup {
             return Ok(ToolOutput::error(refusal));
         }
         match action {
-            "model" => Ok(ToolOutput::new(model(&kernel))),
+            "model" => Ok(ToolOutput::new(model(&kernel, &self.earlier))),
             "tools" => Ok(ToolOutput::new(tools(&kernel, &self.limits, &self.policy))),
             "permissions" => Ok(ToolOutput::new(permissions(&kernel, &self.policy))),
             "policy" => Ok(ToolOutput::new(rules(&kernel, &self.policy))),
@@ -135,7 +145,7 @@ impl Tool for Setup {
 /// carries first-person turns this model never produced, possibly a different model's, and an
 /// assistant turn says nothing about which hand wrote it. A model asked about its earlier reasoning
 /// in a resumed session will own all of it unless this line tells it otherwise.
-fn model(kernel: &Kernel) -> String {
+fn model(kernel: &Kernel, earlier: &Earlier) -> String {
     let mut out = match kernel.model_info() {
         Some(info) => {
             let mut said = format!("you are `{}`", info.model);
@@ -168,14 +178,43 @@ fn model(kernel: &Kernel) -> String {
             _ => None,
         })
     });
+    // note: who wrote the inherited turns, where the record carried with the snapshot says. It
+    // said "nothing in a turn records which" whether or not it did, and a model that read the
+    // carried `log` found every one of them named there and took the two for a contradiction
+    let current = kernel.model_info().map(|info| info.model);
+    let mut inherited = BTreeMap::<String, Vec<ContextId>>::new();
+    for (model, item, before) in answers(kernel, earlier) {
+        if before && kernel.item(item).is_some() {
+            inherited.entry(model).or_default().push(item);
+        }
+    }
     out.push_str(&match resumed {
-        Some((items, tokens)) => format!(
+        Some((items, tokens)) if inherited.is_empty() => format!(
             "this conversation was resumed from a snapshot: {} item(s), ~{} tokens, already here \
              before you said anything. Turns in it that read as yours were produced by whatever \
-             model that session was running, which may not be you, and nothing in a turn records \
-             which.\n",
+             model that session was running, which may not be you, and no record came with the \
+             snapshot to say which.\n",
             thousands(items),
             thousands(tokens),
+        ),
+        Some((items, tokens)) => format!(
+            "this conversation was resumed from a snapshot: {} item(s), ~{} tokens, already here \
+             before you said anything. The record that came with it says who wrote the turns in \
+             it: {}.\n",
+            thousands(items),
+            thousands(tokens),
+            inherited
+                .iter()
+                .map(|(model, items)| format!(
+                    "`{model}` wrote {}{}",
+                    listed_items(items),
+                    match current.as_deref() == Some(model.as_str()) {
+                        true => ", which is the model you are, in an earlier run",
+                        false => ", which is not you",
+                    }
+                ))
+                .collect::<Vec<_>>()
+                .join("; "),
         ),
         None => "this conversation started here; nothing in it was inherited from another \
                  session.\n"
@@ -189,16 +228,7 @@ fn model(kernel: &Kernel) -> String {
             out.push_str(&format!(
                 "not every turn here that reads as yours is: `{model}` wrote {}, before the \
                  model was switched.\n",
-                match items.as_slice() {
-                    [one] => format!("item {one}"),
-                    many => format!(
-                        "items {}",
-                        many.iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                }
+                listed_items(&items)
             ));
         }
     }
@@ -206,33 +236,57 @@ fn model(kernel: &Kernel) -> String {
     out
 }
 
-/// Answers still in the context that models other than `current` wrote, grouped by model.
+/// `item 4`, or `items 4, 9`.
+fn listed_items(items: &[ContextId]) -> String {
+    match items {
+        [one] => format!("item {one}"),
+        many => format!(
+            "items {}",
+            many.iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
+/// Every answer the record names a model for: the model, the item the answer became, and whether
+/// it was recorded before this session was resumed, in the record carried with the snapshot.
 ///
 /// note: read from the record, which names the model each request went to and the item its answer
-/// became. The answers are taken out before the context is asked which items remain, so no lock is
-/// held across the two.
-fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<ContextId>> {
-    let answered: Vec<(String, ContextId)> = kernel.with_history(|session| {
-        let mut asked = None;
-        let mut answered = Vec::new();
-        for record in session.records() {
-            match &record.event {
-                Event::ModelRequested { model, .. } => asked = Some(model.model.clone()),
-                Event::ModelFinished { item, .. } => {
-                    if let Some(model) = asked.take() {
-                        answered.push((model, *item));
-                    }
-                }
-                Event::ModelFailed { .. } => asked = None,
-                _ => {}
+/// became: the carried records first, then the kernel's own, which start at the resume. Taken out
+/// whole before the context is asked which items remain, so no lock is held across the two.
+fn answers(kernel: &Kernel, earlier: &Earlier) -> Vec<(String, ContextId, bool)> {
+    let mut asked = None;
+    let mut answered = Vec::new();
+    let mut walk = |record: &nachalnik::Record, before: bool| match &record.event {
+        Event::ModelRequested { model, .. } => asked = Some(model.model.clone()),
+        Event::ModelFinished { item, .. } => {
+            if let Some(model) = asked.take() {
+                answered.push((model, *item, before));
             }
         }
-        answered
+        Event::ModelFailed { .. } => asked = None,
+        _ => {}
+    };
+    for record in earlier.records().iter() {
+        walk(record, true);
+    }
+    kernel.with_history(|session| {
+        for record in session.records() {
+            walk(record, false);
+        }
     });
 
+    answered
+}
+
+/// Answers still in the context that models other than `current` wrote in this run, grouped by
+/// model; the ones from before a resume are named by the line about the resume.
+fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<ContextId>> {
     let mut by = BTreeMap::<String, Vec<ContextId>>::new();
-    for (model, item) in answered {
-        if model != current && kernel.item(item).is_some() {
+    for (model, item, before) in answers(kernel, &Earlier::default()) {
+        if !before && model != current && kernel.item(item).is_some() {
             by.entry(model).or_default().push(item);
         }
     }

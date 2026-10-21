@@ -258,9 +258,67 @@ async fn setup_model_says_whether_this_conversation_was_inherited() {
     let now = carried.last().expect("it answered");
     assert!(now.contains("resumed from a snapshot"), "{now}");
     assert!(
-        now.contains("may not be you"),
+        now.contains("may not be you, and no record came with the snapshot to say which"),
         "and says the turns in it are not necessarily its own: {now}"
     );
+}
+
+/// A resumed session whose record came with it says who wrote the turns it inherited.
+///
+/// note: it said "nothing in a turn records which" whether or not a record had come along, and a
+/// model that read the carried `log` found the model named there, and took the two answers for a
+/// contradiction.
+#[tokio::test]
+async fn setup_model_names_who_wrote_the_inherited_turns_where_the_record_says() {
+    let (first, _provider, _anchor) = agent([ModelResponse::text("written before the resume")]);
+    first.push(ContextItem::user("say something"));
+    first.turn().await.expect("the turn failed");
+    let written = first.items().last().expect("it answered").id;
+
+    let dir = std::env::temp_dir().join(format!("kamchatka-inherited-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a directory");
+    let state = dir.join("first.json");
+    std::fs::write(
+        &state,
+        serde_json::to_string(&first.snapshot()).expect("a snapshot"),
+    )
+    .expect("written");
+    let lines: Vec<String> = first
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).expect("a record"))
+        .collect();
+    std::fs::write(state.with_extension("jsonl"), lines.join("\n") + "\n").expect("written");
+
+    let second = Kernel::resume(Config::default(), first.snapshot());
+    second.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "model" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    second.set_policy(policy.clone());
+    let anchor = introspect::install(
+        &second,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+    anchor.earlier().read(&state, None);
+    let _ = std::fs::remove_dir_all(&dir);
+    second.push(ContextItem::user("who wrote that?"));
+    second.turn().await.expect("the turn failed");
+
+    let said = answered(&second);
+    assert!(said.contains("resumed from a snapshot"), "{said}");
+    assert!(
+        said.contains(&format!(
+            "`scripted` wrote item {written}, which is the model you are, in an earlier run"
+        )),
+        "{said}"
+    );
+    assert!(!said.contains("no record came with"), "{said}");
 }
 
 /// And it names the turns another model wrote before a switch, which read as its own.

@@ -123,7 +123,12 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             plural(*items, "item"),
             thousands(*tokens)
         ),
-        Event::SessionFinished => "nothing more will be recorded".to_owned(),
+        // note: not "nothing more will be recorded", which a resumed session's log contradicts on
+        // the next line: the records carried on from it follow this one, and a model reading them
+        // took the two for a contradiction
+        Event::SessionFinished => {
+            "the session ended; anything after this is a resume of it".to_owned()
+        }
         Event::Interrupted => "stopped; whatever had arrived is kept".to_owned(),
         Event::TurnPaused { requests } => format!(
             "paused after {}; `/continue` carries on",
@@ -1052,7 +1057,7 @@ mod tests {
         );
         assert_eq!(
             said(&Event::SessionFinished),
-            "nothing more will be recorded"
+            "the session ended; anything after this is a resume of it"
         );
         assert_eq!(
             said(&Event::Interrupted),

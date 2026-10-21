@@ -89,7 +89,13 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: La
         earlier.clone(),
         layout,
     )));
-    kernel.add_tool(Arc::new(Setup::new(reach, policy, limits, layout)));
+    kernel.add_tool(Arc::new(Setup::new(
+        reach,
+        policy,
+        limits,
+        layout,
+        earlier.clone(),
+    )));
 
     Installed {
         _anchor: anchor,
