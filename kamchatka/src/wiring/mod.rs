@@ -987,7 +987,7 @@ impl Setup {
 
         let name = app.kernel.session_name();
         let said = match self.record {
-            false => format!("{name} ended; `--no-record`, so nothing was written"),
+            false => format!("{name} ended, and was not written: `--no-record`"),
             true => match record(app) {
                 Ok(written) => format!(
                     "{name} ended: {written} (`kamchatka -r {}` carries on from it)",

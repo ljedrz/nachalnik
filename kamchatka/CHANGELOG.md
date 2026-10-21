@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A run under `--no-record` ends with "the session was not written when it ended", not "nothing
+  was written".** A `/save` typed during the run still writes its files, and the old line denied
+  it. `/restart` says the same in its own line.
 - **`context` tells the model when tokens are held back because a call of its own has no result
   yet.** `budget` listed every other reason and said the rest were excluded "which you set", and
   `request` said a call was dropped because "its result is not in the projection" without saying

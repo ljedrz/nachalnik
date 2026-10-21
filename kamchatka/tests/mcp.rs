@@ -812,7 +812,7 @@ fn a_restart_says_the_old_session_ended_before_it_says_what_a_server_could_not()
         .split_once("would not list its tools again")
         .unwrap_or_else(|| panic!("the server was not asked for its tools again: {said}"));
     assert!(
-        first.contains("ended;"),
+        first.contains("ended, and was not written"),
         "the first thing the new session says is about a server, not about the old session: {said}"
     );
 }
