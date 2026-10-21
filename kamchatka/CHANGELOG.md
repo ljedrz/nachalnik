@@ -16,6 +16,10 @@ minor bump may break you.
 
 ### changed
 
+- **Every row on the permissions tab names the actions it lets run.** `context` listed its
+  operations, `context:move, context:note, ...`, while `fs:read` listed actions, `fs: read, glob,
+  grep`. Now `context` lists `context: look, budget, ...`. A tool with one action is shown by its
+  name: `log` for `log`, and `shell` for `exec:run`, which showed `exec:run` a second time.
 - **The guide lists every domain and its operations, and how a rule is spelled**: a whole domain,
   one operation, a path rule, or a server, which has settings of its own.
 

@@ -269,15 +269,14 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         .find(|line| line.contains("exec:run"))
         .expect("a decided capability is listed");
     assert!(shell.contains("deny"), "{shell}");
-    // and names what it covers, which for a rule about one operation is that operation. It named
-    // the tool, and a tool is wider than an operation of it: `fs:read  allow  fs` reads as the
-    // narrow rule answering for the whole thing
+    // and names what it covers, which for a tool with one action is the tool, since the operation
+    // is all of it. It named the operation a second time, unlike every row naming actions
+    assert!(shell.contains("rm"), "the tool it covers: {shell}");
     assert_eq!(
         shell.matches("exec:run").count(),
-        2,
-        "the subject, and the operation it covers: {shell}"
+        1,
+        "and the subject once: {shell}"
     );
-    assert!(!shell.contains("rm"), "which is not the tool: {shell}");
 
     // no tool declares `network` - but the shell is judged against it anyway, on what the command
     // says, so its row names the tool the answer actually reaches rather than claiming that
@@ -309,8 +308,8 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         .expect("what the policy has been told about is listed");
     assert!(write.contains("nothing registered needs it"), "{write}");
 
-    // a rule about a whole domain names the capabilities it answers for, which is what somebody
-    // wrote it to decide. It read "nothing registered needs it" - a row was only filled where a
+    // a rule about a whole domain names what it answers for, and a tool with one action by its name.
+    // It read "nothing registered needs it" - a row was only filled where a
     // tool declared that exact capability, and no tool declares a bare domain - and naming its
     // tools instead would have told somebody who wrote `--auto-allow log` that it covered `log`
     harness
@@ -327,8 +326,8 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         })
         .unwrap_or_else(|| panic!("the domain rule is listed: {screen}"));
     assert!(
-        domain.contains("fs:read"),
-        "a rule about `fs` answers for the operations in it: {domain}"
+        domain.contains("grep"),
+        "a rule about `fs` answers for the tools that need it: {domain}"
     );
     assert!(!domain.contains("nothing registered needs it"), "{domain}");
 }
@@ -376,8 +375,8 @@ async fn an_operation_the_domain_above_it_answers_for_has_no_row_of_its_own() {
 
     let domain = row("fs").unwrap_or_else(|| panic!("the rule somebody wrote is listed: {screen}"));
     assert!(
-        domain.contains("fs:read") && domain.contains("fs:write"),
-        "naming every operation it answers for: {domain}"
+        domain.contains("read") && domain.contains("write"),
+        "naming everything it answers for: {domain}"
     );
     assert!(
         row("fs:read").is_none(),
@@ -504,15 +503,16 @@ async fn a_rule_about_mcp_covers_nothing_a_spawned_server_offers() {
     assert!(row.contains("nothing registered needs it"), "{row}");
 }
 
-/// And a domain rule names every capability in the domain it answers for, and nothing else.
+/// And a domain rule names every tool it answers for, and nothing else.
 ///
-/// note: the domain arm lists the capabilities a rule answers for rather than the tools it
-/// reaches. `mcp:call` is the one that must not appear beside them: every tool from a server
+/// note: the domain arm names a tool with one action by its name, and only a tool that needs the
+/// domain.
+/// `mcp:call` is the one that must not appear beside them: every tool from a server
 /// declares it and `Careful::judges` swaps it for the server's own name, so an `fs` row that
 /// read `fs:read, mcp:call` would be naming an operation the rule is never consulted about - a
 /// `deny` for `mcp:call` is, and covers those tools, which is why the refusal is the case here.
 #[tokio::test]
-async fn a_domain_rule_names_the_capabilities_it_answers_for_and_no_others() {
+async fn a_domain_rule_names_what_it_answers_for_and_nothing_else() {
     let harness = Harness::new(Vec::new());
     let unvouched = Capability::of(nachalnik::Domain::Other("mcp".to_owned()), "call");
     harness.app.kernel.add_tool(Arc::new(
@@ -541,8 +541,8 @@ async fn a_domain_rule_names_the_capabilities_it_answers_for_and_no_others() {
         .expect("the rule somebody wrote is listed");
     assert_eq!(
         row.covers(),
-        "fs:read",
-        "every capability in the domain it answers for, and nothing else"
+        "grep",
+        "every tool the domain decides for, and nothing else"
     );
 }
 
@@ -906,7 +906,7 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
         .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     let filled = harness.flat();
     assert!(filled.contains("Careful"), "{filled}");
-    assert!(filled.contains("fs:read allow fs:read"), "{filled}");
+    assert!(filled.contains("fs:read allow read"), "{filled}");
 
     // the short name, not the path `PermissionPolicy::name` defaults to - that belongs to /seams
     assert!(
@@ -3115,4 +3115,42 @@ async fn the_question_names_every_action_its_answer_covers() {
         .find(|line| line.contains("fs:read"))
         .expect("the answer is a row");
     assert!(row.contains("fs: read, glob, grep"), "{row}");
+}
+
+/// A rule about a whole domain names what it lets run the way a rule about one operation does:
+/// the actions of a tool that has several, and the name of a tool that has one.
+///
+/// note: the domain row named the operations, `context:move, context:note, ...`, beside an
+/// operation row naming actions, `fs: read, glob, grep`, so the same column held two kinds of
+/// thing, and `read` could be either.
+#[tokio::test]
+async fn a_domain_rule_names_actions_as_a_rule_about_one_operation_does() {
+    let harness = Harness::new([]);
+    for tool in crate::common::builtin_under(
+        &crate::common::scratch("domain-covers"),
+        true,
+        harness.app.limits.clone(),
+        harness.app.policy.clone(),
+    ) {
+        harness.app.policy.offers(&*tool);
+        harness.app.kernel.add_tool(tool);
+    }
+    for domain in ["fs", "exec"] {
+        harness
+            .app
+            .policy
+            .set(&Subject::parse(domain), Verdict::Allow);
+    }
+    let covers = |domain: &str| {
+        harness
+            .app
+            .permissions()
+            .into_iter()
+            .find(|row| row.subject == Subject::parse(domain))
+            .unwrap_or_else(|| panic!("`{domain}` is a row"))
+            .covers()
+    };
+
+    assert_eq!(covers("fs"), "fs: read, glob, grep, write, edit");
+    assert_eq!(covers("exec"), "shell");
 }
