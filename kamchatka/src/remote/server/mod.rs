@@ -690,6 +690,8 @@ pub struct Serving {
     /// it goes round many times, and a `oneshot` polled again after it has fired panics. A
     /// notification sent while the connection is busy elsewhere is kept for its next look.
     replaced: HashMap<u64, Arc<Notify>>,
+    /// Where each connection still open came from, as the trace names it; see [`Serving::called`].
+    from: HashMap<u64, String>,
     /// The connections, so that the session can wait for them on the way out; see
     /// [`Serving::last`].
     connections: JoinSet<()>,
@@ -713,6 +715,7 @@ impl Serving {
             clients: 0,
             seated: None,
             replaced: HashMap::new(),
+            from: HashMap::new(),
             connections: JoinSet::new(),
         }
     }
@@ -730,9 +733,23 @@ impl Serving {
             }
             app.trace(
                 "client.replaced",
-                format!("client {had}, by client {client}; one client at a time is served"),
+                format!("{}, by {}", self.called(had), self.called(client)),
             );
         }
+    }
+
+    /// A client as the trace names it: where it came from, `127.0.0.1:53430` or `pid 4123`.
+    ///
+    /// note: the address is the one this end sees. A `--serve tcp:` port only listens on loopback,
+    /// so it is always `127.0.0.1` or `::1`, and the port is what tells two clients apart; `ss -tp`
+    /// says which process has it. A unix socket has no address, so it is the process at the other
+    /// end. A browser tab is relayed by `--web` from this process, so it shows the relay's
+    /// connection rather than the browser's address.
+    fn called(&self, client: u64) -> String {
+        self.from
+            .get(&client)
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_owned())
     }
 
     /// Says whatever the session has said since the last look, and whatever has changed about it.
@@ -835,10 +852,8 @@ impl Serving {
                 if self.seated == Some(client) {
                     self.seated = None;
                 }
-                app.trace(
-                    "client.left",
-                    format!("client {client}; the session carries on"),
-                );
+                app.trace("client.left", self.called(client));
+                self.from.remove(&client);
             }
             FromClient::Asked {
                 client,
@@ -991,7 +1006,18 @@ impl Serving {
         // The trace is a ring of the last few hundred lines and is where a thing that happens once
         // a second belongs. Nothing is lost: `Attached::trace` carries it, so it is a row on the
         // trace tab of every client
-        app.trace("client.attached", format!("client {}", self.clients));
+        let from = match &arrived.0 {
+            super::Connection::Tcp(stream) => stream.peer_addr().ok().map(|it| it.to_string()),
+            super::Connection::Unix(stream) => stream
+                .peer_cred()
+                .ok()
+                .and_then(|cred| cred.pid())
+                .map(|pid| format!("pid {pid}")),
+        };
+        if let Some(from) = from {
+            self.from.insert(self.clients, from);
+        }
+        app.trace("client.attached", self.called(self.clients));
         let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
         let replaced = Arc::new(Notify::new());
         self.replaced.insert(client, replaced.clone());
