@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`setup`'s permissions table says when an action needs several of its rows.** `undo` and `redo`
+  are listed under `context:move`, `context:note`, `context:pin` and `context:revise`, and need all
+  four. A model read the allowed `context:move` row as allowing `undo` while `context:revise` was
+  refused. The table now ends with a line naming each such action and the rows it needs, worked out
+  from what the tools say their actions need.
 - **A run under `--no-record` ends with "the session was not written when it ended", not "nothing
   was written".** A `/save` typed during the run still writes its files, and the old line denied
   it. `/restart` says the same in its own line.

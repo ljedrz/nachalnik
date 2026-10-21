@@ -588,6 +588,15 @@ async fn setup_permissions_lists_one_row_per_operation() {
         moving.contains("context: elide, exclude, restore, undo, redo"),
         "{moving}"
     );
+    // and an action under several rows is said to need all of them: a model read the row above as
+    // allowing `undo` while a refused `context:revise` refused it
+    assert!(
+        said.contains(
+            "`context`'s `undo` and `redo` need `context:move`, `context:note`, `context:pin` \
+             and `context:revise` together"
+        ),
+        "{said}"
+    );
     assert!(
         !said.contains("nothing here is judged by it"),
         "every operation here decides for something: {said}"
