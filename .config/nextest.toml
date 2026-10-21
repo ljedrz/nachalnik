@@ -5,6 +5,11 @@
 # four at once. Measured on four cores: one test per core took 82 seconds, sixteen took 35, and
 # more made no difference, since the run can't be shorter than its slowest test. All failures are
 # reported, not just the first, so one CI run shows everything that needs fixing.
+#
+# A test still running after three minutes is stopped and failed. A change that makes a test wait
+# for ever would otherwise hold the job until GitHub's six-hour limit, and say nothing of which
+# test it was. The slowest take 15 seconds here and under 40 on a machine busy with a mutants run.
 [profile.ci]
 test-threads = 16
 fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 3 }
