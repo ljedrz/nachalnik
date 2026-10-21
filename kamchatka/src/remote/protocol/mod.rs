@@ -559,7 +559,8 @@ pub struct Attached {
     /// count out from the list above, because the list is what it leaves out.
     pub undecided: usize,
     /// The actions listed under several of [`Attached::permissions`]'s rows, which need every one
-    /// of them, as the sentence the permissions tab puts above its rows.
+    /// of them, as the sentence `/permissions` puts under its rows. The permissions tab and the web
+    /// page leave it to GUIDE.md.
     ///
     /// note: `undo` under an allowed `context` row and a refused `context:revise` row reads as
     /// allowed by the first; it is refused by the second. Empty from a session older than this.

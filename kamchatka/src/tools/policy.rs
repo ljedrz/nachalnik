@@ -808,9 +808,9 @@ impl Careful {
 
     /// The actions of these tools that need more than one subject, with the subjects each needs.
     ///
-    /// note: for every table that lists actions under the subjects they need - `setup`'s, the
-    /// permissions tab, `/permissions` and the web page - where an action listed under several rows
-    /// reads as allowed by any one of them. It needs all of them: `context`'s `undo` is under
+    /// note: for the tables that list actions under the subjects they need - `setup`'s and
+    /// `/permissions` - where an action listed under several rows reads as allowed by any one of
+    /// them. It needs all of them: `context`'s `undo` is under
     /// `context:move` and `context:revise` both, and a refused `context:revise` refuses it however
     /// `context:move` is answered. Worked out from what each tool says its actions need, so it
     /// changes when they do.
