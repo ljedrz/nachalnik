@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The web page shows what the session said while it was disconnected.** A phone drops the page's
+  connection when its screen is off, and on reconnecting the page was sent the records it missed,
+  but not the session's own lines, which are in no record. So "the turn paused after 8 requests;
+  /continue to carry on" could be missing until the page was reloaded. The page now redraws the
+  chat from the session once it has reconnected, and when it has fallen behind.
 - **`context:*` is the whole `context` domain, as `context` is.** It holds a `*`, so it was read as a
   path rule matching files named `context:...`: it granted nothing about `context`, and the
   permissions tab listed the `fs` tools as what it covered. This applies to any `<domain>:*`, in a
