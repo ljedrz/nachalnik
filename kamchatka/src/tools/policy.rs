@@ -517,8 +517,10 @@ impl Careful {
         // note: it answers for `mcp:call`, which every tool from a server declares and means
         // "somebody else's tool, and nobody has vouched for what it does". Naming the server is the
         // same statement made precisely, so consulting both would make `--auto-allow-servers files`
-        // grant nothing until `mcp:call` had been answered too. Server annotations are untouched: a
-        // tool that says it writes is still judged against `fs:write`.
+        // grant nothing until `mcp:call` had been answered too. Any other capability a server's
+        // tool declares is still consulted, but under `nachalnik_mcp::Trust::Nothing`, which this
+        // program installs servers with, there is none: what a tool's annotations claim is not
+        // believed.
         //
         // note: except where somebody refused it. The server stands in for `mcp:call`'s question,
         // not for `--auto-deny mcp:call` or `--auto-deny mcp`. Dropping one would let
