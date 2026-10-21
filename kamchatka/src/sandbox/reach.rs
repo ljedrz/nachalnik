@@ -824,3 +824,64 @@ fn lexical(path: &Path) -> PathBuf {
     }
     landed
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A directory of the test's own, empty.
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("kamchatka-reach-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory");
+        dir
+    }
+
+    /// A root that has become a link is not opened through, whatever the path beneath it.
+    ///
+    /// note: `Reach::unlinked` refuses such a root when a call is judged, so through `Reach` this
+    /// open is reached only by a root swapped in between the check and the open. Called directly,
+    /// it is the open's own refusal that is held.
+    #[test]
+    fn a_root_that_is_a_link_is_not_opened_through() {
+        let dir = scratch("linked-root");
+        std::fs::create_dir_all(dir.join("real")).expect("a directory");
+        std::fs::write(dir.join("real/note.txt"), "found").expect("a file");
+        std::os::unix::fs::symlink(dir.join("real"), dir.join("link")).expect("a link");
+
+        let opened = beneath(
+            &dir.join("link"),
+            &dir.join("link/note.txt"),
+            Access::Reading,
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        match opened {
+            // a kernel without `openat2`, where the ordinary open answers instead
+            None => {}
+            Some(opened) => assert!(opened.is_err(), "opened through the link"),
+        }
+    }
+
+    /// A path that climbs out of its root with `..` is not opened, though no link is on the way.
+    ///
+    /// note: the paths a caller hands over are resolved, so they have no `..` in them; the open
+    /// holds the line on its own all the same.
+    #[test]
+    fn a_path_climbing_out_of_its_root_is_not_opened() {
+        let dir = scratch("climbing");
+        std::fs::create_dir_all(dir.join("inner")).expect("a directory");
+        std::fs::write(dir.join("secret.txt"), "not this").expect("a file");
+
+        let opened = beneath(
+            &dir.join("inner"),
+            &dir.join("inner/../secret.txt"),
+            Access::Reading,
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        match opened {
+            None => {}
+            Some(opened) => assert!(opened.is_err(), "climbed out of the root"),
+        }
+    }
+}
