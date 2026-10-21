@@ -12,8 +12,8 @@
 //! compactor and one request.
 
 use nachalnik::{
-    BoxError, Config, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Kernel,
-    OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
+    Block, BoxError, Config, Content, ContextId, ContextItem, ContextKind, ContextState, Delta,
+    Event, Kernel, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
 };
 use serde_json::Value;
 use std::{
@@ -219,6 +219,9 @@ struct Asked<'a> {
 /// dialect, and gets **no tools**, no compactor and a limit of one request. A fork can think; it
 /// cannot act, and it cannot go on thinking after it has answered once.
 ///
+/// note: an item named in `without` is left out together with what wrote it, where a call wrote it:
+/// see [`wrote`].
+///
 /// note: nothing the fork does reaches this session's context or event log; it has a log of its own
 /// that goes when it does. It is visible as the text it streams, relayed into this tool's own
 /// [`OutputSink`], so a person watching the terminal sees a fork thinking rather than a tool that
@@ -311,6 +314,43 @@ async fn branch(
                 item.state = ContextState::Excluded;
                 item.note = Some("answered in the same turn this fork was asked in".into());
                 unanswered.push(item.id);
+            }
+        }
+        // and what wrote an item named in `without` loses what it wrote. A note is written by a
+        // `context` call whose `content` is the note, and a revision by one whose `content` is the
+        // new text, so leaving out the item alone left the copy reading it in the call's arguments
+        // - and a model that asked "without my note" was answered by a copy that quoted the note
+        let left: Vec<(ContextId, String)> = snapshot
+            .items
+            .iter()
+            .filter(|item| without.contains(&item.id))
+            .map(|item| (item.id, item.content.to_text().into_owned()))
+            .collect();
+        if !left.is_empty() {
+            for item in &mut snapshot.items {
+                if let ContextKind::AssistantMessage { tool_calls, .. } = &mut item.kind {
+                    for call in tool_calls.iter_mut() {
+                        unwritten(call, &left);
+                    }
+                }
+                if let Some(blocks) = item.content.as_blocks()
+                    && blocks
+                        .iter()
+                        .any(|block| matches!(block, Block::Call(call) if wrote(call, &left)))
+                {
+                    let blocks: Vec<Block> = blocks
+                        .iter()
+                        .cloned()
+                        .map(|block| match block {
+                            Block::Call(mut call) => {
+                                unwritten(&mut call, &left);
+                                Block::Call(call)
+                            }
+                            other => other,
+                        })
+                        .collect();
+                    item.content = Content::Blocks(blocks.into());
+                }
             }
         }
         let fork = Kernel::resume(
@@ -559,6 +599,55 @@ fn written_beside(extra: &[ContextId]) -> String {
          context and their answers are not a comparison.",
         numbers.join(", ")
     )
+}
+
+/// Whether this call is the `context` call that wrote one of the `left` items: a `note` whose
+/// `content` is the item's text, or a `revise` naming the item.
+///
+/// note: read off the call, because nothing records which call put an item where it is. A note
+/// whose text another note repeats word for word is left out with it, which is the side to err on
+/// in a copy meant to answer without it.
+fn wrote(call: &ToolCall, left: &[(ContextId, String)]) -> bool {
+    if call.tool != "context" {
+        return false;
+    }
+    let Ok(args) = inner(&call.args) else {
+        return false;
+    };
+    match args.get("action").and_then(Value::as_str) {
+        Some("note") => args
+            .get("content")
+            .and_then(Value::as_str)
+            .is_some_and(|content| left.iter().any(|(_, text)| text == content)),
+        Some("revise") => args
+            .get("ids")
+            .and_then(Value::as_array)
+            .is_some_and(|ids| {
+                ids.iter()
+                    .filter_map(Value::as_u64)
+                    .any(|id| left.iter().any(|(left, _)| left.0 == id))
+            }),
+        _ => false,
+    }
+}
+
+/// Takes what [`wrote`] found out of the call's arguments, leaving the call itself in place so its
+/// result still answers it.
+fn unwritten(call: &mut ToolCall, left: &[(ContextId, String)]) {
+    if !wrote(call, left) {
+        return;
+    }
+    let whole = Arc::make_mut(&mut call.args);
+    let wrapped = whole
+        .get(crate::tools::ops::WRAPPER)
+        .is_some_and(Value::is_object);
+    let args = match wrapped {
+        true => &mut whole[crate::tools::ops::WRAPPER],
+        false => whole,
+    };
+    if let Some(content) = args.get_mut("content") {
+        *content = Value::from("(left out of this fork)");
+    }
 }
 
 #[cfg(test)]

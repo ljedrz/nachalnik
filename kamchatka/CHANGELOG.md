@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A note or revision left out of a fork with `without` is left out of the call that wrote it.**
+  The item was taken out of the copy, but the `context` call that wrote it kept the text as its
+  `content`, so a copy asked "without my note" could read the note anyway. The copy now gets that
+  call with its `content` replaced by "(left out of this fork)".
 - **`setup` with `model` names who wrote a resumed session's inherited turns, where the record that
   came with the snapshot says.** It said "nothing in a turn records which" either way, while the
   carried `log` named the model for each of them. It now says which model wrote which items, and
