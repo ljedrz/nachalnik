@@ -816,7 +816,11 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
                 true => "",
                 false => " UTC",
             };
-            lines.push(Line::styled(format!("── {}{zone}", read.date), faint()));
+            // across the whole pane, so it reads as a break between days rather than as a row
+            // that has lost its columns
+            let label = format!("──── {}{zone} ", read.date);
+            let rule = "─".repeat(width.saturating_sub(columns(&label)));
+            lines.push(Line::styled(format!("{label}{rule}"), faint()));
         }
 
         let when_span = match &read {

@@ -508,6 +508,11 @@ async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
         dates[0], dates[1],
         "the second day should be a different date: {screen}"
     );
+    // and each is a rule out to the pane's edge, so it reads as a break between days rather than as
+    // a row that lost its columns
+    for date in &dates {
+        assert!(date.trim_end().ends_with("─│"), "{date}");
+    }
 }
 
 /// The trace is a log, so it is read backwards from its newest line, and every key moves one
