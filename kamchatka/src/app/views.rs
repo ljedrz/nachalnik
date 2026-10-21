@@ -29,7 +29,8 @@ pub struct Stance {
     pub subject: Subject,
     /// What the policy answers about it today.
     pub verdict: Verdict,
-    /// The registered tools that declare it, in the order the model is offered them.
+    /// What it lets run, in the order the model is offered the tools: a tool's actions where it
+    /// has several - `fs: read, glob, grep` - and the tool's name where it has one.
     pub tools: Vec<String>,
     /// The registered tools the policy judges against it only sometimes, by looking at the call.
     ///
@@ -504,7 +505,7 @@ impl App {
         // note: an operation whose answer comes from the domain above it is the same decision a
         // second time. `--auto-allow log` is one rule, and a row each for `log` and `log:read`,
         // each naming the other in the column beside it, would say it twice. The domain row says it
-        // and names every operation it answers for. One somebody has answered about separately
+        // and names everything it answers for. One somebody has answered about separately
         // keeps its row, since that is a decision of its own, and so does one nobody has decided:
         // that is what the count of the rest is made of
         let answered_above = |capability: &Capability| {
@@ -544,34 +545,54 @@ impl App {
         // more than it delivers. `grep` and `glob` do not open what a rule names; see
         // `tools::search`
         let covers = |subject: &Subject| -> Vec<String> {
-            // note: a domain rule answers for a set of capabilities, and those are what to name.
-            // Saying which tools it reaches is true and says nothing: `--auto-allow log` would read
-            // `log allow log`, three times the same word. Capabilities are what somebody wrote the
-            // rule to decide and what they would look for to check they got it right.
+            // note: a domain rule is named the way a rule about one operation is, below: the
+            // actions of each tool that need anything in the domain, in the order the tool offers
+            // them - `context  allow  context: look, budget, ...` - and a tool with one action by
+            // its name - `log  allow  log`. It used to name the operations, so the column held
+            // operations on one row and actions on the next
             if let Subject::Domain(domain) = subject {
-                let mut inside: Vec<String> = specs
+                let mut named: Vec<String> = specs
                     .iter()
-                    .flat_map(|spec| spec.capabilities.iter().map(move |it| (spec, it)))
-                    .filter(|(spec, it)| {
-                        it.domain == *domain
-                            && self
-                                .policy
-                                .decides(&Subject::Capability((*it).clone()), &spec.id)
-                    })
-                    .map(|(_, it)| it.to_string())
-                    .collect();
-                inside.sort_unstable();
-                inside.dedup();
+                    .filter_map(|spec| {
+                        let inside: Vec<&Capability> = (spec.capabilities.iter())
+                            .filter(|it| {
+                                it.domain == *domain
+                                    && self
+                                        .policy
+                                        .decides(&Subject::Capability((*it).clone()), &spec.id)
+                            })
+                            .collect();
+                        if inside.is_empty() {
+                            return None;
+                        }
+                        let needing: Vec<String> = inside
+                            .iter()
+                            .flat_map(|it| self.policy.actions_for(it, &spec.id))
+                            .collect();
+                        let actions: Vec<&str> = crate::tools::ops::offered(&spec.schema)
+                            .into_iter()
+                            .filter(|action| needing.iter().any(|it| it == action))
+                            .collect();
 
-                return inside;
+                        Some(match actions.is_empty() {
+                            true => spec.id.clone(),
+                            false => format!("{}: {}", spec.id, actions.join(", ")),
+                        })
+                    })
+                    .collect();
+                // two tools of one action each can need the same operation
+                let mut seen = BTreeSet::new();
+                named.retain(|it| seen.insert(it.clone()));
+
+                return named;
             }
 
             // note: and a rule about one operation answers for that operation and nothing wider:
             // the actions that need it, where a tool has several - `fs:read  allow  fs: read,
             // glob, grep` - since an `always` given to one of them answered for the others, and
-            // the operation itself otherwise. Naming the tools, with one tool to a domain, reads
-            // back the subject's own first half: `fs:read  allow  fs` puts the narrow rule over
-            // the whole tool, the one direction it cannot go.
+            // the tool's name where it has one action - `exec:run  allow  shell` - since then the
+            // operation is the whole tool. Naming a tool with several actions alone would put the
+            // narrow rule over the whole tool: `fs:read  allow  fs`.
             //
             // note: an empty list is how the row says nothing here is judged by it, and that is
             // the answer where every tool declaring the capability came from a server - `judges`
@@ -583,12 +604,7 @@ impl App {
                     .filter(|spec| {
                         spec.capabilities.contains(capability) && judged(&spec.id, capability)
                     })
-                    .map(
-                        |spec| match self.policy.actions_for(capability, &spec.id).is_empty() {
-                            true => capability.to_string(),
-                            false => self.policy.named_for(capability, &spec.id),
-                        },
-                    )
+                    .map(|spec| self.policy.named_for(capability, &spec.id))
                     .collect();
                 covered.dedup();
 
