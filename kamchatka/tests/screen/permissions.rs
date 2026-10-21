@@ -3154,3 +3154,52 @@ async fn a_domain_rule_names_actions_as_a_rule_about_one_operation_does() {
     assert_eq!(covers("fs"), "fs: read, glob, grep, write, edit");
     assert_eq!(covers("exec"), "shell");
 }
+
+/// An action listed under several rows is said to need all of them, on the tab as `setup` says it
+/// to the model.
+///
+/// note: with `context` allowed and `context:revise` refused, `undo` is under both rows, and reads
+/// as allowed by the first. It needs `context:revise` too, so it is refused. A model reading the
+/// same table from `setup` got that wrong, and a person reading the tab would as well.
+#[tokio::test]
+async fn an_action_under_several_rows_is_said_to_need_all_of_them() {
+    let mut harness = Harness::new([]);
+    let _installed = kamchatka::introspect::install(
+        &harness.app.kernel,
+        harness.app.policy.clone(),
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+    for spec in harness.app.kernel.tool_specs() {
+        if let Some(tool) = harness.app.kernel.tool(&spec.id) {
+            harness.app.policy.offers(&*tool);
+        }
+    }
+    harness.tab(Tab::Permissions);
+    assert!(
+        harness.app.together().is_empty(),
+        "nothing is decided, so there is no row to misread: {:?}",
+        harness.app.together()
+    );
+
+    harness
+        .app
+        .policy
+        .set(&Subject::parse("context"), Verdict::Allow);
+    harness
+        .app
+        .policy
+        .set(&Subject::parse("context:revise"), Verdict::Deny);
+    let said = "`context`'s `undo` and `redo` need `context:move`, `context:note`, `context:pin` \
+                and `context:revise` together";
+    assert!(
+        harness.app.together().iter().any(|it| it.contains(said)),
+        "{:?}",
+        harness.app.together()
+    );
+    let screen = harness.flat();
+    assert!(
+        screen.contains("`context`'s `undo` and `redo` need"),
+        "{screen}"
+    );
+}

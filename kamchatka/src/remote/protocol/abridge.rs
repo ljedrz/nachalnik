@@ -458,6 +458,7 @@ mod tests {
             permissions: Vec::new(),
             trace: Vec::new(),
             undecided: 0,
+            together: Vec::new(),
             queued: waiting.first().cloned(),
             queued_behind: waiting.iter().skip(1).cloned().collect(),
             confinement: None,

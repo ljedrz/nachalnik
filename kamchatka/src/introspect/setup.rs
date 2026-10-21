@@ -392,54 +392,19 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
 
 /// The actions the table above lists under more than one row, which need every one of those rows.
 ///
-/// note: worked out from what each tool says its actions need, as the rows are. Without it a model
-/// read `context:move  allow  context: elide, exclude, restore, undo, redo` as allowing `undo`, while
-/// a refused `context:revise` two rows down refused it: an action needing several subjects is
-/// judged by all of them, and the strictest answer wins.
+/// note: a model read `context:move  allow  context: elide, exclude, restore, undo, redo` as
+/// allowing `undo`, while a refused `context:revise` two rows down refused it. After a blank line,
+/// so it does not read as one more row of the table.
 fn together(kernel: &Kernel, policy: &Careful) -> String {
-    let mut needs: BTreeMap<(String, Vec<String>), Vec<String>> = BTreeMap::new();
-    for spec in kernel.tool_specs() {
-        let mut by_action: Vec<(String, Vec<String>)> = Vec::new();
-        for capability in &spec.capabilities {
-            for action in policy.actions_for(capability, &spec.id) {
-                match by_action.iter_mut().find(|(it, _)| *it == action) {
-                    Some((_, needed)) => needed.push(capability.to_string()),
-                    None => by_action.push((action, vec![capability.to_string()])),
-                }
-            }
-        }
-        for (action, mut needed) in by_action {
-            if needed.len() > 1 {
-                needed.sort();
-                needs
-                    .entry((spec.id.clone(), needed))
-                    .or_default()
-                    .push(format!("`{action}`"));
-            }
-        }
+    let lines: Vec<String> = policy
+        .needed_together(&kernel.tool_specs())
+        .iter()
+        .map(|it| format!("{}.\n", it.sentence()))
+        .collect();
+    match lines.is_empty() {
+        true => String::new(),
+        false => format!("\n{}", lines.concat()),
     }
-
-    // after a blank line, so it does not read as one more row of the table
-    let mut out = String::new();
-    for ((tool, needed), actions) in needs {
-        let needed: Vec<String> = needed.iter().map(|it| format!("`{it}`")).collect();
-        out.push_str(&format!(
-            "{}`{tool}`'s {} need {} together, so a refusal or a question on any of them is one on \
-             {}.\n",
-            match out.is_empty() {
-                true => "\n",
-                false => "",
-            },
-            crate::reconcile::listed(&actions),
-            crate::reconcile::listed(&needed),
-            match actions.len() {
-                1 => "it",
-                _ => "them",
-            },
-        ));
-    }
-
-    out
 }
 
 /// What the policy will say, before anything is asked.

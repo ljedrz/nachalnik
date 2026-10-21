@@ -558,6 +558,13 @@ pub struct Attached {
     /// decisions while standing for eighteen answers misleads too, and a client cannot work the
     /// count out from the list above, because the list is what it leaves out.
     pub undecided: usize,
+    /// The actions listed under several of [`Attached::permissions`]'s rows, which need every one
+    /// of them, as the sentence the permissions tab puts above its rows.
+    ///
+    /// note: `undo` under an allowed `context` row and a refused `context:revise` row reads as
+    /// allowed by the first; it is refused by the second. Empty from a session older than this.
+    #[serde(default)]
+    pub together: Vec<String>,
     /// The next message somebody typed into the running turn, waiting for it to end.
     ///
     /// note: cut where [`Attached::conversation`] is cut, with nothing on it to say so. A waiting

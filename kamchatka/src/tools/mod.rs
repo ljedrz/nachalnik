@@ -39,7 +39,7 @@ pub(crate) use crate::tools::search::barred;
 pub use crate::tools::{
     files::COUNTED,
     ops::Layout,
-    policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
+    policy::{Careful, Subject, Together, objection_to, path_matches, reaches_the_network},
     reaching::{Reached, Reaching},
     shedder::Shedder,
     shell::{CALL_VAR, Exit, Shell, Stragglers, joints},
