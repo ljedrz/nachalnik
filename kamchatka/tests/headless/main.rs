@@ -3123,7 +3123,7 @@ async fn the_start_of_the_record_reads_in_order() {
         .collect();
     assert_eq!(
         seen.first().map(String::as_str),
-        Some("LinearProjector → LinearProjector (no reasoning)"),
+        Some("LinearProjector → LinearProjector (reasoning not sent back)"),
         "{seen:?}"
     );
     assert_eq!(

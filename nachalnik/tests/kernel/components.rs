@@ -214,7 +214,7 @@ async fn every_seam_can_say_what_is_plugged_into_it() {
         kernel
             .projector()
             .name()
-            .ends_with("::LinearProjector (blocks, no reasoning)"),
+            .ends_with("::LinearProjector (blocks, reasoning not sent back)"),
         "{}",
         kernel.projector().name()
     );

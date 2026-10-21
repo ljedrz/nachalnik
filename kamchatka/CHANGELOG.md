@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The projector is named `LinearProjector (reasoning not sent back)`, not `LinearProjector (no
+  reasoning)`**, in `/seams`, the trace and what `setup` tells the model. A model's reasoning is
+  still shown as it arrives; the name is about whether it goes back to the model in the next
+  request, which `--api chat-completions` does not do by default. A model read the old name and
+  said it had no reasoning while it reasoned at length.
 - **The web page shows what the session said while it was disconnected.** A phone drops the page's
   connection when its screen is off, and on reconnecting the page was sent the records it missed,
   but not the session's own lines, which are in no record. So "the turn paused after 8 requests;
