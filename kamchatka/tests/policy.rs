@@ -457,6 +457,24 @@ fn every_kind_of_rule_survives_the_trip_through_text() {
     }
 }
 
+/// `context:*` is how somebody used to globs writes a whole domain, and it is read as one. It holds
+/// a `*`, so it used to be a path rule, which granted nothing about `context` and named the tools
+/// that take a path as what it covered.
+#[test]
+fn a_domain_with_every_operation_starred_is_the_whole_domain() {
+    assert_eq!(
+        Subject::parse("context:*"),
+        Subject::Domain(Domain::Other("context".to_owned()))
+    );
+    assert_eq!(Subject::parse("fs:*"), Subject::Domain(Domain::Fs));
+    // and a path rule is still a path rule
+    assert_eq!(
+        Subject::parse("src/*:*"),
+        Subject::Path("src/*:*".to_owned())
+    );
+    assert_eq!(Subject::parse(".env:*"), Subject::Path(".env:*".to_owned()));
+}
+
 /// The policy is handed what a call needs and answers about that, without reading the arguments
 /// for anything but a path.
 ///

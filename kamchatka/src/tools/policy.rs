@@ -72,9 +72,21 @@ impl Subject {
     /// and nothing in either string says which. It is named on its own argument instead - see
     /// `--auto-allow-servers`.
     ///
+    /// note: `fs:*` is read as `fs`, the whole domain, and written back as `fs`.
+    ///
     /// note: it is the inverse of [`fmt::Display`] above for the three it can produce, so
     /// `--auto-deny "$(read a row off the permissions tab)"` means what it says.
     pub fn parse(text: &str) -> Self {
+        // `context:*` is the whole domain, and the way somebody used to globs would write it. It
+        // holds a `*`, so it was a path rule matching files called `context:...`, which granted
+        // nothing about `context` and covered every tool that takes a path
+        if let Some(domain) = text.strip_suffix(":*")
+            && !domain.is_empty()
+            && !domain.contains([':', '/', '*'])
+            && !domain.starts_with('.')
+        {
+            return Self::Domain(Domain::from(domain));
+        }
         if text.contains('/') || text.contains('*') || text.starts_with('.') {
             return Self::Path(text.to_owned());
         }
