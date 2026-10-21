@@ -41,6 +41,9 @@ minor bump may break you.
 
 ### changed
 
+- **RUNNING.md says which commands are asked about by name** where the network cannot be gated
+  (`--no-sandbox`, or a kernel that cannot pause a call). It said "a short list of programs", so
+  nobody could tell that `git` and `cargo` are asked about and `python3 fetch.py` is not.
 - **The guide says how rules combine in two steps.** Within a domain, an operation's answer counts
   over the domain's, and a deny wins at either level. Across the rules a call is judged by (its
   operation, the path rules matching its path, its server), the strictest answer wins, so
