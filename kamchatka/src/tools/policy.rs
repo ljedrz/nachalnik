@@ -112,20 +112,20 @@ pub struct Together {
 }
 
 impl Together {
-    /// The sentence every table puts under its rows: "`context`'s `undo` and `redo` need
-    /// `context:move`, ... together, so a refusal or a question on any of them is one on them".
+    /// The sentence every table puts under its rows: "`context`'s `undo` and `redo` need all of
+    /// `context:move`, ..., so the strictest of those applies to `undo` and `redo`".
     pub fn sentence(&self) -> String {
         let actions: Vec<String> = self.actions.iter().map(|it| format!("`{it}`")).collect();
         let needed: Vec<String> = self.needed.iter().map(|it| format!("`{it}`")).collect();
+        let need = match actions.len() {
+            1 => "needs",
+            _ => "need",
+        };
+        let actions = crate::reconcile::listed(&actions);
         format!(
-            "`{}`'s {} need {} together, so a refusal or a question on any of them is one on {}",
+            "`{}`'s {actions} {need} all of {}, so the strictest of those applies to {actions}",
             self.tool,
-            crate::reconcile::listed(&actions),
             crate::reconcile::listed(&needed),
-            match self.actions.len() {
-                1 => "it",
-                _ => "them",
-            },
         )
     }
 }
