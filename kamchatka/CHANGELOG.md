@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`context` tells the model when tokens are held back because a call of its own has no result
+  yet.** `budget` listed every other reason and said the rest were excluded "which you set", and
+  `request` said a call was dropped because "its result is not in the projection" without saying
+  that the call was the one being made. A model asked to look for contradictions reported both: it
+  was told it had excluded something it had not, and it could not tell which call was dropped.
 - **The projector is named `LinearProjector (reasoning not sent back)`, not `LinearProjector (no
   reasoning)`**, in `/seams`, the trace and what `setup` tells the model. A model's reasoning is
   still shown as it arrives; the name is about whether it goes back to the model in the next

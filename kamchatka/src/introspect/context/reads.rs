@@ -76,7 +76,8 @@ pub(super) fn look(
     out.push_str(&format!(
         "{} items · {} of them go into the next request\n\
          ~{} tokens going{}, ~{} held back - what the request does not carry, whether because \
-         you set a state or because the endpoint will not take it\n\
+         you set a state, because the endpoint will not take it, or because a call of yours has \
+         no result yet\n\
          {} change(s) in the person's own undo stack, which is theirs; `undo` walks back what \
          you did\n\n\
          {HEAD}",
@@ -782,9 +783,10 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
     let mut out = format!(
         "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
          ~{} tokens are being held back: excluded or elided to a marker, which you set - and the \
-         program excludes too: a note you walked back, and the whole of a shortened answer; or \
-         thinking this endpoint will not take back, which is not yours to change. `restore` puts \
-         an excluded or elided item back\n",
+         program excludes too: a note you walked back, and the whole of a shortened answer; \
+         thinking this endpoint will not take back, which is not yours to change; and calls of \
+         yours with no result yet, this one among them, which go in once their results are back. \
+         `restore` puts an excluded or elided item back\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
         thousands(budget.tool_tokens),
@@ -983,9 +985,34 @@ pub(super) fn request(kernel: &Kernel) -> String {
         }
     }
     if !projection.repairs.is_empty() {
+        // note: a call with no result anywhere in the context is one still running or waiting to
+        // run, and this call is always one of them. The projector cannot tell that from a result
+        // that was taken away, so its line says only that the result is not there; a model reading
+        // it about its own call could not tell what had been lost
+        let items = kernel.items();
+        let answered: BTreeSet<&nachalnik::ToolCallId> = items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ContextKind::ToolResult { call, .. } => Some(call),
+                _ => None,
+            })
+            .collect();
+        let waiting: Vec<String> = items
+            .iter()
+            .flat_map(|item| item.calls())
+            .filter(|call| !answered.contains(&call.id))
+            .map(|call| format!("`{}`", call.id))
+            .collect();
+
         out.push_str("\nand what that same projector rewrote, to keep the request valid:\n");
         for repair in &projection.repairs {
-            out.push_str(&format!("  {repair}\n"));
+            match waiting.iter().any(|id| repair.contains(id.as_str())) {
+                true => out.push_str(&format!(
+                    "  {repair} - it has no result yet: it is this call, or one still waiting \
+                     to run, and goes in once its result is back\n"
+                )),
+                false => out.push_str(&format!("  {repair}\n")),
+            }
         }
     }
     // note: under a heading of its own, and one that says nothing was lost. This tool is read by a

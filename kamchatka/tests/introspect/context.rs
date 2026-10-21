@@ -413,6 +413,53 @@ async fn request_reports_what_is_going_and_what_was_left_out() {
     assert!(!said.contains("hunter2"), "{said}");
 }
 
+/// A call the projector drops because it has no result yet is said to be still running, and one
+/// whose result was taken out of the request is not.
+///
+/// note: the projector cannot tell the two apart, and said only "its result is not in the
+/// projection" about both. A model reading that about the call it was making could not tell that
+/// it was its own.
+#[tokio::test]
+async fn request_says_a_call_with_no_result_yet_is_still_running() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "request" }),
+    )]));
+
+    kernel.push(ContextItem::user("look around"));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call("old", "fs", json!({ "action": "read", "path": "a" }))],
+    ));
+    let result = kernel.push(ContextItem::tool_result(
+        ToolCallId("old".into()),
+        "fs",
+        "contents",
+        false,
+    ));
+    kernel.set_state([result], ContextState::Excluded, None);
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let line = |id: &str| {
+        said.lines()
+            .find(|line| line.contains(&format!("dropped the call `{id}`")))
+            .unwrap_or_else(|| panic!("`{id}` was dropped: {said}"))
+            .to_owned()
+    };
+    assert!(
+        line("c1").contains("it has no result yet: it is this call"),
+        "{said}"
+    );
+    assert!(
+        !line("old").contains("no result yet"),
+        "its result is there, and excluded: {said}"
+    );
+}
+
 /// A turn that only called a tool is as big as the arguments it sent, not as the nothing it said.
 #[tokio::test]
 async fn request_sizes_a_message_by_what_it_sends() {
