@@ -142,6 +142,53 @@ pub(crate) fn tuned(stream: &tokio::net::TcpStream) {
         .set_tcp_keepalive(&TcpKeepalive::new().with_time(IDLE).with_interval(PROBE));
 }
 
+/// The local addresses of the connections this process's own `--web` relay has open to a session
+/// over TCP.
+///
+/// note: how a session tells its own relay from anybody else on a loopback port, which is what
+/// lets it believe the browser's address the relay sends; see `Command::Attach::relaying`. On a
+/// unix socket the process ID says the same, so only TCP needs this.
+static RELAYS: std::sync::Mutex<Vec<std::net::SocketAddr>> = std::sync::Mutex::new(Vec::new());
+
+/// One connection of this process's relay, listed in [`RELAYS`] until it is dropped.
+#[cfg_attr(not(feature = "webui"), allow(dead_code))]
+pub(crate) struct Relay(Option<std::net::SocketAddr>);
+
+#[cfg_attr(not(feature = "webui"), allow(dead_code))]
+impl Relay {
+    /// Lists this connection as the relay's.
+    pub(crate) fn of(connection: &Connection) -> Self {
+        let Connection::Tcp(stream) = connection else {
+            return Self(None);
+        };
+        let local = stream.local_addr().ok();
+        if let Some(local) = local {
+            RELAYS.lock().unwrap_or_else(|e| e.into_inner()).push(local);
+        }
+
+        Self(local)
+    }
+}
+
+impl Drop for Relay {
+    fn drop(&mut self) {
+        if let Some(local) = self.0 {
+            RELAYS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|it| *it != local);
+        }
+    }
+}
+
+/// Whether a connection that arrived from this address is one of this process's relay's.
+pub(crate) fn relayed(peer: std::net::SocketAddr) -> bool {
+    RELAYS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&peer)
+}
+
 /// A connection of either kind, at either end.
 ///
 /// note: an enum implementing the two traits by hand rather than a `Box<dyn>`, because the pair is
@@ -237,5 +284,35 @@ mod tests {
                 "this kernel refused the keepalive `tuned` sets"
             );
         }
+    }
+
+    /// A connection the relay has listed is recognised by the address the session sees it arrive
+    /// from, while the relay holds it and not after. Any other connection is not.
+    #[tokio::test]
+    async fn a_relay_is_known_by_its_address_while_it_is_open() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        // what the session sees a connection arrive from is the connecting end's own address
+        let ours = tokio::net::TcpStream::connect(at)
+            .await
+            .expect("nothing was listening");
+        let ours_at = ours.local_addr().expect("its address");
+        let theirs = tokio::net::TcpStream::connect(at)
+            .await
+            .expect("nothing was listening");
+        let theirs_at = theirs.local_addr().expect("its address");
+
+        let ours = Connection::Tcp(ours);
+        let relay = Relay::of(&ours);
+        assert!(relayed(ours_at));
+        assert!(!relayed(theirs_at), "a connection the relay did not list");
+
+        drop(relay);
+        assert!(
+            !relayed(ours_at),
+            "a relay that has let go of its connection"
+        );
     }
 }

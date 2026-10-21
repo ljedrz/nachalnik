@@ -82,6 +82,15 @@ pub enum Command {
         /// definition. A default of "unknown" would refuse the clients the field was added to keep
         /// working.
         version: Option<u32>,
+        /// The address of the person a relay passes the session on to: the browser's, for the
+        /// `--web` page. `None` for a client that is not a relay.
+        ///
+        /// note: the session sees only the relay's connection, so without this every browser tab
+        /// is a loopback port on the trace. The session believes it only from its own relay, which
+        /// it recognises by the connection rather than by anything sent: anybody else could put
+        /// anything here, and is named by the address the session sees instead.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        relaying: Option<String>,
     },
     /// Hand in one line, exactly as it would be typed at the prompt: a message, or a command.
     Submit {

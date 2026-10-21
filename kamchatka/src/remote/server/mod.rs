@@ -139,6 +139,23 @@ pub struct Asked(FromClient);
 /// this sits between those two calls.
 pub struct Arrived(super::Connection);
 
+/// Where a client came from, for the trace.
+struct Origin {
+    /// What this end of the connection saw.
+    seen: Option<Seen>,
+    /// The browser's address, where the client is this process's own `--web` relay and said it.
+    relaying: Option<String>,
+}
+
+/// The other end of a connection, as this end sees it.
+#[derive(Clone, Copy)]
+enum Seen {
+    /// An address and port.
+    Tcp(std::net::SocketAddr),
+    /// The process at the other end of a unix socket.
+    Unix(u32),
+}
+
 /// What reaches the session loop from a connection.
 enum FromClient {
     /// It asked for something that needs the session itself.
@@ -691,7 +708,7 @@ pub struct Serving {
     /// notification sent while the connection is busy elsewhere is kept for its next look.
     replaced: HashMap<u64, Arc<Notify>>,
     /// Where each connection still open came from, as the trace names it; see [`Serving::called`].
-    from: HashMap<u64, String>,
+    from: HashMap<u64, Origin>,
     /// The connections, so that the session can wait for them on the way out; see
     /// [`Serving::last`].
     connections: JoinSet<()>,
@@ -754,18 +771,37 @@ impl Serving {
         }
     }
 
-    /// A client as the trace names it: where it came from, `127.0.0.1:53430` or `pid 4123`.
+    /// A client as the trace names it: where it came from, `127.0.0.1:53430` or `pid 4123`, or
+    /// `192.168.1.7:51234 through the web page`.
     ///
-    /// note: the address is the one this end sees. A `--serve tcp:` port only listens on loopback,
-    /// so it is always `127.0.0.1` or `::1`, and the port is what tells two clients apart; `ss -tp`
-    /// says which process has it. A unix socket has no address, so it is the process at the other
-    /// end. A browser tab is relayed by `--web` from this process, so it shows the relay's
-    /// connection rather than the browser's address.
+    /// note: a `--serve tcp:` port only listens on loopback, so its clients are always `127.0.0.1`
+    /// or `::1`, and the port is what tells two of them apart; `ss -tp` says which process has it.
+    /// A unix socket has no address, so it is the process at the other end. A browser tab is
+    /// relayed by `--web` from this process, which says the browser's address when it attaches.
     fn called(&self, client: u64) -> String {
-        self.from
-            .get(&client)
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_owned())
+        let Some(origin) = self.from.get(&client) else {
+            return "unknown".to_owned();
+        };
+        match (&origin.relaying, origin.seen) {
+            (Some(browser), _) => format!("{browser} through the web page"),
+            (None, Some(Seen::Tcp(peer))) => peer.to_string(),
+            (None, Some(Seen::Unix(pid))) => format!("pid {pid}"),
+            (None, None) => "unknown".to_owned(),
+        }
+    }
+
+    /// Whether a client is this process's own `--web` relay, the one client whose
+    /// `Command::Attach::relaying` is believed.
+    ///
+    /// note: asked when the attach is read rather than when the connection arrives, because the
+    /// relay lists its connection after connecting and before attaching, and the arrival may be
+    /// seen in between.
+    fn relay(&self, client: u64) -> bool {
+        match self.from.get(&client).and_then(|origin| origin.seen) {
+            Some(Seen::Tcp(peer)) => crate::remote::relayed(peer),
+            Some(Seen::Unix(pid)) => pid == std::process::id(),
+            None => false,
+        }
     }
 
     /// Says whatever the session has said since the last look, and whatever has changed about it.
@@ -893,6 +929,15 @@ impl Serving {
                     });
                     return;
                 }
+                if let Command::Attach {
+                    relaying: Some(browser),
+                    ..
+                } = &command
+                    && self.relay(client)
+                    && let Some(origin) = self.from.get_mut(&client)
+                {
+                    origin.relaying = Some(browser.clone());
+                }
                 // taken before the projection rather than after it, so that a line said between the
                 // two would arrive twice rather than not at all. Nothing runs in between today; the
                 // order is which way to be wrong if anything ever does
@@ -1013,17 +1058,22 @@ impl Serving {
         }
         self.clients += 1;
         // kept for the trace, which names a client when it takes the session; see `seated`
-        let from = match &arrived.0 {
-            super::Connection::Tcp(stream) => stream.peer_addr().ok().map(|it| it.to_string()),
+        let seen = match &arrived.0 {
+            super::Connection::Tcp(stream) => stream.peer_addr().ok().map(Seen::Tcp),
             super::Connection::Unix(stream) => stream
                 .peer_cred()
                 .ok()
                 .and_then(|cred| cred.pid())
-                .map(|pid| format!("pid {pid}")),
+                .and_then(|pid| u32::try_from(pid).ok())
+                .map(Seen::Unix),
         };
-        if let Some(from) = from {
-            self.from.insert(self.clients, from);
-        }
+        self.from.insert(
+            self.clients,
+            Origin {
+                seen,
+                relaying: None,
+            },
+        );
         let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
         let replaced = Arc::new(Notify::new());
         self.replaced.insert(client, replaced.clone());
@@ -1702,6 +1752,7 @@ mod tests {
                     since: None,
                     session: None,
                     version: None,
+                    relaying: None,
                 },
                 answer,
             })

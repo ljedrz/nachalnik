@@ -75,6 +75,7 @@ async fn main() -> Result<(), String> {
             // nothing to name and nothing to resume: this client attaches once and leaves
             session: None,
             version: Some(protocol::VERSION),
+            relaying: None,
         },
     )
     .await?;

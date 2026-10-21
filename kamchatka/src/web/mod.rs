@@ -393,6 +393,9 @@ async fn serve(
         guesses,
         said,
     } = served;
+    // passed on to the session, which sees only this relay's own connection; see
+    // `Command::Attach::relaying`
+    let from = browser.peer_addr().ok().map(|it| it.to_string());
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
     // a connection that sends nothing in time went away without a request, so it is not reported: a
@@ -468,7 +471,7 @@ async fn serve(
                 .header("last-event-id")
                 .or_else(|| param(query, "since"))
                 .and_then(|it| it.parse().ok());
-            stream(&mut write, session, tabs, named, tab, since).await
+            stream(&mut write, session, tabs, named, tab, since, from).await
         }
         ("POST", "/do") => {
             // a command that cannot be read is answered rather than hung up on, so the page reports
@@ -615,6 +618,7 @@ async fn stream<W: AsyncWrite + Unpin>(
     named: Named,
     tab: String,
     since: Option<u64>,
+    from: Option<String>,
 ) -> Result<(), String> {
     // note: the whole attach happens before the head goes out, so nothing has been said to the
     // browser yet and a second attempt is the first one it hears about, which is what makes the
@@ -623,7 +627,8 @@ async fn stream<W: AsyncWrite + Unpin>(
         mut up,
         mut down,
         first,
-    }) = attach(session, since, &named, write).await?
+        relay: _relay,
+    }) = attach(session, since, from, &named, write).await?
     else {
         return Ok(());
     };
@@ -687,6 +692,8 @@ struct Upstream {
     down: WriteHalf<Connection>,
     /// The answer to the attach, which the browser is owed like every message after it.
     first: serde_json::Value,
+    /// What tells the session this connection is the relay's, for as long as it is open.
+    relay: crate::remote::Relay,
 }
 
 /// Opens a connection to the session and attaches to it. Where the watermark this tab holds belongs
@@ -710,6 +717,7 @@ struct Upstream {
 async fn attach<W: AsyncWrite + Unpin>(
     session: &str,
     since: Option<u64>,
+    from: Option<String>,
     named: &Named,
     write: &mut W,
 ) -> Result<Option<Upstream>, String> {
@@ -724,6 +732,8 @@ async fn attach<W: AsyncWrite + Unpin>(
                 return Ok(None);
             }
         };
+        // listed before the attach is written, so the session finds it when it reads the attach
+        let relay = crate::remote::Relay::of(&upstream);
         let (up, mut down) = tokio::io::split(upstream);
         let mut up = protocol::Frames::new(BufReader::new(up));
         // taken out of the lock before the write rather than inside the call, because a guard held
@@ -735,6 +745,7 @@ async fn attach<W: AsyncWrite + Unpin>(
                 since,
                 session: was,
                 version: Some(protocol::VERSION),
+                relaying: from.clone(),
             },
         )
         .await?;
@@ -758,7 +769,12 @@ async fn attach<W: AsyncWrite + Unpin>(
             continue;
         }
 
-        return Ok(Some(Upstream { up, down, first }));
+        return Ok(Some(Upstream {
+            up,
+            down,
+            first,
+            relay,
+        }));
     }
 }
 
@@ -1368,7 +1384,7 @@ mod tests {
         .await;
         let named: Named = Arc::new(Mutex::new(Some("old".to_owned())));
         let mut written = Vec::new();
-        let attached = attach(&address, Some(7), &named, &mut written).await;
+        let attached = attach(&address, Some(7), None, &named, &mut written).await;
         match attached {
             Ok(Some(Upstream { first, .. })) => assert_eq!(first["is"], "done"),
             _ => panic!("the second attach should be the one answered"),
@@ -1379,6 +1395,20 @@ mod tests {
         assert_eq!(asked[0]["session"], "old");
         assert!(asked[1]["since"].is_null(), "{asked:?}");
         assert!(asked[1]["session"].is_null(), "{asked:?}");
+    }
+
+    /// The attach says where the browser is, which the session cannot see for itself: all it has is
+    /// this relay's own connection.
+    #[tokio::test]
+    async fn the_attach_says_where_the_browser_is() {
+        let (address, asked) = scripted(vec![serde_json::json!({"is": "done"})]).await;
+        let named: Named = Arc::default();
+        let mut written = Vec::new();
+        let browser = Some("192.0.2.7:51234".to_owned());
+        let attached = attach(&address, None, browser, &named, &mut written).await;
+        assert!(matches!(attached, Ok(Some(_))), "the attach was answered");
+        let asked = asked.lock().expect("not poisoned");
+        assert_eq!(asked[0]["relaying"], "192.0.2.7:51234", "{asked:?}");
     }
 
     /// Only a refusal about an attach is retried. Any other message, including a refusal about
@@ -1392,7 +1422,7 @@ mod tests {
             let (address, asked) = scripted(vec![answer.clone()]).await;
             let named: Named = Arc::default();
             let mut written = Vec::new();
-            let attached = attach(&address, Some(7), &named, &mut written).await;
+            let attached = attach(&address, Some(7), None, &named, &mut written).await;
             match attached {
                 Ok(Some(Upstream { first, .. })) => assert_eq!(first, answer),
                 _ => panic!("{answer} should be passed on"),
@@ -1409,7 +1439,7 @@ mod tests {
         let (address, asked) = scripted(vec![refused.clone()]).await;
         let named: Named = Arc::default();
         let mut written = Vec::new();
-        match attach(&address, None, &named, &mut written).await {
+        match attach(&address, None, None, &named, &mut written).await {
             Ok(Some(Upstream { first, .. })) => assert_eq!(first, refused),
             _ => panic!("a refusal with no watermark should be passed on"),
         }

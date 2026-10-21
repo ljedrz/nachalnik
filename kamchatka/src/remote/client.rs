@@ -379,11 +379,13 @@ impl<'a> Client<'a> {
                 since: Some(self.last),
                 session: Some(session.clone()),
                 version: Some(protocol::VERSION),
+                relaying: None,
             },
             None => Command::Attach {
                 since: None,
                 session: None,
                 version: Some(protocol::VERSION),
+                relaying: None,
             },
         };
         if self.say_to(&mut write, attach).await.is_err() {
@@ -1196,6 +1198,7 @@ impl<'a> Client<'a> {
                 since: Some(self.written),
                 session: self.session.clone(),
                 version: Some(protocol::VERSION),
+                relaying: None,
             },
         )
         .await
