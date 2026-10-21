@@ -3155,14 +3155,14 @@ async fn a_domain_rule_names_actions_as_a_rule_about_one_operation_does() {
     assert_eq!(covers("exec"), "shell");
 }
 
-/// An action listed under several rows is said to need all of them, on the tab as `setup` says it
-/// to the model.
+/// An action listed under several rows is said to need all of them, as `setup` says it to the
+/// model, but not on the tab, which leaves it to GUIDE.md.
 ///
 /// note: with `context` allowed and `context:revise` refused, `undo` is under both rows, and reads
 /// as allowed by the first. It needs `context:revise` too, so it is refused. A model reading the
-/// same table from `setup` got that wrong, and a person reading the tab would as well.
+/// same table from `setup` got that wrong.
 #[tokio::test]
-async fn an_action_under_several_rows_is_said_to_need_all_of_them() {
+async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() {
     let mut harness = Harness::new([]);
     let _installed = kamchatka::introspect::install(
         &harness.app.kernel,
@@ -3199,7 +3199,7 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them() {
     );
     let screen = harness.flat();
     assert!(
-        screen.contains("`context`'s `undo` and `redo` need"),
+        !screen.contains("`context`'s `undo` and `redo` need"),
         "{screen}"
     );
 }

@@ -254,8 +254,9 @@ a tool's actions it uses, so actions with the same effect are one decision:
 | `setup:read` | `setup`'s `model`, `tools`, `permissions` and `policy` |
 | `fork:ask` | `fork`'s `draft` and `ask` |
 
-`context`'s `undo` and `redo` can replay any change, so they need `context:move`, `context:pin`,
-`context:note` and `context:revise` together. A refused `fs:write` also makes the working directory
+`context`'s `undo` and `redo` can replay any change, so they need all of `context:move`,
+`context:pin`, `context:note` and `context:revise`, and the strictest of those four applies to them:
+with `context:move` allowed and `context:revise` refused, `undo` is refused. A refused `fs:write` also makes the working directory
 and the `--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell`
 reading, since a shell that can't read its working directory can do almost nothing; refuse
 `exec:run` to keep commands away from the files. A **path rule** is about the file a call is given,
