@@ -1334,7 +1334,19 @@ function heard(m) {
       if (m.page) for (const p of m.page.pages) say("note", `--- ${m.page.title} ---\n${p.body}`);
       break;
     }
-    case "missed": say("note", `${m.frames} fragment(s) went past too fast; the records have what happened`); break;
+    case "missed":
+      say("note", `${m.frames} fragment(s) went past too fast; the records have what happened`);
+      // and what the session said meanwhile may be among what went past; the projection has it
+      restale();
+      break;
+    // note: a reconnection. The records this page missed are sent again, but what the session said
+    // is in no record, so a note said while the page was away - a phone with its screen off, say -
+    // was lost: "the turn paused after 8 requests" among them, which is the one that needs an
+    // answer. A projection holds the session's lines as well as the items, so the chat is drawn
+    // again from one. A first attach is answered with the projection itself, not with this
+    case "done":
+      if (m.about === "attach") restale();
+      break;
     case "failed": {
       say("error", `${m.about}: ${m.error}`);
       // note: replaced by another client, which the session serves instead of this one. Left to
