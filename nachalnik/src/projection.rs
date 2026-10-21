@@ -244,7 +244,7 @@ impl Projector for LinearProjector {
     }
 
     /// The type's path and the two switches a provider sets, as
-    /// `nachalnik::projection::LinearProjector (blocks, no reasoning)`.
+    /// `nachalnik::projection::LinearProjector (blocks, reasoning not sent back)`.
     ///
     /// note: the switches are included because the type alone cannot tell a change from no change:
     /// every shipped provider installs a `LinearProjector`, so a session once announced
@@ -254,8 +254,8 @@ impl Projector for LinearProjector {
         match (self.send_blocks, self.send_reasoning) {
             (false, true) => concat!(module_path!(), "::LinearProjector"),
             (true, true) => concat!(module_path!(), "::LinearProjector (blocks)"),
-            (false, false) => concat!(module_path!(), "::LinearProjector (no reasoning)"),
-            (true, false) => concat!(module_path!(), "::LinearProjector (blocks, no reasoning)"),
+            (false, false) => concat!(module_path!(), "::LinearProjector (reasoning not sent back)"),
+            (true, false) => concat!(module_path!(), "::LinearProjector (blocks, reasoning not sent back)"),
         }
     }
 }

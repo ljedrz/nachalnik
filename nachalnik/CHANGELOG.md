@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`LinearProjector::name` says `reasoning not sent back` where it said `no reasoning`.** The
+  switch is `send_reasoning`: whether the reasoning of earlier turns goes back to the model in the
+  next request. `no reasoning` read as a model that does not reason, and a model told its projector
+  was `LinearProjector (no reasoning)` said so while it was reasoning at length.
+
 ## [0.10.1] - 2026-10-21
 
 ### fixed
