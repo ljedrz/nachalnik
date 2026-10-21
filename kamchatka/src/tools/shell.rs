@@ -306,6 +306,22 @@ const GRACE: Duration = Duration::from_secs(2);
 /// How long a straggler sent `SIGKILL` is given to be gone before it is said to be still running.
 const KILLED: Duration = Duration::from_millis(500);
 
+/// What `look` finds once it finds nothing or `within` has gone by, looking again every 20
+/// milliseconds: the processes still there after a signal was given time to land.
+fn settled(
+    mut look: impl FnMut() -> BTreeMap<usize, Vec<u32>>,
+    within: Duration,
+) -> BTreeMap<usize, Vec<u32>> {
+    let until = std::time::Instant::now() + within;
+    let mut found = look();
+    while !found.is_empty() && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+        found = look();
+    }
+
+    found
+}
+
 /// The calls whose processes were all stopped: those found to stop, less any still running after.
 fn stopped<'a>(
     found: impl Iterator<Item = usize> + 'a,
@@ -385,12 +401,7 @@ impl Stragglers {
         for pid in found.values().flatten() {
             self.signal(*pid, rustix::process::Signal::TERM);
         }
-        let until = std::time::Instant::now() + GRACE;
-        let mut lasting = self.found();
-        while !lasting.is_empty() && std::time::Instant::now() < until {
-            std::thread::sleep(Duration::from_millis(20));
-            lasting = self.found();
-        }
+        let lasting = settled(|| self.found(), GRACE);
         for pid in lasting.values().flatten() {
             self.signal(*pid, rustix::process::Signal::KILL);
         }
@@ -398,12 +409,7 @@ impl Stragglers {
         // waiting on a device in the kernel takes it only when the wait is over, and a signal can
         // be refused. Named as stopped regardless, a command still running was said to be over;
         // `Stragglers::running` names what is left
-        let until = std::time::Instant::now() + KILLED;
-        let mut left = self.found();
-        while !left.is_empty() && std::time::Instant::now() < until {
-            std::thread::sleep(Duration::from_millis(20));
-            left = self.found();
-        }
+        let left = settled(|| self.found(), KILLED);
 
         self.named(stopped(found.into_keys(), &left))
     }
@@ -1801,6 +1807,53 @@ mod tests {
         assert_eq!(
             stopped([0, 2].into_iter(), &BTreeMap::new()).collect::<Vec<_>>(),
             [0, 2]
+        );
+    }
+
+    /// What a signal is waited out for is looked for again until it is gone, and no longer.
+    ///
+    /// note: a process takes a signal when it is next scheduled, and one waiting in the kernel only
+    /// when the wait ends, so the first look after a signal can still find what is on its way out.
+    /// The look is handed in, which is how a test makes one that finds a process for a while.
+    #[test]
+    fn what_a_signal_is_waited_out_for_is_looked_for_until_it_is_gone() {
+        let found = || BTreeMap::from([(1, vec![4_242])]);
+
+        // gone on the fourth look, well within the wait
+        let mut looks = 0;
+        let left = settled(
+            || {
+                looks += 1;
+                match looks {
+                    4.. => BTreeMap::new(),
+                    _ => found(),
+                }
+            },
+            Duration::from_secs(2),
+        );
+        assert!(left.is_empty(), "said to be still there: {left:?}");
+        assert_eq!(looks, 4, "looked for again after it was gone");
+
+        // gone at once, and not looked for again
+        let mut looks = 0;
+        let left = settled(
+            || {
+                looks += 1;
+                BTreeMap::new()
+            },
+            Duration::from_secs(2),
+        );
+        assert!(left.is_empty());
+        assert_eq!(looks, 1, "looked for again with nothing found");
+
+        // and never gone, which is given up on once the wait is over
+        let started = std::time::Instant::now();
+        let left = settled(found, Duration::from_millis(100));
+        assert_eq!(left, found(), "what is still there is said");
+        assert!(started.elapsed() >= Duration::from_millis(100));
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the wait was not over"
         );
     }
 
