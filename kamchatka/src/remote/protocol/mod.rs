@@ -396,6 +396,17 @@ pub enum Message {
         #[serde(default)]
         version: Option<usize>,
     },
+    /// The text of an item this client asked `/copy` for, to put on its own clipboard.
+    ///
+    /// note: sent to the client that asked and nobody else, just before the answer to the line.
+    /// The session's terminal is not where the person who typed `/copy` is, so the session cannot
+    /// put it on their clipboard itself.
+    Copy {
+        /// Which item.
+        id: ContextId,
+        /// The item's own text, as the terminal's `/copy` takes it.
+        text: String,
+    },
     /// How many fragments the client was not sent: while it was not keeping up, or because one was
     /// too long for a frame.
     ///

@@ -185,6 +185,7 @@
   .call { color: var(--call); } .call::before { content: "\2329 "; }
   .result { color: var(--dim); } .result::before { content: "< "; }
   .note { color: var(--note); } .note::before { content: "\00b7 "; }
+  .note button { font-size: 13px; padding: 2px 10px; margin-left: 8px; }
   .error { color: var(--bad); } .error::before { content: "! "; }
   .pending { opacity: .45; }
   /* a model's answer, rendered as the terminal renders one: what the punctuation means rather than
@@ -471,6 +472,60 @@ function fill(el, text) {
   el.raw = text;
   if (el.classList.contains("model")) el.replaceChildren(markdown(text));
   else el.textContent = text;
+}
+
+/**
+ * Puts text on this browser's clipboard; `false` where the browser would not.
+ *
+ * note: two ways, because neither works everywhere. `navigator.clipboard` exists only on a page
+ * served over https or from localhost, and `execCommand("copy")` is the older way that works over
+ * plain http. The focus goes back where it was, because selecting the hidden box takes it from the
+ * line somebody is typing in.
+ */
+async function toClipboard(text) {
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) { /* refused; the older way may still work */ }
+  }
+  const focused = document.activeElement;
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.append(area);
+  area.select();
+  let done = false;
+  try { done = document.execCommand("copy"); } catch (_) { done = false; }
+  area.remove();
+  if (focused instanceof HTMLElement) focused.focus();
+  return done;
+}
+
+/**
+ * Copies an item that `/copy` sent back, or offers a button that does.
+ *
+ * note: the button is for browsers that only copy straight after a click or a key. The text
+ * arrives a moment after Enter was pressed, which can already be too late; a click on the button
+ * is a fresh one.
+ */
+async function copied(id, text) {
+  if (await toClipboard(text)) {
+    say("note", `[${id}] copied to this browser's clipboard`);
+    return;
+  }
+  const el = say("note", `[${id}] is ready, but the browser only copies after a click`);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "copy";
+  button.onclick = async () => {
+    el.textContent = (await toClipboard(text))
+      ? `[${id}] copied to this browser's clipboard`
+      : `[${id}] was not copied: this browser would not allow it`;
+  };
+  el.append(button);
 }
 
 /** A line that a fragment has just grown, drawn again once per frame however many arrive in it. */
@@ -1271,6 +1326,7 @@ function heard(m) {
       }
       break;
     }
+    case "copy": copied(m.id, m.text); break;
     case "busy": working(m.busy); break;
     case "replied": {
       working(m.busy);

@@ -183,17 +183,27 @@ where
                 }
                 Some(command) => {
                     let about = name(&command);
-                    match ask(asks, client, command).await.map(|it| it.message) {
+                    match ask(asks, client, command).await {
                         // note: caught up first, for the reason `Message::Busy` is: a reply carries
                         // `busy`, and a client whose input has closed leaves on `busy: false` - so
                         // `/note keep this` piped in and answered ahead of its `context.added` was
                         // a client gone before the record of what it had just done
-                        Ok(Some(message)) => {
+                        //
+                        // note: and what is for this client alone - the text of a `/copy` - just
+                        // before the answer, so it has arrived by the time the line is answered
+                        Ok(Answered {
+                            message: Some(message),
+                            standing,
+                            ..
+                        }) => {
                             caught_up(&mut events, kernel, &mut last, write, progress_recorded)
                                 .await?;
+                            for message in &standing {
+                                voiced(write, message).await?;
+                            }
                             answer(write, &message, about).await?
                         }
-                        Ok(None) => {}
+                        Ok(Answered { message: None, .. }) => {}
                         // note: the session has ended with this command still waiting on it, and
                         // the connection ends here rather than in the branch below that would have
                         // written the last of the log - so it is written here. Without it the
