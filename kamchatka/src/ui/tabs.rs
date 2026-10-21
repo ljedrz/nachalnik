@@ -649,8 +649,8 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     ])];
     said.extend(unrated(app));
     // note: not the actions listed under several rows, which need all of those rows. That is the
-    // same sentence every time, so GUIDE.md says it rather than the tab; `/permissions` and the
-    // web page still do. See `App::together`
+    // same sentence every time, so GUIDE.md says it rather than the tab; `/permissions` still
+    // does. See `App::together`
 
     let [stated, area] = Layout::vertical([
         Constraint::Length(said.len() as u16 + 1),

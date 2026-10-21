@@ -657,7 +657,7 @@ impl App {
     }
 
     /// The actions the permissions tab lists under more than one row, which need every one of
-    /// them, as the sentence `/permissions` and the web page put under the rows. The tab leaves it
+    /// them, as the sentence `/permissions` puts under the rows. The tab and the web page leave it
     /// to GUIDE.md.
     ///
     /// note: only where one of the subjects involved has been decided, because only decided
