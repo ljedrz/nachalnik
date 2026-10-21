@@ -726,15 +726,31 @@ impl Serving {
     /// The replaced client is told by its own connection, which flushes what it owes and closes. A
     /// question it had not answered is left for the newcomer, as for anybody arriving after a
     /// client that left.
+    ///
+    /// note: the trace gets one line each time the session changes hands: `client.attached` when
+    /// nobody had it, `client.replaced` when somebody did, and `client.left` when whoever has it
+    /// goes. A client that was replaced says nothing when it goes, and a connection that never
+    /// attaches says nothing at all, since it could not do anything.
+    ///
+    /// note: on the *trace* rather than in the conversation. Said through `App::say` it would go
+    /// into `App::loose`, which is the conversation, which is in every projection handed out
+    /// afterwards. A browser reconnecting on a flaky link opens a connection a second, and `web`
+    /// tells it to with `retry: 1000`, so the chat would fill with arrivals and departures until
+    /// somebody typed `/cleanup`. The trace is a ring of the last few hundred lines, and
+    /// `Attached::trace` makes it a row on the trace tab of every client.
     fn seated(&mut self, app: &mut App, client: u64) {
-        if let Some(had) = self.seated.replace(client).filter(|had| *had != client) {
-            if let Some(replaced) = self.replaced.remove(&had) {
-                replaced.notify_one();
+        match self.seated.replace(client) {
+            Some(had) if had == client => {}
+            Some(had) => {
+                if let Some(replaced) = self.replaced.remove(&had) {
+                    replaced.notify_one();
+                }
+                app.trace(
+                    "client.replaced",
+                    format!("{}, by {}", self.called(had), self.called(client)),
+                );
             }
-            app.trace(
-                "client.replaced",
-                format!("{}, by {}", self.called(had), self.called(client)),
-            );
+            None => app.trace("client.attached", self.called(client)),
         }
     }
 
@@ -851,8 +867,8 @@ impl Serving {
                 self.replaced.remove(&client);
                 if self.seated == Some(client) {
                     self.seated = None;
+                    app.trace("client.left", self.called(client));
                 }
-                app.trace("client.left", self.called(client));
                 self.from.remove(&client);
             }
             FromClient::Asked {
@@ -996,16 +1012,7 @@ impl Serving {
             return;
         }
         self.clients += 1;
-        // note: the *trace* rather than the conversation. A session somebody else can type into
-        // should say when somebody else can type into it, but said through `App::say` it would go
-        // into `App::loose`, which is the conversation, which is in every projection handed out
-        // afterwards. A browser reconnecting on a flaky link opens a connection a second, and `web`
-        // tells it to with `retry: 1000`, so the chat would fill with arrivals and departures until
-        // somebody typed `/cleanup`.
-        //
-        // The trace is a ring of the last few hundred lines and is where a thing that happens once
-        // a second belongs. Nothing is lost: `Attached::trace` carries it, so it is a row on the
-        // trace tab of every client
+        // kept for the trace, which names a client when it takes the session; see `seated`
         let from = match &arrived.0 {
             super::Connection::Tcp(stream) => stream.peer_addr().ok().map(|it| it.to_string()),
             super::Connection::Unix(stream) => stream
@@ -1017,7 +1024,6 @@ impl Serving {
         if let Some(from) = from {
             self.from.insert(self.clients, from);
         }
-        app.trace("client.attached", self.called(self.clients));
         let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
         let replaced = Arc::new(Notify::new());
         self.replaced.insert(client, replaced.clone());

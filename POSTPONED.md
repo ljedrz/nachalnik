@@ -139,3 +139,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   not been done. Doing it means carrying one projection and its cost from the budget through the
   compactor to the request, and making a fresh one only where something changed in between.
   Worth doing together with the next change to `maybe_compact` or `build_request`.
+
+- **The trace names a browser tab by the relay's address, not the browser's.** A client is named by
+  the address the session sees, and a `--web` tab reaches the session through a relay in the same
+  process, so every tab shows a loopback port: a phone on the LAN looks the same as a laptop. Only
+  the relay knows the browser's address. Passing it on means a field on `Command::Attach`, which
+  breaks `Command`'s Rust API, and the session should believe that field only from its own relay.
+  Any other client could put anything in it. Telling the relay apart is easy on a unix socket,
+  where the process ID is this process's. On TCP the session sees only a loopback port, so the
+  relay would need some other way to prove who it is. `--serve tcp:` clients have the same problem
+  in a smaller way: they are always on loopback, so the port is all there is. Unblocked by choosing
+  how the relay proves who it is, and taking the semver break.
