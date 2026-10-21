@@ -126,6 +126,11 @@ impl App {
                     row.covers()
                 ));
             }
+            let together = self.together();
+            if !together.is_empty() {
+                body.push(String::new());
+                body.extend(together);
+            }
         }
         // note: counted here as well as on the tab because the tab's count is drawn along its
         // bottom edge and a page has no bottom edge. This is the one figure that stops a short

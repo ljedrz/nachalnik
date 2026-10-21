@@ -656,6 +656,26 @@ impl App {
             .collect()
     }
 
+    /// The actions the permissions tab lists under more than one row, which need every one of
+    /// them, as the sentence the tab, `/permissions` and the web page put under the rows.
+    ///
+    /// note: only where one of the subjects involved has been decided, because only decided
+    /// subjects are rows. With `--auto-allow context --auto-deny context:revise`, `undo` is under
+    /// the allowed `context` row and the refused `context:revise` row, and reads as allowed by the
+    /// first. A session where nobody decided anything has no such rows to misread.
+    pub fn together(&self) -> Vec<String> {
+        self.policy
+            .needed_together(&self.kernel.tool_specs())
+            .iter()
+            .filter(|it| {
+                it.needed.iter().any(|capability| {
+                    self.policy.stance(&Subject::Capability(capability.clone())) != Verdict::Ask
+                })
+            })
+            .map(|it| it.sentence())
+            .collect()
+    }
+
     /// What the shell can reach, in one line, or `None` if nothing here runs commands.
     pub fn confinement(&self) -> Option<String> {
         if !self.shell_is_live() {

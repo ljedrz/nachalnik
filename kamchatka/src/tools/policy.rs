@@ -98,6 +98,38 @@ impl Subject {
     }
 }
 
+/// Actions of one tool that each need every one of several subjects; see
+/// [`Careful::needed_together`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Together {
+    /// The tool.
+    pub tool: String,
+    /// Its actions that need all of [`Together::needed`], in the order the tool offers them.
+    pub actions: Vec<String>,
+    /// The subjects they need, every one of them.
+    pub needed: Vec<Capability>,
+}
+
+impl Together {
+    /// The sentence every table puts under its rows: "`context`'s `undo` and `redo` need
+    /// `context:move`, ... together, so a refusal or a question on any of them is one on them".
+    pub fn sentence(&self) -> String {
+        let actions: Vec<String> = self.actions.iter().map(|it| format!("`{it}`")).collect();
+        let needed: Vec<String> = self.needed.iter().map(|it| format!("`{it}`")).collect();
+        format!(
+            "`{}`'s {} need {} together, so a refusal or a question on any of them is one on {}",
+            self.tool,
+            crate::reconcile::listed(&actions),
+            crate::reconcile::listed(&needed),
+            match self.actions.len() {
+                1 => "it",
+                _ => "them",
+            },
+        )
+    }
+}
+
 /// `mcp:call`: the subject every tool from a server declares, meaning "somebody else's tool, and
 /// nobody has vouched for what it does".
 ///
@@ -770,6 +802,48 @@ impl Careful {
             true => tool.to_owned(),
             false => format!("{tool}: {}", actions.join(", ")),
         }
+    }
+
+    /// The actions of these tools that need more than one subject, with the subjects each needs.
+    ///
+    /// note: for every table that lists actions under the subjects they need - `setup`'s, the
+    /// permissions tab, `/permissions` and the web page - where an action listed under several rows
+    /// reads as allowed by any one of them. It needs all of them: `context`'s `undo` is under
+    /// `context:move` and `context:revise` both, and a refused `context:revise` refuses it however
+    /// `context:move` is answered. Worked out from what each tool says its actions need, so it
+    /// changes when they do.
+    pub fn needed_together(&self, specs: &[nachalnik::ToolSpec]) -> Vec<Together> {
+        let mut together: Vec<Together> = Vec::new();
+        for spec in specs {
+            let mut by_action: Vec<(String, Vec<Capability>)> = Vec::new();
+            for capability in &spec.capabilities {
+                for action in self.actions_for(capability, &spec.id) {
+                    match by_action.iter_mut().find(|(it, _)| *it == action) {
+                        Some((_, needed)) => needed.push(capability.clone()),
+                        None => by_action.push((action, vec![capability.clone()])),
+                    }
+                }
+            }
+            for (action, mut needed) in by_action {
+                if needed.len() < 2 {
+                    continue;
+                }
+                needed.sort();
+                match together
+                    .iter_mut()
+                    .find(|it| it.tool == spec.id && it.needed == needed)
+                {
+                    Some(it) => it.actions.push(action),
+                    None => together.push(Together {
+                        tool: spec.id.clone(),
+                        actions: vec![action],
+                        needed,
+                    }),
+                }
+            }
+        }
+
+        together
     }
 
     /// The actions that need `capability`, said for a model to read - "`fs`'s `read`, `glob` and

@@ -648,6 +648,15 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
         Span::styled(untold, untold_style),
     ])];
     said.extend(unrated(app));
+    // and the actions listed under several rows below, which need all of those rows. Above the
+    // rows rather than under them, because the list scrolls and this has to be read with it
+    for together in app.together() {
+        said.extend(
+            super::text::wrapped(&together, area.width as usize, "")
+                .into_iter()
+                .map(|line| Line::styled(line, quiet())),
+        );
+    }
 
     let [stated, area] = Layout::vertical([
         Constraint::Length(said.len() as u16 + 1),

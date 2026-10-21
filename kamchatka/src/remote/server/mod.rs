@@ -1352,6 +1352,7 @@ fn project(app: &App) -> Attached {
         untold: crate::tools::Careful::untold(),
         permissions: app.permissions().iter().map(Stanced::of).collect(),
         undecided: app.undecided(),
+        together: app.together(),
         queued: app.queued().next().map(str::to_owned),
         queued_behind: app.queued().skip(1).map(str::to_owned).collect(),
         confinement: app.confinement(),

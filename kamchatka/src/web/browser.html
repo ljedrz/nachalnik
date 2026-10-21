@@ -1086,6 +1086,9 @@ function draw() {
   // write and reach the network whatever the rows above say, so a list of verdicts with nothing
   // about it would be reporting restrictions that are not there. The count says that the rows are
   // the decisions rather than the whole policy
+  // and the actions listed under several rows above, which need all of them: `undo` under an
+  // allowed `context` and a refused `context:revise` is refused. See `App::together`
+  for (const line of latest.together ?? []) aside(panel, line);
   const footer = [latest.confinement ?? "no sandbox: a command reaches whatever this user can"];
   if (latest.undecided) footer.push(`${latest.undecided} more it will ask about`);
   aside(panel, footer.join(" · "));
