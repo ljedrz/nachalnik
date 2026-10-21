@@ -34,6 +34,13 @@ minor bump may break you.
 
 ### changed
 
+- **The guide says how rules combine in two steps.** Within a domain, an operation's answer counts
+  over the domain's, and a deny wins at either level. Across the rules a call is judged by (its
+  operation, the path rules matching its path, its server), the strictest answer wins, so
+  `--auto-allow '*.rs'` on its own still asks before reading `main.rs`. It said "the most specific
+  rule with an answer decides", which reads the other way. RUNNING.md says that an allow another
+  path rule would overrule, such as `.env` beside `.env*`, stops the program from starting; it said
+  the allow "is refused too".
 - **`/copy` from the web page puts the text on the browser's clipboard, and `/copy` from
   `--connect` on the clipboard of the terminal it runs in.** Both used to say "was not copied" and
   point at `?N`, which only `--connect` understands. The session sends the text to the client that

@@ -917,3 +917,24 @@ async fn a_subject_is_named_with_the_actions_it_covers() {
         "{why}"
     );
 }
+
+/// A path rule that allows a file does not allow reading it while `fs:read` is still a question:
+/// every rule a call is judged by is consulted, and the strictest answer wins.
+///
+/// note: what a path rule's `allow` can do is lift a question another path rule puts, such as the
+/// default `.env*`; it cannot lift the operation's own. Read as "the most specific rule decides",
+/// the guide said otherwise, and a model asked about `--auto-allow '*.rs'` answered that reading
+/// `src/main.rs` would run without a question.
+#[test]
+fn a_path_allow_does_not_lift_the_question_the_operation_asks() {
+    let policy = Careful::new();
+    policy.set(&Subject::parse("*.rs"), Verdict::Allow);
+    assert_eq!(asking_about(&policy, "src/main.rs"), Verdict::Ask);
+
+    policy.set(&Subject::parse("fs:read"), Verdict::Allow);
+    assert_eq!(asking_about(&policy, "src/main.rs"), Verdict::Allow);
+    // and with the operation allowed, the path rule for `.env*` still asks, until it is allowed
+    assert_eq!(asking_about(&policy, ".env"), Verdict::Ask);
+    policy.set(&Subject::parse(".env*"), Verdict::Allow);
+    assert_eq!(asking_about(&policy, ".env"), Verdict::Allow);
+}

@@ -35,9 +35,10 @@ A path rule is a file name where `*` matches any characters, a dot name such as 
 directory name followed by a slash, matching that directory anywhere in a path. It is matched
 against the last name in a path, so `--auto-deny 'b.txt*'` is a rule about `b.txt`, but
 `--auto-deny b.txt` is not: a bare name is read as a domain. It is not `fs`'s glob syntax; `src/**`
-stops the session with an explanation of how to write the rule. An allow for a name a broader rule
-still asks about or refuses is refused too: `--auto-allow .env` beside the default `.env*` would
-change nothing, so `.env*` is named as the rule to allow instead.
+stops the session with an explanation of how to write the rule. An allow that another path rule
+would overrule stops the program from starting: `--auto-allow .env` beside the default `.env*`
+would change nothing, since `.env*` still asks and the strictest rule wins, so the error names
+`.env*` as the rule to allow instead.
 
 `--on-ask deny` is the default, because an unattended run should only do what someone has allowed.
 The model is told that the refusal is a standing rule and which rule would have asked. The run
