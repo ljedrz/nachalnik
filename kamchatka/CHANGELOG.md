@@ -14,6 +14,11 @@ minor bump may break you.
   permissions tab listed the `fs` tools as what it covered. This applies to any `<domain>:*`, in a
   flag or a settings file.
 
+### changed
+
+- **The guide lists every domain and its operations, and how a rule is spelled**: a whole domain,
+  one operation, a path rule, or a server, which has settings of its own.
+
 ## [0.22.0] - 2026-10-21
 
 ### breaking
