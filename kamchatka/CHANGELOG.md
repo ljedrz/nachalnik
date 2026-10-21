@@ -30,7 +30,9 @@ minor bump may break you.
   `--connect` on the clipboard of the terminal it runs in.** Both used to say "was not copied" and
   point at `?N`, which only `--connect` understands. The session sends the text to the client that
   asked, in a new `Message::Copy`. Where a browser only copies straight after a click, the page
-  shows a button to click.
+  shows a button to click. An older `--connect` reads `Message::Copy` as a message it does not know
+  and counts it as an answer, so after a `/copy` it may detach a moment before the real answer when
+  its input closes; nothing it would have printed is lost.
 - **Every row on the permissions tab names the actions it lets run.** `context` listed its
   operations, `context:move, context:note, ...`, while `fs:read` listed actions, `fs: read, glob,
   grep`. Now `context` lists `context: look, budget, ...`. A tool with one action is shown by its
