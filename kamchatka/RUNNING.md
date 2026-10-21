@@ -817,7 +817,12 @@ result explains it.
 
 Where the filter can't be installed (`--no-sandbox`, or a kernel that can't pause calls), the
 program judges commands by name again. A short list of programs that exist to use the network are
-asked about before they run, and UDP isn't refused. The permissions tab ends a sandboxed shell's
+asked about before they run, and UDP isn't refused. The list holds the usual network tools
+(`curl`, `wget`, `ssh`, `rsync`, `dig` and the like). It also holds the tools that download what
+they install or push (`git`, `cargo`, `npm`, `pip`, `go`, `docker`, `kubectl`, the system package
+managers and the cloud command lines). They are found behind `timeout`, `env`, `sh -c` and similar
+wrappers too. An interpreter is not on the list, so `python3 fetch.py` runs without a question and
+can reach the network. The permissions tab ends a sandboxed shell's
 line with `network gated` or `network not gated`, so you can see which applies. Under `--no-sandbox`
 the line is `shell: a command can do any of these` instead.
 
