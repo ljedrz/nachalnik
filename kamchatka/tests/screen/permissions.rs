@@ -3190,8 +3190,8 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them() {
         .app
         .policy
         .set(&Subject::parse("context:revise"), Verdict::Deny);
-    let said = "`context`'s `undo` and `redo` need `context:move`, `context:note`, `context:pin` \
-                and `context:revise` together";
+    let said = "`context`'s `undo` and `redo` need all of `context:move`, `context:note`, \
+                `context:pin` and `context:revise`, so the strictest of those applies";
     assert!(
         harness.app.together().iter().any(|it| it.contains(said)),
         "{:?}",

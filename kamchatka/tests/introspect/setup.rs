@@ -650,8 +650,8 @@ async fn setup_permissions_lists_one_row_per_operation() {
     // allowing `undo` while a refused `context:revise` refused it
     assert!(
         said.contains(
-            "`context`'s `undo` and `redo` need `context:move`, `context:note`, `context:pin` \
-             and `context:revise` together"
+            "`context`'s `undo` and `redo` need all of `context:move`, `context:note`, \
+             `context:pin` and `context:revise`, so the strictest of those applies"
         ),
         "{said}"
     );
