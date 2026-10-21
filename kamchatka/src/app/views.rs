@@ -657,7 +657,8 @@ impl App {
     }
 
     /// The actions the permissions tab lists under more than one row, which need every one of
-    /// them, as the sentence the tab, `/permissions` and the web page put under the rows.
+    /// them, as the sentence `/permissions` and the web page put under the rows. The tab leaves it
+    /// to GUIDE.md.
     ///
     /// note: only where one of the subjects involved has been decided, because only decided
     /// subjects are rows. With `--auto-allow context --auto-deny context:revise`, `undo` is under
