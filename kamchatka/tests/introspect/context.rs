@@ -1144,10 +1144,11 @@ async fn look_says_what_each_item_sends_and_what_it_is_holding_out() {
     );
 
     // the turn carrying the call being answered has no result yet, so the projector drops it: `0`
-    // under `sending`, and the projector's own words for why. Also from the live run, where a
-    // model was shown that `0` about its own latest turn with nothing to account for it
+    // under `sending`, and why. Also from a live run, where a model was shown that `0` about its
+    // own latest turn with nothing to account for it - and, later, the projector's words for it
+    // ("no content and no answered calls"), which another model took for something gone wrong
     assert!(
-        listing.contains("· not going: an assistant turn with no content and no answered calls"),
+        listing.contains("· not going yet: this is the turn you are in"),
         "the row that is not going does not say why: {listing}"
     );
 
