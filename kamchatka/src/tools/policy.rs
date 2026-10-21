@@ -1011,11 +1011,17 @@ impl PermissionPolicy for Careful {
             let why = match (blamed.is_empty(), unasked) {
                 (true, false) => "the policy refused it".to_owned(),
                 (false, false) => format!("refused by {}", blamed.join(" and ")),
+                // note: "for as long as it lasts", so the kernel's "a standing rule" after it is
+                // true of something. Nothing ruled `deny` here: the rule asks, and this run has
+                // nobody to ask, so it is the run's refusal that stands. A model told only that
+                // the call was asked about and then that a standing rule refused it could not tell
+                // which of the two it was dealing with
                 (true, true) => "it would be asked about, and nobody is here to answer, so this \
-                                 run refuses it"
+                                 run refuses it, and every call like it, for as long as it lasts"
                     .to_owned(),
                 (false, true) => format!(
-                    "it is asked about by {}, and nobody is here to answer, so this run refuses it",
+                    "it is asked about by {}, and nobody is here to answer, so this run refuses it, \
+                     and every other call that rule asks about, for as long as it lasts",
                     blamed.join(" and ")
                 ),
             };
