@@ -159,7 +159,6 @@
   .policy { margin: 0 0 10px; font-weight: 600; overflow-wrap: anywhere; }
   .detail { font-size: 12px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
   /* the figure being looked for, so it keeps the right-hand edge and a colour of its own */
-  .gap { font-size: 12px; color: var(--call); white-space: nowrap; flex: none; }
   .allowed { color: var(--user); } .denied { color: var(--bad); } .asks { color: var(--call); }
   /* the three answers a row can be given, with the one it has pressed in. The words are the
      verdicts', since that is what the row reads back in */
@@ -987,10 +986,9 @@ function draw() {
     return;
   }
 
-  // the trace, which is the trace tab: the session's events in this program's own words, with the
-  // gap beside the ones that took any time. Both are the session's - the wording because a second
-  // set written here would be a vocabulary nobody at the other end could see, and the gap because
-  // when there *is* one is a decision rather than a format
+  // the trace, which is the trace tab: the session's events in this program's own words. The
+  // wording is the session's, because a second set written here would be a vocabulary nobody at
+  // the other end could see
   if (showing === "events") {
     if (!latest.trace.length) return aside(panel, "nothing has happened yet");
     for (const event of latest.trace) {
@@ -1005,12 +1003,6 @@ function draw() {
         continue;
       }
       const el = row(panel, event.name, when, null);
-      if (event.gap) {
-        const gap = document.createElement("div");
-        gap.className = "gap";
-        gap.textContent = event.gap;
-        el.querySelector(".head").append(gap);
-      }
       if (event.detail) {
         const detail = document.createElement("div");
         detail.className = "detail";

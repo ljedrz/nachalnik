@@ -967,10 +967,7 @@ impl App {
             detail: detail.into(),
             at: Instant::now(),
             wall: SystemTime::now(),
-            // taken, not read, so exactly one line is marked: the first thing after somebody acts
-            // is the line whose gap spans their thinking, and every line after it is the program
-            // working again
-            after_a_person: std::mem::take(&mut self.acted),
+            after_a_person: false,
         });
     }
 }

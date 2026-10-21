@@ -2171,10 +2171,7 @@ fn stamps(screen: &str) -> Vec<String> {
 /// row when the app processes the event, which in the program is as it happens - `main` selects on
 /// the stream alongside the keys - and in `send` is all at once, after the turn is already over.
 /// Every other case in here reads the trace for what it *says*; these read it for *when*, and a
-/// burst drain puts every row in the same microsecond, which makes every gap nought and every
-/// clock the same second. It looked exactly like an endpoint too fast to measure, and it was the
-/// harness: the first version of this test asserted the gap column had something in it and failed
-/// against a provider that had taken a whole second to answer.
+/// burst drain puts every row in the same microsecond, so every clock reads the same second.
 async fn send_watching(
     app: &mut App,
     finished: &mut tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
@@ -2199,24 +2196,14 @@ async fn send_watching(
             tokio::time::Instant::now() < until,
             "the turn should have finished"
         );
-        // short enough that it cannot invent a gap: anything under a tenth of a second is drawn
-        // blank, so the poll has to be an order inside that to be invisible in what is measured
+        // short, so that a row is stamped close to when its event happened
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 }
 
-/// Every gap the pane drew, which is `+123ms`, `+1.2s` or `+1m05s`.
-fn gaps(screen: &str) -> Vec<String> {
-    screen
-        .split_whitespace()
-        .filter(|word| word.starts_with('+') && word[1..].starts_with(|c: char| c.is_ascii_digit()))
-        .map(str::to_owned)
-        .collect()
-}
-
-/// A real turn takes real time, so both columns have something in them.
+/// Every line of a real turn's trace says when it happened, under one date.
 #[tokio::test]
-async fn a_real_turn_fills_both_of_the_traces_clocks() {
+async fn a_real_turn_stamps_every_line_of_the_trace() {
     let _serial = SERIAL.lock().await;
     let (mut app, mut finished) = live!();
 
@@ -2240,15 +2227,6 @@ async fn a_real_turn_fills_both_of_the_traces_clocks() {
     let rules = screen.lines().filter(|line| line.contains("── 20")).count();
     assert_eq!(rules, 1, "one day, one date rule: {screen}");
     println!("  stamps: {} · date rules: {rules}", seen.len());
-
-    // and the gap column, which is the half no scripted provider can produce: it answers between
-    // one frame and the next, and everything under a tenth of a second is left blank on purpose
-    let waited = gaps(&screen);
-    println!("  gaps: {waited:?}");
-    assert!(
-        !waited.is_empty(),
-        "a real endpoint takes longer than a tenth of a second somewhere: {screen}"
-    );
 }
 
 /// The clock is part of what a row is matched on, and an empty result says which empty it is.

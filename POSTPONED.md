@@ -150,3 +150,8 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   relay would need some other way to prove who it is. `--serve tcp:` clients have the same problem
   in a smaller way: they are always on loopback, so the port is all there is. Unblocked by choosing
   how the relay proves who it is, and taking the semver break.
+
+- **Three public fields that nothing uses: `Tracing::gap`, `Traced::after_a_person` and
+  `Traced::at`.** `gap` is always `None`, `after_a_person` is always `false`, and nothing reads
+  `at`. Removing a public field breaks the API, so they wait for the next release that breaks it
+  anyway.

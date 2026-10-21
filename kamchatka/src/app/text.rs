@@ -852,30 +852,6 @@ pub(crate) fn thousands(n: usize) -> String {
     out
 }
 
-/// A gap worth reporting, as a word; `None` when it is too short to be news.
-///
-/// note: the threshold keeps this from being a column of numbers. Nearly everything in a session
-/// happens between one frame and the next, and stamping all of it would make somebody read every
-/// line to find the slow one. What is left is the model thinking, a command running, and a provider
-/// that has gone quiet.
-///
-/// note: here rather than in `ui/tabs.rs` because a client can reach it, so it cannot live behind
-/// the feature that draws. The trace goes out on the wire and the figure beside a line must read
-/// the same in a browser as in a terminal, so there is one formatter rather than two.
-pub fn waited_since(gap: std::time::Duration) -> Option<String> {
-    let millis = gap.as_millis();
-    match millis {
-        0..100 => None,
-        100..1_000 => Some(format!("+{millis}ms")),
-        1_000..60_000 => Some(format!("+{:.1}s", gap.as_secs_f64())),
-        _ => Some(format!(
-            "+{}m{:02}s",
-            gap.as_secs() / 60,
-            gap.as_secs() % 60
-        )),
-    }
-}
-
 /// What a panic said, where it said it as text.
 pub(crate) fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
     payload
@@ -1211,31 +1187,5 @@ mod tests {
             }),
             "none → Shedder"
         );
-    }
-
-    /// A wait under a tenth of a second is no wait, and the rest are said in the unit they are
-    /// read in.
-    ///
-    /// note: every band and the edges between them, because the whole of this is where a gap lands.
-    /// A client draws the same column from the same string, so a figure that came out in the wrong
-    /// unit is a figure it cannot go on to format.
-    #[test]
-    fn a_gap_too_short_to_be_news_says_nothing_and_the_rest_say_how_long() {
-        let ms = |n: u64| waited_since(std::time::Duration::from_millis(n));
-
-        // the majority of a session, which is what keeps the column from being a list of numbers
-        assert_eq!(ms(0), None);
-        assert_eq!(ms(99), None, "a wait between two frames is not news");
-
-        assert_eq!(ms(100), Some("+100ms".to_owned()));
-        assert_eq!(ms(250), Some("+250ms".to_owned()));
-        assert_eq!(ms(999), Some("+999ms".to_owned()));
-
-        assert_eq!(ms(1_000), Some("+1.0s".to_owned()));
-        assert_eq!(ms(4_260), Some("+4.3s".to_owned()));
-        assert_eq!(ms(59_999), Some("+60.0s".to_owned()));
-
-        assert_eq!(ms(60_000), Some("+1m00s".to_owned()));
-        assert_eq!(ms(3_661_000), Some("+61m01s".to_owned()));
     }
 }

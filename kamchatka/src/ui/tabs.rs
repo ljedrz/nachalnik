@@ -22,7 +22,7 @@ use tui_markdown::StyleSheet as _;
 
 use crate::{
     app::when::read_off,
-    app::{App, Focus, Going, Speaker, text::waited_since},
+    app::{App, Focus, Going, Speaker},
     tools::{Careful, Exit},
     ui::{
         markdown::{Chunk, Markdown, chunks, highlighted, markdown, rule, separate},
@@ -743,16 +743,12 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
 /// the last. Anything that still does not fit wraps under the column rather than being cut off,
 /// because a log whose lines end in an ellipsis in the middle of the interesting part is useless.
 ///
-/// note: the time of day *and* the gap to the line above. The gap is the one painted yellow,
-/// because the question somebody usually brings to a log is which step was slow, and a column of
-/// timestamps makes them do the subtraction. But matching the pane against a server log, a
-/// provider's dashboard, a ticket, or a memory of what happened just before lunch needs an absolute
-/// time, and none of them can be reached by adding up a column of deltas. Both drop out on a narrow
-/// window, the time first.
+/// note: the time of day, and not the time since the line above. Which lines follow each other is
+/// not which wait anybody is asking about, so the gap was often a figure about nothing: a client
+/// replaced, a question somebody sat reading. The times are there for anyone who wants the
+/// difference. They drop out on a narrow window.
 pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     const NAMES: usize = 22;
-    /// How wide the gap column is, including the space after it.
-    const GAP: usize = 8;
     /// How wide `HH:MM:SS ` is.
     const WHEN: usize = 9;
 
@@ -763,46 +759,17 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     };
     // the clock only where there is room for it: a narrow window spends its columns on what
     // happened rather than on when
-    let clock = width >= NAMES + 20 + GAP;
-    let when = width >= NAMES + 20 + GAP + WHEN;
+    let when = width >= NAMES + 20 + WHEN;
 
     let mut lines: Vec<Line> = Vec::new();
-    let mut before: Option<std::time::Instant> = None;
     let mut day: Option<String> = None;
     // note: `traced` rather than the whole of `app.trace`, and collected before anything is
     // written back, so the borrow ends before `trace_scroll` is clamped below
     let events = app.traced();
     let found = events.len();
     for event in events {
-        // the gap to the line above, blank under a tenth of a second, so only the few that took
-        // real time have anything in the column.
-        //
-        // note: `replace` runs either way, so the line after a person's still measures from this
-        // one. What is skipped is drawing the figure, not keeping the clock
-        let gap = match (clock, before.replace(event.at)) {
-            // note: and not where the gap is somebody's. `after_a_person` marks the line that ends
-            // a wait for a person - an answered question, a message finally typed. However long
-            // that took, it is not a step this program spent time on, and it is usually the biggest
-            // number in the column, so it would draw the eye to the one figure nobody should act on
-            (true, Some(previous)) if !event.after_a_person => {
-                waited_since(event.at.saturating_duration_since(previous))
-            }
-            _ => None,
-        };
-        let gap_span = match (clock, &gap) {
-            (false, _) => Vec::new(),
-            (true, Some(said)) => vec![Span::styled(
-                format!("{said:>7} "),
-                match said.ends_with('s') && !said.ends_with("ms") {
-                    true => Style::default().fg(Color::Yellow),
-                    false => faint(),
-                },
-            )],
-            (true, None) => vec![Span::raw(" ".repeat(GAP))],
-        };
-        // dimmer than the gap on purpose: the gap is the figure being looked for, the time is the
-        // one being looked *up*. A run whose zone could not be determined is shown in UTC and
-        // marked, not as though it were local
+        // faint, since it is looked up rather than read. A run whose zone could not be determined
+        // is shown in UTC and marked, not as though it were local
         let read = when.then(|| read_off(event.wall));
         // note: the date is a rule across the pane, not a column, and is drawn only where it
         // changes. A session can outlast a day, so `00:15` against two different Tuesdays says
@@ -823,7 +790,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             lines.push(Line::styled(format!("{label}{rule}"), faint()));
         }
 
-        let when_span = match &read {
+        let stamp = match &read {
             None => Vec::new(),
             Some(read) => vec![Span::styled(
                 format!("{} ", read.time),
@@ -833,7 +800,6 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
                 },
             )],
         };
-        let stamp = [when_span, gap_span].concat();
         // note: these are the two colours the chat tab reads by: a tool call is cyan there, and a
         // permission is the colour of the question, so a trace row and the line it accounts for
         // agree without a second scheme to learn. `.failed` is matched first: a call that went
@@ -853,10 +819,9 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 
         let named = Style::default().fg(colour);
         let said = quiet();
-        let under = " ".repeat(match (when, clock) {
-            (true, _) => WHEN + GAP,
-            (false, true) => GAP,
-            (false, false) => 0,
+        let under = " ".repeat(match when {
+            true => WHEN,
+            false => 0,
         });
         let indent = " ".repeat(column.max(2));
         // note: the width is what is left after the columns in front of the detail, not the width
