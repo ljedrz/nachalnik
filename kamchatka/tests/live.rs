@@ -1161,12 +1161,15 @@ async fn introspecting(
         app.policy.set(&Subject::parse(domain), Verdict::Allow);
     }
     if ask_about_changes {
-        // the most specific rule with an answer decides, so these stand over the allowed `context`
-        for op in [
-            "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
+        // the most specific rule with an answer decides, so these stand over the allowed `context`;
+        // they are the four subjects that change the context, which `undo` and `redo` need too
+        for subject in [
+            "context:move",
+            "context:pin",
+            "context:note",
+            "context:revise",
         ] {
-            app.policy
-                .set(&Subject::parse(&format!("context:{op}")), Verdict::Ask);
+            app.policy.set(&Subject::parse(subject), Verdict::Ask);
         }
     }
     app.introspect = Some(kamchatka::introspect::install(
