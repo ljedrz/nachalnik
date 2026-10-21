@@ -132,6 +132,59 @@ async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out()
     );
 }
 
+/// A note left out of a fork is left out of the call that wrote it, too.
+///
+/// note: found live. A model wrote a note with `context`, asked a fork the same question `without`
+/// it, and the copy quoted the note: the item was gone, and the `note` call that wrote it, with the
+/// note as its `content`, was still in the turn before.
+#[tokio::test]
+async fn a_note_left_out_of_a_fork_is_left_out_of_the_call_that_wrote_it() {
+    let (kernel, provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "call": {
+                "action": "note",
+                "content": "the parser was rewritten last week",
+                "reason": "a guess",
+            } }),
+        )]),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "fork",
+            json!({
+                "action": "ask",
+                "question": "does the note change your answer?",
+                "without": [3],
+            }),
+        )]),
+        ModelResponse::text("without it, no"),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("what do you make of this?"));
+    kernel.turn().await.expect("the turn failed");
+    assert_eq!(
+        kernel
+            .item(nachalnik::ContextId(3))
+            .unwrap()
+            .content
+            .to_text(),
+        "the parser was rewritten last week",
+        "item 3 is the note"
+    );
+
+    let asked = format!("{:?}", provider.requests()[2].messages);
+    assert!(
+        !asked.contains("rewritten last week"),
+        "the copy read the note in the call that wrote it: {asked}"
+    );
+    assert!(asked.contains("left out of this fork"), "{asked}");
+    // and this session's own call is as it was
+    let here = format!("{:?}", kernel.items());
+    assert!(here.contains("rewritten last week"), "{here}");
+}
+
 /// Two forks asked in one turn are asked about the same context: the second is not handed what the
 /// first one said.
 ///
