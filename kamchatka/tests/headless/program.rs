@@ -1971,7 +1971,7 @@ fn a_run_that_keeps_no_record_says_so_when_it_ends() {
     let said = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{said}");
     assert!(
-        said.contains("`--no-record`, so nothing was written"),
+        said.contains("`--no-record`, so the session was not written when it ended"),
         "the parting lines do not say the flag was given: {said}"
     );
     // the count is still there, and the records went to the stream a piped run writes them to, so
@@ -1984,6 +1984,44 @@ fn a_run_that_keeps_no_record_says_so_when_it_ends() {
     assert!(
         String::from_utf8_lossy(&out.stdout).contains("session.finished"),
         "the record stream is the whole of what was kept"
+    );
+}
+
+/// A `/save` typed under `--no-record` is not denied by the lines the run ends on.
+///
+/// note: they said "nothing was written" right after `/save` had written two files, and a model
+/// reading the run took one to contradict the other.
+#[test]
+fn a_save_under_no_record_is_not_denied_at_the_end() {
+    use std::io::Write as _;
+
+    let dir = common::scratch("unrecorded-save");
+    let saved = dir.join("kept.json");
+    let mut child = common::command()
+        .args(["--headless", "--no-record"])
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_MODEL", "")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    child
+        .stdin
+        .take()
+        .expect("a pipe")
+        .write_all(format!("/save {}\n", saved.display()).as_bytes())
+        .expect("typed");
+    let out = child.wait_with_output().expect("it ends");
+    let said = String::from_utf8_lossy(&out.stderr);
+
+    assert!(out.status.success(), "{said}");
+    assert!(saved.exists(), "`/save` wrote nothing: {said}");
+    assert!(!said.contains("nothing was written"), "{said}");
+    assert!(
+        said.contains("the session was not written when it ended"),
+        "{said}"
     );
 }
 

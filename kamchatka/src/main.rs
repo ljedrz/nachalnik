@@ -966,7 +966,11 @@ fn finish(
         // pointer to a record, and under this flag there is no file to point at. It does not say
         // where the records went instead: a piped run writes them to stdout whatever else was asked
         // for, and a drawn or served one has nowhere
-        None => say("`--no-record`, so nothing was written"),
+        //
+        // note: "not written when it ended" rather than "nothing was written": a `/save` typed
+        // during the session wrote whatever it was asked to, and a model reading these lines took
+        // the one to deny the other
+        None => say("`--no-record`, so the session was not written when it ended"),
     }
     // last, because it is the one thing here that waits: a straggler is given a moment to leave on
     // `SIGTERM`. A record written first is a record a slow straggler cannot keep from being kept
