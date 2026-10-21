@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **`context:*` is the whole `context` domain, as `context` is.** It holds a `*`, so it was read as a
+  path rule matching files named `context:...`: it granted nothing about `context`, and the
+  permissions tab listed the `fs` tools as what it covered. This applies to any `<domain>:*`, in a
+  flag or a settings file.
+
 ## [0.22.0] - 2026-10-21
 
 ### breaking
