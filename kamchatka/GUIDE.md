@@ -277,6 +277,42 @@ are told which rule refused it (``shell: refused by `net:reach`, which this comm
 and which kind of refusal it was: a standing rule, which will refuse the same call again, or an
 answer to this specific call, after which a different approach might be allowed.
 
+### the domains, and how a rule is written
+
+These are all the domains, the tools that use them, and the operations in each:
+
+| domain | used by | operations |
+| --- | --- | --- |
+| `fs` | the `fs` tool | `read`, `write` |
+| `exec` | `shell` | `run` |
+| `net` | `shell`, when a command uses the internet | `reach` |
+| `context` | the `context` tool | `read`, `move`, `pin`, `note`, `revise` |
+| `log` | the `log` tool | `read` |
+| `setup` | the `setup` tool | `read` |
+| `fork` | the `fork` tool | `ask` |
+| `mcp` | every tool from an MCP server | `call` |
+
+You write a rule the same way everywhere: after `--auto-allow` or `--auto-deny` (separate several
+with commas), in the `auto-allow` and `auto-deny` lists of a settings file, and as a row on this
+tab. You can copy a row from the tab into a flag or a settings file. The way a rule is written
+says what kind it is:
+
+- `context` and `context:*` both mean the whole domain;
+- `context:note` is one operation;
+- anything with a `*` or a `/`, or starting with a dot, is a path rule: `.env*`, `*.pem`,
+  `vendor/` ([running it](RUNNING.md#-the-same-program-without-a-screen) explains how they match);
+- an MCP server can't go in these lists, because its name could also be a domain's. Use
+  `--auto-allow-servers` and `--auto-deny-servers` instead. On the tab, a server called `files`
+  has the row `server files`.
+
+A rule must use the names in the table above. If it names something that isn't there, the session
+stops and says why. For example, `shell` is a tool, not a domain, so a rule about the shell is
+written `exec:run`.
+
+`mcp` is different from the other domains: to let an MCP server's tools run, allow the server by
+name. Allowing `mcp` or `mcp:call` would do nothing, so the session stops on it too. Denying `mcp`
+works, and refuses the tools of every server.
+
 ### the question itself
 
 It appears in place of the prompt on the **chat** tab, not over the middle of the screen. It is
