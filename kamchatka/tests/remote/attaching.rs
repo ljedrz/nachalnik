@@ -137,7 +137,7 @@ async fn attaching_answers_with_a_projection_and_then_the_records() {
         !attached
             .conversation
             .iter()
-            .any(|line| line.text.contains("client 1")),
+            .any(|line| line.text.contains("127.0.0.1:")),
         "an arrival is not part of the conversation: {:?}",
         attached.conversation
     );
@@ -145,7 +145,7 @@ async fn attaching_answers_with_a_projection_and_then_the_records() {
         attached
             .trace
             .iter()
-            .any(|line| line.name == "client.attached" && line.detail.contains("client 1")),
+            .any(|line| line.name == "client.attached" && line.detail.starts_with("127.0.0.1:")),
         "the session did not say a client had arrived: {:?}",
         attached.trace
     );
@@ -408,5 +408,55 @@ async fn a_command_before_attaching_is_refused() {
     assert!(error.contains("before `attach`"), "{error}");
 
     quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// The trace names each client by where it came from, and a client that takes the session from
+/// another is named with both.
+///
+/// note: over a socket file, where a client is the process at the other end, so every one is this
+/// test's own. The line about the second taking the session from the first is written as it is
+/// seated, after its projection was taken, so a third client is the one that reads it.
+#[tokio::test]
+async fn the_trace_says_where_each_client_came_from() {
+    use crate::{Socket, served_over_a_socket};
+
+    async fn attached(at: &str) -> (Socket, Box<protocol::Attached>) {
+        let mut socket = Socket::connect(at).await;
+        socket.send(attaching(None, None)).await;
+        loop {
+            if let Message::Attached(attached) = socket.recv().await {
+                break (socket, attached);
+            }
+        }
+    }
+
+    let session = served_over_a_socket("client-from", Vec::new(), |_| {}).await;
+    let pid = std::process::id();
+
+    let (first, _) = attached(&session.at).await;
+    let (second, _) = attached(&session.at).await;
+    let (mut third, attached) = attached(&session.at).await;
+
+    let said: Vec<(&str, &str)> = attached
+        .trace
+        .iter()
+        .filter(|line| line.name.starts_with("client."))
+        .map(|line| (line.name.as_str(), line.detail.as_str()))
+        .collect();
+    let named = format!("pid {pid}");
+    let replaced = format!("pid {pid}, by pid {pid}");
+    assert!(
+        said.contains(&("client.attached", &named))
+            && said.contains(&("client.replaced", &replaced)),
+        "{said:?}"
+    );
+
+    drop((first, second));
+    third
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
     session.ended().await.1.expect("the session failed");
 }
