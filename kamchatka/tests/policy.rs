@@ -938,3 +938,32 @@ fn a_path_allow_does_not_lift_the_question_the_operation_asks() {
     policy.set(&Subject::parse(".env*"), Verdict::Allow);
     assert_eq!(asking_about(&policy, ".env"), Verdict::Allow);
 }
+
+/// A call refused because nobody is here to answer says the refusal lasts the run, which is what
+/// makes the kernel's "a standing rule" after it true.
+///
+/// note: it said only "this run refuses it", and the kernel went on to call that a standing rule. A
+/// model reading both could not tell whether it had met a rule or a question.
+#[tokio::test]
+async fn a_question_nobody_can_answer_is_refused_for_the_run() {
+    let policy = Careful::new();
+    policy.set(&Subject::parse("fs:read"), Verdict::Allow);
+    policy.unanswered(Some(Verdict::Deny));
+
+    let call = ToolCall::new("c1", "read", json!({ "path": ".env" }));
+    let request = PermissionRequest {
+        id: PermissionId(1),
+        call: call.id.clone(),
+        tool: "read".to_owned(),
+        capabilities: vec![Capability::fs("read")],
+        args: call.args.clone(),
+    };
+    assert_eq!(policy.evaluate(&request).await, Verdict::Deny);
+
+    let why = policy.why(&call.id).expect("the refusal says why");
+    assert!(why.contains("the rule for `.env*`"), "{why}");
+    assert!(
+        why.contains("every other call that rule asks about, for as long as it lasts"),
+        "{why}"
+    );
+}
