@@ -101,7 +101,7 @@ pub(super) fn look(
     ));
 
     for item in &items {
-        out.push_str(&line(item, &going, &row(item, &going)));
+        out.push_str(&line(item, &going, &row(item, &going, own)));
     }
     out.push_str(floor(&items));
     out.push_str(gaps(&items));
@@ -257,7 +257,7 @@ pub(super) fn matched(
 
     let mut refused = 0;
     for item in &picked {
-        let mut said = row(item, &going);
+        let mut said = row(item, &going, own);
         if let Some(why) = protected(item, mine, own) {
             refused += 1;
             said.push_str(&format!(" · not yours to move: {why}"));
@@ -342,7 +342,7 @@ pub(super) fn resumed(kernel: &Kernel) -> bool {
 }
 
 /// One item's row: its label, then whatever else is worth knowing on one line.
-fn row(item: &ContextItem, going: &Going) -> String {
+fn row(item: &ContextItem, going: &Going, own: Option<ContextId>) -> String {
     let glimpsed = glimpse(&item.content.to_text());
     let mut said = match glimpsed.is_empty() {
         true => item.label.clone(),
@@ -371,8 +371,17 @@ fn row(item: &ContextItem, going: &Going) -> String {
     // account for it. The turn carrying the call being answered has no result yet, so it is out of
     // the projection for as long as the tool runs. The pane says this on the row in the projector's
     // own words, and this is the same sentence from the same place
-    if let Some(why) = going.left_out.get(&item.id) {
-        said.push_str(&format!(" · not going: {why}"));
+    //
+    // note: the turn this call is in says so instead. The projector's reason - no content and no
+    // answered calls - is true of it and is only how things stand while its calls run, and a model
+    // reading it about its own turn took it for something gone wrong
+    match going.left_out.get(&item.id) {
+        Some(_) if Some(item.id) == own => said.push_str(
+            " · not going yet: this is the turn you are in, and it goes in once its calls have \
+             their results",
+        ),
+        Some(why) => said.push_str(&format!(" · not going: {why}")),
+        None => {}
     }
 
     said

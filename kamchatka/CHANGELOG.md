@@ -23,6 +23,10 @@ minor bump may break you.
 - **A run under `--no-record` ends with "the session was not written when it ended", not "nothing
   was written".** A `/save` typed during the run still writes its files, and the old line denied
   it. `/restart` says the same in its own line.
+- **`context`'s `look` says the turn the model is in is not going yet, rather than why the
+  projector dropped it.** The turn whose calls are still running is out of the request until they
+  have their results, and `look` gave the projector's reason, "an assistant turn with no content and
+  no answered calls". A model asked about its context took it for something gone wrong.
 - **`context` tells the model when tokens are held back because a call of its own has no result
   yet.** `budget` listed every other reason and said the rest were excluded "which you set", and
   `request` said a call was dropped because "its result is not in the projection" without saying
