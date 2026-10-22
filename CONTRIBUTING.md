@@ -174,8 +174,8 @@ bump and release commits; **`pre-push`** reviews a branch against the convention
   descriptions every word costs tokens on every request.
 - **`note:` paragraphs.** A doc comment says what something is; a paragraph starting with `note:`
   says why it's that way, what was rejected, or what it costs. `#![deny(missing_docs)]` and
-  `#![deny(unsafe_code)]` are on in every published crate, and one module allows `unsafe`:
-  `kamchatka::gate`, for seccomp calls that no crate wraps safely.
+  `#![deny(unsafe_code)]` are on in every published crate, and no module allows `unsafe`: the
+  system calls the shell's sandbox needs are made by sandlock.
 - **Comments explain decisions, not mechanics.** If a line needs a comment saying what it does,
   rewrite the line.
 - **Dependencies are kept to a minimum.** `nachalnik` gains one only with a reason worth writing

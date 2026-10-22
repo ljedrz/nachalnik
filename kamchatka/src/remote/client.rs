@@ -1296,6 +1296,14 @@ impl<'a> Client<'a> {
 ///
 /// Also used by `web`, whose page is a client too.
 pub(crate) async fn connect(address: &str) -> Result<super::Connection, String> {
+    // a session in this process is reached without a socket; see `server::door`
+    if let Some(door) = super::server::door(address) {
+        let (mine, theirs) = tokio::io::duplex(super::server::LOCAL_BUFFER);
+        return door
+            .send(theirs)
+            .map(|()| super::Connection::Local(mine))
+            .map_err(|_| format!("could not reach {address}: the session has ended"));
+    }
     match protocol::address(address)? {
         Address::Unix(path) => match protocol::overlong_path(path) {
             // note: the same refusal the bind gives, said before the connect. The kernel refuses a

@@ -102,6 +102,12 @@ async fn a_client_with_nothing_to_do_still_writes_the_log() {
             line: "/note something to be in the log".to_owned(),
         })
         .await;
+    // in by the time the other client attaches, which comes in by a way of its own and may arrive
+    // first
+    crate::until_session(&session.kernel, |kernel| {
+        crate::says(kernel, "something to be in the log")
+    })
+    .await;
 
     // and a client that types nothing at all
     let (mut records, mut prose) = (Vec::new(), Vec::new());

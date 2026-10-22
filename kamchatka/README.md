@@ -12,8 +12,9 @@ sandbox, served sessions, the interface, and the three API clients in
 [`nachalnik-providers`][providers]. None of it needed changes to the runtime.
 
 It only builds for Linux, on x86_64 and aarch64, because its shell sandbox relies on Linux
-features: Landlock restricts what commands can touch, and a seccomp filter pauses every attempt to
-use the network until you answer.
+features: its commands run in [sandlock](https://github.com/multikernel/sandlock) sandboxes, where
+Landlock restricts what they can touch and a seccomp filter pauses every attempt to use the network
+until you answer.
 
 ```console
 $ cargo install kamchatka # or download the released binary

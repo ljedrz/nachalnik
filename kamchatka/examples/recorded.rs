@@ -74,8 +74,8 @@ Check your budget before and after anything expensive. Answer only when you are 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // the shell tool re-executes this binary with `--confine-and-run`, and it restricts itself
-    // before exec'ing the command
+    // `--confine-and-run`, should somebody run this example that way, confines one command and
+    // runs it
     if let Some(code) = sandbox::run_if_asked() {
         std::process::exit(code);
     }

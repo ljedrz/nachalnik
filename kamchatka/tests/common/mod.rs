@@ -131,7 +131,7 @@ pub fn builtin_under(
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy,
-            confiner: None,
+            confined: false,
             limits: Limits::default(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,

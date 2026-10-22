@@ -286,11 +286,6 @@ pub struct Args {
     #[arg(long, value_name = "TOKENS")]
     pub max_spend_tokens: Option<u64>,
 
-    /// Leave background `shell` commands running when the session ends instead of stopping them.
-    /// The end of the session names each one either way.
-    #[arg(long)]
-    pub leave_running: bool,
-
     /// A JSON file of settings for things you would otherwise type every time. Command-line values
     /// win over the file. Given none, `./kamchatka.json` is read if it exists and you agree when
     /// asked, and the one under your config directory if it does not exist.
@@ -726,7 +721,6 @@ impl Args {
             // note: `0` is no ceiling, as `/spend 0` and `--max-requests-per-turn 0` say it. A
             // ceiling of nothing would be a session that refuses its first turn without saying why
             spend: self.max_spend_tokens.filter(|it| *it > 0),
-            leave_running: self.leave_running,
             confine: !self.no_sandbox,
             writable: self.sandbox_write.clone(),
             readable: self.sandbox_read.clone(),

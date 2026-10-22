@@ -148,22 +148,21 @@ unicode-segmentation = { version = "1.13.2", optional = true }
 # `ui::text::columns`; `ratatui` already depends on it
 unicode-width = { version = "0.2", optional = true }
 
-# the sandbox for the `shell` tool. Landlock is a Linux security module a process applies to
-# itself, with no privileges, setuid helper or container, and the kernel enforces it.
+# the sandbox for the `shell` tool: a Landlock ruleset, a seccomp filter, and a supervisor in this
+# process that answers the calls the filter holds - the network among them. No privileges, setuid
+# helper or container. Without default features, which are an HTTP proxy, checkpoints, container
+# images, profiles and a copy-on-write filesystem, none of which a shell needs.
 #
 # note: in a target table even though the crate only builds for Linux, so other targets reach the
 # `compile_error!` in `lib.rs`, which explains why, instead of failing inside these crates
 [target.'cfg(target_os = "linux")'.dependencies]
-landlock = "0.4.7"
-# raw system calls for `gate`, which pauses a sandboxed command's attempt to open an internet socket
-# until you answer: `seccomp(2)` and its notification `ioctl`s, which no crate wraps safely without
-# linking the C `libseccomp`. Already a dependency of `tokio` and `landlock`
+sandlock-core = { git = "https://github.com/multikernel/sandlock", rev = "e570ec239d06f4bd84fc1ab2981ff342a8a9576e", default-features = false }
+# errno and signal numbers. Already a dependency of `tokio` and `sandlock-core`
 libc = "0.2.187"
 # `openat2` with `RESOLVE_BENEATH`, which `std` lacks, so a path the file tools checked can't be
-# swapped for a symlink before it's opened. `net` and `event` for the gate's socket pair and
-# polling; `process` for the `setsid` that detaches sandboxed commands from the terminal. Screen
-# builds already have it through `crossterm`
-rustix = { version = "1", features = ["event", "fs", "net", "process"] }
+# swapped for a symlink before it's opened. `process` for process groups and `pidfd`s, `thread` for
+# the `no_new_privs` the signal scope needs. Screen builds already have it through `crossterm`
+rustix = { version = "1", features = ["fs", "process", "thread"] }
 
 [[example]]
 name = "gateway"

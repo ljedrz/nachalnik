@@ -97,6 +97,44 @@ pub struct Server {
     /// note: when it was subscribed in `run`, a press between the socket appearing and the loop
     /// starting met the default action, and the process died of `SIGINT` with no record written.
     presses: Option<crate::stopping::Stopping>,
+    /// Where a client in this process reaches the session, by the address it is listed under; see
+    /// [`door`].
+    local: Option<(String, tokio::sync::Mutex<Arriving>)>,
+}
+
+/// The connections from clients in this process, as they arrive.
+type Arriving = tokio::sync::mpsc::UnboundedReceiver<tokio::io::DuplexStream>;
+
+/// How much a connection from a client in this process holds in each direction before the writer
+/// waits for the reader, as a socket's buffer does.
+pub(crate) const LOCAL_BUFFER: usize = 64 * 1024;
+
+/// The sessions served from this process, by their address, each with the way in for a client in
+/// this process.
+///
+/// note: the web page's relay is such a client, and it is why there is a way in that is not the
+/// socket. A confined command's connection to a unix socket is made by sandlock's supervisor, in
+/// this process, so on the socket a command looks like this process - see
+/// [`crate::sandbox::from_a_command`] - and a client here that came through the socket would look
+/// like a command.
+#[allow(clippy::type_complexity)]
+static DOORS: std::sync::Mutex<
+    Vec<(
+        String,
+        tokio::sync::mpsc::UnboundedSender<tokio::io::DuplexStream>,
+    )>,
+> = std::sync::Mutex::new(Vec::new());
+
+/// The way in to the session served from this process at `address`, if there is one.
+pub(crate) fn door(
+    address: &str,
+) -> Option<tokio::sync::mpsc::UnboundedSender<tokio::io::DuplexStream>> {
+    DOORS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(at, _)| at == address)
+        .map(|(_, door)| door.clone())
 }
 
 /// Whichever kind of socket this is listening on.
@@ -154,6 +192,8 @@ enum Seen {
     Tcp(std::net::SocketAddr),
     /// The process at the other end of a unix socket.
     Unix(u32),
+    /// A client in this process, which reaches the session without a socket; see [`door`].
+    Local,
 }
 
 /// What reaches the session loop from a connection.
@@ -201,6 +241,13 @@ impl Server {
             Address::Tcp(host) => Self::tcp(host, terminations).await,
         }?;
         server.presses = Some(presses);
+        let (door, arriving) = tokio::sync::mpsc::unbounded_channel();
+        let address = server.address();
+        DOORS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((address.clone(), door));
+        server.local = Some((address, tokio::sync::Mutex::new(arriving)));
 
         Ok(server)
     }
@@ -306,6 +353,7 @@ impl Server {
             stopped: None,
             terminations: tokio::sync::Mutex::new(terminations),
             presses: None,
+            local: None,
         })
     }
 
@@ -347,6 +395,7 @@ impl Server {
             stopped: None,
             terminations: tokio::sync::Mutex::new(terminations),
             presses: None,
+            local: None,
         })
     }
 
@@ -425,6 +474,21 @@ impl Server {
     /// done here rather than on the listener because neither option is inherited: they are
     /// properties of a connection, so every accepted one has to be told.
     async fn accept(&self) -> std::io::Result<super::Connection> {
+        let local = async {
+            match &self.local {
+                Some((_, arriving)) => arriving.lock().await.recv().await,
+                None => std::future::pending().await,
+            }
+        };
+        let listening = async { self.listen().await };
+        tokio::select! {
+            Some(connection) = local => Ok(super::Connection::Local(connection)),
+            accepted = listening => accepted,
+        }
+    }
+
+    /// Takes whatever connected next on the socket.
+    async fn listen(&self) -> std::io::Result<super::Connection> {
         match &self.listener {
             Listener::Unix(listener) => listener
                 .accept()
@@ -786,6 +850,7 @@ impl Serving {
             (Some(browser), _) => format!("{browser} (web UI)"),
             (None, Some(Seen::Tcp(peer))) => peer.to_string(),
             (None, Some(Seen::Unix(pid))) => format!("pid {pid}"),
+            (None, Some(Seen::Local)) => "this process".to_owned(),
             (None, None) => "unknown".to_owned(),
         }
     }
@@ -795,11 +860,14 @@ impl Serving {
     ///
     /// note: asked when the attach is read rather than when the connection arrives, because the
     /// relay lists its connection after connecting and before attaching, and the arrival may be
-    /// seen in between.
+    /// seen in between. The relay reaches a session served from its own process through [`door`],
+    /// and this process on the unix socket was let in only when no command was running; see
+    /// `attend`.
     fn relay(&self, client: u64) -> bool {
         match self.from.get(&client).and_then(|origin| origin.seen) {
             Some(Seen::Tcp(peer)) => crate::remote::relayed(peer),
             Some(Seen::Unix(pid)) => pid == std::process::id(),
+            Some(Seen::Local) => true,
             None => false,
         }
     }
@@ -1037,11 +1105,11 @@ impl Serving {
 
     /// Takes on a connection that has just arrived.
     pub fn attend(&mut self, app: &mut App, arrived: Arrived) {
-        // note: a confined command, or anything it left running in its session, is not a client,
-        // because a client answers permission questions and would answer its own. A socket file is
-        // reachable by every confined command below Linux 7.1, and from 7.1 by one that may write
-        // where it is. A process a command started under its own `setsid` is in a session nothing
-        // here has seen, and gets through
+        // note: a confined command, or anything it left running, is not a client, because a client
+        // answers permission questions and would answer its own. A socket file is reachable by a
+        // confined command that may write where it is. A client in this process comes in through
+        // `door` rather than the socket, so the socket sees this process only for a command; see
+        // `sandbox::from_a_command`
         if let super::Connection::Unix(stream) = &arrived.0
             && stream
                 .peer_cred()
@@ -1066,6 +1134,7 @@ impl Serving {
                 .and_then(|cred| cred.pid())
                 .and_then(|pid| u32::try_from(pid).ok())
                 .map(Seen::Unix),
+            super::Connection::Local(_) => Some(Seen::Local),
         };
         self.from.insert(
             self.clients,
@@ -1132,6 +1201,12 @@ impl Drop for Server {
     /// note: only the file this process made, because a socket file that outlives its listener is a
     /// path every later client is refused at and every later `--serve` refuses as stale.
     fn drop(&mut self) {
+        if let Some((address, _)) = &self.local {
+            DOORS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|(at, _)| at != address);
+        }
         if let Some(port) = self.closed {
             crate::sandbox::stopped_serving_on(port);
         }

@@ -451,7 +451,7 @@ async fn the_shell_says_how_much_of_an_answer_it_will_hand_back() {
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
-        confiner: None,
+        confined: false,
         limits: limits.clone(),
         stragglers: Default::default(),
         layout: kamchatka::tools::Layout::Wrapped,

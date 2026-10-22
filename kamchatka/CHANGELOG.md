@@ -27,6 +27,10 @@ minor bump may break you.
   shows the time since the line above, so nothing set or read them. `Traced::wall` and
   `Tracing::at` still say when each line happened. On the wire `gap` is simply not sent, and an
   older client reads its absence as `None`.
+- **`--leave-running` is gone**, and with it `Setup::leave_running` and the second argument of
+  `stragglers_at_end`. A sandbox's processes end when `kamchatka` does, so under the sandbox there
+  was nothing left running to leave, though the end of the session said there was. What a command
+  left running is stopped and named when the session ends, as it was without the flag.
 
 ### added
 
@@ -128,9 +132,24 @@ minor bump may break you.
   an operation with the next argument written into it, which operation that is.
 - **A `call` written as text that is not JSON says where it stops being JSON**, and shows that
   part of it, rather than its first 200 characters.
+- **The shell runs each command in a [sandlock](https://github.com/multikernel/sandlock)
+  sandbox**: a Landlock ruleset, a seccomp filter, and a supervisor in `kamchatka`'s own process.
+  It used to run itself again with `--confine-and-run`, under a ruleset and a network filter of its
+  own. What is different for you:
+  - the network is held at every connection and datagram to an internet address, on every kernel
+    the sandbox starts on. A refused network now refuses TCP on kernels older than 6.7, and UDP on
+    kernels the old filter could not be installed on;
+  - a unix socket can be reached only where a command may write, on every kernel rather than from
+    Linux 7.1, and a socket named by a relative path is refused;
+  - stopping a call stops everything the command started, a process that left with `setsid`
+    included;
+  - sockets of every family but unix, inet and netlink are refused;
+  - a confined shell is always `network gated` on the permissions tab: the sandbox and the gate
+    start together or not at all.
+  `--confine-and-run` is still there for confining a command by hand.
 - **RUNNING.md says which commands are asked about by name** where the network cannot be gated
-  (`--no-sandbox`, or a kernel that cannot pause a call). It said "a short list of programs", so
-  nobody could tell that `git` and `cargo` are asked about and `python3 fetch.py` is not.
+  (`--no-sandbox`, or a kernel the sandbox does not start on). It said "a short list of programs",
+  so nobody could tell that `git` and `cargo` are asked about and `python3 fetch.py` is not.
 - **The guide says how rules combine in two steps.** Within a domain, an operation's answer counts
   over the domain's, and a deny wins at either level. Across the rules a call is judged by (its
   operation, the path rules matching its path, its server), the strictest answer wins, so

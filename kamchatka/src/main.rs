@@ -56,10 +56,9 @@ const TICK: std::time::Duration = std::time::Duration::from_millis(120);
 const HEARTBEAT: u32 = 8;
 
 fn main() -> Result<std::process::ExitCode> {
-    // before anything else, and before a runtime exists: this is the mode the `shell` tool
-    // re-executes this program in; its job is to confine itself and run one command. Landlock
-    // restricts the calling thread, so a single-threaded program needs no thought about which
-    // thread that was
+    // before anything else, and before a runtime exists: `--confine-and-run` confines one command
+    // and runs it, as a confinement somebody uses by hand, and makes a runtime of its own for the
+    // sandbox's supervisor
     if let Some(code) = sandbox::run_if_asked() {
         std::process::exit(code);
     }
@@ -888,7 +887,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
     };
 
-    finish(&app, base.record, unattended, base.leave_running, outcome)
+    finish(&app, base.record, unattended, outcome)
 }
 
 /// Starts recording the session as it goes, unless `--no-record` was given.
@@ -919,7 +918,6 @@ fn finish(
     app: &App,
     record: bool,
     logged: bool,
-    leave_running: bool,
     outcome: Result<Option<headless::Stop>>,
 ) -> Result<Option<headless::Stop>> {
     // note: the headless driver and the server each end the session, so the record saying so goes
@@ -975,7 +973,7 @@ fn finish(
     }
     // last, because it is the one thing here that waits: a straggler is given a moment to leave on
     // `SIGTERM`. A record written first is a record a slow straggler cannot keep from being kept
-    for line in kamchatka::wiring::stragglers_at_end(app, leave_running) {
+    for line in kamchatka::wiring::stragglers_at_end(app) {
         say(&line);
     }
 
