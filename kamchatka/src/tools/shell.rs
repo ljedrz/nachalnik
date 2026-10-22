@@ -224,16 +224,13 @@ pub struct Shell {
     /// The devices under `/dev` a confined command may read and write; see
     /// [`DEVICES`](crate::sandbox::DEVICES) for the usual ones.
     pub devices: Vec<PathBuf>,
-    /// The binary that knows how to confine itself and run a command; `None` runs `sh` directly.
+    /// Whether a command runs in a sandlock sandbox; `false` runs `sh` directly.
     ///
-    /// note: a path settled once at startup rather than `current_exe()` per call, for two reasons.
-    /// On Linux `current_exe()` reads `/proc/self/exe`, and a binary replaced while the program is
-    /// running - `cargo build` in the repository it is working on, an upgrade - makes that a path
-    /// ending in ` (deleted)`, so every command comes back `No such file or directory` with no
-    /// explanation on screen. And this crate is a library as well as a program: `current_exe()` in
-    /// somebody else's process is somebody else's binary, which would be handed `--confine-and-run`
-    /// and do whatever it liked with it.
-    pub confiner: Option<PathBuf>,
+    /// note: settled once at startup, by a probe that ran a command in one - see
+    /// [`crate::sandbox::available`] - rather than tried per call. A kernel that would not start
+    /// one gives a `shell` that runs unconfined and a permissions view that says so, not a shell
+    /// whose every command fails with an error nobody can account for.
+    pub confined: bool,
     /// How much of a command's output the model is shown.
     ///
     /// note: on the struct rather than assigned by [`super::builtin`], because this is a public
@@ -479,7 +476,7 @@ impl Tool for Shell {
         // then every write inside the working directory hits the boundary and reads the same way.
         // Standard error does not say whether a refusal was a read or a write, so the only sentence
         // that can be certain is this one, before anything is run
-        let confined = self.confiner.is_some().then(|| {
+        let confined = self.confined.then(|| {
             Sandbox::of(
                 &self.policy,
                 self.workdir.clone(),
@@ -508,12 +505,10 @@ impl Tool for Shell {
                     .map(|path| format!("{} read-only", path.display())),
             )
             .collect();
-        // note: what the stance makes of the network, said as precisely as it is known. Where the
-        // gate does not hold, a call can still be granted the network on its own, so the sentence
-        // there hedges; where it does, a command that reaches out waits on a person, and a model
-        // that does not know that reads a long silence as a hang
+        // note: what the stance makes of the network, said as precisely as it is known. A command
+        // that reaches out waits on a person, and a model that does not know that reads a long
+        // silence as a hang
         let network = match confined.as_ref().map(|sandbox| sandbox.network) {
-            Some(Network::NoTcp) => ", and TCP may be closed",
             Some(Network::Shut) => ", and it has no network",
             Some(Network::Asked) => {
                 ", and the first time a command reaches for the network it waits while the person \
@@ -537,7 +532,7 @@ impl Tool for Shell {
                  only as long as the command it is in.{cut} Nothing \
                  is typed at it: a command reading its input reads end-of-file.{}",
                 self.workdir.display(),
-                match self.confiner.is_some() {
+                match self.confined {
                     true => format!(
                         " It runs confined: outside the working directory it can read {}{} and \
                          no more{network} - so a permission error there is the confinement rather \
@@ -630,7 +625,7 @@ impl Tool for Shell {
         //
         // note: kept rather than built and dropped, because it can tell afterwards whether a
         // permission error came from this boundary; see `Sandbox::note_for`
-        let sandbox = self.confiner.is_some().then(|| Sandbox {
+        let sandbox = self.confined.then(|| Sandbox {
             shell_readable: self.shell_readable.clone(),
             devices: self.devices.clone(),
             ..Sandbox::of(
@@ -641,64 +636,68 @@ impl Tool for Shell {
                 self.policy.was_granted_the_network(&call.id),
             )
         });
-        let mut command = match (&self.confiner, &sandbox) {
-            (Some(me), Some(sandbox)) => {
-                let mut command = tokio::process::Command::new(me);
-                command.args(sandbox.argv(cmd));
-                command
+        // the mark everything it starts carries lets the end of the session find what it left
+        // running; see `Stragglers`
+        let mark = self.stragglers.mark(cmd);
+
+        // note: where the network is not open, every attempt at it comes to the gatekeeper, which
+        // asks or refuses; see `Gatekeeper`
+        let network = sandbox.as_ref().map(|sandbox| sandbox.network);
+        let (gatekeeper, gate) = match network {
+            Some(Network::Shut | Network::Asked) => {
+                let (gatekeeper, gate) = Gatekeeper::keep(
+                    self.policy.clone(),
+                    &call.id,
+                    cmd,
+                    network == Some(Network::Shut),
+                );
+                (Some(gatekeeper), Some(gate))
             }
+            _ => (None, None),
+        };
+        let started = match &sandbox {
+            Some(sandbox) => Confined::start(sandbox, cmd, &mark, gate).await,
             // a group of its own, so that stopping the command can stop everything the command
-            // started; see `stop`. A confined child makes its own, in a session of its own, so
-            // that it leaves the terminal behind - see `sandbox::run_if_asked` - and `setsid` is
-            // refused to a process that already leads a group
-            _ => {
+            // started; see `stop`
+            None => {
                 let mut command = tokio::process::Command::new("sh");
                 command
                     .arg("-c")
                     .arg(cmd)
                     .current_dir(&self.workdir)
                     .process_group(0);
+                // the program's keys stay with the program; see `endpoint::KEYS` and
+                // `endpoint::ADDRESSES`
+                scrub(&mut command, |name| std::env::var_os(name));
+                command.env(CALL_VAR, &mark);
+                // killed if this call is dropped before it is over; see `Running`
+                command.kill_on_drop(true);
                 command
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map(|mut child| {
+                        let stdout = child.stdout.take().expect("stdout was piped");
+                        let stderr = child.stderr.take().expect("stderr was piped");
+                        Started {
+                            stdout: Box::new(stdout),
+                            stderr: Box::new(stderr),
+                            said: Vec::new(),
+                            child: Child::Plain(child),
+                            scratch: None,
+                        }
+                    })
             }
         };
-
-        // the program's keys stay with the program; see `endpoint::KEYS` and `endpoint::ADDRESSES`
-        scrub(&mut command, |name| std::env::var_os(name));
-        // the mark everything it starts carries lets the end of the session find what it left
-        // running; see `Stragglers`
-        command.env(CALL_VAR, self.stragglers.mark(cmd));
-
-        // killed if this call is dropped before it is over; see `Running`
-        command.kill_on_drop(true);
-
-        // note: where the network is held, the child's standard input is the socket the gate's
-        // listener comes back up, and the child gives the command `/dev/null`; see `gate::hold`.
-        // Everywhere else it is `/dev/null` from the start
-        let network = sandbox.as_ref().map(|sandbox| sandbox.network);
-        let arriving = match network {
-            Some(Network::Shut | Network::Asked) => match crate::gate::pair() {
-                Ok((stdin, arriving)) => {
-                    command.stdin(stdin);
-                    Some(arriving)
-                }
-                Err(e) => {
-                    return Ok(ToolOutput::error(format!(
-                        "could not run the command: the network could not be held for a question: \
-                         {e}"
-                    )));
-                }
-            },
-            _ => {
-                command.stdin(Stdio::null());
-                None
-            }
-        };
-        let mut child = match command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(child) => child,
+        let Started {
+            stdout,
+            mut stderr,
+            said,
+            mut child,
+            scratch,
+        } = match started {
+            Ok(started) => started,
             // note: the reason and not the command, which the model has in its own call. Quoted
             // first, a command long enough to fail here pushed the reason past the output limit
             Err(e) if e.kind() == std::io::ErrorKind::ArgumentListTooLong => {
@@ -709,43 +708,21 @@ impl Tool for Shell {
             }
             Err(e) => return Ok(ToolOutput::error(format!("could not run the command: {e}"))),
         };
-        // the child holds its end of the pair now; this copy goes with the command, or a child
-        // that ends without sending a listener would never be seen to have ended
-        drop(command);
-        // a confined child's session is its own and named by its pid. A served session refuses
-        // anything in it; see `sandbox::from_a_command`
-        if let (Some(_), Some(pid)) = (&sandbox, child.id()) {
-            crate::sandbox::began(pid);
-        }
-        let gatekeeper = arriving.map(|arriving| {
-            Gatekeeper::keep(
-                arriving,
-                self.policy.clone(),
-                &call.id,
-                cmd,
-                network == Some(Network::Shut),
-            )
-        });
-        // the confined child cannot remove its own temporary directory, so this is where that
-        // happens. Read the identifier now: a waited-on child no longer has one. See
-        // `sandbox::scratch_for`
+        // the group of a command run without a sandbox, killed if this call is dropped, and the
+        // temporary directory, removed then; a sandbox does both when it is dropped
         let running = Running {
-            group: child.id(),
-            scratch: self
-                .confiner
-                .is_some()
-                .then(|| child.id().map(crate::sandbox::scratch_for))
-                .flatten(),
+            group: match &child {
+                Child::Plain(child) => child.id(),
+                Child::Confined(_) => None,
+            },
+            scratch: scratch.as_ref().map(|scratch| scratch.path().to_path_buf()),
         };
 
-        // taken out of the child, so that it can still be killed while these are being read
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let mut stderr = child.stderr.take().expect("stderr was piped");
         // note: this end keeps a buffer rather than one the task hands back when done, because the
         // task may never be done; see below. What arrived by then is still worth telling the model.
         // Kept up to `KEPT`, and past that read and counted, so a command that writes without end
         // fills neither this process nor the pipe it writes to
-        let heard = Arc::new(std::sync::Mutex::new((Vec::new(), 0)));
+        let heard = Arc::new(std::sync::Mutex::new((said, 0)));
         let mut collecting_stderr = tokio::spawn({
             let heard = heard.clone();
             async move {
@@ -812,6 +789,9 @@ impl Tool for Shell {
             None => child.wait().await,
         };
         let reached = gatekeeper.and_then(Gatekeeper::over);
+        // what the command left running is kept until it is gone; see `Confined::keep`
+        child.keep();
+        drop(scratch);
         let scratch = running.over();
         let status = status_line(interrupted, halted, waited);
 
@@ -848,9 +828,9 @@ impl Tool for Shell {
         // a refused name lookup is `Temporary failure in name resolution`, which reads as a network
         // having trouble. A model that does not know it was refused looks for another way out
         // rather than asking
-        let refused = "so every network socket it asked for was refused with `Permission \
-                       denied`, and a name it tried to look up failed with `Temporary failure in \
-                       name resolution`";
+        let refused = "so every connection it tried and every datagram it sent was refused \
+                       with `Permission denied`, and a name it tried to look up failed with \
+                       `Temporary failure in name resolution`";
         // note: "when it was asked about", not "the person said": the kernel's words for its own
         // questions, because what answered may be `--on-ask` in a run nobody is watching, and the
         // model repeats whatever this claims about who decided
@@ -869,12 +849,6 @@ impl Tool for Shell {
                 "[this command reached for the network, which this session refuses, {refused}. \
                  Work without it, or say what you need it for and ask for it to be allowed.]\n"
             ),
-            Some(Reached::Ungated) => "[the network gate could not be set up for this command, so \
-                                       any network socket it asked for failed with `Function \
-                                       not implemented`, and a name it tried to look up failed \
-                                       the same way. That is this program failing, not a refusal: \
-                                       say so rather than trying another way round.]\n"
-                .to_owned(),
             None => String::new(),
         };
         // and what was not kept, under it for the same reason
@@ -907,24 +881,26 @@ enum Reached {
     Refused,
     /// The session refuses the network, and nobody was asked.
     Shut,
-    /// The gate never got the command's listener, so nothing was there to ask.
-    Ungated,
 }
 
-/// Answers a gated command's attempts to reach the network for as long as anything it started is
-/// still making them.
+/// Answers a confined command's attempts to reach the network for as long as anything it started
+/// is still making them.
 ///
 /// note: a task of its own rather than a branch of the call's loop, because attempts can outlast
-/// the call. `python3 -m http.server &` leaves a process behind under the same filter, and once the
-/// call is over nothing else answers it. A held call nobody answers is stuck in `socket()` until
-/// the listener closes, so the task runs until the kernel says no process under the filter is left.
+/// the call. `python3 -m http.server &` leaves a process behind in the same sandbox, and once the
+/// call is over nothing else answers it. sandlock hands each attempt over with its approval, and
+/// an attempt nobody answers waits, so the task runs until the sandbox is gone and takes the
+/// sending end with it.
 ///
-/// note: a command started under a refusal is refused throughout, because Landlock refuses its TCP
-/// and cannot be told otherwise. A command started under a question consults the stance at its
-/// first attempt - an answer of `always` to another command's question counts - and asks the person
-/// once where it is still `ask`. Whatever was decided holds for the rest of the command. Once the
-/// call is over nobody can ask on its behalf, so an attempt after that with nothing decided is
-/// refused.
+/// note: a connection to a unix socket comes here too, with no address, since sandlock holds every
+/// `connect` it sees. It is let through to sandlock's own check, which holds it to the paths the
+/// command may write; see the note at the top of [`crate::sandbox`].
+///
+/// note: a command started under a refusal is refused throughout. A command started under a
+/// question consults the stance at its first attempt - an answer of `always` to another command's
+/// question counts - and asks the person once where it is still `ask`. Whatever was decided holds
+/// for the rest of the command. Once the call is over nobody can ask on its behalf, so an attempt
+/// after that with nothing decided is refused.
 struct Gatekeeper {
     /// What came of the first attempt, where there was one.
     reached: Arc<parking_lot::Mutex<Option<Reached>>>,
@@ -933,33 +909,37 @@ struct Gatekeeper {
 }
 
 impl Gatekeeper {
+    /// The gatekeeper for one command, and the policy that brings its attempts to it.
     fn keep(
-        arriving: crate::gate::Arriving,
         policy: Arc<Careful>,
         call: &ToolCallId,
         cmd: &str,
         refusing: bool,
-    ) -> Self {
+    ) -> (Self, sandlock_core::PolicyFn) {
+        use sandlock_core::policy_fn::Approval;
+
         let reached = Arc::new(parking_lot::Mutex::new(None));
         let (over, mut ended) = tokio::sync::watch::channel(false);
         let (call, cmd) = (call.clone(), cmd.to_owned());
+        let (attempts, mut attempted) = tokio::sync::mpsc::unbounded_channel::<Approval>();
+        // note: on sandlock's thread, so it only passes the attempt on. An approval dropped
+        // unanswered - the task gone with the runtime - is a refusal
+        let gate = sandlock_core::PolicyFn::deferred(move |event, _, approval| {
+            if let Some(approval) = approval {
+                match event.host {
+                    Some(_) => {
+                        let _ = attempts.send(approval);
+                    }
+                    None => approval.allow(),
+                }
+            }
+        });
 
         tokio::spawn({
             let reached = reached.clone();
             async move {
-                // note: an error here is said rather than swallowed. The filter is installed by
-                // then, so every socket the command asks for fails as though the kernel had none,
-                // and a command that cannot tell why goes looking for another way out
-                let listener = match arriving.listener().await {
-                    Ok(Some(listener)) => listener,
-                    Ok(None) => return,
-                    Err(_) => {
-                        *reached.lock() = Some(Reached::Ungated);
-                        return;
-                    }
-                };
                 let mut decided = None;
-                while let Some(attempt) = listener.next().await {
+                while let Some(attempt) = attempted.recv().await {
                     let allow = match decided {
                         Some(allow) => allow,
                         None => {
@@ -995,18 +975,242 @@ impl Gatekeeper {
                             allow
                         }
                     };
-                    listener.answer(attempt, allow);
+                    attempt.resolve(match allow {
+                        true => sandlock_core::policy_fn::Verdict::Allow,
+                        false => sandlock_core::policy_fn::Verdict::DenyWith(libc::EACCES),
+                    });
                 }
             }
         });
 
-        Self { reached, over }
+        (Self { reached, over }, gate)
     }
 
     /// The call is over; hands back what came of the command's first attempt, if it made one.
     fn over(self) -> Option<Reached> {
         let _ = self.over.send(true);
         *self.reached.lock()
+    }
+}
+
+/// A command just started: its two streams, anything to put in front of what it says on its
+/// standard error, the command itself, and its temporary directory, held until it is over.
+struct Started {
+    stdout: Box<dyn tokio::io::AsyncRead + Unpin + Send>,
+    stderr: Box<dyn tokio::io::AsyncRead + Unpin + Send>,
+    said: Vec<u8>,
+    child: Child,
+    scratch: Option<crate::sandbox::Scratch>,
+}
+
+/// A running command: a process of this one's, or a sandbox sandlock runs one in.
+enum Child {
+    Plain(tokio::process::Child),
+    Confined(Box<Confined>),
+}
+
+/// A command running in a sandlock sandbox.
+///
+/// note: the sandbox is the command's session. Dropping it kills everything the command started,
+/// which is what a call dropped before its command ended wants; a call that ended hands it to
+/// [`Confined::keep`] instead, for what the command left running.
+struct Confined {
+    sandbox: sandlock_core::Sandbox,
+    controller: sandlock_core::Controller,
+    /// What the sandbox's rules name, open for as long as the sandbox is; see
+    /// [`crate::sandbox::Rules`].
+    rules: crate::sandbox::Rules,
+}
+
+impl Confined {
+    /// Starts `cmd` in a sandbox built from `sandbox`, its network answered by `gate` where it is
+    /// not open.
+    async fn start(
+        sandbox: &Sandbox,
+        cmd: &str,
+        mark: &str,
+        gate: Option<sandlock_core::PolicyFn>,
+    ) -> std::io::Result<Started> {
+        let scratch = crate::sandbox::make_scratch(&crate::sandbox::scratch_path());
+        // note: removed here where nothing started, since nothing else knows of it then
+        match Self::spawn(sandbox, cmd, mark, gate, scratch.as_ref()).await {
+            Ok(started) => Ok(Started { scratch, ..started }),
+            Err(e) => {
+                if let Some(scratch) = scratch {
+                    let _ = std::fs::remove_dir_all(scratch.path());
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// [`Confined::start`], given its temporary directory, which the caller puts in what it hands
+    /// back.
+    async fn spawn(
+        sandbox: &Sandbox,
+        cmd: &str,
+        mark: &str,
+        gate: Option<sandlock_core::PolicyFn>,
+        scratch: Option<&crate::sandbox::Scratch>,
+    ) -> std::io::Result<Started> {
+        // note: the whole environment, since sandlock is handed one rather than told what to take
+        // out. The program's keys stay with the program; see `endpoint::KEYS` and
+        // `endpoint::ADDRESSES`
+        let removed = scrubbed(|name| std::env::var_os(name));
+        let mut env: Vec<(String, String)> = crate::sandbox::environment()
+            .filter(|(key, _)| {
+                !removed.contains(&key.as_str())
+                    && ![CALL_VAR, "TMPDIR", "GIT_CONFIG_GLOBAL"].contains(&key.as_str())
+            })
+            .collect();
+        env.push((CALL_VAR.to_owned(), mark.to_owned()));
+        // note: and taken away where there is none, as `make_scratch` says. What this program has
+        // is not a directory the command may write, and passing it on would tell the command it
+        // has somewhere to write where it has not
+        if let Some(scratch) = scratch {
+            env.push(("TMPDIR".to_owned(), scratch.path().display().to_string()));
+        }
+        // note: unconfined, git can read its own configuration, and pointing it elsewhere would
+        // take a person's identity and aliases away for nothing
+        match sandbox.git_config_global() {
+            Some(global) => {
+                env.push(("GIT_CONFIG_GLOBAL".to_owned(), global.display().to_string()))
+            }
+            None => env.extend(
+                std::env::var("GIT_CONFIG_GLOBAL")
+                    .ok()
+                    .map(|global| ("GIT_CONFIG_GLOBAL".to_owned(), global)),
+            ),
+        }
+
+        let (builder, rules) = sandbox.sandlock(scratch, gate, false);
+        let argv = crate::sandbox::command(env, cmd);
+        crate::sandbox::fits(&argv)?;
+        let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let mut confined = builder.build().map_err(std::io::Error::other)?;
+        let mut process = confined
+            .popen(
+                &argv,
+                sandlock_core::StdioMode::Null,
+                sandlock_core::StdioMode::Piped,
+                sandlock_core::StdioMode::Piped,
+            )
+            .await
+            .map_err(std::io::Error::other)?;
+        let (stdout, stderr) = (process.take_stdout(), process.take_stderr());
+        // note: a `Process` dropped leaves the command running; the sandbox is what ends it
+        drop(process);
+        let left_out: Vec<String> = rules.left_out().to_vec();
+        let stream = |fd: Option<std::os::fd::OwnedFd>| -> std::io::Result<_> {
+            let fd = fd.ok_or_else(|| std::io::Error::other("a stream was not piped"))?;
+            Ok(Box::new(tokio::net::unix::pipe::Receiver::from_owned_fd(
+                fd,
+            )?))
+        };
+        let (stdout, stderr) = (stream(stdout)?, stream(stderr)?);
+        let controller = confined.controller().map_err(std::io::Error::other)?;
+        // a served session refuses anything in it; see `sandbox::from_a_command`
+        crate::sandbox::began(controller.clone());
+
+        Ok(Started {
+            stdout,
+            stderr,
+            said: left_out
+                .iter()
+                .map(|line| format!("{line}\n"))
+                .collect::<String>()
+                .into_bytes(),
+            child: Child::Confined(Box::new(Self {
+                sandbox: confined,
+                controller,
+                rules,
+            })),
+            scratch: None,
+        })
+    }
+
+    /// The command's own process, the shell, until it has exited.
+    ///
+    /// note: asked of sandlock each time rather than kept, since once the shell has exited its
+    /// number may name another process.
+    fn pid(&self) -> Option<u32> {
+        self.sandbox.pid().and_then(|pid| u32::try_from(pid).ok())
+    }
+
+    /// Keeps the sandbox for as long as something the command started is running in it, so that
+    /// a job left in the background is still answered, and ends it after.
+    ///
+    /// note: looked at every second rather than waited on, since sandlock says when a group empties
+    /// only when asked. It is cheap: a read of each group the command made.
+    fn keep(self) {
+        let Self {
+            mut sandbox,
+            controller,
+            rules,
+        } = self;
+        tokio::spawn(async move {
+            while controller
+                .process_groups()
+                .is_ok_and(|groups| !groups.is_empty())
+            {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            let _ = sandbox.shutdown().await;
+            drop(rules);
+        });
+    }
+}
+
+impl Child {
+    /// How the command ended, if it has.
+    async fn exited(&mut self) -> Option<std::io::Result<std::process::ExitStatus>> {
+        match self {
+            Self::Plain(child) => child.try_wait().transpose(),
+            Self::Confined(confined) => match confined.controller.main_exited() {
+                true => Some(self.wait().await),
+                false => None,
+            },
+        }
+    }
+
+    /// Waits for the command to end.
+    ///
+    /// note: cancellable either way. sandlock keeps what a cancelled wait had started, so the next
+    /// one carries on.
+    async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        use std::os::unix::process::ExitStatusExt as _;
+
+        match self {
+            Self::Plain(child) => child.wait().await,
+            Self::Confined(confined) => {
+                let waited = confined.sandbox.wait().await;
+                // as `waitpid` writes it: a code in the second byte, a signal in the first
+                Ok(std::process::ExitStatus::from_raw(
+                    match waited.map_err(std::io::Error::other)? {
+                        sandlock_core::ExitStatus::Code(code) => code << 8,
+                        sandlock_core::ExitStatus::Signal(signal) => signal,
+                        sandlock_core::ExitStatus::Killed | sandlock_core::ExitStatus::Timeout => {
+                            libc::SIGKILL
+                        }
+                    },
+                ))
+            }
+        }
+    }
+
+    /// The command's own process, until it has been waited for.
+    fn id(&self) -> Option<u32> {
+        match self {
+            Self::Plain(child) => child.id(),
+            Self::Confined(confined) => confined.pid(),
+        }
+    }
+
+    /// Hands what the command left running to whoever keeps it.
+    fn keep(self) {
+        if let Self::Confined(confined) = self {
+            confined.keep();
+        }
     }
 }
 
@@ -1063,8 +1267,8 @@ struct Watched {
 /// Reads a command's standard output to its end, or until the command stops itself or the turn is
 /// interrupted, and then waits for the command the same way.
 async fn watch(
-    stdout: tokio::process::ChildStdout,
-    child: &mut tokio::process::Child,
+    stdout: Box<dyn tokio::io::AsyncRead + Unpin + Send>,
+    child: &mut Child,
     output: &OutputSink,
 ) -> Watched {
     // note: bytes rather than `lines()`, which refuses a line that is not UTF-8. Stopping there
@@ -1117,13 +1321,13 @@ async fn watch(
             // and a server started with `&` for ever. A quiet moment after the command has gone
             // is the end of what it said
             Err(_) => {
-                if let Ok(Some(status)) = child.try_wait() {
+                if let Some(status) = child.exited().await {
                     keep(&line, &mut collected, output, &mut full, &mut dropped);
                     collected.push_str(
                         "[standard output is still open: something this command started is \
                          still running]\n",
                     );
-                    waited = Some(Ok(status));
+                    waited = Some(status);
                     break;
                 }
                 if let Some(signal) = stopped_itself(child) {
@@ -1243,16 +1447,32 @@ fn status_line(
 /// note: the command's own process, which is the shell. A program the shell runs that stops itself
 /// and nothing else leaves the shell waiting on it, asleep rather than stopped, and is not seen
 /// here; nor is a job the command started in the background, which it may stop on purpose.
-fn stopped_itself(child: &tokio::process::Child) -> Option<i32> {
+///
+/// note: in a sandbox the command's own process is not this one's child: sandlock forks a process
+/// of its own, which stays behind, and the shell is that one's child. So its state is read from
+/// `/proc` instead, which does not say which signal stopped it: `0` stands for one that is not
+/// known.
+fn stopped_itself(child: &Child) -> Option<i32> {
     use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
 
-    let pid = Pid::from_raw(i32::try_from(child.id()?).ok()?)?;
-    waitid(
-        WaitId::Pid(pid),
-        WaitIdOptions::STOPPED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
-    )
-    .ok()??
-    .stopping_signal()
+    match child {
+        Child::Plain(_) => {
+            let pid = Pid::from_raw(i32::try_from(child.id()?).ok()?)?;
+            waitid(
+                WaitId::Pid(pid),
+                WaitIdOptions::STOPPED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
+            )
+            .ok()??
+            .stopping_signal()
+        }
+        Child::Confined(confined) => {
+            let shell = confined.pid()?;
+            let stat = std::fs::read_to_string(format!("/proc/{shell}/stat")).ok()?;
+            // the state is the field after the name, which is in parentheses and may hold anything
+            let (_, rest) = stat.rsplit_once(") ")?;
+            rest.starts_with('T').then_some(0)
+        }
+    }
 }
 
 /// A stopping signal's name, as a model would write it.
@@ -1262,33 +1482,42 @@ fn signal_name(signal: i32) -> String {
         libc::SIGTSTP => "SIGTSTP".to_owned(),
         libc::SIGTTIN => "SIGTTIN".to_owned(),
         libc::SIGTTOU => "SIGTTOU".to_owned(),
+        0 => "a stop signal".to_owned(),
         other => format!("signal {other}"),
     }
 }
 
 /// Stops a running command and the processes it started that are still in its process group.
 ///
-/// note: it signals the group rather than the process, because a shell command is rarely one
+/// note: it signals groups rather than the process, because a shell command is rarely one
 /// process: `make` starts a compiler and `npm test` starts a runner. A signal to the shell alone
-/// leaves those running, confined by the inherited domain but still writing in the working
-/// directory, with nothing left to report them, after someone who pressed escape was told it
-/// stopped.
+/// leaves those running, still writing in the working directory, with nothing left to report
+/// them, after someone who pressed escape was told it stopped.
 ///
-/// note: a process that left the group is not reached. One run under `setsid`, or a daemon that
-/// detaches itself, runs on, confined still, after the call has said it stopped. Holding the whole
-/// tree takes a cgroup or a PID namespace per command, and there is neither here.
+/// note: a sandboxed command's groups are every one sandlock saw it make or join, so a process run
+/// under `setsid`, or a daemon that detaches itself, is stopped too. A command run without a
+/// sandbox has one group, its own, and a process that left it runs on after the call has said it
+/// stopped: holding the whole tree there takes a cgroup or a PID namespace per command.
 ///
-/// note: it acts through `sh`, because signalling a group is not in `std` and this crate keeps its
-/// `unsafe` to [`crate::gate`]. It is the same `sh` the tool is built on, so it brings nothing new
-/// into the program. The group is the child's own: `process_group(0)` asked for it at spawn, or the
-/// confined child's `setsid` made it. The child has not been waited on yet, so the identifier
-/// cannot yet mean anybody else.
-async fn stop(child: &mut tokio::process::Child) {
-    if let Some(pid) = child.id() {
-        let _ = tokio::process::Command::from(killing(pid)).status().await;
+/// note: the unsandboxed group is signalled through `sh`, because signalling a group is not in
+/// `std` and this crate has no `unsafe`. It is the same `sh` the tool is built on, so it brings
+/// nothing new into the program. The group is the child's own, asked for with `process_group(0)` at
+/// spawn, and the child has not been waited on yet, so the identifier cannot yet mean anybody
+/// else.
+async fn stop(child: &mut Child) {
+    match child {
+        Child::Plain(child) => {
+            if let Some(pid) = child.id() {
+                let _ = tokio::process::Command::from(killing(pid)).status().await;
+            }
+            // and the child itself, in case it was never in a group of its own
+            let _ = child.start_kill();
+        }
+        // every group the command made, which sandlock knows: one that left with `setsid` too
+        Child::Confined(confined) => {
+            let _ = confined.controller.kill();
+        }
     }
-    // and the child itself, in case it was never in a group of its own
-    let _ = child.start_kill();
 }
 
 /// The command that kills process group `pid`, for [`stop`] and for a [`Running`] dropped with
@@ -1376,27 +1605,36 @@ fn read_into(read: &[u8], text: usize) -> usize {
 }
 
 /// Removes the program's keys from `command`'s environment, and an address with a password in it,
-/// as `value` reads each variable - and the variable that asks the confined child for its report,
-/// which is for the start-up probe and would put the report in front of the model.
-///
-/// note: an address is read as `endpoint::address_in` reads it, with what is not text replaced,
-/// since non-text is still in the environment the command inherits. Read with `env::var`, which
-/// answers such a value as no value, so its password went along with it.
+/// as `value` reads each variable.
 fn scrub(
     command: &mut tokio::process::Command,
     value: impl Fn(&str) -> Option<std::ffi::OsString>,
 ) {
-    for key in crate::endpoint::KEYS {
-        command.env_remove(key);
+    for removed in scrubbed(value) {
+        command.env_remove(removed);
     }
-    command.env_remove(crate::sandbox::REPORT_VAR);
-    for address in crate::endpoint::ADDRESSES {
-        if value(address)
-            .is_some_and(|url| crate::endpoint::has_credentials(&url.to_string_lossy()))
-        {
-            command.env_remove(address);
-        }
-    }
+}
+
+/// The variables a command is not handed: the program's keys, and an address with a password in
+/// it, as `value` reads each one.
+///
+/// note: an address is read as `endpoint::address_in` reads it, with what is not text replaced,
+/// since non-text is still in the environment the command inherits. Read with `env::var`, which
+/// answers such a value as no value, so its password went along with it.
+fn scrubbed(value: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<&'static str> {
+    crate::endpoint::KEYS
+        .iter()
+        .copied()
+        .chain(
+            crate::endpoint::ADDRESSES
+                .iter()
+                .copied()
+                .filter(|address| {
+                    value(address)
+                        .is_some_and(|url| crate::endpoint::has_credentials(&url.to_string_lossy()))
+                }),
+        )
+        .collect()
 }
 
 #[cfg(test)]
@@ -1432,23 +1670,6 @@ mod tests {
         for key in crate::endpoint::KEYS {
             assert!(removed.iter().any(|name| name == key), "{key}: {removed:?}");
         }
-    }
-
-    /// The variable that asks the confined child to report on its confinement is kept from a
-    /// command, so a person who exported it does not get the report in front of the model.
-    #[test]
-    fn the_request_for_a_confinement_report_is_kept_from_a_command() {
-        let mut command = tokio::process::Command::new("true");
-        scrub(&mut command, |_| None);
-
-        assert!(
-            command
-                .as_std()
-                .get_envs()
-                .any(|(name, value)| name == crate::sandbox::REPORT_VAR && value.is_none()),
-            "{:?}",
-            command.as_std().get_envs().collect::<Vec<_>>()
-        );
     }
 
     /// What no command of this session started is left alone at its end - a process of this user's
@@ -1612,7 +1833,7 @@ mod tests {
             readable: Vec::new(),
             shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
-            confiner: None,
+            confined: false,
             limits: Limits::default(),
             stragglers: Default::default(),
             layout: Layout::Wrapped,
@@ -1959,9 +2180,9 @@ mod tests {
     /// note: it is said in the description, not at the point of failure, because the point of
     /// failure cannot say it. A refused socket is `Permission denied`; a refused name lookup is
     /// `Temporary failure in name resolution`, which reads as network trouble. A model that does
-    /// not know it was refused looks for another way out. The three sentences are not
-    /// interchangeable: one refuses outright, one waits for a person to be asked, one refuses TCP
-    /// and promises nothing about a datagram. Each is checked against the stance that earns it.
+    /// not know it was refused looks for another way out. The two sentences are not
+    /// interchangeable: one refuses outright, one waits for a person to be asked. Each is checked
+    /// against the stance that earns it.
     ///
     /// note: a gated session with nothing said about the network stands at `ask`, which is what
     /// `Careful` answers for anything undecided; the gate turns that into a question rather than a
@@ -1982,7 +2203,7 @@ mod tests {
                 shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
                 // the sentence is only written where there is a confinement to be confined by
-                confiner: Some(std::env::temp_dir().join("kamchatka-is-not-run-here")),
+                confined: true,
                 limits: Limits::default(),
                 stragglers: Default::default(),
                 layout: Layout::Wrapped,
@@ -2000,10 +2221,6 @@ mod tests {
                 Verdict::Ask,
                 "it waits while the person you are working with is asked",
             ),
-            // without a gate, only Landlock stands in the way; it refuses TCP and promises nothing
-            // about a datagram. The word for that case is `no TCP`, not `no network`, and the
-            // sentence must keep the two apart
-            (false, Verdict::Ask, "TCP may be closed"),
         ] {
             let said = said(gated, stance);
             assert!(said.contains(said_of_it), "{gated}/{stance:?}: {said}");
@@ -2013,7 +2230,6 @@ mod tests {
         // refuses outright does not wait for anybody
         let shut = said(true, Verdict::Deny);
         assert!(!shut.contains("waits while the person"), "{shut}");
-        assert!(!shut.contains("TCP may be closed"), "{shut}");
 
         // an outright allowance says nothing, because there is nothing for a model to be told
         let open = said(true, Verdict::Allow);
@@ -2063,22 +2279,21 @@ mod tests {
     /// reason's own advice comes with it.
     ///
     /// note: the advice for a command too long to start says to write it to a file and run the
-    /// file, which is right for an argument list the kernel refused and wrong for a confiner that
-    /// is not there; a model told to write a 200000-byte command to a file, when nothing about the
+    /// file, which is right for an argument list the kernel refused and wrong for a working
+    /// directory that is not there; a model told to write a 200000-byte command to a file, when nothing about the
     /// command was the problem, goes looking for a length it cannot find. The two refusals are told
     /// apart by the kind of the error behind them, so a test that only ever started a command that
     /// was too long never saw the other one.
     ///
-    /// note: a missing confiner is how to reach it. The spawn fails before a single byte is run, so
-    /// nothing of the command's own output can be mistaken for the reason, and the reason says
-    /// which file is missing.
+    /// note: a missing working directory is how to reach it. The spawn fails before a single byte
+    /// is run, so nothing of the command's own output can be mistaken for the reason.
     #[tokio::test]
     async fn a_command_that_could_not_start_is_not_told_it_was_too_long() {
         let said = {
             let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": "echo ran" }));
-            let missing = std::env::temp_dir().join("kamchatka-no-such-confiner");
+            let missing = std::env::temp_dir().join("kamchatka-no-such-workdir");
             Shell {
-                confiner: Some(missing.clone()),
+                workdir: missing.clone(),
                 ..unconfined()
             }
             .invoke(&call, OutputSink::disconnected())
@@ -2092,7 +2307,7 @@ mod tests {
         assert!(said.contains("could not run the command"), "{said}");
         assert!(
             !said.contains("too long"),
-            "a confiner that is not there is not an argument list: {said}"
+            "a directory that is not there is not an argument list: {said}"
         );
         assert!(!said.contains("write it to a file"), "{said}");
         assert!(!said.contains("ran"), "nothing was run: {said}");

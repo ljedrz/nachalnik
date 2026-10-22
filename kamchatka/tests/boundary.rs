@@ -606,7 +606,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
-            confiner: None,
+            confined: false,
             limits: Limits::default(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,
@@ -673,7 +673,7 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
                 shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 policy,
-                confiner: None,
+                confined: false,
                 limits: Limits::default(),
                 stragglers: Default::default(),
                 layout: kamchatka::tools::Layout::Wrapped,
@@ -808,7 +808,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: Arc::new(Careful::new()),
-            confiner: None,
+            confined: false,
             limits: Limits::default(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,
@@ -1053,7 +1053,7 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
 
     // every way the network can be, because each is a word on the command line and a word read
     // back as another is a command confined the wrong way
-    for network in [Network::Open, Network::NoTcp, Network::Shut, Network::Asked] {
+    for network in [Network::Open, Network::Shut, Network::Asked] {
         let sandbox = Sandbox {
             workdir: PathBuf::from("/tmp/work dir"),
             writable: vec![PathBuf::from("/opt/one"), PathBuf::from("/opt/two")],
@@ -1098,7 +1098,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1234,7 +1234,7 @@ fn the_punctuation_around_a_path_is_not_part_of_it() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1280,7 +1280,7 @@ fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() 
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1333,7 +1333,7 @@ fn a_refusal_written_in_any_of_its_spellings_is_a_refusal() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1379,7 +1379,7 @@ fn an_absolute_path_that_looks_like_a_url_is_still_named() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1401,50 +1401,6 @@ fn an_absolute_path_that_looks_like_a_url_is_still_named() {
     );
 }
 
-/// What the startup probe reports as gated is what the child said, not what this kernel could do.
-///
-/// note: `gated` is the answer a session's whole network stance is built on: `Setup::wire` hands
-/// `shell` a confiner only where the probe held, and the permissions tab draws the same probe. A
-/// child that did not put the gate on says so, and a child that did not get a ruleset says so
-/// either - and in neither case is the network behind anything whatever, whatever `holds()` says
-/// about this kernel. Reading either half on its own would answer yes to a child that reported no.
-///
-/// note: asked of a stand-in for the child rather than of the real binary, because the two halves
-/// cannot both be true of it on one machine: a kernel that confines is a kernel whose ruleset took,
-/// and the case that matters is the report that says otherwise. The stand-in is handed the same
-/// arguments and answers with the line the confined child writes.
-#[test]
-fn the_gate_is_reported_only_where_the_child_said_it_went_on() {
-    let stand_in = common::scratch("stand-in").join("probe.sh");
-    for (report, said) in [
-        // the ruleset took and the gate did not go on, which is what a child whose standard input
-        // is not the socket comes back with
-        ("full", false),
-        // the ruleset did not take, whatever the gate said about itself
-        ("unavailable gated", false),
-        // both went on, which is gated wherever this kernel has the gate at all
-        ("full gated", kamchatka::gate::holds()),
-    ] {
-        std::fs::write(
-            &stand_in,
-            format!("#!/bin/sh\necho 'kamchatka-confinement:{report}' >&2\n"),
-        )
-        .expect("the stand-in");
-        std::fs::set_permissions(
-            &stand_in,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .expect("it is run");
-
-        let probed = kamchatka::sandbox::available(&stand_in);
-        assert!(
-            probed.gated == said,
-            "the child reported `{report}` and this said gated: {}",
-            probed.gated
-        );
-    }
-}
-
 /// A relative path in a refusal is judged where the command ran, and is never read as an absolute
 /// one: a script with no execute bit is its own permissions, and a write one directory up is the
 /// boundary, named as the command wrote it.
@@ -1455,7 +1411,7 @@ fn a_relative_path_is_judged_from_the_working_directory() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1482,7 +1438,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1521,7 +1477,7 @@ fn a_root_named_under_dev_is_reached() {
             writable,
             readable,
             workdir_writable: true,
-            network: kamchatka::sandbox::Network::NoTcp,
+            network: kamchatka::sandbox::Network::Shut,
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             closed: Vec::new(),
@@ -1552,50 +1508,46 @@ fn a_root_named_under_dev_is_reached() {
     }
 }
 
-/// What the kernel says about a scope, asked out of the crate rather than out of the program.
+/// What this program says about the signal scope is what the kernel does with it: where it says
+/// the scope is here, a process put in it cannot signal its parent, and where it says it is not,
+/// nothing is put on.
 ///
-/// note: the crate's own spelling deliberately - a hard requirement, and a ruleset that is only
-/// built, which restricts no process. `landlock` is a dependency of the crate rather than of its
-/// tests, and the question has to be put to the kernel rather than read off a version number for
-/// either of these to mean anything.
-fn the_kernel_has(scope: landlock::Scope) -> bool {
-    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr};
-
-    Ruleset::default()
-        .set_compatibility(CompatLevel::HardRequirement)
-        .scope(scope)
-        .is_ok()
-}
-
-/// What this program says about a Landlock scope is what the kernel says about it.
-///
-/// note: neither answer is skipped and neither is loose. A `false` where the kernel has the scope
-/// leaves a confined command free to reach an abstract socket made outside it: the X server's,
-/// which takes a connection from any process of the user's and can type into the person's
-/// terminal. A `true` where it does not has `scope()` come back `Err` over a scope the kernel
-/// never heard of, which is a `Confinement::Unavailable` and every command refused with nothing
-/// run. One is a hole and the other is a program that does nothing, and on a kernel that confines
-/// at all neither is a failure the suite would see.
+/// note: a `false` where the kernel has the scope leaves every command free to signal every
+/// process of the person's; a `true` where it does not is a layer that would not apply, said at
+/// startup as refused. Asked of what the kernel does rather than of a version number, in a child,
+/// since a layer is for good: this test's own binary run again.
 #[test]
-fn what_this_program_says_about_a_scope_is_what_the_kernel_says() {
-    for (claimed, scope, what) in [
-        (
-            kamchatka::sandbox::confines_abstract_sockets as fn() -> bool,
-            landlock::Scope::AbstractUnixSocket,
-            "an abstract socket",
+fn what_this_program_says_about_the_signal_scope_is_what_the_kernel_does() {
+    const CHILD: &str = "KAMCHATKA_TEST_SIGNAL_SCOPE";
+    if std::env::var_os(CHILD).is_some() {
+        let took = kamchatka::sandbox::scope_signals();
+        let parent = i32::try_from(std::os::unix::process::parent_id()).expect("a pid");
+        // SAFETY: signal 0 only asks whether the signal could be sent, and touches no memory
+        let refused = unsafe { libc::kill(parent, 0) } != 0;
+        std::process::exit(match (took, refused) {
+            (true, true) => 0,
+            (false, false) => 1,
+            _ => 2,
+        });
+    }
+
+    let out = Command::new(std::env::current_exe().expect("this test's binary"))
+        .args([
+            "--exact",
+            "what_this_program_says_about_the_signal_scope_is_what_the_kernel_does",
+            "--test-threads=1",
+        ])
+        .env(CHILD, "1")
+        .output()
+        .expect("the child ran");
+    let claimed = kamchatka::sandbox::confines_signals();
+    match (out.status.code(), claimed) {
+        (Some(0), true) | (Some(1), false) => {}
+        (code, _) => panic!(
+            "this program says the scope is {}here, and the child ended with {code:?}: {}",
+            if claimed { "" } else { "not " },
+            String::from_utf8_lossy(&out.stderr)
         ),
-        (
-            kamchatka::sandbox::confines_signals as fn() -> bool,
-            landlock::Scope::Signal,
-            "a signal",
-        ),
-    ] {
-        let (said, kernel) = (claimed(), the_kernel_has(scope));
-        assert_eq!(
-            said, kernel,
-            "{what} is scoped here or nowhere, and this program says {said} where the kernel says \
-             {kernel}"
-        );
     }
 }
 
@@ -1613,10 +1565,6 @@ fn a_kernel_without_landlock_is_said_to_confine_nothing() {
         if common::without_landlock().is_err() {
             std::process::exit(77);
         }
-        assert!(
-            !kamchatka::sandbox::confines_unix_sockets(),
-            "a pathname socket is said to be confined without Landlock"
-        );
         assert!(
             !kamchatka::sandbox::confines_abstract_sockets(),
             "an abstract socket is said to be confined without Landlock"
@@ -1651,13 +1599,11 @@ fn a_kernel_without_landlock_is_said_to_confine_nothing() {
     }
 }
 
-/// A refused connection to a socket outside what the session may write is the confinement where the
-/// kernel governs sockets, and the socket's own permissions where it does not; one the session may
-/// write is never the confinement.
+/// A refused connection to a socket outside what the session may write is the confinement; one the
+/// session may write is never the confinement.
 ///
 /// note: the socket's path is readable either way, which is why the rule for files said nothing:
-/// a socket is held to the writing half. This asks the same kernel `tests/sandbox.rs` confines
-/// against, and answers for both kinds.
+/// a socket is held to the writing half.
 #[test]
 fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
     use std::os::unix::net::UnixListener;
@@ -1674,7 +1620,7 @@ fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1691,17 +1637,8 @@ fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
         None,
         "one it may write is its own permissions"
     );
-    match kamchatka::sandbox::confines_unix_sockets() {
-        true => {
-            let note = refused(&outside).expect("the kernel refused it, not the socket");
-            assert!(note.contains("is a socket outside"), "{note}");
-        }
-        false => assert_eq!(
-            refused(&outside),
-            None,
-            "the kernel does not govern sockets"
-        ),
-    }
+    let note = refused(&outside).expect("the confinement refused it, not the socket");
+    assert!(note.contains("is a socket outside"), "{note}");
 }
 
 /// A refusal naming a path that climbs out of the working directory past a directory that is not
@@ -1716,7 +1653,7 @@ fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1851,7 +1788,7 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: kamchatka::sandbox::Network::NoTcp,
+        network: kamchatka::sandbox::Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1895,6 +1832,6 @@ fn a_closed_port_is_part_of_what_a_command_is_said_to_reach() {
         open.ends_with("but for port 18790 on this machine, where this session is served"),
         "{open}"
     );
-    let shut = served(kamchatka::sandbox::Network::NoTcp).to_string();
+    let shut = served(kamchatka::sandbox::Network::Shut).to_string();
     assert!(!shut.contains("18790"), "{shut}");
 }

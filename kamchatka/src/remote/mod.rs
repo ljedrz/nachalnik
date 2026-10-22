@@ -196,6 +196,9 @@ pub(crate) fn relayed(peer: std::net::SocketAddr) -> bool {
 pub(crate) enum Connection {
     Unix(tokio::net::UnixStream),
     Tcp(tokio::net::TcpStream),
+    /// A client in the same process as the session, which reaches it without a socket; see
+    /// [`server::door`].
+    Local(tokio::io::DuplexStream),
 }
 
 /// Dispatches one method over whichever kind of connection it is.
@@ -207,6 +210,10 @@ macro_rules! either {
                 $call
             }
             Connection::Tcp($it) => {
+                let $it = std::pin::Pin::new($it);
+                $call
+            }
+            Connection::Local($it) => {
                 let $it = std::pin::Pin::new($it);
                 $call
             }

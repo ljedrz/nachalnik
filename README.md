@@ -45,8 +45,9 @@ $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka -m qwen3-coder "what do
 $ ANTHROPIC_API_KEY=sk-ant-... kamchatka --api anthropic -m claude-haiku-4-5 "what does this repository do?"
 ```
 
-**A shell sandboxed by the kernel, not by a list of forbidden commands.** Landlock confines what a
-command can touch. It writes only where you allow it and reads nothing private outside the working
+**A shell sandboxed by the kernel, not by a list of forbidden commands.** Each command runs in a
+[sandlock](https://github.com/multikernel/sandlock) sandbox, and Landlock confines what it can
+touch. It writes only where you allow it and reads nothing private outside the working
 directory. A seccomp filter catches a command when it reaches for the network, including a DNS
 lookup, and holds it until it has an answer. By default the answer is yours: you are asked when a
 command actually tries, not based on its name. [SECURITY.md](SECURITY.md) says where each stops. A

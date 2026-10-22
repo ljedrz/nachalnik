@@ -15,14 +15,16 @@ version = 2
 # Dual-licensed crates are covered by MIT or Apache-2.0; the rest are for crates without that
 # option: MPL-2.0 for `nucleo-matcher` and `char_index` (file-level copyleft, which puts no
 # requirements on our code), CDLA-Permissive-2.0 for the root certificates in
-# `webpki-root-certs`, ISC, BSD-3-Clause, Zlib and BSL-1.0 for `ring`, `untrusted`,
-# `rustls-webpki`, `subtle`, `foldhash` and `ryu`, and the Unicode licence for Unicode tables.
+# `webpki-root-certs`, BSD-2-Clause for `syscalls`, ISC, BSD-3-Clause, Zlib and BSL-1.0 for
+# `ring`, `untrusted`, `rustls-webpki`, `subtle`, `foldhash` and `ryu`, and the Unicode licence for
+# Unicode tables.
 [licenses]
 version = 2
 allow = [
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
     "BSD-3-Clause",
     "BSL-1.0",
     "CDLA-Permissive-2.0",

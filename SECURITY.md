@@ -29,25 +29,26 @@ What changes to this workspace must keep true about what is and isn't enforced.
   not know the two names are one file. `fs` makes no links, and a command that makes one could read the file itself,
   since path rules cover tools given a path and `shell` is given a command. A rule for a domain or
   operation that no call is ever judged under is rejected when it's given, rather than kept.
-- **Confinement happens where processes are spawned.** `kamchatka` sandboxes its `shell` tool with
-  Landlock: it re-runs itself in a mode that restricts itself and then `exec`s the command, so
-  `network: deny` means a refused TCP `connect`, and nothing outside the allowed directories can be
-  touched. A command also reads the `shell-read` paths, which `fs` doesn't: `/usr`, `/etc`, `/bin`,
-  `/sbin`, `/lib`, `/lib64`, `/opt`, `/proc`, `/sys` and `/run/systemd/resolve` unless the list
-  is replaced. They're the
+- **Confinement happens where processes are spawned.** `kamchatka` runs each `shell` command in a
+  [sandlock](https://github.com/multikernel/sandlock) sandbox: a Landlock ruleset, a seccomp filter,
+  and a supervisor in `kamchatka`'s own process that answers the calls the filter holds. sandlock
+  forks a child, confines it and executes the command in it, so the command is the process that is
+  confined, and nothing outside the allowed directories can be touched. A command also reads the
+  `shell-read` paths, which `fs` doesn't: `/usr`, `/etc`, `/bin`, `/sbin`, `/lib`, `/lib64`,
+  `/opt`, `/proc`, `/sys` and `/run/systemd/resolve` unless the list is replaced. They're the
   shell's alone because `/proc/self` is a different file to each tool: to a command it's the
   command, and to `fs`, which runs inside `kamchatka`, it's `kamchatka`, with the API keys in its
-  environment. The rest of `/run` isn't on the list, since it holds the session bus, the compositor
-  and the container daemon, whose sockets take a connection from anyone who can read them below
-  Linux 7.1. `/run/systemd/resolve` holds only the resolver's configuration and its own sockets,
-  and `/etc/resolv.conf` is a link into it on Ubuntu, Fedora and Debian.
-  One more directory is writable: a command's own temporary directory, handed to it as
-  `TMPDIR`, even where the working directory is read-only, and removed when the command ends.
-  Landlock covers TCP from ABI 4 (Linux 6.7). On older kernels the ruleset is reported as
-  `Partial`: files are still restricted, TCP is left to the network gate (below) where available,
-  and the permissions tab says "partly confined". Below Linux 6.2, truncating a file by name isn't
-  restricted either. UDP is only covered by the gate. The `exec` matters: if a helper process sat
-  in front of the command, stopping a call would kill the helper instead of the command.
+  environment. The rest of `/run` isn't on the list, since it holds the person's running session:
+  the session bus, the compositor, the container daemon and any mounted drive.
+  `/run/systemd/resolve` holds only the resolver's configuration and its own sockets, and
+  `/etc/resolv.conf` is a link into it on Ubuntu, Fedora and Debian. One more directory is
+  writable: a command's own temporary directory, handed to it as `TMPDIR`, even where the working
+  directory is read-only, and removed when the command ends. An older kernel's Landlock lacks some
+  rights, and the sandbox goes without them: below Linux 5.19 a command can't move or link a file
+  into another directory at all, truncating a file by name isn't restricted below 6.2, and device
+  `ioctl`s aren't below 6.10. Such a sandbox is `Partial`, and the permissions tab says "partly
+  confined". Where the sandbox doesn't start at all (no Landlock, or seccomp refused), the shell
+  runs unconfined and says so; it is never left half-built.
   The `fs` tool runs in-process, so it enforces the same boundary in its own code, which is a
   weaker guarantee: it resolves the path (following symlinks), checks it, and then opens it with
   `openat2` and `RESOLVE_BENEATH` relative to the allowed directory, so if a path component is
@@ -57,81 +58,79 @@ What changes to this workspace must keep true about what is and isn't enforced.
   during a directory walk is only caught for the files opened inside it.
   The allowed directories themselves (the working directory and the `--sandbox-write` and
   `--sandbox-read` paths) are resolved once, when the session starts, and are used only while no
-  symlink stands on the way to them: `fs` checks that on every call, and the sandboxed child opens
-  each with `openat2` and `RESOLVE_NO_SYMLINKS`. A command that renames an allowed directory it can
-  write beside and leaves a symlink at its name gets nothing through it; the directory is left out
-  until the symlink is gone, and the command is told so. On kernels older than 5.6 the child opens
-  each one following symlinks, and such a swap isn't caught there.
+  symlink stands on the way to them: `fs` checks that on every call, and before each command
+  `kamchatka` opens each with `openat2` and `RESOLVE_NO_SYMLINKS` and leaves out one a symlink now
+  stands on, telling the command so. sandlock takes paths rather than descriptors, though, and opens
+  each again in its child, so a command left running that renames an allowed directory it can write
+  beside, and leaves a symlink at its name between the two opens, gets that symlink's target
+  granted. Granting the descriptor would close that (see POSTPONED.md). On kernels older than 5.6
+  `kamchatka`'s own open follows symlinks too.
 - **Network access is asked about when a command tries to use it, not based on the command's name.**
-  The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
-  `socket()` call (the first step of any network use, DNS lookups included), and every
-  `socketpair()`, and hands the decision to the parent process. The exceptions are `AF_UNIX`, which
-  the filesystem rules cover, and `AF_NETLINK`, which reaches only this kernel. Every other family
-  is paused: besides `AF_INET` and `AF_INET6`, any process can open `AF_SMC`, `AF_RDS` and
-  `AF_RXRPC`, which reach the internet over TCP or UDP, `AF_VSOCK`, which reaches the host from
-  inside a virtual machine, and `AF_BLUETOOTH`. The parent answers from `net:reach`: `allow` lets it
+  This is the network gate. sandlock's supervisor holds every `connect`, `bind`, `sendto`, `sendmsg` and `sendmmsg` a
+  sandboxed command makes, with its destination, and `kamchatka` answers for an internet address
+  (TCP, UDP, and ICMP through ping sockets; DNS lookups included) from `net:reach`: `allow` lets it
   through, `deny` refuses it with `EACCES`, and `ask` asks the person, once per command, while the
-  call waits. The filter only reads the call's integer arguments (the low 32 bits of the address
-  family, which is all the kernel reads), so there's no address the command could change after the
-  answer; decisions aren't made per destination. Where the gate works, `Careful` stops looking for
-  program names in commands, and an allowed `exec:run` runs without asking until the command tries
-  to use the network. The gate also covers 32-bit processes and x32 calls, and refuses
-  `io_uring_setup` entirely, since an io_uring can open sockets without calling `socket()`. It
-  doesn't cover a socket inherited from, or passed over a unix socket by, a process outside the
-  sandbox (the unix socket rules below deal with that). A network attempt by a process a command
-  left running, after the call has finished and with nothing decided, is refused without asking,
-  since there's no command left to ask about. Where the gate can't be installed (under
-  `--no-sandbox`, or on a kernel that can't pause calls), the question is based on the command's
-  name, and the permissions tab says so. `gate` is the only module outside the tests with
-  `unsafe` code, each block with a comment explaining why it's sound.
+  call waits. Decisions aren't made per destination. The supervisor makes an allowed connection
+  itself, from its own copy of the address, so the command can't change the address after the
+  answer. Raw sockets are refused, and so is every socket family but unix, inet, inet6 and netlink
+  (which sandlock answers itself, from this kernel only), with `EAFNOSUPPORT`; `AF_SMC`, `AF_RDS`,
+  `AF_VSOCK` and `AF_BLUETOOTH`, which reach beyond the machine, are among them. `io_uring` is
+  refused entirely, since it can open sockets without these calls. Where the sandbox holds, `Careful`
+  stops looking for program names in commands, and an allowed `exec:run` runs without asking until
+  the command tries to use the network. It doesn't cover a socket passed over a unix socket by a
+  process outside the sandbox (the unix socket rules below deal with that). A network attempt by a
+  process a command left running, after the call has finished and with nothing decided, is refused
+  without asking, since there's no command left to ask about. Under `--no-sandbox`, or where the
+  sandbox doesn't start, the question is based on the command's name, and the permissions tab says
+  so. `kamchatka` has no `unsafe` code; the system calls this takes are sandlock's.
 - **Commands the model runs don't get this program's API keys.** Every variable `kamchatka` reads a
   key from (`endpoint::KEYS`) is removed from the `shell` tool's environment, sandboxed or not, and
   so is an address variable (`endpoint::ADDRESSES`) that carries a `user:password@`. The sandbox
   restricts files and the network but not the environment a command starts with, so a key left
   there could always be printed, and whatever a command prints goes into the context, the request
   and the record. The keys are still in `kamchatka`'s own environment, and on Linux a
-  process can read another's through `/proc/PID/environ`. A sandboxed command can't read its
-  parent's, because Landlock prevents processes inside a sandbox from inspecting ones outside it;
+  process can read another's through `/proc/PID/environ`. A sandboxed command can't read
+  `kamchatka`'s, or any other process's outside its sandbox: sandlock serves `/proc` to a command
+  itself and refuses those, and Landlock refuses inspecting a process outside the sandbox anyway;
   with `--no-sandbox` it can, so removing the variables only keeps them out of the command's own
   environment. MCP servers keep the keys: they're programs the person chose, running unconfined with
   access to everything the person can read, so stripping their environment would be an annoyance,
   not protection.
-- **A sandboxed command has no terminal, and can open only five devices.** The child starts its
-  own session before running anything, so it has no controlling terminal: `/dev/tty` won't open,
-  and `TIOCSTI` is refused on every other terminal. With terminal access, a command could inject a
+- **A sandboxed command can't use a terminal, and can open only five devices.** Its standard input
+  is `/dev/null` and its output goes to pipes, `/dev/tty` won't open, and sandlock refuses the
+  `TIOCSTI` and `TIOCLINUX` requests on any terminal. With terminal access, a command could inject a
   `y` into the input `kamchatka` reads keys from and answer its own permission question (on kernels
-  that still allow `TIOCSTI`), or draw over the question on any kernel. If the child can't detach
-  from the terminal, it runs nothing. In `/dev`, the ruleset allows `null`, `zero`, `full`, `random`
-  and `urandom` and nothing else (`shell-devices` replaces the list), since other devices reach
-  beyond the command: the person's other terminals, shared memory, cameras and microphones. Under
-  `--no-sandbox`, a command keeps the terminal and `/dev`, along with everything else the person
-  has access to.
-- **Stopping a call stops the command's session; anything that escapes it keeps running.**
-  Stopping a call kills the command's process group, which is the session it starts in, so
-  everything it started is stopped too, and the same happens when a call is dropped. A process that
-  starts its own session (with `setsid`, or a daemon detaching itself) leaves that group and keeps
-  running after the call reports that it stopped. It stays sandboxed and gated, and its network
-  attempts after the call are refused without asking unless the command was already let through,
-  so it can't gain access it wasn't given; a served session can't tell it apart from a client,
-  though. Tracking the whole process tree would need a cgroup, a
-  PID namespace or a subreaper per command, and each of those fails on some systems this program
-  runs on, so stopping covers the process group, and says so.
-  A call that *finishes* leaves its process group alone, so a background job it started
-  (`sleep 300 &`, a server) keeps running while the session lasts. When the session ends, every
-  such process still running is sent `SIGTERM`, then `SIGKILL`, and listed. `--leave-running`
-  leaves them running, and also lists them. They are found by a mark every command carries in its
-  environment, so a process that left its group is found as well; one that cleared its own
-  environment (`env -i`) isn't.
+  that still allow `TIOCSTI`), or draw over the question on any kernel. In `/dev`, the ruleset
+  allows `null`, `zero`, `full`, `random` and `urandom` and nothing else (`shell-devices` replaces
+  the list), since other devices reach beyond the command: the person's other terminals, shared
+  memory, cameras and microphones. Under `--no-sandbox`, a command keeps `/dev`, along with
+  everything else the person has access to.
+- **Stopping a call stops everything the command started.** sandlock follows every process group a
+  sandboxed process makes or joins, so stopping a call kills all of them, including a process that
+  started its own session with `setsid` or a daemon that detached itself; the same happens when a
+  call is dropped. A call that *finishes* leaves them alone, so a background job it started
+  (`sleep 300 &`, a server) keeps running while the session lasts, sandboxed, with its network
+  attempts after the call refused without asking unless the command was already let through. When
+  the session ends, every such process still running is sent `SIGTERM`, then `SIGKILL`, and listed.
+  They are found by a mark every command carries in its environment, so one that cleared its own
+  environment (`env -i`) isn't listed; it is still ended, since sandlock ends what is left in a
+  command's sandbox when `kamchatka` exits. Under `--no-sandbox`, stopping a call kills the
+  command's process group, and a process that left it, or cleared its environment, keeps running
+  after the session.
 - **Restricting `open` isn't enough.** A command that can reach a unix socket can ask the process
   behind it to act on its behalf, outside the sandbox: the session bus, the compositor, a container
-  daemon. Landlock can restrict this from Linux 7.1, and `kamchatka` uses that: a command may only
-  connect to sockets it could have written to. On older kernels, nothing restricts `connect`.
-  `sandbox::confines_unix_sockets` reports which is the case. Abstract sockets have no path for that
-  rule to check, and the X server listens on one and accepts any of the user's processes, which
-  means a connection that can type into the person's terminal. Landlock can restrict abstract
-  sockets from ABI 6 (Linux 6.12), and `kamchatka` uses that where available: a command may only
-  connect to abstract sockets created inside its own sandbox. On older kernels, all of the user's
-  abstract sockets are reachable. `sandbox::confines_abstract_sockets` reports which is the case.
+  daemon. sandlock's supervisor holds every `connect` and `send` to a named unix socket, on any
+  kernel, and lets it through only where the command may write: the socket file is resolved as the
+  command would see it, held, and connected to from the supervisor, so a symlink swapped in after
+  the check leads nowhere. Because the supervisor makes the connection, the process at the other end
+  sees `kamchatka`'s credentials rather than the command's (see the served session below). A socket
+  named by a relative path is refused, since the supervisor can't resolve it from the command's
+  directory. Abstract sockets have no path for that rule to check, and the X server listens on one
+  and accepts any of the user's processes, which means a connection that can type into the person's
+  terminal. Landlock can restrict abstract sockets from ABI 6 (Linux 6.12), and `kamchatka` uses
+  that where available: a command may only connect to abstract sockets created inside its own
+  sandbox. On older kernels, all of the user's abstract sockets are reachable.
+  `sandbox::confines_abstract_sockets` reports which is the case.
 - **A sandboxed command can only signal processes in the session.** Landlock's signal restriction
   arrived together with the abstract socket one, but it isn't part of each command's own ruleset:
   each command gets a separate sandbox, so it would stop a command from stopping a server that an
@@ -144,11 +143,11 @@ What changes to this workspace must keep true about what is and isn't enforced.
   `sandbox::confines_signals` reports which is the case.
 - **If the sandbox might be missing, say so.** `Confinement` has a variant for every way it can
   fail, and the permissions tab shows it, with the kernel's own reason when a ruleset was refused
-  (`Probed::why`), since a kernel without Landlock and a kernel that refused this ruleset are
-  different problems. What the kernel is too old to confine - TCP below Linux 6.7, abstract sockets
-  and signals below 6.12 - is said at startup and at the top of each session
-  (`sandbox::weaker_here`), since the tab reads "confined" without the last two and only "partly
-  confined" without the first. Never let it fail silently.
+  (`Probed::why`), since a kernel without Landlock and a kernel that refused this sandbox are
+  different problems. What the kernel is too old to confine that matters most - abstract sockets
+  and signals below Linux 6.12 - is said at startup and at the top of each session
+  (`sandbox::weaker_here`), since the tab's "partly confined" doesn't say which. Never let it fail
+  silently.
 - **Tell the model when the sandbox refused something.** Landlock refuses an `open` with `EACCES`,
   the same error as for a file owned by someone else, so a sandboxed command gets a permission error
   that looks ordinary, and a model that can't tell the difference wastes its turns trying `sudo`. A
@@ -193,8 +192,8 @@ What changes to this workspace must keep true about what is and isn't enforced.
   that a command was allowed out.
 - **Don't add checks that promise more than they deliver.** `reaches_the_network` is acceptable
   because its documentation says exactly what it misses, because refusing early with a reason is
-  better than letting a command run and fail, and because it's only used where the gate isn't
-  available. It isn't what keeps the model off the network. Anything similar needs the same care.
+  better than letting a command run and fail, and because it's only used where the sandbox isn't
+  there to hold the network. It isn't what keeps the model off the network. Anything similar needs the same care.
 
 ---
 
@@ -203,11 +202,11 @@ What changes to this workspace must keep true about what is and isn't enforced.
 - **The model, and anyone who wrote something it read.** A file, a command's output or a tool's
   answer can contain instructions, and the model acts on what it reads, so it is treated as
   manipulable. It can only act through tools the policy allows. The `shell` tool is sandboxed by
-  Landlock on Linux: files outside the allowed paths, TCP `connect`, and from Linux 7.1 unix sockets
-  it could not write to are blocked; its network sockets are paused by the gate where available; it
-  does not get this program's keys. The `fs` tool enforces the same paths in its own code, and on
-  Linux opens files relative to the directory they were allowed under. The model can still send UDP
-  where there is no gate; use the network however a person allowed; read anything inside the allowed
+  sandlock: files outside the allowed paths and unix sockets it could not write to are blocked, and
+  every attempt to reach the network is held until the policy or a person answers; it does not get
+  this program's keys. The `fs` tool enforces the same paths in its own code, and on Linux opens
+  files relative to the directory they were allowed under. The model can still use the network
+  however a person allowed; read anything inside the allowed
   paths and put it into the context, which is sent to the provider; and spend the session's budget,
   including on `fork` drafts. Under `--no-sandbox` the shell is not sandboxed at all, and the
   permission question is the only safeguard.
@@ -230,20 +229,18 @@ What changes to this workspace must keep true about what is and isn't enforced.
   saying where a request came from, with `Origin` or `Sec-Fetch-Site`, and where one is too old to
   send either, on the key: every route is beneath it, and a page that was never shown the address
   cannot guess it in time. Clients can answer permission questions, so the session's own commands
-  are kept out too: ports the session or its page are served on are closed to every command
-  sandboxed while they are open. That uses Landlock's TCP rules, from Linux 6.7; on an older kernel
-  the ruleset is `Partial` and a port is closed only where the network is shut or asked about, which
-  the gate holds, so with TCP allowed or refused by Landlock alone a command can reach a session
-  served over TCP and answer its questions. That is not worked around, and the startup warning says
-  so. A socket file can be reached by every sandboxed command below Linux 7.1, and from 7.1 by any
-  that may write where it is, so connections are refused when the other end is in the session of a
-  command this process sandboxed (each runs in its own session), which covers anything it left
-  running. What gets through: a process a command started with `setsid`, the `gateway` example's
-  page (a separate process, so it cannot close its port to the session's commands), and any *other*
-  served session on the machine. A session only closes its own ports, and a TCP connection does not
-  identify the process behind it, so one process's sandboxed command is an ordinary client to a
-  session in another, and that session's addresses are up to whoever started it. A command allowed
-  on the network can reach all three.
+  are kept out too. Ports the session or its page are served on are closed to every command
+  sandboxed while they are open, on every address and whatever the network stance or a person's
+  answer. A socket file is reachable by any command that may write where it is, so a connection to a
+  served unix socket is refused when the process at the other end is in one of this session's
+  sandboxes, or is `kamchatka` itself while any command it sandboxed is still running, since that is
+  how a command's connection arrives (see unix sockets above); the web page's relay, which is
+  `kamchatka` too, reaches the session without the socket. What gets through: the `gateway`
+  example's page (a separate process, so it cannot close its port to the session's commands), and
+  any *other* served session on the machine. A session only closes its own ports, and a TCP
+  connection does not identify the process behind it, so one process's sandboxed command is an
+  ordinary client to a session in another, and that session's addresses are up to whoever started
+  it. A command allowed on the network can reach both.
 - **An MCP server.** It is a program the person chose, running unconfined with the person's
   environment and access to everything the person can read. `kamchatka` controls what its answers
   can do: its tools are judged under the server's name, and what it returns goes into the context

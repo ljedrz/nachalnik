@@ -88,8 +88,8 @@ jobs:
   # note: the libraries (runtime, providers, MCP bridge, benchmark) are pure Rust and should build
   # anywhere, so they're tested on Linux, macOS and Windows. `kamchatka` only builds for Linux on
   # x86_64 and aarch64 (its `lib.rs` refuses other targets), so it's excluded from macOS and
-  # Windows and tested on both Linux architectures. The aarch64 job is the only one that compiles
-  # the network gate's aarch64 filter, and the aarch64 release binary is built on the same runner.
+  # Windows and tested on both Linux architectures. The aarch64 job is the only one that runs
+  # sandlock's aarch64 seccomp filter, and the aarch64 release binary is built on the same runner.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

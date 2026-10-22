@@ -184,9 +184,7 @@ fn a_settings_file_stands_in_for_the_command_line() {
     // the sandbox paths reach the `shell` tool's own description, which is the far end of a
     // setting that passes through `Setup` and a Landlock probe on the way. Asked of the probe
     // rather than of the output, which would skip this half for a description that lost them
-    let confined = kamchatka::sandbox::available(&common::program())
-        .confinement
-        .is_confined();
+    let confined = kamchatka::sandbox::available().confinement.is_confined();
     if confined {
         assert!(said.contains("/usr/share read-write"), "{said}");
         assert!(said.contains("/usr/include read-write"), "{said}");
