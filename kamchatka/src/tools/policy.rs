@@ -431,8 +431,8 @@ impl Careful {
         }
     }
 
-    /// Marks that a confined command's network socket attempt is held by the gate, so the network
-    /// is asked about when the command tries, not from what it is called.
+    /// Marks that a confined command's attempts at the network are held by the gate, so the
+    /// network is asked about when the command tries, not from what it is called.
     ///
     /// note: set by whoever builds the shell, once [`crate::sandbox::available`] confirms the gate
     /// holds. From then on [`Careful::judges`] stops reading a command for program names, and an
@@ -483,7 +483,7 @@ impl Careful {
             .collect();
 
         // note: read the command's name only where the gate does not hold. Where it holds, the
-        // question is the command's own attempt, asked while it runs - see `crate::gate`.
+        // question is the command's own attempt, asked while it runs - see `tools::Shell`.
         // Consulting `net:reach` here too would ask about `git status` a second time for nothing
         if request.capabilities.contains(&Capability::exec("run"))
             && !self.gates_the_network()
@@ -1085,8 +1085,8 @@ const NETWORKED: &[&str] = &[
 
 /// Whether a shell command names one of them.
 ///
-/// note: consulted only where the gate does not hold: under `--no-sandbox`, and on a kernel that
-/// cannot hold a call. Where the gate holds, a command is asked about when it tries. See
+/// note: consulted only where the gate does not hold: under `--no-sandbox`, and on a kernel the
+/// sandbox does not start on. Where the gate holds, a command is asked about when it tries. See
 /// [`Careful::gate_the_network`].
 ///
 /// note: a heuristic over the command as it was written. It catches `curl https://…`,

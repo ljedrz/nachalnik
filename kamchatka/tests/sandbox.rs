@@ -23,7 +23,7 @@ use std::{
 };
 
 use kamchatka::{
-    sandbox::{Confinement, Network, Sandbox, available, confine_saying, make_scratch},
+    sandbox::{Confinement, Network, Sandbox, available, make_scratch},
     tools::{Careful, Limits, Shell, Subject},
 };
 use nachalnik::{
@@ -36,46 +36,15 @@ mod common;
 
 /// Runs a command under the given sandbox, returning its output and whether it succeeded.
 ///
-/// note: spawned rather than run in one call, and the temporary directory removed afterwards,
-/// because that is what the `shell` tool does: a confined process cannot remove its own, and a
-/// test that skipped it would leave one behind per command and prove nothing about the tool.
-///
-/// note: a gated command is answered by whoever spawned it, and here that is this test. It refuses
-/// every attempt, which is what `shell` does for a session that refuses the network; the tests that
-/// answer otherwise go through the tool.
+/// note: through `--confine-and-run`, which supervises the command itself and removes its
+/// temporary directory once it is over. Nobody is there to ask, so a network held for a question
+/// is refused as a shut one is; the tests that answer otherwise go through the tool.
 fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
-    let mut command = common::command();
-    command
+    let output = common::command()
         .args(sandbox.argv(cmd))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    let refusing = matches!(sandbox.network, Network::Shut | Network::Asked).then(|| {
-        let (stdin, arriving) = kamchatka::gate::pair().expect("the gate is built here");
-        command.stdin(stdin);
-        std::thread::spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("a runtime")
-                .block_on(async move {
-                    if let Ok(Some(listener)) = arriving.listener().await {
-                        while let Some(attempt) = listener.next().await {
-                            listener.answer(attempt, false);
-                        }
-                    }
-                })
-        })
-    });
-    let child = command.spawn().expect("the binary under test is built");
-    drop(command);
-    let scratch = kamchatka::sandbox::scratch_for(child.id());
-    let output = child.wait_with_output().expect("it was spawned");
-    let _ = std::fs::remove_dir_all(&scratch);
-    if let Some(refusing) = refusing {
-        refusing
-            .join()
-            .expect("the refusing ends once the command has");
-    }
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
 
     let mut said = String::from_utf8_lossy(&output.stdout).into_owned();
     said.push_str(&String::from_utf8_lossy(&output.stderr));
@@ -102,39 +71,10 @@ fn sandbox(workdir: PathBuf, workdir_writable: bool, network: Network) -> Sandbo
 /// note: the rule was built from the path, opened again when the ruleset was built and following
 /// whatever was there by then - and the scratch is made where a job an earlier command left
 /// running may write, so swapping the new directory for a link granted writing wherever the link
-/// led. Confining is for good, so it is done in a child: this test's own binary run again, which
-/// makes the directory, moves it aside, puts a link where it was, confines itself and tries both.
-#[test]
-fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
-    const CHILD: &str = "KAMCHATKA_TEST_SCRATCH_SWAP";
-    if let Some(root) = std::env::var_os(CHILD) {
-        let root = PathBuf::from(root);
-        let (path, moved) = (root.join("kamchatka-swap"), root.join("moved"));
-        let scratch = make_scratch(&path).expect("the scratch is made");
-        std::fs::rename(&path, &moved).expect("moved aside");
-        std::os::unix::fs::symlink(root.join("elsewhere"), &path).expect("a link in its place");
-
-        let sandbox = Sandbox {
-            workdir: root.join("work"),
-            writable: Vec::new(),
-            readable: Vec::new(),
-            workdir_writable: false,
-            network: Network::Open,
-            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
-            devices: Vec::new(),
-            closed: Vec::new(),
-        };
-        if confine_saying(&sandbox, Some(&scratch)).0 != Confinement::Full {
-            std::process::exit(77);
-        }
-        let through_link = std::fs::write(path.join("planted.txt"), "x").is_ok();
-        let in_held = std::fs::write(moved.join("kept.txt"), "x").is_ok();
-        std::process::exit(match (through_link, in_held) {
-            (false, true) => 0,
-            (true, _) => 1,
-            (false, false) => 2,
-        });
-    }
+/// led. The directory is made, moved aside and a link put where it was, and then a command is run
+/// in a sandbox built from it, trying both.
+#[tokio::test]
+async fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
     if !enforced() {
         return;
     }
@@ -143,25 +83,42 @@ fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
     for dir in ["elsewhere", "work"] {
         std::fs::create_dir_all(root.join(dir)).expect("a directory");
     }
-    let status = Command::new(std::env::current_exe().expect("this test's binary"))
-        .args([
-            "--exact",
-            "a_link_swapped_in_for_the_scratch_directory_grants_nothing",
-            "--test-threads=1",
-        ])
-        .env(CHILD, &root)
-        .output()
-        .expect("the child ran");
-    match status.status.code() {
-        Some(0) => {}
-        Some(1) => panic!("a link put at the scratch's name was granted what it pointed at"),
-        Some(2) => panic!("the directory made for the command was not granted"),
-        Some(77) => eprintln!("skipped: the child could not be confined"),
-        other => panic!(
-            "the child ended with {other:?}: {}",
-            String::from_utf8_lossy(&status.stderr)
-        ),
-    }
+    let (path, moved) = (root.join("kamchatka-swap"), root.join("moved"));
+    let scratch = make_scratch(&path).expect("the scratch is made");
+    std::fs::rename(&path, &moved).expect("moved aside");
+    std::os::unix::fs::symlink(root.join("elsewhere"), &path).expect("a link in its place");
+
+    let sandbox = Sandbox {
+        workdir: root.join("work"),
+        writable: Vec::new(),
+        readable: Vec::new(),
+        workdir_writable: false,
+        network: Network::Open,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        closed: Vec::new(),
+    };
+    let (built, rules) = sandbox.sandlock(Some(&scratch), None, true);
+    let mut built = built.build().expect("it builds");
+    assert_eq!(kamchatka::sandbox::degraded(&built), Confinement::Full);
+    let cmd = format!(
+        "(echo x > {}/planted.txt) 2>/dev/null && echo through; (echo x > {}/kept.txt) && echo held",
+        path.display(),
+        moved.display()
+    );
+    let ran = built.run(&["sh", "-c", &cmd]).await.expect("it ran");
+    drop(rules);
+    let said = ran.stdout_str().unwrap_or_default();
+
+    assert!(
+        !said.contains("through"),
+        "a link put at the scratch's name was granted what it pointed at: {said}"
+    );
+    assert!(
+        said.contains("held"),
+        "the directory made for the command was not granted: {said} {:?}",
+        ran.stderr_str()
+    );
     assert!(!root.join("elsewhere/planted.txt").exists());
 }
 
@@ -226,21 +183,15 @@ fn a_root_swapped_for_a_link_grants_the_next_command_nothing() {
     );
 }
 
-/// Whether this kernel has the one right in the ruleset that is newer than the rest; the socket
-/// tests say so and stop, the way `enforced` does, rather than failing on a kernel that cannot.
+/// Whether a confined command is refused a unix socket it could not write to, which sandlock's
+/// supervisor does on any kernel; kept so that the tests read as they did where it depended on one.
 fn sockets() -> bool {
-    match kamchatka::sandbox::confines_unix_sockets() {
-        true => true,
-        false => {
-            eprintln!("skipped: no Landlock right for a unix socket here, which is ABI 9");
-            false
-        }
-    }
+    true
 }
 
 /// Whether this machine can enforce any of it; the tests say so and stop rather than failing.
 fn enforced() -> bool {
-    match available(&common::program()).confinement {
+    match available().confinement {
         Confinement::Full => true,
         other => {
             eprintln!("skipped: {other}");
@@ -251,7 +202,7 @@ fn enforced() -> bool {
 
 /// Whether the gate holds here as well; the tests about it say so and stop, as `enforced` does.
 fn gated() -> bool {
-    match available(&common::program()) {
+    match available() {
         probed if probed.confinement == Confinement::Full && probed.gated => true,
         _ => {
             eprintln!("skipped: the network gate does not hold here");
@@ -281,7 +232,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
-            confiner: Some(common::program()),
+            confined: true,
             limits: Limits::default(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,
@@ -337,7 +288,7 @@ fn a_path_the_ruleset_cannot_open_costs_its_own_rule_and_no_more() {
     std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).expect("shut it");
     let outside = common::scratch("sandbox-unopenable-outside");
 
-    let mut asked = sandbox(dir.clone(), true, Network::NoTcp);
+    let mut asked = sandbox(dir.clone(), true, Network::Shut);
     asked.writable = vec![shut.clone(), dir.join("gone")];
 
     let (ok, said) = run(&asked, "echo ran > ran.txt");
@@ -376,7 +327,7 @@ fn a_path_that_cannot_be_listed_is_still_granted() {
     std::fs::write(outside.join("note.txt"), "found it\n").expect("a file");
     std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o100)).expect("unlisted");
 
-    let mut asked = sandbox(dir, true, Network::NoTcp);
+    let mut asked = sandbox(dir, true, Network::Shut);
     asked.readable = vec![outside.clone()];
     let (ok, said) = run(&asked, &format!("cat {}/note.txt", outside.display()));
     let _ = std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o700));
@@ -388,28 +339,11 @@ fn a_path_that_cannot_be_listed_is_still_granted() {
 /// A file opened up for reading on its own is granted as a file, the rest stays confined, and the
 /// confinement is whole.
 ///
-/// note: a file takes only the rights a file can have. Asked for a directory's, the `landlock`
-/// crate takes those off itself and counts the rule as only partly met, so the confinement was
-/// called partial on a kernel that enforces all of it. Confining is for good, so the last check is
-/// done in a child: this test's own binary run again.
+/// note: a file takes only the rights a file can have. Asked for a directory's, the ruleset took
+/// those off itself and counted the rule as only partly met, so the confinement was called partial
+/// on a kernel that enforces all of it.
 #[test]
 fn a_file_opened_up_on_its_own_is_read_and_nothing_beside_it() {
-    const CHILD: &str = "KAMCHATKA_TEST_ONE_FILE";
-    if let Some(file) = std::env::var_os(CHILD) {
-        let file = PathBuf::from(file);
-        let mut asked = sandbox(
-            file.parent().expect("in a directory").join("work"),
-            false,
-            Network::Open,
-        );
-        asked.devices = Vec::new();
-        asked.readable = vec![file];
-        std::process::exit(match confine_saying(&asked, None).0 {
-            Confinement::Full => 0,
-            Confinement::Partial => 1,
-            _ => 77,
-        });
-    }
     if !enforced() {
         return;
     }
@@ -420,7 +354,7 @@ fn a_file_opened_up_on_its_own_is_read_and_nothing_beside_it() {
     std::fs::write(outside.join("beside.txt"), "not this\n").expect("a file");
     std::fs::create_dir_all(outside.join("work")).expect("a directory");
 
-    let mut asked = sandbox(dir, true, Network::NoTcp);
+    let mut asked = sandbox(dir, true, Network::Shut);
     asked.readable = vec![outside.join("note.txt")];
     let (ok, said) = run(&asked, &format!("cat {}/note.txt", outside.display()));
     assert!(ok, "the file was not granted: {said}");
@@ -428,24 +362,12 @@ fn a_file_opened_up_on_its_own_is_read_and_nothing_beside_it() {
     let (ok, said) = run(&asked, &format!("cat {}/beside.txt", outside.display()));
     assert!(!ok, "the file beside it was read: {said}");
 
-    let status = Command::new(std::env::current_exe().expect("this test's binary"))
-        .args([
-            "--exact",
-            "a_file_opened_up_on_its_own_is_read_and_nothing_beside_it",
-            "--test-threads=1",
-        ])
-        .env(CHILD, outside.join("note.txt"))
-        .output()
-        .expect("the child ran");
-    match status.status.code() {
-        Some(0) => {}
-        Some(1) => panic!("a file opened up on its own made the confinement partial"),
-        Some(77) => eprintln!("skipped: the child could not be confined"),
-        other => panic!(
-            "the child ended with {other:?}: {}",
-            String::from_utf8_lossy(&status.stderr)
-        ),
-    }
+    let (built, _rules) = asked.sandlock(None, None, true);
+    assert_eq!(
+        kamchatka::sandbox::degraded(&built.build().expect("it builds")),
+        Confinement::Full,
+        "a file opened up on its own made the confinement partial"
+    );
 }
 
 #[test]
@@ -454,7 +376,7 @@ fn a_command_can_read_and_write_inside_the_working_directory() {
         return;
     }
     let dir = common::workdir("inside");
-    let sandbox = sandbox(dir.clone(), true, Network::NoTcp);
+    let sandbox = sandbox(dir.clone(), true, Network::Shut);
 
     let (ok, said) = run(
         &sandbox,
@@ -479,7 +401,7 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
     // the test that sounded like it covered the claim reaches for a home directory, which is not
     // in `SYSTEM` and so was never the case in question
     let (ok, said) = run(
-        &sandbox(common::workdir("system"), true, Network::NoTcp),
+        &sandbox(common::workdir("system"), true, Network::Shut),
         "cat /etc/passwd",
     );
     assert!(ok, "the system directories are readable on purpose: {said}");
@@ -487,7 +409,7 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
 
     // readable, and no more than that
     let (wrote, said) = run(
-        &sandbox(common::workdir("system"), true, Network::NoTcp),
+        &sandbox(common::workdir("system"), true, Network::Shut),
         "touch /etc/kamchatka-probe",
     );
     assert!(!wrote, "a system directory is not writable: {said}");
@@ -504,12 +426,12 @@ fn the_shell_reads_what_shell_read_names_and_no_more() {
         return;
     }
     let (ok, said) = run(
-        &sandbox(common::workdir("shell-read-run"), true, Network::NoTcp),
+        &sandbox(common::workdir("shell-read-run"), true, Network::Shut),
         "ls /run",
     );
     assert!(!ok, "`/run` is not on the usual list: {said}");
 
-    let mut without_etc = sandbox(common::workdir("shell-read-etc"), true, Network::NoTcp);
+    let mut without_etc = sandbox(common::workdir("shell-read-etc"), true, Network::Shut);
     without_etc
         .shell_readable
         .retain(|path| path != Path::new("/etc"));
@@ -535,7 +457,7 @@ fn a_shell_read_path_beneath_a_root_grants_nothing_of_its_own() {
     std::os::unix::fs::symlink(&outside, dir.join("tools"))
         .expect("a link in the working directory");
 
-    let mut linked = sandbox(dir.clone(), true, Network::NoTcp);
+    let mut linked = sandbox(dir.clone(), true, Network::Shut);
     linked.shell_readable.push(dir.join("tools"));
     let (ok, said) = run(&linked, "cat tools/secret.txt");
 
@@ -559,7 +481,7 @@ fn a_command_cannot_read_the_environment_of_the_program_that_ran_it() {
         return;
     }
     let (ok, said) = run(
-        &sandbox(common::workdir("environ"), true, Network::NoTcp),
+        &sandbox(common::workdir("environ"), true, Network::Shut),
         "cat /proc/self/environ > /dev/null && echo own && cat /proc/$PPID/environ > /dev/null",
     );
     assert!(said.contains("own"), "its own is readable: {said}");
@@ -569,8 +491,8 @@ fn a_command_cannot_read_the_environment_of_the_program_that_ran_it() {
 /// A command cannot take a descriptor out of a process outside its domain, even one that lets
 /// anybody trace it.
 ///
-/// note: the gate holds `socket()`, and `pidfd_getfd` is a way to an internet socket without it:
-/// copy one some other process already has. What refuses it is Landlock, which lets a confined
+/// note: the sandbox holds a connection as it is made, and `pidfd_getfd` is a way to a connected
+/// socket without making one: copy one some other process already has. What refuses it is Landlock, which lets a confined
 /// process look into none outside its domain - Yama is out of it here, since the process holding
 /// the socket asked it to let anybody in, and the same command unconfined is the proof.
 #[test]
@@ -614,7 +536,7 @@ print('took' if taken >= 0 else 'refused %d' % ctypes.get_errno())
         .output()
         .expect("sh is here");
     let (_, said) = run(
-        &sandbox(common::workdir("pidfd"), true, Network::NoTcp),
+        &sandbox(common::workdir("pidfd"), true, Network::Shut),
         &cmd,
     );
     let _ = holding.kill();
@@ -639,7 +561,7 @@ fn a_command_cannot_read_private_files_outside_it() {
     // outside the working directory *and* outside the system paths, which is the part somebody
     // installing this actually cares about
     let (ok, said) = run(
-        &sandbox(common::workdir("read"), true, Network::NoTcp),
+        &sandbox(common::workdir("read"), true, Network::Shut),
         "cat /home/*/.bashrc",
     );
 
@@ -666,7 +588,7 @@ fn a_command_cannot_write_outside_it() {
     let escape = std::env::temp_dir().join("kamchatka-escaped.txt");
     let _ = std::fs::remove_file(&escape);
     let (ok, said) = run(
-        &sandbox(common::workdir("write-out"), true, Network::NoTcp),
+        &sandbox(common::workdir("write-out"), true, Network::Shut),
         &format!("echo escaped > {}", escape.display()),
     );
     assert!(!ok, "the whole of /tmp is not writable: {said}");
@@ -674,7 +596,7 @@ fn a_command_cannot_write_outside_it() {
 
     let elsewhere = PathBuf::from("/etc/kamchatka-escaped.txt");
     let (ok_etc, said_etc) = run(
-        &sandbox(common::workdir("write-etc"), true, Network::NoTcp),
+        &sandbox(common::workdir("write-etc"), true, Network::Shut),
         &format!("echo escaped > {}", elsewhere.display()),
     );
     assert!(!ok_etc, "writing to /etc should fail: {said_etc}");
@@ -684,7 +606,7 @@ fn a_command_cannot_write_outside_it() {
     // ... and a temporary file made the way a program actually makes one still works, or a
     // compiler would not run under this at all
     let (ok_tmp, said_tmp) = run(
-        &sandbox(common::workdir("write-tmpdir"), true, Network::NoTcp),
+        &sandbox(common::workdir("write-tmpdir"), true, Network::Shut),
         "echo scratch > \"$TMPDIR/t.txt\" && cat \"$TMPDIR/t.txt\"",
     );
     assert!(ok_tmp, "{said_tmp}");
@@ -709,7 +631,7 @@ fn a_command_with_no_temporary_directory_is_given_no_tmpdir() {
 
     let output = common::command()
         .args(
-            sandbox(common::workdir("no-tmpdir"), true, Network::NoTcp)
+            sandbox(common::workdir("no-tmpdir"), true, Network::Shut)
                 .argv("printf %s \"${TMPDIR-none}\""),
         )
         .env("TMPDIR", &closed)
@@ -739,7 +661,7 @@ fn a_command_cannot_truncate_a_file_outside_the_working_directory() {
     std::fs::write(&outside, "the whole of it").expect("a file outside");
 
     let (_, said) = run(
-        &sandbox(dir, true, Network::NoTcp),
+        &sandbox(dir, true, Network::Shut),
         &format!(
             "python3 -c \"import os;os.truncate('{}',0)\" 2>&1 || echo refused",
             outside.display()
@@ -763,7 +685,7 @@ fn a_command_can_truncate_a_file_inside_it() {
     }
     let dir = common::workdir("truncate-inside");
     let (ok, said) = run(
-        &sandbox(dir.clone(), true, Network::NoTcp),
+        &sandbox(dir.clone(), true, Network::Shut),
         "python3 -c \"import os;os.truncate('inside.txt',0)\" 2>&1",
     );
 
@@ -784,7 +706,7 @@ fn a_refused_write_stance_makes_the_working_directory_read_only() {
     let dir = common::workdir("readonly");
 
     let (ok, said) = run(
-        &sandbox(dir.clone(), false, Network::NoTcp),
+        &sandbox(dir.clone(), false, Network::Shut),
         "echo x > nope.txt",
     );
 
@@ -792,7 +714,7 @@ fn a_refused_write_stance_makes_the_working_directory_read_only() {
     assert!(said.contains("Permission denied"), "{said}");
     assert!(!dir.join("nope.txt").exists());
     // ... and reading still works, or the shell would be useless
-    let (ok, said) = run(&sandbox(dir, false, Network::NoTcp), "cat inside.txt");
+    let (ok, said) = run(&sandbox(dir, false, Network::Shut), "cat inside.txt");
     assert!(ok && said.contains("hello"), "{said}");
 }
 
@@ -842,12 +764,9 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
     }
     let dir = common::workdir("network");
 
-    // Landlock alone, and the gate in front of it where there is one: both refuse a connection
-    let mut refusing = vec![Network::NoTcp];
-    if available(&common::program()).gated {
-        refusing.push(Network::Shut);
-    }
-    for network in refusing {
+    // the sandbox refuses the connection, whatever the command was written as
+    {
+        let network = Network::Shut;
         // the way a model asks for the network, which a policy reading the command would also
         // catch
         let (ok, said) = run(
@@ -867,23 +786,17 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
             !ok,
             "{network:?}: the second way round has to fail too: {said}"
         );
-        // under the gate it never gets as far as a connection: looking the name up needs a socket
-        // too, and the refusal of that one reads as a lookup failing - which is why `shell` says
-        // what it was
-        let refused = match network {
-            Network::Shut => said.contains("name resolution"),
-            _ => said.contains("Permission denied") || said.contains("Errno 13"),
-        };
-        assert!(refused, "{network:?}: {said}");
+        // it never gets as far as a connection: looking the name up reaches the network too, and
+        // the refusal of that reads as a lookup failing - which is why `shell` says what it was
+        assert!(said.contains("name resolution"), "{network:?}: {said}");
     }
 }
 
 /// An `AF_SMC` socket is refused under a refused network, as an internet socket is.
 ///
 /// note: any process can open one, and its `connect` to an internet address falls back to plain
-/// TCP when the other end does not speak SMC - so a gate that held `AF_INET` and `AF_INET6` alone
-/// let it through, and the TCP it falls back to is the kernel's own socket, which Landlock is not
-/// asked about. Loopback and a listener this test holds, so what it checks is the confinement
+/// TCP when the other end does not speak SMC, on the kernel's own socket rather than the command's.
+/// So the family is refused outright. Loopback and a listener this test holds, so what it checks is the confinement
 /// rather than whether this machine has a network; skipped where the kernel has no SMC.
 #[test]
 fn an_smc_socket_is_refused_under_a_refused_network() {
@@ -922,17 +835,15 @@ else:
     assert!(said.contains("refused"), "{said}");
 }
 
-/// A socket in any family that can leave the machine is refused by a shut gate, as an IPv4 one is,
-/// and a netlink one is opened.
+/// A socket in any family that can leave the machine is refused, and a netlink one is opened.
 ///
-/// note: through a command, since the filter's own tests run the program against the call's
-/// numbers and not a process under it. `EACCES` is the gate's answer, where a kernel without the
-/// family says `EAFNOSUPPORT`; and each family is opened unconfined first, so one this machine
-/// cannot open at all is skipped rather than passing for the wrong reason.
+/// note: through a command, so that what is checked is the sandbox a command gets. sandlock refuses
+/// the family with `EAFNOSUPPORT`, the answer of a kernel that does not have it, so each family is
+/// opened unconfined first, and one this machine cannot open at all is skipped rather than passing
+/// for the wrong reason.
 ///
-/// note: `AF_RXRPC` sent a datagram to an internet address past a gate that held only the families
-/// it named, and `AF_VSOCK` reaches the host from inside a virtual machine; any process can open
-/// either. Netlink is the other side of the same list: `getifaddrs` opens one, and it reaches
+/// note: `AF_RXRPC` sends datagrams to internet addresses, and `AF_VSOCK` reaches the host from
+/// inside a virtual machine; any process can open either. Netlink is the other side of the same list: `getifaddrs` opens one, and it reaches
 /// nothing past this kernel.
 #[test]
 fn a_socket_that_can_leave_the_machine_is_refused_by_a_shut_gate() {
@@ -952,7 +863,6 @@ except OSError as e:
         )
     };
     for (name, family, kind, protocol, opens) in [
-        ("IPv6", libc::AF_INET6, libc::SOCK_DGRAM, 0, false),
         ("RDS", libc::AF_RDS, libc::SOCK_SEQPACKET, 0, false),
         (
             "RxRPC",
@@ -980,9 +890,11 @@ except OSError as e:
             &sandbox(common::workdir("gate-families"), true, Network::Shut),
             &cmd,
         );
+        // note: refused as a family the kernel does not have, `EAFNOSUPPORT`: sandlock refuses
+        // every family but inet, unix and netlink, whatever the network
         match opens {
             false => assert!(
-                said.contains(&format!("refused {}", libc::EACCES)),
+                said.contains("refused") && !said.contains("opened"),
                 "{name}: a shut gate let the socket open: {said}"
             ),
             true => assert!(said.contains("opened"), "{name}: {said}"),
@@ -1008,7 +920,7 @@ fn a_confined_command_cannot_write_shared_memory() {
     std::fs::remove_file(&made).expect("the control is taken away again");
 
     let (ok, said) = run(
-        &sandbox(common::workdir("shm"), true, Network::NoTcp),
+        &sandbox(common::workdir("shm"), true, Network::Shut),
         &format!("echo theirs > {}", made.display()),
     );
     let written = made.exists();
@@ -1042,37 +954,6 @@ fn datagram(network: Network, name: &str) -> (bool, String, Option<Vec<u8>>) {
         .map(|(read, _)| buf[..read].to_vec());
 
     (ok, said, arrived)
-}
-
-/// Where there is no gate, a UDP datagram leaves the confinement untouched - which is the reason
-/// every sentence about that case promises no TCP rather than no network.
-///
-/// note: a test that asserts a *hole* is an odd thing until you ask what closes it. The kernel
-/// grew `LANDLOCK_ACCESS_NET_BIND_UDP` and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` in ABI 10,
-/// which is Linux 7.2; the `landlock` crate exposes neither, and `AccessNet` is
-/// `#[non_exhaustive]` over a sealed trait, so there is nothing to hand a ruleset from out here.
-/// The day the crate grows them this fails - and what it is really holding down is the wording of
-/// `Network::NoTcp`, which may stop saying TCP on the day this stops passing and not before.
-#[test]
-fn a_udp_datagram_goes_out_where_there_is_no_gate_and_the_words_say_so() {
-    if !enforced() {
-        return;
-    }
-    let (ok, said, arrived) = datagram(Network::NoTcp, "udp");
-
-    assert!(ok, "{said}");
-    assert_eq!(
-        arrived.as_deref(),
-        Some(&b"out"[..]),
-        "no datagram arrived. If the crate has grown ABI 10's rights and this is now refused, \
-         that is good news and every sentence promising only TCP wants rewriting"
-    );
-    assert!(
-        sandbox(PathBuf::from("/w"), true, Network::NoTcp)
-            .to_string()
-            .ends_with("no TCP"),
-        "what the words promise is what holds"
-    );
 }
 
 /// ... and where there is one, the same datagram is refused, which is what lets the words say no
@@ -1116,32 +997,17 @@ fn the_probe_finds_the_gate_wherever_the_kernel_can_hold_a_call() {
         eprintln!("skipped: this process is under a filter already");
         return;
     }
-    if !kamchatka::gate::holds() {
-        // the kernel's no is taken only where a gate cannot go on either, or a `holds` that said
-        // no everywhere would skip this test everywhere
-        let (ran, said) = run(
-            &sandbox(common::workdir("probe-no-gate"), true, Network::Shut),
-            "true",
-        );
-        assert!(
-            !ran,
-            "the kernel says it cannot hold a call and a gate went on: {said}"
-        );
-        eprintln!("skipped: this kernel cannot hand this process a listener");
-        return;
-    }
-
     assert!(
-        available(&common::program()).gated,
+        available().gated,
         "the kernel can hold a call here and the probe says the gate did not go on"
     );
 }
 
-/// A gate asked for below one that already holds says it did not go on, and runs nothing.
+/// A sandbox asked for below one that already holds says it did not take, and runs nothing.
 ///
 /// note: this is the program run from its own shell. The kernel gives a process one listener and
-/// refuses a second below it, and what the inner child owes that refusal is the sentence saying so,
-/// the same as for any gate that did not take.
+/// refuses a second below it, and what the inner run owes that refusal is the sentence saying so,
+/// the same as for any sandbox that did not take.
 #[test]
 fn a_gate_below_a_gate_says_it_did_not_go_on_and_runs_nothing() {
     if !gated() {
@@ -1162,7 +1028,7 @@ fn a_gate_below_a_gate_says_it_did_not_go_on_and_runs_nothing() {
     let (ok, said) = run(&outer, &inner);
 
     assert!(!ok, "{said}");
-    assert!(said.contains("the filter did not take"), "{said}");
+    assert!(said.contains("the sandbox did not take"), "{said}");
     assert!(!said.contains("reached"), "{said}");
 }
 
@@ -1181,8 +1047,8 @@ fn connect_to(socket: &Path) -> String {
 /// `systemd-run --user` over `/run/user/<uid>/bus` read and wrote there anyway, because the work
 /// was done by a process that was never in the domain. The session bus, the compositor and the
 /// container daemon are each a pathname socket under `/run`, which is readable because the system
-/// directories are - and below Linux 7.1 a `connect` was governed by no access right at all, so
-/// the ruleset was not consulted about any of them.
+/// directories are - and Landlock has no right a `connect` to one is judged by, so the ruleset is
+/// not consulted about any of them. sandlock's supervisor is.
 #[test]
 fn a_command_cannot_connect_to_a_unix_socket_it_could_not_write_to() {
     if !enforced() || !sockets() {
@@ -1192,7 +1058,7 @@ fn a_command_cannot_connect_to_a_unix_socket_it_could_not_write_to() {
     let listening = UnixListener::bind(&outside).expect("a socket outside the working directory");
 
     let (ok, said) = run(
-        &sandbox(common::workdir("connect"), true, Network::NoTcp),
+        &sandbox(common::workdir("connect"), true, Network::Shut),
         &connect_to(&outside),
     );
 
@@ -1216,7 +1082,7 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     let inside = dir.join("s.sock");
     let listening = UnixListener::bind(&inside).expect("a socket in the working directory");
 
-    let (ok, said) = run(&sandbox(dir, true, Network::NoTcp), &connect_to(&inside));
+    let (ok, said) = run(&sandbox(dir, true, Network::Shut), &connect_to(&inside));
 
     assert!(ok, "{said}");
     drop(listening);
@@ -1260,7 +1126,7 @@ fn a_command_cannot_connect_to_an_abstract_socket_made_outside_it() {
         "the socket is there to be refused: {unconfined:?}"
     );
     let (ok, said) = run(
-        &sandbox(common::workdir("abstract"), true, Network::NoTcp),
+        &sandbox(common::workdir("abstract"), true, Network::Shut),
         &connect(&name),
     );
     assert!(!ok && said.contains("Operation not permitted"), "{said}");
@@ -1268,7 +1134,7 @@ fn a_command_cannot_connect_to_an_abstract_socket_made_outside_it() {
 
     // and one the command made itself is in its own confinement, so it answers
     let (ok, said) = run(
-        &sandbox(common::workdir("abstract-own"), true, Network::NoTcp),
+        &sandbox(common::workdir("abstract-own"), true, Network::Shut),
         "python3 -c \"import socket
 own = socket.socket(socket.AF_UNIX); own.bind(b'\\0kamchatka-own'); own.listen()
 socket.socket(socket.AF_UNIX).connect(b'\\0kamchatka-own'); print('reached' * 2)\"",
@@ -1292,7 +1158,7 @@ fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
     let socket = opened.join("s.sock");
     let listening = UnixListener::bind(&socket).expect("a socket in the readable directory");
 
-    let mut readable = sandbox(common::workdir("connect-read"), true, Network::NoTcp);
+    let mut readable = sandbox(common::workdir("connect-read"), true, Network::Shut);
     readable.readable = vec![opened];
     let (ok, said) = run(&readable, &connect_to(&socket));
 
@@ -1409,7 +1275,7 @@ fn a_root_named_through_a_link_is_opened_where_it_points() {
 /// A kernel whose one tool is the confined `shell`, answering with a fixed script.
 ///
 /// note: through the tool rather than the binary, because what a confined command leaves behind is
-/// removed by whoever *spawned* it, and a test that spawned the confiner itself would be checking
+/// removed by whoever *spawned* it, and a test that started the sandbox itself would be checking
 /// nobody's work but its own.
 fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse>) -> Kernel {
     let kernel = Kernel::new(Config::default());
@@ -1425,7 +1291,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     }));
 
     kernel
@@ -1488,7 +1354,7 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     };
     let args = json!({ "cmd": "printf %s \"$TMPDIR\" > where.txt; sleep 20" });
 
@@ -1579,7 +1445,7 @@ fn a_path_opened_for_reading_is_not_a_path_that_can_be_written() {
     let outside = common::workdir("read-only-extra");
     std::fs::write(outside.join("settings.toml"), "default = stable").expect("something to read");
 
-    let mut sandbox = sandbox(common::workdir("read-only-home"), true, Network::NoTcp);
+    let mut sandbox = sandbox(common::workdir("read-only-home"), true, Network::Shut);
     sandbox.readable = vec![outside.clone()];
 
     let (ok, said) = run(
@@ -1670,7 +1536,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         writable: Vec::new(),
         readable: Vec::new(),
         workdir_writable: true,
-        network: Network::NoTcp,
+        network: Network::Shut,
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
@@ -1747,7 +1613,7 @@ fn git_is_not_killed_by_a_configuration_named_in_the_environment() {
         );
     }
 
-    let confined = sandbox(dir, true, Network::NoTcp);
+    let confined = sandbox(dir, true, Network::Shut);
     let said = git_says(
         &confined,
         &elsewhere,
@@ -1780,12 +1646,6 @@ fn git_is_not_killed_by_a_configuration_named_in_the_environment() {
 }
 
 /// Runs `git` under `confined` with `GIT_CONFIG_GLOBAL` set to `named`, and says what it said.
-///
-/// note: spawned rather than run in one call, for the reason `run` is: the directory a confined
-/// command gets is named after *that* command, it cannot remove its own, and only whoever spawned
-/// it knows the identifier. These two used to call `output()` and then remove
-/// `scratch_for(std::process::id())` - this test's own identifier, naming a directory that never
-/// existed - so every run of this file left two of the child's behind for good
 fn git_says(confined: &Sandbox, home: &Path, named: Option<&Path>, git: &str) -> String {
     let mut command = common::command();
     command
@@ -1803,9 +1663,7 @@ fn git_says(confined: &Sandbox, home: &Path, named: Option<&Path>, git: &str) ->
     }
 
     let child = command.spawn().expect("the binary under test is built");
-    let scratch = kamchatka::sandbox::scratch_for(child.id());
     let child = child.wait_with_output().expect("it was spawned");
-    let _ = std::fs::remove_dir_all(&scratch);
 
     format!(
         "{}{}",
@@ -1882,7 +1740,7 @@ async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     };
 
     let said = through(
@@ -1917,11 +1775,9 @@ except PermissionError: sys.exit('dial unix ' + path + ': connect: permission de
 /// A command's standard input is `/dev/null`, so a command that reads it reads end-of-file.
 ///
 /// note: through the tool rather than by asserting on the description's words: the description is
-/// what a model reads, the child is what the words have to be true of, and only the second can be
-/// caught here. The gate is the case where it could be otherwise - the socket the gate's listener
-/// came back up is the child's standard input, and the child is what puts `/dev/null` in front of
-/// the command instead - so a command under the gate is the one that has to answer this. A command
-/// that waited for ever instead would be a call nobody can stop.
+/// what a model reads, the command is what the words have to be true of, and only the second can
+/// be caught here. A command run without a sandbox and one run in one are started by different
+/// code, so both are asked. A command that waited for ever instead would be a call nobody can stop.
 #[tokio::test]
 async fn a_command_reading_its_input_reads_end_of_file() {
     if !enforced() {
@@ -1938,7 +1794,7 @@ async fn a_command_reading_its_input_reads_end_of_file() {
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
-        confiner: None,
+        confined: false,
         limits: Limits::default(),
         stragglers: Default::default(),
         layout: kamchatka::tools::Layout::Wrapped,
@@ -1950,9 +1806,9 @@ async fn a_command_reading_its_input_reads_end_of_file() {
     let said = through(&open, "cat; echo end").await;
     assert!(said.contains("end"), "{said}");
 
-    // ... and under the gate, where the socket the listener came back up is the child's standard
-    // input; see `gate::hold`. The gate asks only where a command reaches for the network, and
-    // reading its own input is not that, so nothing is answered here
+    // ... and in a sandbox, which sandlock starts with its own idea of standard input. The gate
+    // asks only where a command reaches for the network, and reading its own input is not that,
+    // so nothing is answered here
     if !gated() {
         return;
     }
@@ -1975,7 +1831,7 @@ fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     };
 
     (shell, policy)
@@ -2236,6 +2092,9 @@ async fn a_refused_network_is_refused_without_a_question_and_said() {
 }
 
 /// A stopped command takes its question with it, rather than leaving one nobody's answer reaches.
+///
+/// note: it connects, since a socket opened and never used goes nowhere and is not asked about.
+/// The address is one set aside for documentation, which nothing answers.
 #[tokio::test]
 async fn a_stopped_command_takes_its_question_with_it() {
     if !gated() {
@@ -2248,7 +2107,9 @@ async fn a_stopped_command_takes_its_question_with_it() {
         ModelResponse::tool_calls(vec![call(
             "1",
             "shell",
-            json!({ "cmd": "python3 -c \"import socket; socket.socket()\"" }),
+            json!({
+                "cmd": "python3 -c \"import socket; socket.create_connection(('192.0.2.1', 80))\""
+            }),
         )]),
         ModelResponse::text("stopped"),
     ])));
@@ -2358,7 +2219,7 @@ fn a_confined_command_has_no_terminal_to_type_into() {
     }
 
     let mut confined = vec![common::program().into_os_string()];
-    confined.extend(sandbox(dir.clone(), true, Network::NoTcp).argv(reach));
+    confined.extend(sandbox(dir.clone(), true, Network::Shut).argv(reach));
     let said = under_a_terminal(&confined, &dir, false);
     assert!(said.contains("refused"), "{said}");
     assert!(!said.contains("reached"), "{said}");
@@ -2368,37 +2229,29 @@ fn a_confined_command_has_no_terminal_to_type_into() {
     assert!(!led.contains("reached"), "{led}");
 }
 
-/// A confiner that could not leave a terminal of its own still runs the command, where there is no
-/// terminal to leave.
+/// A confinement run by hand from a process that leads a group of its own runs the command, and the
+/// command has no terminal to use.
 ///
-/// note: the two ways a confined command ends up with no terminal are separate facts. `setsid` is
-/// refused to a process that already leads a group, which a caller may have made it; and a process
-/// with no controlling terminal has nothing to leave whichever way it was started. Either one is
-/// enough - the command runs, and it runs with no terminal to type into - and a check that wanted
-/// both would refuse every command a session that had already made a group of the confiner ran.
-///
-/// note: `process_group(0)` is the caller's half, and this suite's own `shell` is not what makes
-/// it: `Shell` spawns the confiner without one, so nothing here is a shape a person hits by
-/// running this program. It is a shape an embedder can, and the refusal is a refusal of their
-/// command rather than of the boundary.
+/// note: `/dev/tty` is not one of the devices a command may open, so a command has no terminal to
+/// type into or draw on whatever group or session it was started from.
 #[test]
-fn a_confiner_already_leading_a_group_still_runs_the_command() {
+fn a_confinement_run_from_a_group_of_its_own_runs_with_no_terminal() {
     use std::os::unix::process::CommandExt as _;
 
     if !enforced() {
         return;
     }
-    // a group of its own keeps the terminal this suite was started from, and a confiner that can
-    // open one refuses rightly - which is not the case this is about
+    // a group of its own keeps the terminal this suite was started from, which is not the case
+    // this is about
     if std::fs::File::open("/dev/tty").is_ok() {
-        eprintln!("skipped: run from a terminal, which the confiner would rightly refuse to keep");
+        eprintln!("skipped: run from a terminal");
         return;
     }
     let dir = common::workdir("sandbox-group");
     let mut command = common::command();
     command
         .args(
-            sandbox(dir.clone(), true, Network::NoTcp).argv(
+            sandbox(dir.clone(), true, Network::Shut).argv(
                 "echo ran; if true 3<>/dev/tty; then echo reached; else echo no-terminal; fi",
             ),
         )
@@ -2406,9 +2259,7 @@ fn a_confiner_already_leading_a_group_still_runs_the_command() {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let child = command.spawn().expect("the binary under test is built");
-    let scratch = kamchatka::sandbox::scratch_for(child.id());
     let output = child.wait_with_output().expect("it was spawned");
-    let _ = std::fs::remove_dir_all(&scratch);
 
     let said = String::from_utf8_lossy(&output.stdout).into_owned();
     assert!(
@@ -2422,15 +2273,45 @@ fn a_confiner_already_leading_a_group_still_runs_the_command() {
     );
 }
 
-/// A confined command leads a session of its own, which is what leaves the terminal behind, and
-/// the group `stop` signals.
+/// A confined command that stops itself is ended and says so, as an unconfined one is.
 ///
-/// note: through the tool, because the tool is what makes it possible: `setsid` is refused to a
-/// process spawned leading a group. This suite has no terminal, so a `shell` that still spawned the
-/// child that way would pass everything else here and refuse every command a person ran. The `; :`
-/// keeps `sh` as the parent `python3` compares against, rather than replaced by it.
+/// note: the shell is not a child of this process: sandlock forks a process of its own, which stays
+/// behind, and `sh` runs beneath it. Asked of this process's children, a shell stopped by
+/// `kill -STOP $$` was never seen to be, and the call waited on it for ever.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_confined_command_that_stopped_itself_is_ended() {
+    if !enforced() {
+        return;
+    }
+    let shell = Shell {
+        workdir: common::workdir("sandbox-stopped-itself"),
+        writable: Vec::new(),
+        readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        policy: Arc::new(Careful::new()),
+        confined: true,
+        limits: Limits::default(),
+        stragglers: Default::default(),
+        layout: kamchatka::tools::Layout::Wrapped,
+    };
+
+    let said = through(&shell, "echo before; kill -STOP $$; echo after").await;
+
+    assert!(said.starts_with("exit: stopped itself"), "{said}");
+    assert!(said.contains("before") && !said.contains("after"), "{said}");
+}
+
+/// A confined command leads a group of its own, the one `stop` signals, and has no terminal it can
+/// open.
+///
+/// note: not a session of its own any more: sandlock starts it in a group and no further. What a
+/// session kept it from - pushing keys into this program's input with `TIOCSTI`, or drawing over
+/// it - is refused by sandlock's filter, `TIOCLINUX` with it, and `/dev/tty` is not among the
+/// devices it may open. The group is sandlock's, led by the process it forked rather than by `sh`,
+/// so what is compared is that it is not this one's.
 #[tokio::test]
-async fn a_confined_command_leads_a_session_of_its_own() {
+async fn a_confined_command_leads_a_group_and_has_no_terminal() {
     if !enforced() {
         return;
     }
@@ -2442,20 +2323,36 @@ async fn a_confined_command_leads_a_session_of_its_own() {
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
-        confiner: Some(common::program()),
+        confined: true,
         limits: Limits::default(),
         stragglers: Default::default(),
         layout: kamchatka::tools::Layout::Wrapped,
     };
 
+    // the fifth field of `stat`, after the name in parentheses
+    let stat = std::fs::read_to_string("/proc/self/stat").expect("linux says");
+    let mine: i32 = stat
+        .rsplit_once(") ")
+        .and_then(|(_, rest)| rest.split_whitespace().nth(2)?.parse().ok())
+        .expect("a group");
     let said = through(
         &shell,
-        "python3 -c \"import os; print('leads' if os.getsid(0) == os.getpgid(0) == os.getppid() \
-         else 'joined')\"; :",
+        &format!(
+            "python3 -c \"
+import os
+print('leads' if os.getpgid(0) != {mine} else 'joined')
+try:
+    open('/dev/tty')
+    print('a terminal')
+except OSError as e:
+    print('no terminal', e.errno)
+\""
+        ),
     )
     .await;
 
     assert!(said.contains("leads"), "{said}");
+    assert!(said.contains("no terminal"), "{said}");
 }
 
 /// A confined command reaches the devices it needs, and not the person's other terminals, where it
@@ -2472,12 +2369,12 @@ fn a_confined_command_reaches_named_devices_and_not_another_terminal() {
     let dir = common::workdir("shell-devices");
     let confined = |cmd: &str| {
         let mut argv = vec![common::program().into_os_string()];
-        argv.extend(sandbox(dir.clone(), true, Network::NoTcp).argv(cmd));
+        argv.extend(sandbox(dir.clone(), true, Network::Shut).argv(cmd));
         argv
     };
 
     let (ok, said) = run(
-        &sandbox(dir.clone(), true, Network::NoTcp),
+        &sandbox(dir.clone(), true, Network::Shut),
         "head -c 4 /dev/urandom | wc -c; echo gone >/dev/null && echo null",
     );
     assert!(ok, "{said}");
@@ -2513,10 +2410,10 @@ fn the_devices_named_are_the_ones_reached() {
         return;
     }
 
-    let (_, said) = run(&sandbox(dir.clone(), true, Network::NoTcp), pty);
+    let (_, said) = run(&sandbox(dir.clone(), true, Network::Shut), pty);
     assert!(said.contains("refused"), "{said}");
 
-    let mut with_ptys = sandbox(dir, true, Network::NoTcp);
+    let mut with_ptys = sandbox(dir, true, Network::Shut);
     with_ptys
         .devices
         .extend([PathBuf::from("/dev/ptmx"), PathBuf::from("/dev/pts")]);
@@ -2548,7 +2445,7 @@ fn a_device_that_climbs_out_of_dev_is_not_granted() {
         .expect("sh is here");
     assert!(String::from_utf8_lossy(&control.stdout).contains("wrote"));
 
-    let mut climbing = sandbox(dir, true, Network::NoTcp);
+    let mut climbing = sandbox(dir, true, Network::Shut);
     climbing
         .devices
         .push(PathBuf::from(format!("/dev/..{}", outside.display())));
@@ -2607,12 +2504,11 @@ fn a_served_port_is_closed_to_a_command_allowed_the_network() {
 }
 
 /// Under a refused network a served port is closed and nothing else is granted: a command may not
-/// reach another port, since the ruleset refuses TCP outright and a port is only granted by the
-/// closing.
+/// reach another port.
 ///
-/// note: `Network::NoTcp` with a closed port is the one case where `closing` differs from
-/// `!refuses_tcp()` alone. A permission error is Landlock's refusal; a refused connection to a port
-/// nothing listens on is the kernel letting the connect through, which is what a closing that
+/// note: closing a port is a deny rule, and in sandlock a deny rule with no allow rule beside it
+/// allows everything else. A permission error is the sandbox's refusal; a refused connection to a
+/// port nothing listens on is the kernel letting the connect through, which is what a closing that
 /// granted every other port would do. No listener is needed to tell them apart.
 #[test]
 fn a_refused_network_grants_no_other_port_when_one_is_served() {
@@ -2620,7 +2516,7 @@ fn a_refused_network_grants_no_other_port_when_one_is_served() {
         return;
     }
     let served = 4242u16;
-    let mut refused = sandbox(common::workdir("refused-port"), true, Network::NoTcp);
+    let mut refused = sandbox(common::workdir("refused-port"), true, Network::Shut);
     refused.closed = vec![served];
     let other = served + 1;
     let connect = format!(
@@ -2632,6 +2528,102 @@ fn a_refused_network_grants_no_other_port_when_one_is_served() {
         said.contains("refused"),
         "a port nobody served was granted: {said}"
     );
+}
+
+/// A served port stays closed to a command the person let through when it was asked about, while
+/// the port beside it is reached.
+///
+/// note: through the tool, where the gate answers rather than the refusal `--confine-and-run`
+/// gives, so a yes is what is under test. A deny rule with no allow rule is a policy that allows
+/// everything else in sandlock, which is why the control port matters: the command is asked about
+/// it, and reaches it only on the answer.
+#[tokio::test]
+async fn a_served_port_stays_closed_to_a_command_let_through_when_asked() {
+    if !gated() {
+        return;
+    }
+    let server = kamchatka::remote::Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("it listens");
+    let served: u16 = server
+        .address()
+        .rsplit(':')
+        .next()
+        .and_then(|port| port.parse().ok())
+        .expect("a port");
+    let other = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let other = other.local_addr().expect("bound").port();
+    let (shell, policy) = gated_shell(&common::workdir("gate-served-port"));
+    let answers = answering(&policy, true);
+
+    let said = through(
+        &shell,
+        &format!(
+            "python3 -c \"
+import socket
+for name, port in (('other', {other}), ('served', {served})):
+    try:
+        socket.create_connection(('127.0.0.1', port), timeout=5)
+        print(name, 'reached')
+    except OSError as e:
+        print(name, 'refused', e.errno)
+\""
+        ),
+    )
+    .await;
+
+    assert!(said.contains("other reached"), "{said}");
+    assert!(said.contains("served refused"), "{said}");
+    assert_eq!(answers.asked(), 1, "{said}");
+    drop(server);
+}
+
+/// Commands that have ended hold no descriptors in this process, however many there were.
+///
+/// note: each sandbox's handle names its process groups by a pidfd, and the handles were kept for
+/// telling a served session's clients from commands. Only a client arriving let go of the ones
+/// whose commands had ended, so a session served nowhere held one per command until it ran out.
+#[tokio::test]
+async fn ended_commands_hold_no_descriptors() {
+    if !enforced() {
+        return;
+    }
+    let (shell, _policy) = gated_shell(&common::workdir("sandbox-descriptors"));
+    // pidfds alone, since the tests beside this one open files of their own meanwhile
+    let open = || {
+        std::fs::read_dir("/proc/self/fd")
+            .expect("our descriptors")
+            .filter_map(|fd| std::fs::read_link(fd.ok()?.path()).ok())
+            .filter(|target| target.to_string_lossy().contains("pidfd"))
+            .count()
+    };
+
+    through(&shell, "true").await;
+    let before = open();
+    for _ in 0..40 {
+        through(&shell, "true").await;
+    }
+    // what `Confined::keep` holds for a second after a command ends
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+    assert!(open() < before + 20, "{} then {}", before, open());
+}
+
+/// A confined command too long to start is said to be, with the advice for it.
+///
+/// note: sandlock's child is what would find out, after the fork, and its exit 127 with a line on
+/// standard error reads as a command that ran and failed.
+#[tokio::test]
+async fn a_confined_command_too_long_to_start_says_why() {
+    if !enforced() {
+        return;
+    }
+    let (shell, _policy) = gated_shell(&common::workdir("sandbox-too-long"));
+
+    let said = through(&shell, &format!("echo {}", "a".repeat(200_000))).await;
+
+    assert!(said.len() < 500, "{}", &said[..said.len().min(500)]);
+    assert!(said.contains("write it to a file"), "{said}");
 }
 
 /// Runs `argv` in a session whose controlling terminal is a new one, and returns what it wrote.
@@ -2696,7 +2688,7 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     };
 
     let cmd = "sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
@@ -2748,7 +2740,7 @@ async fn a_job_is_given_a_grace_to_leave_and_no_more_than_it_needs() {
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     };
     let running = |pid: i32| std::path::Path::new(&format!("/proc/{pid}")).exists();
 
@@ -2797,7 +2789,11 @@ async fn a_job_is_given_a_grace_to_leave_and_no_more_than_it_needs() {
 /// note: found live: a model asked for a job that outlives its call wrapped it in `setsid nohup`,
 /// and the session ended with it still writing into a directory that had been removed. Its own
 /// session and its own group, it was in no group a command had been run in.
-#[tokio::test]
+///
+/// note: on a runtime with threads of its own, as the program's is. The jobs are confined, and
+/// their supervisor is a task on this runtime, so this test waiting for them on the only thread
+/// left them waiting for it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_job_that_left_its_group_is_stopped_too() {
     // see `what_this_session_did_not_start_is_left_alone`: `stop` signals from this thread
     kamchatka::sandbox::scope_signals();
@@ -2813,7 +2809,7 @@ async fn a_job_that_left_its_group_is_stopped_too() {
         readable: Vec::new(),
         shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-        confiner: Some(common::program()),
+        confined: true,
     };
 
     let away = "setsid sh -c 'echo $$ > away.pid; exec sleep 30' >/dev/null 2>&1 &";
@@ -2925,9 +2921,7 @@ fn a_confinement_run_by_hand_signals_nothing_it_did_not_start() {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .expect("the binary under test is built");
-        let scratch = kamchatka::sandbox::scratch_for(child.id());
         let output = child.wait_with_output().expect("it was spawned");
-        let _ = std::fs::remove_dir_all(&scratch);
         String::from_utf8_lossy(&output.stdout).into_owned()
             + &String::from_utf8_lossy(&output.stderr)
     };

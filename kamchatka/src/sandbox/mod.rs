@@ -5,52 +5,45 @@
 //! runtime cannot confine anything: it executes nothing. Confinement belongs in the program that
 //! spawns the process.
 //!
-//! note: [Landlock](https://landlock.io) is a Linux LSM a process applies to itself: no privileges,
-//! no setuid helper, no container, no daemon. `network: deny` is refused by the kernel on the
-//! `connect` syscall, not by a policy reading `curl`. A model refused `curl` can use
-//! `python3 -c "import urllib.request"`; under this, that call gets `Permission denied` from the
-//! kernel.
+//! note: the confinement is [sandlock](https://github.com/multikernel/sandlock)'s: a Landlock
+//! ruleset, a seccomp filter, and a supervisor in this process that answers the calls the filter
+//! holds. No privileges, no setuid helper, no container, no daemon. `network: deny` is refused on
+//! the `connect` itself, not by a policy reading `curl`. A model refused `curl` can use
+//! `python3 -c "import urllib.request"`; under this, that call gets `Permission denied`.
 //!
-//! note: the `landlock` crate exposes only `ConnectTcp` and `BindTcp` as network rights, so
-//! Landlock confines only TCP here. The kernel grew UDP rights in ABI 10 (Linux 7.2), but the crate
-//! stops at ABI 9 and `AccessNet` is `#[non_exhaustive]` over a sealed trait, so UDP rights cannot
-//! be handed to a ruleset from this crate. The gate handles the rest of the network:
-//! [`crate::gate`] stops a confined command's `socket()` in every family but unix and netlink,
-//! covering UDP and everything else a socket can leave the machine by, and either refuses it or
-//! holds it while the person is asked. Where the gate cannot be installed, a UDP datagram still
-//! goes out, enough to put bytes in a DNS query; [`Network::NoTcp`] is how that case is written
-//! everywhere it is shown rather than rounded up. What still holds against the rest is the
-//! filesystem: a command that cannot read a file has nothing to send.
+//! note: the network is the supervisor's. Every `connect` and `send` to an internet address, TCP,
+//! UDP and ICMP alike, reaches it with its destination before it happens, so it is refused there
+//! or held while the person is asked; see [`crate::tools::Shell`]. A socket in any family but
+//! inet, unix and netlink is refused outright, and so is `io_uring`, which opens sockets of its
+//! own. A served session's ports are a deny rule the supervisor applies after any allow, so no
+//! answer opens them.
 //!
-//! note: a unix socket is a filesystem matter, not a network one. Linux 7.1 grew the right for it,
-//! `AccessFs::ResolveUnix`, which the crate exposes. A command may connect to a unix socket it
-//! could have written to, and to no other. Below that kernel a `connect` is ungoverned, leaving the
-//! session bus, the compositor and the container daemon reachable; each runs a command outside the
-//! domain on the caller's behalf, so the hole is worse than the UDP one: a datagram carries bytes
-//! out, while `systemd-run --user` carries a command out and hands back the whole filesystem.
-//! [`confines_unix_sockets`] asks about that.
-//!
-//! note: an abstract unix socket has no path for that right to name. Linux 6.12 scopes it: a command
-//! may connect to an abstract socket made inside its own confinement, and to no other.
-//! [`confines_abstract_sockets`] asks, and says why it matters.
+//! note: a unix socket is a filesystem matter, not a network one. sandlock's supervisor holds a
+//! `connect` to a pathname socket and lets it through only where the command may write, on any
+//! kernel: the session bus, the compositor and the container daemon are each a socket under `/run`,
+//! which is readable, and each runs a command outside the confinement on the caller's behalf, so a
+//! connection to one is a way out. It pins the socket it checked and connects to that, so a link
+//! swapped in after the check leads nowhere - which means the connection is made by this process,
+//! and the other end sees this process's credentials rather than the command's; see
+//! `from_a_command`. A path relative to the command's directory is refused, since the supervisor
+//! cannot follow it from here. An abstract socket made outside the command's confinement is refused
+//! by Landlock's scope (Linux 6.12).
 //!
 //! note: signals have a scope of the same age, and it is not in a command's own ruleset: each
-//! command confines itself in its own domain, so it would refuse a command stopping a server an
+//! command is confined in its own domain, so it would refuse a command stopping a server an
 //! earlier call left running. The scope is checked per layer, so it goes on the one layer every
 //! command shares - this program's own, put on by [`scope_signals`] before it starts anything - and
 //! a command may signal this program and whatever it started, and nothing else. This program is
 //! inside that boundary; keeping it out would take a separate process to start each command from. A
-//! confinement run by hand, with no session above it, has no such layer and puts the scope on its
-//! own; see [`SESSION_FLAG`].
+//! confinement run by hand, with no session above it, has no such layer and has sandlock scope its
+//! signals instead; see [`SESSION_FLAG`].
 //!
-//! note: applied by re-executing this program in a mode that confines itself and then runs the
-//! command. `CommandExt::pre_exec` is the alternative: it runs between `fork` and `exec` in a
-//! process with a `tokio` runtime's threads, where almost nothing is safe to call, including the
-//! ruleset's allocations. The child is not a `tokio` program: Landlock and the gate restrict the
-//! calling thread, and a single-threaded helper makes that simple.
+//! note: a command is started by sandlock from this process: it forks, confines the child, and
+//! keeps a supervisor here for as long as anything the command started is alive.
+//! `--confine-and-run` is a confinement somebody runs by hand, and it is the supervisor of the one
+//! command it runs.
 
 use std::{
-    collections::BTreeSet,
     ffi::OsString,
     fmt,
     path::{Path, PathBuf},
@@ -64,11 +57,10 @@ use crate::tools::{Careful, Subject};
 mod confinement;
 mod reach;
 
-pub(crate) use confinement::REPORT_VAR;
 pub use confinement::{
-    Confinement, Probed, Scratch, available, confine, confine_saying, confines_abstract_sockets,
-    confines_signals, confines_tcp, confines_unix_sockets, make_scratch, run_if_asked,
-    scope_signals, scratch_for, weaker_here,
+    Confinement, Probed, Rules, Scratch, available, command, confines_abstract_sockets,
+    confines_signals, degraded, fits, make_scratch, run_if_asked, scope_signals, scratch_path,
+    weaker_here,
 };
 pub use reach::{Access, Reach};
 
@@ -91,9 +83,8 @@ pub const SESSION_FLAG: &str = "--in-a-session";
 /// `shell-read` - [`SYSTEM`] unless somebody says otherwise - beside everything the tools reach.
 /// The stances a person changes are what is writable and whether the network is reachable.
 ///
-/// note: "the network" is every socket that can leave the machine where the gate holds, and TCP
-/// where it does not.
-/// See [`Network`], and the note at the top of this module.
+/// note: "the network" is every connection and datagram to an internet address. See [`Network`],
+/// and the note at the top of this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sandbox {
     /// The directory a command may work in; everything outside it is out of reach.
@@ -125,72 +116,49 @@ pub struct Sandbox {
     /// process serves a session on.
     ///
     /// note: a served session takes a client's answer to a permission question, so a command that
-    /// could reach it could answer its own. Under `Open`, and under `Asked` once somebody said yes,
-    /// Landlock is asked to refuse these ports and nothing else. `NoTcp` and `Shut` refuse them
-    /// already.
+    /// could reach it could answer its own. They are refused on every address, since a session
+    /// served on all of them is reachable through each, and the refusal outranks any answer.
     pub closed: Vec<u16>,
 }
 
-/// What a confined command may do about the network, and what refuses it.
+/// What a confined command may do about the network.
 ///
-/// note: four rather than open and closed, because two mechanisms stand in the way and they refuse
-/// different things. Landlock refuses a TCP `connect` or `bind`, and tells nobody. The gate - see
-/// [`crate::gate`] - stops `socket()` for `AF_INET` and `AF_INET6`, and for the two families that
-/// reach the internet the same way, which is the first thing any use of the network does, and it
-/// can either refuse there or hold the call while somebody is asked. Where the gate cannot be
-/// installed only Landlock is left, and a UDP datagram still goes out; that is the one this says as
-/// `no TCP` rather than rounding it up.
+/// note: three rather than open and closed, because the supervisor can hold a call as well as
+/// refuse it. It sees every `connect` and `send` to an internet address with its destination,
+/// which is the first thing any use of the network does, a DNS lookup included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Network {
     /// Nothing refuses it.
     Open,
-    /// TCP is refused by Landlock, and nothing else is: there is no gate here.
-    NoTcp,
-    /// Every network socket is refused by the gate, and TCP by Landlock as well.
+    /// Every connection and datagram to an internet address is refused.
     Shut,
-    /// The gate holds every network socket until the person is asked, once per command.
-    ///
-    /// note: Landlock leaves TCP alone here, except for [`Sandbox::closed`], because a ruleset
-    /// cannot be lifted and a `yes` must be able to let the connection through. The gate alone
-    /// stands in the way, so this is never asked for where the gate cannot be installed.
+    /// Each is held until the person is asked, once per command.
     Asked,
 }
 
 impl Network {
     /// What a command gets: `open` where the network was allowed, `denied` where the stance
-    /// refuses it, `gated` where the gate holds here, and `tcp` where Landlock can refuse TCP here.
-    ///
-    /// note: with neither the gate nor Landlock's TCP rights, below Linux 6.7, nothing refuses
-    /// anything, and that is [`Network::Open`]. Written as `NoTcp`, a command was told "no TCP"
-    /// while its TCP connections went through.
-    fn of(open: bool, denied: bool, gated: bool, tcp: bool) -> Self {
-        match (open, gated) {
+    /// refuses it, and otherwise a question.
+    fn of(open: bool, denied: bool) -> Self {
+        match (open, denied) {
             (true, _) => Self::Open,
-            (false, false) if tcp => Self::NoTcp,
-            (false, false) => Self::Open,
-            (false, true) if denied => Self::Shut,
-            (false, true) => Self::Asked,
+            (false, true) => Self::Shut,
+            (false, false) => Self::Asked,
         }
-    }
-
-    /// Whether Landlock is asked to refuse TCP.
-    fn refuses_tcp(self) -> bool {
-        matches!(self, Self::NoTcp | Self::Shut)
     }
 
     /// The word the arguments carry it as.
     fn word(self) -> &'static str {
         match self {
             Self::Open => "net",
-            Self::NoTcp => "nonet",
             Self::Shut => "shut",
             Self::Asked => "held",
         }
     }
 
     fn from_word(word: &std::ffi::OsStr) -> Option<Self> {
-        [Self::Open, Self::NoTcp, Self::Shut, Self::Asked]
+        [Self::Open, Self::Shut, Self::Asked]
             .into_iter()
             .find(|network| *word == *network.word())
     }
@@ -200,8 +168,6 @@ impl fmt::Display for Network {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Open => "the network reachable",
-            // TCP is the whole of what Landlock can refuse; see the note at the top
-            Self::NoTcp => "no TCP",
             Self::Shut => "no network",
             Self::Asked => "the network only once the person you are working with allows it",
         })
@@ -213,8 +179,8 @@ impl Sandbox {
     ///
     /// note: the network is reachable only if the stance is `allow`, or if this call was allowed by
     /// a person who was asked about it. A stance of `ask` that nobody has been asked about yet is
-    /// not permission. Where the gate holds, the command still runs and is asked about if it
-    /// reaches out, so the stance is not a refusal either. See [`Careful::gates_the_network`].
+    /// not permission. The command still runs and is asked about if it reaches out, so the stance
+    /// is not a refusal either.
     ///
     /// note: except where nobody is there to ask and the run refuses every question, which is
     /// `--on-ask deny`. The network is then shut, as [`Careful`] refuses the kernel's questions
@@ -229,7 +195,6 @@ impl Sandbox {
         granted: bool,
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
-        let tcp = confines_tcp();
         let workdir_writable = writes(policy);
         // note: it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is refused
         // a write there under the same refusal. A shell that could still write in them was two
@@ -248,16 +213,17 @@ impl Sandbox {
             network: Network::of(
                 granted || stance == Verdict::Allow,
                 !policy.permits(&Capability::net("reach")),
-                policy.gates_the_network(),
-                tcp,
             ),
             shell_readable: SYSTEM.iter().map(PathBuf::from).collect(),
             devices: DEVICES.iter().map(PathBuf::from).collect(),
-            closed: closing(tcp, &SERVED.lock().unwrap_or_else(PoisonError::into_inner)),
+            closed: SERVED
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
         }
     }
 
-    /// The arguments that ask this program to confine itself this way and run `cmd`, as one of a
+    /// The arguments that ask this program to confine `cmd` this way and run it, as one of a
     /// session's commands; see [`SESSION_FLAG`].
     pub fn argv(&self, cmd: &str) -> Vec<OsString> {
         let mut argv = vec![
@@ -407,7 +373,7 @@ impl Sandbox {
 
     /// [`Sandbox::note_for`] for a command given `scratch` as `TMPDIR`.
     ///
-    /// note: [`confine`] grants that directory reading and writing even where the working directory
+    /// note: [`Sandbox::sandlock`] grants that directory reading and writing even where the working directory
     /// is read-only, so a refusal in it is the file's own permissions. Blaming the confinement is
     /// the hedge `note_for` exists not to make. The caller names it, because only whoever spawned
     /// the command knows which directory it was given, and it must still be there to compare.
@@ -599,13 +565,11 @@ impl Sandbox {
     /// note: the other half of [`Sandbox::reaches`], which asks about reading. A socket is held to
     /// the writing half of the ruleset, so a session can read the path of a socket under `/run` and
     /// be refused the connection. It is judged by the file's type, not by the error's words, which
-    /// a client chooses. Only where [`confines_unix_sockets`] says the kernel governs sockets;
-    /// below that, the refusal is the socket's own permissions.
+    /// a client chooses. sandlock's supervisor refuses such a connection with `EACCES`, which
+    /// is the error that brings a refusal here.
     ///
-    /// note: a socket is judged by this alone, not by [`Sandbox::reaches`] as well. Below that
-    /// kernel, the ruleset is not consulted about a connection, even to a socket in a directory the
-    /// session cannot read; blaming the confinement for that directory blames it for a refusal it
-    /// did not make.
+    /// note: a socket is judged by this alone, not by [`Sandbox::reaches`] as well: whether the
+    /// session may read the path says nothing about whether it may connect.
     fn connecting(&self, path: &Path, scratch: Option<&Path>) -> Option<bool> {
         use std::os::unix::fs::FileTypeExt as _;
 
@@ -616,7 +580,7 @@ impl Sandbox {
         {
             return None;
         }
-        Some(!self.writes(&resolved, scratch) && confines_unix_sockets())
+        Some(!self.writes(&resolved, scratch))
     }
 
     /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.
@@ -635,7 +599,7 @@ impl Sandbox {
     /// `GIT_CONFIG_GLOBAL` is a choice somebody made, and is left alone where it is readable; left
     /// alone out of reach, it would kill git like any other configuration, and the *no
     /// configuration* case is the one git handles.
-    fn git_config_global(&self) -> Option<PathBuf> {
+    pub(crate) fn git_config_global(&self) -> Option<PathBuf> {
         let (mine, missed): (Vec<PathBuf>, Vec<PathBuf>) = std::env::var_os("GIT_CONFIG_GLOBAL")
             .map(PathBuf::from)
             .into_iter()
@@ -756,7 +720,7 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
 /// one plugged in later is still grantable. `/dev` itself is every device at once, which is what
 /// [`DEVICES`] exists not to grant.
 ///
-/// note: asked twice, by `Setup::check` where the list is given and by [`confine`] where it is
+/// note: asked twice, by `Setup::check` where the list is given and by [`Sandbox::sandlock`] where it is
 /// granted. The first is where a person is told; the second is what holds for a [`Sandbox`] built
 /// by hand, and grants the path it resolved rather than the one it was handed.
 pub fn device(path: &Path) -> Option<PathBuf> {
@@ -897,10 +861,10 @@ impl fmt::Display for Sandbox {
             write!(f, ", {} read-only", path.display())?;
         }
         write!(f, ", {}", self.network)?;
-        // note: said wherever TCP is not refused outright, since a closed port is the one
+        // note: said wherever the network is not refused outright, since a closed port is the one
         // connection refused there. A command refused it was told only that the network was
         // reachable, with nothing to say why this address was not
-        if !self.network.refuses_tcp() && !self.closed.is_empty() {
+        if self.network != Network::Shut && !self.closed.is_empty() {
             let ports: Vec<String> = self.closed.iter().map(u16::to_string).collect();
             write!(
                 f,
@@ -921,8 +885,8 @@ impl fmt::Display for Sandbox {
 ///
 /// note: not `/run`, but for systemd-resolved's directory in it. What is in there is the person's
 /// running session: the sockets of the session bus, the compositor and the container daemon, which
-/// run a command outside the sandbox on its behalf and below Linux 7.1 take a connection from
-/// anyone who can read their path; a USB drive under `/run/media`; who is logged in.
+/// run a command outside the sandbox on its behalf; a USB drive under `/run/media`; who is logged
+/// in.
 /// `/run/systemd/resolve` holds the resolver's configuration and its own sockets and nothing else,
 /// and Ubuntu, Fedora and Debian make `/etc/resolv.conf` a link into it: without it, no command
 /// there could look up a host. A system without it is granted nothing by the rule, as one without
@@ -963,29 +927,19 @@ pub const DEVICES: &[&str] = &[
     "/dev/urandom",
 ];
 
-/// The ports a command is to have closed: the ones `served`, where Landlock can close a TCP port
-/// (`tcp`), and none where it cannot.
-///
-/// note: none below Linux 6.7. Named anyway, a command was told that the ports a session is served
-/// on were closed to it, and they were not; [`weaker_here`] says so to the person at startup.
-fn closing(tcp: bool, served: &[u16]) -> Vec<u16> {
-    match tcp {
-        true => served.to_vec(),
-        false => Vec::new(),
-    }
-}
-
 /// The ports this process serves a session on, which [`Sandbox::of`] closes to every command.
 ///
 /// note: the process's rather than a session's, because a command that reached any session served
 /// from here could answer that session's questions, its own among them.
 static SERVED: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 
-/// The sessions this process's confined commands have run in, each named by the command's pid.
+/// The sandboxes this process's confined commands run in, by a handle that names their process
+/// groups.
 ///
-/// note: every session ever started, not just the ones still running. A command's session outlives
-/// the command in whatever it left running. A pid is four bytes a command.
-static SESSIONS: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
+/// note: every sandbox still holding a process, not just the ones whose call is still going. A
+/// command's processes outlive the command in whatever it left running. One that has nothing
+/// left is dropped when the next command starts or a client arrives.
+static SESSIONS: Mutex<Vec<sandlock_core::Controller>> = Mutex::new(Vec::new());
 
 /// Closes `port` to every command confined from here on; see [`Sandbox::closed`].
 pub(crate) fn serving_on(port: u16) {
@@ -1003,61 +957,82 @@ pub(crate) fn stopped_serving_on(port: u16) {
         .retain(|served| *served != port);
 }
 
-/// Remembers the session a confined command runs in, which is its own and named by its pid; see
-/// `run_if_asked`.
-pub(crate) fn began(pid: u32) {
-    SESSIONS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(pid);
+/// Remembers the sandbox a confined command runs in; see [`from_a_command`].
+///
+/// note: and lets go of the ones with nothing left in them. Each holds a descriptor for every
+/// process group its command made, and a session served nowhere never asks [`from_a_command`], so
+/// letting go only there kept two descriptors a command until the process ran out of them.
+pub(crate) fn began(sandbox: sandlock_core::Controller) {
+    let mut sessions = SESSIONS.lock().unwrap_or_else(PoisonError::into_inner);
+    live(&mut sessions);
+    sessions.push(sandbox);
 }
 
-/// Whether the process `pid` is in the session of a command confined from here, or cannot be
-/// distinguished from one.
+/// The process groups of every sandbox in `sessions` with something left in it; the others are
+/// let go of.
+fn live(sessions: &mut Vec<sandlock_core::Controller>) -> Vec<i32> {
+    let mut live = Vec::new();
+    sessions.retain(|sandbox| match sandbox.process_groups() {
+        Ok(groups) if !groups.is_empty() => {
+            live.extend(groups);
+            true
+        }
+        _ => false,
+    });
+
+    live
+}
+
+/// Whether the process `pid` is one of a command confined from here, or cannot be distinguished
+/// from one.
+///
+/// note: by process group. sandlock sees every group a confined process makes or joins, since it
+/// signals a sandbox by its groups, so `setsid` and a daemon's double fork leave a process in a
+/// group it knows. A group with a process in it cannot be handed to anybody else.
 ///
 /// note: `SO_PEERCRED` gives a served socket this pid. A process that has since exited has no
-/// session left to ask about, and refusing it loses nothing because there is nobody there to serve.
+/// group left to ask about, and refusing it loses nothing because there is nobody there to serve.
+///
+/// note: this process is a command too, while any command is running. sandlock lets a command reach
+/// a unix socket by connecting to it on the command's behalf, from its supervisor here, so the pid
+/// the other end is given is this one - and it does so only for a process alive in a sandbox. A
+/// client in this process reaches a session served here without a socket - see
+/// `remote::server::door` - so the socket is not how anything else comes from here while a command
+/// could be the one.
 pub(crate) fn from_a_command(pid: u32) -> bool {
-    let session = i32::try_from(pid)
+    let live = live(&mut SESSIONS.lock().unwrap_or_else(PoisonError::into_inner));
+    if pid == std::process::id() {
+        return !live.is_empty();
+    }
+    let group = i32::try_from(pid)
         .ok()
         .and_then(rustix::process::Pid::from_raw)
-        .and_then(|pid| rustix::process::getsid(Some(pid)).ok());
-    match session {
-        Some(session) => SESSIONS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains(&session.as_raw_nonzero().get().unsigned_abs()),
+        .and_then(|pid| rustix::process::getpgid(Some(pid)).ok());
+
+    match group {
+        Some(group) => live.contains(&group.as_raw_nonzero().get()),
         None => true,
     }
 }
 
+/// The environment of this process as text, which is all sandlock hands a command; a variable
+/// whose name or value is not text is left out.
+pub(crate) fn environment() -> impl Iterator<Item = (String, String)> {
+    std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Network, closing};
+    use super::Network;
 
-    /// A network nothing can refuse is said to be open, whatever the stance.
-    ///
-    /// note: below Linux 6.7, where Landlock has no TCP rights, and with no gate, a command told
-    /// "no TCP" had its TCP connections go through.
+    /// The network is open where it was allowed, shut where it is refused, and asked about
+    /// otherwise.
     #[test]
-    fn a_network_nothing_can_refuse_is_open() {
-        // neither the gate nor Landlock's TCP rights
-        assert_eq!(Network::of(false, true, false, false), Network::Open);
-        assert_eq!(Network::of(false, false, false, false), Network::Open);
-        // Landlock's TCP rights and no gate
-        assert_eq!(Network::of(false, true, false, true), Network::NoTcp);
-        // the gate, with or without them
-        for tcp in [true, false] {
-            assert_eq!(Network::of(false, true, true, tcp), Network::Shut);
-            assert_eq!(Network::of(false, false, true, tcp), Network::Asked);
-            assert_eq!(Network::of(true, false, true, tcp), Network::Open);
-        }
-    }
-
-    /// A served port is said to be closed to a command only where the kernel can close it.
-    #[test]
-    fn a_port_is_closed_only_where_the_kernel_can_close_it() {
-        assert_eq!(closing(true, &[8080, 9090]), [8080, 9090]);
-        assert!(closing(false, &[8080, 9090]).is_empty());
+    fn a_network_is_open_shut_or_asked_about() {
+        assert_eq!(Network::of(true, false), Network::Open);
+        assert_eq!(Network::of(true, true), Network::Open);
+        assert_eq!(Network::of(false, true), Network::Shut);
+        assert_eq!(Network::of(false, false), Network::Asked);
     }
 }

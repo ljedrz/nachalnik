@@ -1733,7 +1733,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: harness.app.policy.clone(),
-            confiner: None,
+            confined: false,
             limits: limits.clone(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,

@@ -104,9 +104,6 @@ pub struct Setup {
     /// model in a loop and a caller not watching. See
     /// [`App::set_spend`](crate::app::App::set_spend).
     pub spend: Option<u64>,
-    /// Whether what a command left running is left running when the session ends, rather than
-    /// stopped; see [`stragglers_at_end`].
-    pub leave_running: bool,
     /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
     /// note: a list rather than a flag per family, because "which tools" is one question and a flag
@@ -187,7 +184,6 @@ impl Default for Setup {
             compact: Some(0.8),
             compact_target: None,
             spend: None,
-            leave_running: false,
             tools: None,
             confine: true,
             writable: Vec::new(),
@@ -295,7 +291,7 @@ fn built() -> Vec<Arc<dyn nachalnik::Tool>> {
             readable: Vec::new(),
             shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
-            confiner: None,
+            confined: false,
             limits: Limits::default(),
             stragglers: tools::Stragglers::default(),
             layout: tools::Layout::default(),
@@ -816,10 +812,10 @@ impl Setup {
 
         // one table, shared by the tools that declare a limit and the `/limit` that changes them
         let limits = Limits::new();
-        // note: ask only if there is a `shell` to confine. Asking is not free: finding out what
-        // Landlock accepts means applying a ruleset in a child process. It is settled once here,
-        // not per command; see the note on `Shell::confiner`. A caller that turns the built-in
-        // tools off and brings its own shell builds the confiner, so it asks.
+        // note: ask only if there is a `shell` to confine. Asking is not free: finding out whether
+        // a sandbox starts here means running a command in one. It is settled once here, not per
+        // command; see the note on `Shell::confined`. A caller that turns the built-in tools off
+        // and brings its own shell decides that for itself, so it asks.
         //
         // note: ask even if `shell` is not among the tools offered. A shelved shell can be offered
         // later and must be the same shell. Deciding from the starting list would make
@@ -832,10 +828,8 @@ impl Setup {
         let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
         let mut built: Vec<Arc<dyn nachalnik::Tool>> = Vec::new();
         if building {
-            let program =
-                std::env::current_exe().map_err(|e| format!("could not find myself: {e}"))?;
             if self.confine {
-                let probed = sandbox::available(&program);
+                let probed = sandbox::available();
                 confinement = probed.confinement;
                 unconfined_because = probed.why;
                 // note: only where the shell is confined, which `available` already folds in: the
@@ -880,11 +874,11 @@ impl Setup {
                     readable: reach.readable.clone(),
                     shell_readable: reach.shell_readable.clone(),
                     devices: self.devices,
-                    // Set the confiner only when it would actually confine anything. A binary
-                    // replaced since this one started, or a kernel without Landlock, gives a
-                    // `shell` that runs unconfined and a permissions view that says so, not a shell
-                    // whose every command fails with an error nobody can account for
-                    confiner: confinement.is_confined().then(|| program.clone()),
+                    // Confined only when it would actually confine anything. A kernel that would not
+                    // start a sandbox gives a `shell` that runs unconfined and a permissions view
+                    // that says so, not a shell whose every command fails with an error nobody can
+                    // account for
+                    confined: confinement.is_confined(),
                     limits: limits.clone(),
                     stragglers: stragglers.clone(),
                     layout: self.layout,
@@ -907,10 +901,10 @@ impl Setup {
         });
         // note: build everything, then register only what was asked for, rather than building only
         // the named tools. That makes the list a starting position: the rest are on the shelf,
-        // `/tools toggle` reaches them, and a `shell` offered later is the one the confiner above
-        // was decided for. They go on the shelf without ever being registered, because each tool
-        // registered is a `tools.changed` on the trace, and one offering a tool the settings said
-        // not to offer reads as a session that offered it.
+        // `/tools toggle` reaches them, and a `shell` offered later is the one the confinement
+        // above was decided for. They go on the shelf without ever being registered, because each
+        // tool registered is a `tools.changed` on the trace, and one offering a tool the settings
+        // said not to offer reads as a session that offered it.
         //
         // note: the policy is told about every tool, shelved or not, as it would be on a toggle:
         // a shelved tool is withdrawn rather than unknown. `Setup::check` answered for the names
@@ -1008,7 +1002,7 @@ impl Setup {
             app.kernel.finish();
         }
         // the old session's stragglers are the old session's: the fresh one has a list of its own
-        let stragglers = stragglers_at_end(app, self.leave_running);
+        let stragglers = stragglers_at_end(app);
 
         let name = app.kernel.session_name();
         let said = match self.record {
@@ -1047,27 +1041,16 @@ impl Setup {
     }
 }
 
-/// Stops what the session's commands left running, or with `leave` only names it, and returns the
-/// lines saying which.
+/// Stops what the session's commands left running, and returns the lines saying which.
 ///
-/// note: stopped by default because the session that started them is over: a server or
-/// `sleep 300 &` the model put in the background keeps running, reparented to init, with nothing
-/// left to answer its network questions or record what it did, and usually nobody asked for it to
-/// outlive anything. `--leave-running` is for a server started on purpose, and it is still told
-/// what it is leaving.
-pub fn stragglers_at_end(app: &App, leave: bool) -> Vec<String> {
-    let (commands, done) = match leave {
-        true => (
-            app.stragglers.running(),
-            "left running, as `--leave-running` asked",
-        ),
-        false => (app.stragglers.stop(), "stopped what it had left running"),
-    };
+/// note: stopped because the session that started them is over: a server or `sleep 300 &` the
+/// model put in the background would keep running, reparented to init, with nothing left to record
+/// what it did, and usually nobody asked for it to outlive anything. Nothing here can leave one
+/// running: a sandboxed command's sandbox ends its processes when this one exits.
+pub fn stragglers_at_end(app: &App) -> Vec<String> {
+    let (commands, done) = (app.stragglers.stop(), "stopped what it had left running");
     // what outlived its `SIGKILL`, said as still running rather than left out
-    let lasting = match leave {
-        true => Vec::new(),
-        false => app.stragglers.running(),
-    };
+    let lasting = app.stragglers.running();
 
     commands
         .into_iter()

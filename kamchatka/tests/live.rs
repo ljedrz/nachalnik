@@ -1124,7 +1124,7 @@ async fn agent(
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             // no Landlock: what is under test is what the tools say, and a session that cannot
             // start a confined child would report that as every one of these failing
-            confiner: None,
+            confined: false,
             limits: limits.clone(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,

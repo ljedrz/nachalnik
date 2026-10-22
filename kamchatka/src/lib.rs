@@ -91,9 +91,9 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
-// note: Linux only, on the two architectures the network gate has a filter for. The `shell` tool is
-// safe to hand to a model only because of Landlock, `openat2` beneath a directory, and the network
-// gate; all are Linux-only. Elsewhere the shell ran unconfined, with only a question read off the
+// note: Linux only, on the two architectures sandlock's seccomp filter is written for. The `shell`
+// tool is safe to hand to a model only because of Landlock, `openat2` beneath a directory, and
+// sandlock's supervisor; all are Linux-only. Elsewhere the shell ran unconfined, with only a question read off the
 // command's name. 0.15.1 is the last version that builds anywhere else.
 #[cfg(not(all(
     target_os = "linux",
@@ -111,7 +111,6 @@ pub mod check;
 pub mod clipboard;
 pub mod config;
 pub mod endpoint;
-pub mod gate;
 pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]

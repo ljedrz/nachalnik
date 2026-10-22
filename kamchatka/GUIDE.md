@@ -229,8 +229,8 @@ The line at the bottom starts with the shell, because it's the one thing on this
 negotiate with. A registered `shell` that isn't refused can read, write and use the network whatever
 the other rows say, so `shell: confined` (or `partly confined`, or `a command can do any of these`)
 is what makes the rest of the table meaningful. Where the shell is confined, after it comes
-`network gated` or `network not gated`: whether a command is asked about when it opens a socket,
-or judged by its name before it runs.
+`network gated`: a command is asked about when it tries to use the network, rather than judged by
+its name before it runs.
 
 There are four kinds of rows, and the first two are the same thing at different levels of detail. A
 **domain** is what a tool acts on (`fs`, `exec`, `context`), and an answer for a domain covers

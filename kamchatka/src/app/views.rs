@@ -670,14 +670,14 @@ impl App {
             return None;
         }
 
-        // note: the gate is shown beside the confinement because a confined shell without one
-        // differs from one with it in two ways: a UDP datagram goes out, and a command is asked
-        // about by its name rather than when it tries. Neither is shown anywhere else, so a gate
-        // that could not be installed would otherwise be degradation nobody sees.
+        // note: the gate is shown beside the confinement because it decides when a command is
+        // asked about the network: when it tries, rather than by its name before it runs. The
+        // policy is told by whoever confined the shell, and a policy nobody told still reads
+        // commands for program names, which nothing else on screen would show.
         //
         // note: a sandbox that was asked for and could not be applied is not `--no-sandbox`, which
-        // a person chose. Not in `Confinement`'s own words, which blame the kernel: a binary
-        // replaced since this one started comes back `Unavailable` too
+        // a person chose. Not in `Confinement`'s own words, which blame the kernel: a probe whose
+        // command did not run comes back `Unavailable` too
         Some(match self.confinement {
             Confinement::Full | Confinement::Partial => match self.policy.gates_the_network() {
                 true => format!("shell: {}, network gated", self.confinement),

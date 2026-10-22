@@ -392,86 +392,65 @@ fn a_termination_signal_says_it_ended_the_run() {
     }
 }
 
-/// What a command left running is stopped when the run ends, and left with `--leave-running` - and
-/// named either way.
+/// What a command left running is stopped when the run ends, and named.
 ///
 /// note: `sleep 30 &` outlived the program, reparented to init, with nothing at exit saying it was
 /// there. The job writes its identifier so the test can see which it is.
 #[tokio::test(flavor = "multi_thread")]
 async fn what_a_command_left_running_ends_with_the_run() {
-    for leave in [false, true] {
-        let dir = common::scratch(&format!("stragglers-{leave}"))
-            .canonicalize()
-            .expect("it exists");
-        let cmd = "sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
-        let base = common::endpoint(vec![
-            format!(
-                "data: {}",
-                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
-                    "tool_calls": [{"index": 0, "id": "c1", "type": "function",
-                    "function": {"name": "shell",
-                        "arguments": json!({"cmd": cmd}).to_string()}}
-                ]}, "finish_reason": "tool_calls"}]})
-            ),
-            common::answer("started it"),
+    let dir = common::scratch("stragglers")
+        .canonicalize()
+        .expect("it exists");
+    let cmd = "sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
+    let base = common::endpoint(vec![
+        format!(
+            "data: {}",
+            json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                "function": {"name": "shell",
+                    "arguments": json!({"cmd": cmd}).to_string()}}
+            ]}, "finish_reason": "tool_calls"}]})
+        ),
+        common::answer("started it"),
+    ])
+    .await;
+
+    let out = common::command()
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--auto-allow",
+            "exec:run,fs:write",
         ])
-        .await;
+        .arg("go")
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&out.stderr);
 
-        let mut command = common::command();
-        command
-            .args([
-                "--headless",
-                "--no-record",
-                "-m",
-                "nothing",
-                "--auto-allow",
-                "exec:run,fs:write",
-            ])
-            .arg("go")
-            .current_dir(&dir)
-            .env("KAMCHATKA_BASE_URL", &base)
-            .env("KAMCHATKA_API_KEY", "not-a-key")
-            .stdin(std::process::Stdio::null());
-        if leave {
-            command.arg("--leave-running");
-        }
-        let out = command.output().expect("the binary under test is built");
-        let said = String::from_utf8_lossy(&out.stderr);
-
-        let job: i32 = std::fs::read_to_string(dir.join("job.pid"))
-            .unwrap_or_else(|e| panic!("the command never ran ({e}): {said}"))
-            .trim()
-            .parse()
-            .expect("a process identifier");
-        let running = std::path::Path::new(&format!("/proc/{job}")).exists();
-        match leave {
-            true => {
-                assert!(
-                    said.contains("left running, as `--leave-running` asked"),
-                    "{said}"
-                );
-                assert!(running, "it was stopped although it was to be left: {said}");
-                let _ = std::process::Command::new("kill")
-                    .arg(job.to_string())
-                    .status();
-            }
-            false => {
-                assert!(said.contains("stopped what it had left running"), "{said}");
-                // reaped by init, which takes a moment once the signal has landed
-                let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                while std::path::Path::new(&format!("/proc/{job}")).exists()
-                    && std::time::Instant::now() < until
-                {
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                }
-                assert!(
-                    !std::path::Path::new(&format!("/proc/{job}")).exists(),
-                    "the job outlived the run: {said}"
-                );
-            }
-        }
-        assert!(said.contains(cmd), "it did not name the command: {said}");
+    let job: i32 = std::fs::read_to_string(dir.join("job.pid"))
+        .unwrap_or_else(|e| panic!("the command never ran ({e}): {said}"))
+        .trim()
+        .parse()
+        .expect("a process identifier");
+    assert!(said.contains("stopped what it had left running"), "{said}");
+    // reaped by init, which takes a moment once the signal has landed
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::path::Path::new(&format!("/proc/{job}")).exists()
+        && std::time::Instant::now() < until
+    {
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    assert!(
+        !std::path::Path::new(&format!("/proc/{job}")).exists(),
+        "the job outlived the run: {said}"
+    );
+    assert!(said.contains(cmd), "it did not name the command: {said}");
 }
 
 /// A resumed run says the parameters it is sending with, when there are any.
@@ -647,7 +626,7 @@ async fn the_first_message_waits_for_what_the_endpoint_says_about_the_model() {
 /// where no probe runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
-    let probed = kamchatka::sandbox::available(&common::program());
+    let probed = kamchatka::sandbox::available();
     if probed.confinement != kamchatka::sandbox::Confinement::Full || !probed.gated {
         eprintln!("skipped: the network gate does not hold here");
         return;
@@ -657,7 +636,7 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
             "data: {}",
             json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
                 {"index": 0, "id": "c1", "type": "function", "function": {"name": "shell",
-                 "arguments": "{\"cmd\": \"python3 -c 'import socket; socket.socket()'\"}"}}
+                 "arguments": "{\"cmd\": \"python3 -c 'import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b\\\"x\\\", (\\\"127.0.0.1\\\", 9))'\"}"}}
             ]}, "finish_reason": "tool_calls"}]})
         ),
         common::answer("refused, then"),
@@ -858,7 +837,7 @@ async fn a_run_with_no_sandbox_signals_whatever_it_can_reach() {
 async fn the_devices_the_program_is_given_are_the_shells() {
     use std::io::Write as _;
 
-    let probed = kamchatka::sandbox::available(&common::program());
+    let probed = kamchatka::sandbox::available();
     if probed.confinement != kamchatka::sandbox::Confinement::Full {
         eprintln!("skipped: this machine cannot confine a command");
         return;
@@ -922,7 +901,7 @@ async fn the_devices_the_program_is_given_are_the_shells() {
 /// stop - and it turns out there is no such turn to be had out of this program. Measured: a model
 /// that has merely gone quiet ends the run in about 200ms on one press, because the provider
 /// watches the interrupt while it waits; and a `shell` command halfway through `sleep 30` is
-/// *killed* by one press, which is the re-exec being load-bearing rather than tidy. So what is
+/// *killed* by one press, sandbox and all. So what is
 /// asserted here is what actually happens - and since an MCP call now watches the interrupt too,
 /// no tool this program ships holds a turn past one press.
 ///
@@ -1131,7 +1110,7 @@ async fn a_command_carries_the_mark_of_the_command_it_runs_inside() {
 /// rename and so hides it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_confined_command_can_move_a_file_between_directories() {
-    let probed = kamchatka::sandbox::available(&common::program());
+    let probed = kamchatka::sandbox::available();
     if probed.confinement != kamchatka::sandbox::Confinement::Full {
         eprintln!("skipped: this machine cannot confine a command");
         return;
@@ -2751,7 +2730,7 @@ async fn a_run_that_refuses_every_question_shuts_the_network_rather_than_asking(
 /// A headless run answering with `on_ask`, whose one call runs a command that opens a socket
 /// behind the gate; `None` where the gate does not hold here.
 async fn reaching_out(dir: &str, on_ask: Grant) -> Option<crate::Run> {
-    let probed = kamchatka::sandbox::available(&common::program());
+    let probed = kamchatka::sandbox::available();
     if probed.confinement != kamchatka::sandbox::Confinement::Full || !probed.gated {
         eprintln!("skipped: the network gate does not hold here");
         return None;
@@ -2761,7 +2740,12 @@ async fn reaching_out(dir: &str, on_ask: Grant) -> Option<crate::Run> {
         ModelResponse::tool_calls(vec![call(
             "c1",
             "shell",
-            json!({ "cmd": "python3 -c \"import socket; socket.socket()\"" }),
+            json!({
+                "cmd": concat!(
+                    "python3 -c \"import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM)",
+                    ".sendto(b'x', ('127.0.0.1', 9))\""
+                )
+            }),
         )]),
         ModelResponse::text("done"),
     ];
@@ -2780,7 +2764,7 @@ async fn reaching_out(dir: &str, on_ask: Grant) -> Option<crate::Run> {
                 readable: Vec::new(),
                 shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-                confiner: Some(common::program()),
+                confined: true,
                 limits: kamchatka::tools::Limits::default(),
                 stragglers: Default::default(),
                 layout: kamchatka::tools::Layout::Wrapped,

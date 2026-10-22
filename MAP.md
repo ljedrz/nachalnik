@@ -68,10 +68,9 @@ subject: `context/` (reading in `reads.rs`, changes and their history in `change
 `setup` and `fork`. Written without any change to the runtime; it decides which operations a
 *model* is allowed to do.
 
-**`sandbox/`** is the Landlock ruleset the shell runs under (`confinement.rs`) and `Reach`, what
-the in-process tools may open (`reach.rs`). Next to it, `gate.rs` is the seccomp filter that pauses
-a command's network sockets until the program answers; it's the only module in the workspace with
-`unsafe` code. Read [SECURITY.md](SECURITY.md) before changing any of them.
+**`sandbox/`** is the sandlock sandbox the shell runs each command in (`confinement.rs`: the
+roots it grants, the network it holds, the probe at startup) and `Reach`, what the in-process tools
+may open (`reach.rs`). Read [SECURITY.md](SECURITY.md) before changing either.
 
 **`wiring/`** is `Setup`, which assembles a session (subscribing to events comes before wiring, and
 `introspect::build` returns a handle the caller keeps, with tools that are registered only if the

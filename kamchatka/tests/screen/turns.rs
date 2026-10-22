@@ -891,7 +891,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: harness.app.policy.clone(),
-            confiner: Some(std::path::PathBuf::from("/self")),
+            confined: true,
             limits: Limits::default(),
             stragglers: Default::default(),
             layout: kamchatka::tools::Layout::Wrapped,
