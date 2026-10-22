@@ -188,8 +188,8 @@ impl App {
     /// The running command waiting to hear whether it may reach the network, if one is.
     ///
     /// note: the other kind of question a tool waits on, and the one the kernel knows nothing
-    /// about: it is asked while the call runs rather than before, by the gate holding the
-    /// command's first attempt at a network socket. See [`crate::gate`] and
+    /// about: it is asked while the call runs rather than before, by the sandbox holding the
+    /// command's first attempt at the network. See [`crate::tools::Shell`] and
     /// [`App::decide_reach`].
     pub fn reached(&self) -> Option<crate::tools::Reached> {
         self.policy.reaching().first()

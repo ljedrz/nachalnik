@@ -101,8 +101,8 @@ A background job started by a command (`sleep 300 &`, a server, or something det
 outlives its call, and is stopped when the session ends: `SIGTERM`, then `SIGKILL` two seconds later
 for anything still running, with a line naming the command each came from. They are found through
 `KAMCHATKA_CALL`, an environment variable every command runs with and passes on, so anything that
-clears its environment (`env -i`) is not found. `--leave-running` leaves them running, for servers
-started on purpose, and still lists them.
+clears its environment (`env -i`) is not named. A sandboxed one is ended anyway, since its sandbox
+ends with the session; nothing a sandboxed command starts outlives it.
 
 A program that stops itself (with `SIGSTOP`, or a `SIGTSTP` with no terminal to give back to) is
 waited on by the command that ran it, and so is the call: it doesn't end, and nothing says it's
@@ -732,7 +732,7 @@ let after = harness.app.kernel.preview_request().unwrap();
 assert!(!format!("{:?}", after.messages).contains("hunter2"));
 ```
 
-The rest of the program is tested without a screen: the policy, real commands in a real Landlock
+The rest of the program is tested without a screen: the policy, real commands in a real sandlock
 sandbox, sessions driven by lines and over a socket, and MCP servers. `cargo test -p kamchatka
 --no-default-features --features mcp` runs only those. `--test live` needs a key, and checks that a
 real API accepts what is sent and that a real model can act on what the tools return.
@@ -770,8 +770,9 @@ $ kamchatka --sandbox-read ~/.rustup,~/.cargo -m …
 The same goes for `~/.nvm`, `~/.pyenv`, `~/.rbenv` and the rest. Both flags take a comma-separated
 list and can be repeated: `--sandbox-write /srv/repo,/tmp/work`.
 
-**Daemons you talk to over a socket need access too**, on Linux 7.1 and later. A sandboxed command
-can only connect to a unix socket where it could have created one. The session bus, the compositor
+**Daemons you talk to over a socket need access too.** A sandboxed command can only connect to a
+unix socket where it could have created one, and only by its full path: a socket named relative to
+the command's directory is refused with `Connection refused`. The session bus, the compositor
 and container daemons all return `Permission denied` because each would run requests outside the
 sandbox. Allow the socket itself rather than its directory:
 
@@ -780,7 +781,7 @@ $ kamchatka --sandbox-write /run/docker.sock -m …
 ```
 
 Connecting counts as writing, so it's `--sandbox-write`, and `--auto-deny fs:write` removes it along
-with everything else writable. On older kernels, every socket is reachable anyway.
+with everything else writable.
 
 Abstract sockets (ones with no file, used by the X server and some session buses) created outside
 the sandbox are refused too, on Linux 6.12 and later. No flag allows them: a command can only reach
@@ -813,12 +814,11 @@ the sandbox's (`cat /etc/shadow`) gets no such note.
 
 ## 🌐 the network, when a command tries
 
-When the shell is sandboxed, network access is asked about when a command opens an internet socket,
-not based on the command's name. The sandboxed child process installs a seccomp filter after the
-Landlock rules, and the filter pauses every `socket()` or `socketpair()` call for `AF_INET` or
-`AF_INET6` - and for `AF_SMC` and `AF_RDS`, which reach the internet over TCP as well - until
-`kamchatka` answers: from `net:reach` if it says `allow` or `deny`, or by asking you if it says
-`ask`, once per command. So with `--auto-allow exec:run`, `git status` runs without a question,
+When the shell is sandboxed, network access is asked about when a command tries to use it, not
+based on the command's name. The sandbox holds every connection a command makes and every datagram
+it sends to an internet address until `kamchatka` answers: from `net:reach` if it says `allow` or
+`deny`, or by asking you if it says `ask`, once per command. Sockets of other families that reach
+beyond the machine (`AF_SMC`, `AF_RDS`, `AF_VSOCK` and the like) are refused outright. So with `--auto-allow exec:run`, `git status` runs without a question,
 while `python3 fetch.py` is asked about as soon as it does a DNS lookup, which couldn't be told
 apart from the command alone.
 
@@ -830,19 +830,19 @@ the model is told that this session refuses the network, so it doesn't try again
 sends the question to its client as `reaching`, answered with `reach`, and the browser page shows it
 in the same panel as the kernel's questions.
 
-`deny` refuses every internet socket, including UDP, which Landlock alone can't refuse. Most
-programs report a refused lookup as `Temporary failure in name resolution`, which is why the tool
-result explains it.
+`deny` refuses every connection and datagram to an internet address, UDP included. Most programs
+report a refused lookup as `Temporary failure in name resolution`, which is why the tool result
+explains it.
 
-Where the filter can't be installed (`--no-sandbox`, or a kernel that can't pause calls), the
+Where the shell isn't sandboxed (`--no-sandbox`, or a kernel the sandbox doesn't start on), the
 program judges commands by name again. A short list of programs that exist to use the network are
-asked about before they run, and UDP isn't refused. The list holds the usual network tools
+asked about before they run, and nothing else about the network is refused. The list holds the usual network tools
 (`curl`, `wget`, `ssh`, `rsync`, `dig` and the like). It also holds the tools that download what
 they install or push (`git`, `cargo`, `npm`, `pip`, `go`, `docker`, `kubectl`, the system package
 managers and the cloud command lines). They are found behind `timeout`, `env`, `sh -c` and similar
 wrappers too. An interpreter is not on the list, so `python3 fetch.py` runs without a question and
-can reach the network. The permissions tab ends a sandboxed shell's
-line with `network gated` or `network not gated`, so you can see which applies. Under `--no-sandbox`
-the line is `shell: a command can do any of these` instead.
+can reach the network. The permissions tab ends a sandboxed shell's line with `network gated`,
+and an unsandboxed one's is `shell: a command can do any of these` instead, so you can see which
+applies.
 
 [shot-web]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/web.jpg

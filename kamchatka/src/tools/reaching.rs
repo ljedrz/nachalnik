@@ -1,11 +1,11 @@
-//! The questions a running command is waiting on: it tried to open a network socket, the gate
+//! The questions a running command is waiting on: it tried to reach the network, the sandbox
 //! held the call, and somebody has to say whether it goes on.
 //!
 //! note: a queue of its own rather than a question the kernel raises, because the kernel asks
 //! every question it has in `Deciding`, before a call runs, and this one arrives while the call is
 //! running. The runtime has no state for "a tool is waiting on a person", and it should not grow
 //! one for a tool that happens to spawn processes; what it does have is `policy.ruled`, which is
-//! where the answer is written down. See [`crate::gate`] for what holds the call.
+//! where the answer is written down. See [`crate::tools::Shell`] for what holds the call.
 //!
 //! note: held by [`Careful`](super::Careful), because the two things that need it already share the
 //! policy: the shell asks through it, and the [`App`](crate::app::App) every loop drives answers

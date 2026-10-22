@@ -6,10 +6,10 @@
 # everything the user is running, including the desktop. The tests use the same signal scope as a
 # session, which prevents this on Linux 6.12 and later; this exclusion covers older kernels.
 #
-# `Sandbox::argv` builds the command the program re-runs itself with to apply the sandbox. If it is
-# empty or a single empty argument, the check a session runs at startup (`sandbox::available`)
-# starts a whole new session instead, which runs the check again, and so on: 14601 processes in a
-# few minutes during a test.
+# `Sandbox::argv` builds the arguments `--confine-and-run` takes, which the sandbox tests run the
+# program with. If it is empty or a single empty argument, each of those tests starts a whole
+# session instead of confining one command. When sessions still ran their commands this way, that
+# grew to 14601 processes in a few minutes; it stays excluded rather than finding out again.
 exclude_re = [
     'replace Stragglers::call_of -> Option<usize> with Some',
     'replace == with != in Stragglers::call_of',
