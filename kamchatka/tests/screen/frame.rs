@@ -356,6 +356,7 @@ async fn the_help_lists_the_keys_that_exist() {
 
     for form in [
         "17",
+        "10-15",
         "all",
         "all:tool_results",
         "kind:assistant_message",

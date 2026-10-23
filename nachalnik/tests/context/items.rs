@@ -159,6 +159,15 @@ fn selectors_resolve_against_real_items() {
     assert_eq!(select(&kernel, "all").len(), 8);
     assert!(select(&kernel, "file:nope.rs").is_empty());
 
+    // a range takes both ends and everything between them; numbers past the last item are no error
+    let middle = format!("{}-{}", user.0, first.0);
+    assert_eq!(
+        select(&kernel, &middle),
+        vec![user, file, memory, ext, first]
+    );
+    let past = format!("{}-{}", other.0, other.0 + 100);
+    assert_eq!(select(&kernel, &past), vec![other]);
+
     // a state names the items in it and nothing else: the one pinned, none of those still active
     kernel.set_state([memory], ContextState::Pinned, None);
     assert_eq!(select(&kernel, "state:pinned"), vec![memory]);

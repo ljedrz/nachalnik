@@ -193,8 +193,8 @@
 //! Both are off by default, because neither is part of the runtime:
 //!
 //! - `selectors`: [`selectors::Selector`], a small language for naming context items (`17`,
-//!   `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`) that resolves to [`ContextId`]s a
-//!   client can show before acting on them.
+//!   `10-15`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`) that resolves to
+//!   [`ContextId`]s a client can show before acting on them.
 //! - `test`: a scripted [`Provider`], a few dummy [`Tool`]s, off-the-shelf permission policies and
 //!   a mechanical [`Compactor`], for testing an agent without a network.
 

@@ -24,6 +24,8 @@ minor bump may break you.
   address in the attach, as `relaying`. The session believes it only from its own relay, which it
   recognises by the connection. From any other client the field is ignored, and the client is named
   by the address the session sees.
+- **`/exclude 10-15` takes items 10 to 15, both included**, and so do `/pin` and `/restore`, and
+  the model's `context` tool where it takes a `select`.
 - **`alt+tab` opens the next tab**, as `ctrl+t` does. Plain `tab` still moves the keys between the
   prompt and whatever else on the screen wants them.
 

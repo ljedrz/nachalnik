@@ -56,6 +56,7 @@ impl std::error::Error for SelectorError {}
 ///
 /// ```text
 /// 17                     the item with that identifier
+/// 10-15                  every item from 10 to 15, both included
 /// all                    every item
 /// files                  every item from that source; also: tool_results, diagnostics,
 ///                        selections, memories, instructions, system, user, model, compaction
@@ -75,6 +76,11 @@ impl std::error::Error for SelectorError {}
 pub enum Selector {
     /// A single item, by identifier.
     Id(ContextId),
+    /// Every item from the first identifier to the second, both included.
+    ///
+    /// note: the identifiers in between need not all exist; an item that was never made, or a
+    /// number the session skipped, is simply not matched.
+    Range(ContextId, ContextId),
     /// Every item, whatever its state.
     All,
     /// Every item from a given source.
@@ -109,6 +115,18 @@ impl Selector {
         }
         if input == "all" {
             return Ok(Self::All);
+        }
+        // note: only two numbers either side of one `-` are a range. Anything else with a `-` in it
+        // is a label, as it was before ranges existed: `cargo-test` still names a label
+        if let Some((from, to)) = input.split_once('-')
+            && let (Ok(from), Ok(to)) = (from.trim().parse::<u64>(), to.trim().parse::<u64>())
+        {
+            if from > to {
+                return Err(SelectorError(format!(
+                    "the range `{input}` runs backwards; the smaller number goes first: `{to}-{from}`"
+                )));
+            }
+            return Ok(Self::Range(ContextId(from), ContextId(to)));
         }
 
         let Some((prefix, rest)) = input.split_once(':') else {
@@ -195,6 +213,7 @@ impl Selector {
     pub fn matches_item(&self, item: &ContextItem) -> bool {
         match self {
             Self::Id(id) => item.id == *id,
+            Self::Range(from, to) => (*from..=*to).contains(&item.id),
             Self::All => true,
             Self::Source(source) => item.source == *source,
             Self::Kind(kind) => item.kind.name() == kind,
@@ -220,6 +239,7 @@ impl fmt::Display for Selector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Id(id) => write!(f, "{id}"),
+            Self::Range(from, to) => write!(f, "{from}-{to}"),
             Self::All => f.write_str("all"),
             Self::Source(source) => write!(f, "source:{source}"),
             Self::Kind(kind) => write!(f, "kind:{kind}"),
@@ -288,6 +308,31 @@ mod tests {
         assert_eq!(parse("17"), Selector::Id(ContextId(17)));
         assert_eq!(parse(" 8 "), Selector::Id(ContextId(8)));
         assert_eq!(parse("tool_result:1842"), Selector::Id(ContextId(1842)));
+    }
+
+    #[test]
+    fn parses_ranges() {
+        assert_eq!(
+            parse("10-15"),
+            Selector::Range(ContextId(10), ContextId(15))
+        );
+        assert_eq!(
+            parse(" 10 - 15 "),
+            Selector::Range(ContextId(10), ContextId(15))
+        );
+        assert_eq!(parse("7-7"), Selector::Range(ContextId(7), ContextId(7)));
+
+        // a `-` with anything but a number on each side is a label, as it always was
+        assert_eq!(parse("cargo-test"), Selector::Label("cargo-test".into()));
+        assert_eq!(parse("10-"), Selector::Label("10-".into()));
+        assert_eq!(parse("10-15-20"), Selector::Label("10-15-20".into()));
+        assert_eq!(parse("label:10-15"), Selector::Label("10-15".into()));
+
+        assert_eq!(
+            Selector::parse("15-10").unwrap_err().to_string(),
+            "invalid selector: the range `15-10` runs backwards; the smaller number goes first: \
+             `10-15`"
+        );
     }
 
     #[test]
@@ -376,6 +421,7 @@ mod tests {
     fn round_trips_through_display() {
         for input in [
             "17",
+            "10-15",
             "all",
             "source:file",
             "kind:tool_result",

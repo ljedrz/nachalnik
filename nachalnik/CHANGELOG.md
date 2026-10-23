@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **A selector can name a range of items**: `10-15` is every item from 10 to 15, both included, as
+  the new `Selector::Range`. Numbers in the range with no item are skipped. A range written
+  backwards, `15-10`, is refused with the right order. Anything else with a `-` in it is still a
+  label, so `cargo-test` names what it did before.
+
 ### changed
 
 - **`LinearProjector::name` says `reasoning not sent back` where it said `no reasoning`.** The

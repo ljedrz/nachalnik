@@ -200,6 +200,39 @@ async fn the_context_footer_counts_what_is_not_going_rather_than_what_is() {
     assert!(!screen.contains("2 not going"), "{screen}");
 }
 
+/// `/exclude 2-4` takes both ends and what is between them, and nothing either side.
+#[tokio::test]
+async fn a_range_takes_both_ends() {
+    let mut harness = Harness::new([]);
+    let ids: Vec<_> = ["a.rs", "b.rs", "c.rs", "d.rs", "e.rs"]
+        .into_iter()
+        .map(|path| harness.app.kernel.push(ContextItem::file(path, "x")))
+        .collect();
+
+    harness
+        .send(&format!("/exclude {}-{}", ids[1], ids[3]))
+        .await;
+
+    assert!(harness.screen().contains("3 item(s) are now excluded"));
+    let states: Vec<_> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.state)
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ContextState::Active,
+            ContextState::Excluded,
+            ContextState::Excluded,
+            ContextState::Excluded,
+            ContextState::Active,
+        ]
+    );
+}
+
 #[tokio::test]
 async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
     let mut harness = Harness::new([]);
