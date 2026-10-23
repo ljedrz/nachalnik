@@ -270,7 +270,7 @@ pub struct Context {
 }
 
 impl Context {
-    /// Builds one; see [`super::install`], which is the only caller.
+    /// Builds one; see [`super::build`], which is the only caller.
     ///
     /// note: the pinned set is made here and shared with the changing half rather than handed in.
     /// It is one tool's memory of which pins are its own, so a second holder of it could only ever

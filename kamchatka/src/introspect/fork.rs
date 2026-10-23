@@ -88,7 +88,7 @@ pub struct Fork {
 }
 
 impl Fork {
-    /// Builds one; see [`super::install`], which is the only caller, and which holds `forked`.
+    /// Builds one; see [`super::build`], which is the only caller, and which holds `forked`.
     pub(super) fn new(
         reach: Reach,
         limits: Limits,

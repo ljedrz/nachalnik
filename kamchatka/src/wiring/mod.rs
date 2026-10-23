@@ -821,6 +821,7 @@ impl Setup {
         let stragglers = tools::Stragglers::default();
         let mut unconfined_because = None;
         let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
+        let mut built: Vec<Arc<dyn nachalnik::Tool>> = Vec::new();
         if building {
             let program =
                 std::env::current_exe().map_err(|e| format!("could not find myself: {e}"))?;
@@ -874,18 +875,41 @@ impl Setup {
                 reach,
                 limits.clone(),
             ) {
-                kernel.add_tool(tool);
+                built.push(tool);
             }
         }
 
         // the handle the tools reach the kernel through, which `App` holds for the rest of the
         // session; see `introspect::install` for why it is a weak handle to something out here
         // rather than a kernel the tools hold
-        let introspect = building
-            .then(|| introspect::install(&kernel, policy.clone(), limits.clone(), self.layout));
-        for spec in kernel.tool_specs() {
-            if let Some(tool) = kernel.tool(&spec.id) {
-                policy.offers(&*tool);
+        let introspect = building.then(|| {
+            let (installed, tools) =
+                introspect::build(&kernel, policy.clone(), limits.clone(), self.layout);
+            built.extend(tools);
+            installed
+        });
+        // note: build everything, then register only what was asked for, rather than building only
+        // the named tools. That makes the list a starting position: the rest are on the shelf,
+        // `/tools toggle` reaches them, and a `shell` offered later is the one the confiner above
+        // was decided for. They go on the shelf without ever being registered, because each tool
+        // registered is a `tools.changed` on the trace, and one offering a tool the settings said
+        // not to offer reads as a session that offered it.
+        //
+        // note: the policy is told about every tool, shelved or not, as it would be on a toggle:
+        // a shelved tool is withdrawn rather than unknown. `Setup::check` answered for the names
+        // before anything was built
+        let mut shelved = std::collections::BTreeMap::new();
+        for tool in built {
+            policy.offers(&*tool);
+            let id = tool.spec().id;
+            match &self.tools {
+                Some(wanted) if !wanted.contains(&id) => {
+                    policy.withdraw(&id, true);
+                    shelved.insert(id, tool);
+                }
+                _ => {
+                    kernel.add_tool(tool);
+                }
             }
         }
         // Record the rules before anything is in the context, so a later call allowed by one of
@@ -913,6 +937,7 @@ impl Setup {
             app.earlier = installed.earlier();
         }
         app.introspect = introspect;
+        app.shelved = shelved;
         app.set_spend(self.spend);
         app.compact_target = compact_target;
         app.compact_threshold = compact_threshold;
@@ -923,23 +948,6 @@ impl Setup {
             }
         }
 
-        // note: build everything, then turn off what was not asked for, rather than building only
-        // the named tools. That makes the list a starting position: the rest are on the shelf,
-        // `/tools toggle` reaches them, and a `shell` offered later is the one the confiner above
-        // was decided for.
-        if let Some(wanted) = self.tools {
-            // `Setup::check` answered for the names before anything was built. What is left is the
-            // position itself: everything is here, and what was not asked for goes on the shelf
-            let offered: Vec<String> = app
-                .kernel
-                .tool_specs()
-                .into_iter()
-                .map(|it| it.id)
-                .collect();
-            for id in offered.iter().filter(|it| !wanted.contains(it)) {
-                app.toggle(id);
-            }
-        }
         app.refresh_full_notice();
 
         Ok(Wired {
@@ -1126,6 +1134,44 @@ mod tests {
                 "",
             )))
             .expect("the wiring failed")
+    }
+
+    /// A tool the settings leave off the starting list is never offered, not offered and then
+    /// taken off again, and it is still on the shelf for `/tools toggle`.
+    ///
+    /// note: found by starting a session with `"tools": ["context", "fork", "log", "setup"]`. Its
+    /// trace opened with `tools.changed` offering `fs`, then `fs` and `shell`, then the four asked
+    /// for, and only after the rules did the two go.
+    #[test]
+    fn a_tool_left_off_the_list_is_never_offered() {
+        let wanted = ["context".to_owned(), "log".to_owned()];
+        let mut wired = wired(Setup {
+            tools: Some(wanted.to_vec()),
+            confine: false,
+            compact: None,
+            ..Default::default()
+        });
+
+        let mut said = Vec::new();
+        while let Ok(event) = wired.events.try_recv() {
+            if let Event::ToolsChanged { tools } = event {
+                said.push(tools);
+            }
+        }
+        assert!(
+            !said.is_empty(),
+            "nothing was offered, so this checks nothing"
+        );
+        for tools in &said {
+            assert!(
+                tools.iter().all(|it| wanted.contains(it)),
+                "offered what was not asked for: {said:?}"
+            );
+        }
+        assert_eq!(wired.app.kernel.tool_ids(), wanted);
+
+        assert_eq!(wired.app.toggle("fs"), Some(true), "`fs` is on the shelf");
+        assert!(wired.app.kernel.tool("fs").is_some());
     }
 
     /// A snapshot of a session that has said something, which is what `-r` hands the wiring.
