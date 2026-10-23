@@ -337,6 +337,7 @@ the arguments, and ends with the answers.
 | <kbd>n</kbd> / <kbd>esc</kbd> | no |
 | <kbd>i</kbd> | the exact JSON, and the tool's own definition |
 | <kbd>d</kbd> | drop every call it's waiting on, and tell the model why |
+| <kbd>s</kbd> | the same, and end the turn there, as `/stop` does; the model reads why with your next message |
 
 The question does not block anything: <kbd>ctrl+t</kbd> to the context tab, read the item it is
 about, <kbd>alt+1</kbd> back, and answer. The **chat** tab turns red in the tab bar while a question

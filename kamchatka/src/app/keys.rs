@@ -647,6 +647,12 @@ impl App {
                 KeyCode::Char('y') => (Grant::Allow, false),
                 KeyCode::Char('a') => (Grant::Allow, true),
                 KeyCode::Char('n') => (Grant::Deny, false),
+                // stops the turn the command runs in, as `esc` does; `s` is the key that stops at a
+                // tool's question too
+                KeyCode::Char('s') => {
+                    self.interrupt();
+                    return;
+                }
                 _ => return,
             };
             if let Err(e) = self.decide_reach(reached.id, grant, remembered) {
@@ -734,6 +740,12 @@ impl App {
             KeyCode::Char('n') | KeyCode::Esc => Grant::Deny,
             KeyCode::Char('d') => {
                 self.drop_pending();
+                return;
+            }
+            KeyCode::Char('s') => {
+                self.stop_pending();
+                self.focus = Focus::Input;
+                self.question_scroll = 0;
                 return;
             }
             // a key that is not one of the answers does nothing. Letting a stray one type into a

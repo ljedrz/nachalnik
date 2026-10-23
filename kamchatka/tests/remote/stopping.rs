@@ -11,7 +11,7 @@ use kamchatka::{
     remote::protocol::{Command, Message},
 };
 use nachalnik::{
-    Capability, Grant, ModelResponse,
+    Capability, ModelResponse,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -186,7 +186,7 @@ async fn stopping_nothing_says_there_was_nothing_to_stop() {
 }
 
 #[tokio::test]
-async fn a_turn_resting_on_a_question_is_told_what_ends_it() {
+async fn a_turn_resting_on_a_question_is_stopped_there() {
     let script = vec![
         ModelResponse::tool_calls(vec![call("c1", "touchy", json!({}))]),
         ModelResponse::text("and on, once the question had an answer"),
@@ -227,20 +227,25 @@ async fn a_turn_resting_on_a_question_is_told_what_ends_it() {
     let Some(Message::Said { text, .. }) = heard.last() else {
         unreachable!("just matched")
     };
-    assert!(text.contains("waiting on a question"), "{text}");
+    assert!(
+        text.contains("1 call(s) dropped and the turn stopped"),
+        "{text}"
+    );
     assert!(
         !text.contains("nothing is running"),
         "a session resting on a question is not a session with nothing running"
     );
 
-    // and the question is still there, which is what makes the sentence the honest one: denying
-    // it is what ends this turn, and `/stop` has not pretended otherwise
-    peer.send(Command::Decide {
-        id: nachalnik::PermissionId(1),
-        grant: Grant::Deny,
-        remember: false,
-    })
-    .await;
+    // the question is gone, and the model was not given another turn to ask again
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(stopped)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert!(stopped.asking.is_empty(), "the question is still there");
+    assert!(!stopped.busy, "a turn was started after the stop");
 
     peer.send(Command::Submit {
         line: "/quit".to_owned(),

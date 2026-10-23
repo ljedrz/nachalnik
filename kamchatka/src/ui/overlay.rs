@@ -93,7 +93,7 @@ fn question_parts(
     // so `[y] once` is not listed beside it, which would promise a key that is not there. The one
     // key that works is named instead
     let answers = format!(
-        "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
+        "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}   [s] stop{}{}",
         until_keys(app),
         judged.join(" and "),
         match waiting > 1 {
@@ -267,7 +267,7 @@ fn reach_parts(
     let waiting = app.policy.reaching().waiting().len();
 
     let answers = format!(
-        "{}[y] this command   [a] always, for net:reach   [n] no{}",
+        "{}[y] this command   [a] always, for net:reach   [n] no   [s] stop{}",
         until_keys(app),
         match waiting > 1 {
             true => format!("\n\n{} more after this one", waiting - 1),

@@ -235,6 +235,78 @@ async fn dropping_the_pending_calls_tells_the_model_rather_than_losing_them() {
     assert!(harness.screen().contains("2 call(s) dropped"));
 }
 
+/// `s` drops the calls as `d` does, and ends the turn rather than giving the model another go.
+///
+/// note: asked for from the browser, where a model asking for one call after another could only be
+/// answered one call at a time: `/stop` said a question was not something it stopped, and `d` let
+/// the model ask again at once.
+#[tokio::test]
+async fn stopping_at_a_question_drops_the_calls_and_ends_the_turn() {
+    for stop in [Some(KeyCode::Char('s')), None] {
+        let mut harness = Harness::new([
+            ModelResponse::tool_calls(vec![
+                call("c1", "danger", json!({})),
+                call("c2", "danger", json!({})),
+            ]),
+            ModelResponse::text("carried on regardless"),
+        ]);
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
+        ));
+
+        harness.send("do something rash").await;
+        harness.settle().await;
+        assert!(
+            harness.screen().contains("[s] stop"),
+            "{}",
+            harness.screen()
+        );
+
+        match stop {
+            Some(key) => harness.answer(key).await,
+            // handed in as a line, which is how the browser's `stop` sends it
+            None => {
+                harness.app.submit("/stop").await;
+            }
+        }
+        // no `settle`: it waits for a turn to end, and the point is that none starts
+        harness.drain();
+        // asked first and directly: a turn started here runs in the background, and nothing it
+        // says has arrived yet when the context is read below
+        assert!(
+            !harness.app.busy,
+            "{stop:?}: the model was given another turn"
+        );
+
+        assert!(
+            harness.app.kernel.pending_permissions().is_empty(),
+            "{stop:?}: nothing should still be waiting"
+        );
+        let said: Vec<String> = harness
+            .app
+            .kernel
+            .items()
+            .iter()
+            .map(|item| item.content.to_text().into_owned())
+            .collect();
+        assert!(
+            !said.iter().any(|it| it.contains("carried on regardless")),
+            "{stop:?}: the model was given another turn: {said:?}"
+        );
+        // and told, with whatever is sent next
+        let request = harness.app.kernel.preview_request().unwrap();
+        let sent = format!("{:?}", request.messages);
+        assert!(sent.contains("the turn was stopped"), "{stop:?}: {sent}");
+        assert!(
+            harness
+                .screen()
+                .contains("2 call(s) dropped and the turn stopped"),
+            "{stop:?}: {}",
+            harness.screen()
+        );
+    }
+}
+
 #[tokio::test]
 async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     let mut harness = Harness::new([]);
@@ -2752,6 +2824,29 @@ async fn a_command_reaching_for_the_network_is_asked_about_where_the_prompt_was(
             .stance(&Subject::Capability(Capability::net("reach"))),
         Verdict::Ask,
         "and nothing standing was granted by a once"
+    );
+}
+
+/// `s` at a running command's network question stops the turn the command is running in, as `esc`
+/// does, rather than being a letter nothing answers to.
+#[tokio::test]
+async fn stopping_at_a_network_question_stops_the_turn() {
+    let mut harness = Harness::new(Vec::new());
+    let _asked = reaching(&harness, "c1", "curl example.com");
+    until_reached(&harness, 1).await;
+    // the command is running in a turn, which is what there is to stop
+    harness.app.busy = true;
+    assert!(
+        harness.screen().contains("[s] stop"),
+        "{}",
+        harness.screen()
+    );
+
+    harness.answer(KeyCode::Char('s')).await;
+
+    assert!(
+        harness.app.kernel.is_interrupted(),
+        "the turn was not stopped"
     );
 }
 
