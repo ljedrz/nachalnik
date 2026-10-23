@@ -129,6 +129,8 @@ minor bump may break you.
   on the screen only**, sent to no browser and no `--connect` client. Both were the first lines on
   every browser tab. They are for whoever started the program: a client knows where it
   connected, and cannot change who else can. A run with no screen prints both, as before.
+- **`/web` has no empty line between the QR code and the text under it.** The code's own white
+  border already separates them.
 
 ### removed
 

@@ -552,7 +552,7 @@ impl App {
         let code: Option<String> = None;
         let body = match code {
             Some(code) => format!(
-                "{address}\n\n{code}\n\nPoint a phone's camera at the code, or type the address. \
+                "{address}\n\n{code}\nPoint a phone's camera at the code, or type the address. \
                  The eight characters after the port are the page's key, and it refuses an \
                  address without them."
             ),
