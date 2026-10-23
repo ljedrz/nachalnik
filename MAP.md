@@ -74,7 +74,8 @@ a command's network sockets until the program answers; it's the only module in t
 `unsafe` code. Read [SECURITY.md](SECURITY.md) before changing any of them.
 
 **`wiring/`** is `Setup`, which assembles a session (subscribing to events comes before wiring, and
-`introspect::install` returns a handle the caller keeps), plus `Setup::relaunch` (`/restart`) and,
+`introspect::build` returns a handle the caller keeps, with tools that are registered only if the
+settings list them), plus `Setup::relaunch` (`/restart`) and,
 in `record.rs`, writing a session down as it goes and when it ends, and `Earlier`, the record a
 resumed session carries forward from the one before it. New setup goes in a field on `Setup`, not
 in `main.rs`.

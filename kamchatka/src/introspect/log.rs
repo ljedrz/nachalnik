@@ -105,7 +105,7 @@ pub struct Log {
 }
 
 impl Log {
-    /// Builds one; see [`super::install`], which is the only caller.
+    /// Builds one; see [`super::build`], which is the only caller.
     pub(super) fn new(reach: Reach, limits: Limits, earlier: Earlier, layout: Layout) -> Self {
         let ops = ops();
         Self {

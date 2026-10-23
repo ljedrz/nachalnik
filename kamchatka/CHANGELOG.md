@@ -28,9 +28,15 @@ minor bump may break you.
   the model's `context` tool where it takes a `select`.
 - **`alt+tab` opens the next tab**, as `ctrl+t` does. Plain `tab` still moves the keys between the
   prompt and whatever else on the screen wants them.
+- **`introspect::build`** builds the four introspection tools the way `install` does, but hands
+  them back instead of registering them, for a caller that offers only some of them.
 
 ### fixed
 
+- **A tool left off the `tools` list in a settings file is never offered.** Every built-in tool was
+  registered and the ones not on the list were taken off again after the rules were recorded, so
+  the trace opened with `tools.changed` offering `fs` and `shell` to a session told not to have
+  them. They now go straight to the shelf, where `/tools toggle` still reaches them.
 - **A note or revision left out of a fork with `without` is left out of the call that wrote it.**
   The item was taken out of the copy, but the `context` call that wrote it kept the text as its
   `content`, so a copy asked "without my note" could read the note anyway. The copy now gets that

@@ -65,44 +65,62 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 /// note: `layout` is how all four lay out their arguments, the layout `fs` and `shell` were given.
 /// A model offered two layouts in one request writes one of them wrong.
 pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: Layout) -> Installed {
+    let (installed, tools) = build(kernel, policy, limits, layout);
+    for tool in tools {
+        kernel.add_tool(tool);
+    }
+
+    installed
+}
+
+/// What [`install`] does, short of registering the tools: they are handed back for the caller to
+/// offer or keep on the shelf.
+///
+/// note: a session whose settings name a starting list registers only the tools on it. Registering
+/// all four and taking the rest off again put a `tools.changed` offering each of them at the top of
+/// the trace, for tools the session was never going to offer.
+pub fn build(
+    kernel: &Kernel,
+    policy: Arc<Careful>,
+    limits: Limits,
+    layout: Layout,
+) -> (Installed, Vec<Arc<dyn nachalnik::Tool>>) {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor), policy.clone());
     let forked = Arc::new(AtomicU64::new(0));
     let history = History::default();
     let earlier = Earlier::default();
 
-    kernel.add_tool(Arc::new(Context::new(
-        reach.clone(),
-        limits.clone(),
-        layout,
-        history.0.clone(),
-    )));
-    kernel.add_tool(Arc::new(Fork::new(
-        reach.clone(),
-        limits.clone(),
-        forked.clone(),
-        layout,
-    )));
-    kernel.add_tool(Arc::new(Log::new(
-        reach.clone(),
-        limits.clone(),
-        earlier.clone(),
-        layout,
-    )));
-    kernel.add_tool(Arc::new(Setup::new(
-        reach,
-        policy,
-        limits,
-        layout,
-        earlier.clone(),
-    )));
+    let tools: Vec<Arc<dyn nachalnik::Tool>> = vec![
+        Arc::new(Context::new(
+            reach.clone(),
+            limits.clone(),
+            layout,
+            history.0.clone(),
+        )),
+        Arc::new(Fork::new(
+            reach.clone(),
+            limits.clone(),
+            forked.clone(),
+            layout,
+        )),
+        Arc::new(Log::new(
+            reach.clone(),
+            limits.clone(),
+            earlier.clone(),
+            layout,
+        )),
+        Arc::new(Setup::new(reach, policy, limits, layout, earlier.clone())),
+    ];
 
-    Installed {
+    let installed = Installed {
         _anchor: anchor,
         forked,
         history,
         earlier,
-    }
+    };
+
+    (installed, tools)
 }
 
 /// What [`install`] hands back: the handle the tools reach the kernel through, and what their forks

@@ -66,7 +66,7 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// Builds one; see [`super::install`], which is the only caller.
+    /// Builds one; see [`super::build`], which is the only caller.
     pub(super) fn new(
         reach: Reach,
         policy: Arc<Careful>,
