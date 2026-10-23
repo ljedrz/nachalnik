@@ -1,7 +1,7 @@
 //! `log`: the record kept beside the context, what reading it costs, and the questions only an
 //! absence in it can answer.
 
-use crate::{agent, answered, answers_from, branch, offers, one_turn};
+use crate::{agent, answered, answers_from, answers_to, branch, offers, one_turn};
 use kamchatka::{introspect, tools::Careful, tools::Limits, tools::Subject};
 use nachalnik::{
     Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Verdict,
@@ -1331,7 +1331,7 @@ async fn an_empty_filter_list_is_no_filter_rather_than_a_refusal() {
     kernel.push(ContextItem::user("carry on"));
     kernel.turn().await.expect("the turn failed");
 
-    let said = answers_from(&kernel, &["log"]);
+    let said = answers_to(&kernel, &["c1", "c2", "c3"]);
     assert!(said[0].contains("match since:0"), "{}", said[0]);
     assert!(
         !said[0].contains("ids:["),

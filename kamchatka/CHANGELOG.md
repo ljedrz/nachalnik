@@ -94,6 +94,12 @@ minor bump may break you.
 
 ### changed
 
+- **A call this program's tools cannot run is refused without asking you.** A call that names no
+  operation, one the tool does not have, or an argument it does not take is answered with what is
+  wrong with it, and nobody is asked. Before, `fs` called with no `action` was put to you as needing
+  `fs:read` and `fs:write`, and the model was told the call was malformed only after you allowed
+  it. A `shell` call with no `cmd` and a `log` call with arguments it cannot read are refused the
+  same way.
 - **RUNNING.md says which commands are asked about by name** where the network cannot be gated
   (`--no-sandbox`, or a kernel that cannot pause a call). It said "a short list of programs", so
   nobody could tell that `git` and `cargo` are asked about and `python3 fetch.py` is not.

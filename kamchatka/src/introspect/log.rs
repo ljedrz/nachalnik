@@ -116,6 +116,23 @@ impl Log {
             ops,
         }
     }
+
+    /// What a call asks of the log, or why it cannot be answered.
+    fn query(&self, call: &ToolCall) -> Result<Query, String> {
+        // note: a word this tool does not have is refused by name rather than read as `read`. An
+        // absent `action` is still `read`; a model that asked to `clear` the log is told there is
+        // no such thing, not handed the log
+        let args = inner(&call.args).map_err(|misread| misread.said(Layout::of(&self.schema)))?;
+        let named = &args["action"];
+        if !named.is_null() && named.as_str() != Some("read") {
+            let named = named
+                .as_str()
+                .map_or_else(|| named.to_string(), str::to_owned);
+            return Err(unknown(&named, &actions(&self.ops)));
+        }
+
+        Query::read(&args, &self.ops)
+    }
 }
 
 #[async_trait]
@@ -144,28 +161,19 @@ impl Tool for Log {
         crate::tools::ops::advice(written, Layout::of(&self.schema))
     }
 
-    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        // note: a word this tool does not have is refused by name rather than read as `read`. An
-        // absent `action` is still `read`; a model that asked to `clear` the log is told there is
-        // no such thing, not handed the log
-        let args = match inner(&call.args) {
-            Ok(args) => args,
-            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
-        };
-        let args = &*args;
-        let named = &args["action"];
-        if !named.is_null() && named.as_str() != Some("read") {
-            let named = named
-                .as_str()
-                .map_or_else(|| named.to_string(), str::to_owned);
-            return Ok(ToolOutput::error(unknown(&named, &actions(&self.ops))));
-        }
-        let kernel = self.reach.kernel()?;
+    /// note: what `invoke` refuses before it reads the log, so a call that could never be answered
+    /// is not put to somebody to allow first.
+    fn malformed(&self, call: &ToolCall) -> Option<String> {
+        self.query(call).err()
+    }
 
-        let query = match Query::read(args, &self.ops) {
+    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        let query = match self.query(call) {
             Ok(query) => query,
             Err(e) => return Ok(ToolOutput::error(e)),
         };
+        let kernel = self.reach.kernel()?;
+
         // taken before the session lock rather than inside it: the closure below must not call back
         // into the kernel, and `counter()` is a call into the kernel
         let counter = kernel.counter();

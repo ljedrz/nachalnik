@@ -3212,6 +3212,51 @@ async fn the_question_names_every_action_its_answer_covers() {
     assert!(row.contains("fs: read, glob, grep"), "{row}");
 }
 
+/// A call `fs` could not run whatever the answer is refused without a question, and the model is
+/// told why.
+///
+/// note: found in a session, as `fs wants: fs:read (read, glob, grep), fs:write (write, edit)` for
+/// a call that named no operation. Answering it `y` only got the model told the call was
+/// malformed.
+#[tokio::test]
+async fn a_malformed_call_is_not_put_to_anybody() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fs",
+            json!({ "call": { "path": "Cargo.toml" } }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    for tool in crate::common::builtin_under(
+        &crate::common::scratch("malformed"),
+        true,
+        harness.app.limits.clone(),
+        harness.app.policy.clone(),
+    ) {
+        harness.app.policy.offers(&*tool);
+        harness.app.kernel.add_tool(tool);
+    }
+
+    harness.send("read it").await;
+    harness.settle().await;
+    harness.drain();
+
+    let screen = harness.screen();
+    assert!(!screen.contains("fs wants"), "{screen}");
+    assert!(harness.app.kernel.pending_permissions().is_empty());
+    let told: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("no `action`"), "{}", told[0]);
+}
+
 /// A rule about a whole domain names what it lets run the way a rule about one operation does:
 /// the actions of a tool that has several, and the name of a tool that has one.
 ///

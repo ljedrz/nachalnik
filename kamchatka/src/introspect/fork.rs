@@ -133,20 +133,19 @@ impl Tool for Fork {
         crate::tools::ops::advice(written, Layout::of(&self.schema))
     }
 
+    fn malformed(&self, call: &ToolCall) -> Option<String> {
+        super::malformed(call, &self.schema, &self.ops)
+    }
+
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
-        let args = match inner(&call.args) {
-            Ok(args) => args,
-            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
-        };
-        let args = &*args;
-
-        let action = action(args)?;
-        if let Some(refusal) = crate::tools::ops::unread(action, args, &self.ops) {
+        if let Some(refusal) = self.malformed(call) {
             return Ok(ToolOutput::error(refusal));
         }
-        match action {
+        let args = inner(&call.args).map_err(|misread| misread.said(Layout::of(&self.schema)))?;
+        let args = &*args;
+        match action(args)? {
             "draft" => {
                 branch(
                     &kernel,

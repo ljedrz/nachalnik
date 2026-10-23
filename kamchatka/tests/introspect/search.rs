@@ -1,7 +1,7 @@
 //! `context search`: finding text in what is being carried, what is excluded included, without
 //! paying to carry it again.
 
-use crate::{agent, answered, answers_from, one_turn};
+use crate::{agent, answered, answers_from, answers_to, one_turn};
 use nachalnik::{ContextItem, ContextKind, ContextState, test::call};
 use serde_json::json;
 use std::sync::Arc;
@@ -582,7 +582,7 @@ async fn the_edges_of_a_search_and_a_filter_do_not_panic() {
 
     kernel.turn().await.expect("the turn failed");
 
-    let said = answers_from(&kernel, &["context", "log"]);
+    let said = answers_to(&kernel, &["c1", "c2", "c3", "c4", "c5"]);
     let found = &said[0];
     assert!(found.contains("4 line(s) say `needle`"), "{found}");
     // the window kept the match and said it had trimmed the front

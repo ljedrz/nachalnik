@@ -564,3 +564,46 @@ async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
         );
     }
 }
+
+/// A call none of the four could run is refused by its tool before anybody is asked, and a call it
+/// can run is not.
+///
+/// note: `log` reads its arguments through a query of its own rather than the check the other
+/// three share, so it is here beside them rather than left to whichever of them was tested.
+#[test]
+fn a_call_none_of_them_could_run_is_refused_before_it_is_asked() {
+    let (kernel, _provider, _anchor) = agent([]);
+    for (tool, wrong, right) in [
+        (
+            "context",
+            json!({ "path": "x" }),
+            json!({ "action": "budget" }),
+        ),
+        (
+            "fork",
+            json!({ "action": "fly" }),
+            json!({ "action": "draft" }),
+        ),
+        (
+            "log",
+            json!({ "action": "read", "take": "all" }),
+            json!({ "action": "read" }),
+        ),
+        (
+            "setup",
+            json!({ "action": "model", "path": "x" }),
+            json!({ "action": "model" }),
+        ),
+    ] {
+        let held = kernel.tool(tool).expect("installed");
+        assert!(
+            held.malformed(&call("c1", tool, wrong.clone())).is_some(),
+            "{tool}: {wrong} was not refused"
+        );
+        assert_eq!(
+            held.malformed(&call("c1", tool, right.clone())),
+            None,
+            "{tool}: {right} was refused"
+        );
+    }
+}

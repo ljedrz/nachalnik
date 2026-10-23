@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### added
 
+- **`Tool::malformed`**: a tool can say a call cannot be run whatever anybody answers, from its
+  arguments alone - no operation named, an operation it does not have, an argument it does not
+  take. The kernel then answers the call with that as an error, before the policy is asked, and no
+  permission is requested. The default finds nothing wrong, so existing tools are asked about as
+  before. Such a call's result is recorded as the calls are prepared, ahead of the results of the
+  calls that run, as an unparsed call's already is.
 - **A selector can name a range of items**: `10-15` is every item from 10 to 15, both included, as
   the new `Selector::Range`. Numbers in the range with no item are skipped. A range written
   backwards, `15-10`, is refused with the right order. Anything else with a `-` in it is still a
