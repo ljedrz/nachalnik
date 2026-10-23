@@ -119,17 +119,6 @@ fn question_parts(
     .map(Line::raw)
     .collect();
     head.extend(rating(app, &request, columns));
-    // and why the list above is every operation the tool has, where that is because the call did
-    // not say which one it wanted. It goes in the pinned region with the rating, for the same
-    // reason: it explains the question, and a line explaining the question is no use below the fold
-    // of the arguments it is about
-    if let Some(widened) = app.widened(&request) {
-        head.extend(
-            wrapped(&widened, columns, "")
-                .into_iter()
-                .map(|line| Line::from(Span::styled(line, Style::default().fg(Color::Yellow)))),
-        );
-    }
     // the one blank line under the header, whether or not there is a rating in it
     head.push(Line::default());
     // the arguments, and then what the ones naming context items actually are. The context tab is

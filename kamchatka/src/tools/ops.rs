@@ -14,7 +14,7 @@
 
 use std::borrow::Cow;
 
-use nachalnik::{PermissionRequest, ToolCall, ToolSpec};
+use nachalnik::ToolCall;
 use serde_json::{Map, Value, json};
 
 /// Every one of these tools takes one property, `call`, with the operation inside it.
@@ -224,8 +224,8 @@ pub(crate) fn schema(ops: &[Op], layout: Layout) -> Value {
         }
         // note: no `type` beside `anyOf`; every branch says `object` already. With one there,
         // `nex-agi/nex-n2.5-mini` and `nvidia/nemotron-3-super-120b-a12b` write the operation's
-        // name into the wrapper - `{"call": "read", "path": ...}` - naming no operation and judged
-        // against all of them. Without it, `xiaomi/mimo-v2.6-flash` writes the call as a string of
+        // name into the wrapper - `{"call": "read", "path": ...}` - naming no operation, which is
+        // refused. Without it, `xiaomi/mimo-v2.6-flash` writes the call as a string of
         // JSON, and `inner` reads that
         several => json!({
             "description": ABOUT,
@@ -604,7 +604,7 @@ pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, Misread> {
         Some(it) if it.is_object() => Cow::Borrowed(it),
         Some(Value::String(written)) => match serde_json::from_str::<Value>(written) {
             Ok(parsed) if parsed.is_object() => Cow::Owned(parsed),
-            _ => return Err(Misread::Text(written.chars().take(SHOWN).collect())),
+            _ => return Err(Misread::Text(written.to_owned())),
         },
         _ => return Ok(Cow::Borrowed(args)),
     };
@@ -627,7 +627,7 @@ pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, Misread> {
 pub(crate) enum Misread {
     /// Arguments that never parsed, as they arrived under [`UNPARSED`].
     Unparsed(String),
-    /// A [`WRAPPER`] holding text that is not a JSON object: the start of that text.
+    /// A [`WRAPPER`] holding text that is not a JSON object: that text.
     Text(String),
     /// Arguments inside [`WRAPPER`] and beside it: the names of the ones beside it.
     Both(Vec<String>),
@@ -643,16 +643,29 @@ impl Misread {
     pub(crate) fn said(&self, layout: Layout) -> String {
         match (self, layout) {
             (Self::Unparsed(written), _) => unreadable(written, layout),
-            (Self::Text(written), Layout::Flat) => format!(
-                "`{WRAPPER}` arrived as text, and this tool takes no `{WRAPPER}`; nothing was read \
-                 and nothing was done. What was in it was `{written}`. Send the call again with \
-                 every argument at the top level, beside `action`: `{{\"action\": ...}}`."
-            ),
-            (Self::Text(written), _) => format!(
-                "`{WRAPPER}` arrived as text rather than as an object, and nothing was read and \
-                 nothing was done. What was in it was `{written}`. Send the call again, with \
-                 `{WRAPPER}` an object: `{{\"{WRAPPER}\": {{\"action\": ...}}}}`."
-            ),
+            // note: where the text stops being JSON, shown there, as `unreadable` does for a payload
+            // that never parsed. A model whose own call markup leaks into the arguments sends
+            // `{"call": "{\"action\": ... </arg_key>"}`, and shown only the start of it, sent the
+            // next call the same way
+            (Self::Text(written), Layout::Flat) => {
+                let (why, at, rule) = fault(written, layout, 0);
+                format!(
+                    "`{WRAPPER}` arrived as text, and this tool takes no `{WRAPPER}`; nothing was \
+                     read and nothing was done. What was in it{why} was `{}`. Send the call again \
+                     with every argument at the top level, beside `action`: \
+                     `{{\"action\": ...}}`{rule}.",
+                    around(written, at, SHOWN)
+                )
+            }
+            (Self::Text(written), _) => {
+                let (why, at, rule) = fault(written, layout, 0);
+                format!(
+                    "`{WRAPPER}` arrived as text rather than as an object, and nothing was read and \
+                     nothing was done. What was in it{why} was `{}`. Send the call again, with \
+                     `{WRAPPER}` an object: `{{\"{WRAPPER}\": {{\"action\": ...}}}}`{rule}.",
+                    around(written, at, SHOWN)
+                )
+            }
             (Self::Both(beside), Layout::Flat) => format!(
                 "arguments inside `{WRAPPER}` and beside it ({}), and nothing was done. This tool \
                  takes no `{WRAPPER}`: every argument goes at the top level, beside `action`, and \
@@ -694,119 +707,43 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
     actions(ops).contains(&named.as_str()).then_some(named)
 }
 
-/// Why a question is about everything a tool does: the call did not say which operation it wanted.
+/// More to say about a call whose `action` names none of `ops`, beyond that it does not: which
+/// operation it is with the next argument run into it, or what the call held where an `action`
+/// goes. Empty where there is nothing more; otherwise a sentence of its own, a space in front.
 ///
-/// note: [`action_of`] answering `None` is not a silent fallback. It widens what the call declares
-/// to every capability the tool has, which is the strictest reading of a call nobody can place and
-/// the right one. This adds somebody saying so. A session started with `--auto-allow fs:read` is
-/// then asked about `fs:write` as well, the rule it was given matches nothing, and with nobody at
-/// the prompt the refusal reads `this call was refused when it was asked about`. That sends a model
-/// looking for a different *approach* when what is wrong is the shape of the call it just made.
-///
-/// note: only for a tool whose schema is laid out the way this module lays one out - arguments
-/// under [`WRAPPER`], or an `action` with an `enum` of the operations at the top level - because
-/// that is the convention the sentence is about. Read the tool's own schema rather than a list of
-/// names kept here: a tool that takes no `action` may declare several capabilities for reasons of
-/// its own, and telling its caller that such a call named no operation would invent a vocabulary it
-/// never claimed.
-pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) -> Option<String> {
-    let properties = &spec.schema["properties"];
-    let layout = match properties.get(WRAPPER) {
-        Some(_) => Layout::Wrapped,
-        None if properties["action"]["enum"].is_array() => Layout::Flat,
-        None => return None,
-    };
-
-    // note: the operations from the schema, not the capabilities. `fs` has five operations and
-    // two subjects, so its capabilities name `write` and not `edit`
-    let ops: Vec<&str> = offered(&spec.schema);
-    if spec.capabilities.len() < 2 || request.capabilities != spec.capabilities {
-        return None;
-    }
-
-    // note: arguments a model wrote under `_unparsed` that never parsed are reported as unparsed,
-    // with what arrived; ones a provider could not parse never reach a policy. A policy that
-    // refuses the widened call is answered before the tool is handed it, so the tool's own sentence
-    // about them is never read. "names no operation" beside `{"call":` does not look like a call
-    // naming nothing to whoever wrote it, and it was sent again unchanged, over and over
-    if let Some(written) = unparsed(&request.args) {
-        // note: the error gives what is wrong and where to look, as `unreadable` gives them. A
-        // model told only that it was not JSON and shown the end of the payload has nothing to
-        // change if the fault is in the middle - such as a `\(` in a pattern - and sends the same
-        // call again
-        let (why, at, rule) = fault(written, layout, written.len());
-        return Some(format!(
-            "the arguments were not JSON{why} - what arrived there was `{}` - so no operation \
-             could be read from them, and the call is judged against all {} `{}` has; send it \
-             again as one JSON object{rule}",
-            around(written, at, SHOWN),
-            ops.len(),
-            spec.id
-        ));
-    }
-
-    // note: the same for a `call` that arrived as text the tool cannot read as an object. A model
-    // whose own call markup leaks into the arguments sends `{"call": "{\"action\": ... </arg_key>"}`,
-    // and told only that it named no operation it sends the next call the same way
-    if let Some(Value::String(written)) = request.args.get(WRAPPER)
-        && !matches!(serde_json::from_str::<Value>(written), Ok(Value::Object(_)))
-    {
-        let (why, at, rule) = fault(written, layout, 0);
-        let again = match layout {
-            Layout::Flat => format!(
-                "with every argument at the top level, since this tool takes no `{WRAPPER}`"
+/// note: what a model can act on. Told only that `read<arg_key>path` is not an operation, a model
+/// whose call format is a list of keys and values sent the same call over and over; told only that
+/// there was no `action`, one that put its arguments a level too deep did not see where they went.
+/// `given` is the arguments as they arrived and `args` as [`inner`] read them.
+pub(crate) fn unplaced(given: &Value, args: &Value, ops: &[&str]) -> String {
+    match &args["action"] {
+        Value::String(action) => match prefix(action, ops) {
+            Some(op) => format!(
+                " It is `{op}` with `{}` after it, which belongs in arguments of its own: send \
+                 `action` as `{op}` alone.",
+                around(&action[op.len()..], 0, SHOWN)
             ),
-            _ => format!("with `{WRAPPER}` an object"),
-        };
-        return Some(format!(
-            "`{WRAPPER}` arrived as text that is not a JSON object{why} - what arrived there was \
-             `{}` - so no operation could be read from it, and the call is judged against all {} \
-             `{}` has; send it again {again}{rule}",
-            around(written, at, SHOWN),
-            ops.len(),
-            spec.id
-        ));
+            None => String::new(),
+        },
+        Value::Null => {
+            let keys: Vec<String> = args
+                .as_object()
+                .map(|it| it.keys().map(|key| format!("`{key}`")).collect())
+                .unwrap_or_default();
+            match (keys.is_empty(), given.get(WRAPPER).is_some()) {
+                (true, _) => String::new(),
+                (false, true) => format!(
+                    " Its `{WRAPPER}` holds {} and no `action`.",
+                    keys.join(", ")
+                ),
+                (false, false) => format!(
+                    " Its arguments are {}, and none of them is `action`.",
+                    keys.join(", ")
+                ),
+            }
+        }
+        _ => String::new(),
     }
-
-    // the same reading the tool will do, so that a call this cannot place is one the tool could
-    // not place either
-    let args = inner(&request.args).ok();
-    let named = args
-        .as_ref()
-        .and_then(|args| args["action"].as_str().map(str::to_owned));
-    let why = match named {
-        Some(action) if ops.contains(&action.as_str()) => return None,
-        // note: an operation's name with more after it is what a model whose call format is a
-        // list of keys and values sends when it slips into that format after `action`. Told only
-        // that the name is not an operation, it sent the same call over and over
-        Some(action) if let Some(op) = prefix(&action, &ops) => format!(
-            "`{action}` is not one of the {} operations `{}` has, so the call is judged against \
-             all of them; it is `{op}` with `{}` after it, which belongs in arguments of its own: \
-             send `action` as `{op}` alone",
-            ops.len(),
-            spec.id,
-            around(&action[op.len()..], 0, SHOWN)
-        ),
-        Some(action) => format!(
-            "`{action}` is not one of the {} operations `{}` has, so the call is judged against \
-             all of them",
-            ops.len(),
-            spec.id
-        ),
-        // what it held instead, which is the thing to fix: arguments one level too deep read as
-        // a call with no `action`, and naming the key they are under says where they went
-        None => format!(
-            "the call names no operation{}, so it is judged against all {} `{}` has",
-            held(&request.args, args.as_deref()),
-            ops.len(),
-            spec.id
-        ),
-    };
-
-    Some(format!(
-        "{why} - a rule about one of them, like `{}`, does not answer it",
-        spec.capabilities[0]
-    ))
 }
 
 /// The longest of `ops` that `action` begins with, where what follows it cannot continue a name.
@@ -819,31 +756,6 @@ fn prefix<'a>(action: &str, ops: &[&'a str]) -> Option<&'a str> {
             })
         })
         .max_by_key(|op| op.len())
-}
-
-/// What a call that named no operation held where its arguments go, for saying so.
-fn held(given: &Value, args: Option<&Value>) -> String {
-    let keys: Vec<String> = args
-        .and_then(Value::as_object)
-        .map(|it| it.keys().map(|key| format!("`{key}`")).collect())
-        .unwrap_or_default();
-    let place = match given.get(WRAPPER).is_some() {
-        true => format!("its `{WRAPPER}` holds"),
-        false => "its arguments are".to_owned(),
-    };
-    // an `action` that is there and is not a name - an object or a list, which is what a call
-    // written in some other syntax arrives as - is said to be what it is: "holds `action` and no
-    // `action`" is the one reading of it that cannot be acted on
-    let what = match args.and_then(|args| args.get("action")) {
-        Some(Value::String(_)) | None => {
-            return match keys.is_empty() {
-                true => String::new(),
-                false => format!(" - {place} {} and no `action`", keys.join(", ")),
-            };
-        }
-        Some(other) => super::what(other),
-    };
-    format!(" - its `action` is {what} rather than the name of one")
 }
 
 /// What is wrong with the arguments a call gave, if anything: an argument the operation it named
@@ -927,8 +839,6 @@ pub(crate) fn offered(schema: &Value) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    use nachalnik::Capability;
-
     use super::*;
 
     fn ops() -> Vec<Op> {
@@ -1259,231 +1169,67 @@ mod tests {
         assert_eq!(one["properties"][WRAPPER]["type"], json!("object"));
     }
 
-    /// A call nobody can place is one the question says so about, and a call that names its
-    /// operation is left alone.
-    ///
-    /// note: the cases it stays silent about matter as much. A sentence on every question is a
-    /// sentence nobody reads, and this one is only true of a call that did not say which operation
-    /// it wanted - which a wrapper written as text has, since [`inner`] reads through one. What is
-    /// left is arguments that name nothing and arguments that never parsed.
+    /// A call whose `action` names no operation is told what it is instead, where that is
+    /// something a model can act on, and nothing more where it is not.
     #[test]
-    fn a_call_that_names_no_operation_says_so() {
-        let ops = ops();
-        let spec = ToolSpec::new("fs", "the filesystem")
-            .with_schema(std::sync::Arc::new(schema(&ops, Layout::Wrapped)))
-            .with_capabilities(
-                actions(&ops)
-                    .into_iter()
-                    .map(Capability::fs)
-                    .collect::<Vec<_>>(),
-            );
-        let asking = |args| PermissionRequest {
-            id: nachalnik::PermissionId(1),
-            call: nachalnik::ToolCallId("c1".to_owned()),
-            tool: "fs".to_owned(),
-            capabilities: spec.capabilities.clone(),
-            args: std::sync::Arc::new(args),
-        };
+    fn a_call_that_names_no_operation_is_told_what_it_held() {
+        let ops = ["read", "glob", "grep", "write", "edit"];
+        let read = |given: Value| unplaced(&given, &inner(&given).expect("read"), &ops);
 
-        assert_eq!(
-            unnamed_operation(
-                &spec,
-                &asking(json!({ WRAPPER: { "action": "read", "path": "x" } }))
-            ),
-            None,
-            "a call that placed itself is judged by one capability and needs no sentence"
-        );
-
-        assert_eq!(
-            unnamed_operation(&spec, &asking(json!({ WRAPPER: "{\"action\": \"read\"}" }))),
-            None,
-            "a wrapper written as text is read through, so the call it holds placed itself"
-        );
-
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "path": "x" } })))
-            .expect("arguments that name no operation are a call nobody can place");
-        assert!(said.contains("names no operation"), "{said}");
+        // arguments with no `action` among them, inside the wrapper and at the top level
+        let said = read(json!({ WRAPPER: { "path": "x" } }));
+        assert_eq!(said, " Its `call` holds `path` and no `action`.");
+        let said = read(json!({ "path": "x" }));
         assert!(
-            said.contains("`fs:read`"),
-            "and says what a rule that would have answered looks like: {said}"
-        );
-
-        let said = unnamed_operation(
-            &spec,
-            &asking(json!({ WRAPPER: { "action": { "action": "read" }, "path": "x" } })),
-        )
-        .expect("an `action` that is not a name places nothing");
-        assert!(
-            said.contains("its `action` is an object"),
-            "and says what it is, rather than that there is none: {said}"
-        );
-        let said = unnamed_operation(
-            &spec,
-            &asking(json!({ WRAPPER: { "action": ["read", "read"], "path": "x" } })),
-        )
-        .expect("nor does a list of them");
-        assert!(said.contains("its `action` is a list"), "{said}");
-        // in the words every other refusal names a value's kind in
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": true } })))
-            .expect("nor does a yes");
-        assert!(
-            said.contains(&format!(
-                "its `action` is {}",
-                super::super::what(&json!(true))
-            )),
+            said.contains("`path`, and none of them is `action`"),
             "{said}"
         );
-
-        let said = unnamed_operation(
-            &spec,
-            &asking(json!({ UNPARSED: "{\"call\": {\"action\"" })),
-        )
-        .expect("arguments that never parsed name nothing either");
-        assert!(said.contains("not JSON"), "{said}");
-        assert!(
-            said.contains("`{\"call\": {\"action\"`"),
-            "and it says what arrived, which is the thing to fix: {said}"
-        );
-        // and so does a `call` written as text that does not parse, which is what a model's own
-        // call markup leaking into the arguments arrives as
-        let leaked = "{\"action\": \"grep\", \"pattern</arg_key><arg_value>fn x";
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: leaked })))
-            .expect("a wrapper that does not parse places nothing");
-        assert!(said.contains("not a JSON object"), "{said}");
-        assert!(said.contains("EOF while parsing"), "{said}");
-        assert!(
-            said.contains("</arg_key><arg_value>"),
-            "and it says what arrived, which is the thing to fix: {said}"
-        );
-        // and the fault is named and shown where it is, not only the end of what arrived
-        let escaped = format!(
-            "{{\"call\": {{\"action\": \"grep\", \"pattern\": \"problems\\(\", \"path\": \"{}\"}}}}",
-            "x".repeat(300)
-        );
-        let said = unnamed_operation(&spec, &asking(json!({ UNPARSED: escaped })))
-            .expect("arguments that never parsed name nothing");
-        assert!(said.contains("invalid escape"), "{said}");
-        assert!(
-            said.contains("problems\\("),
-            "and it shows the fault: {said}"
-        );
-        assert!(
-            said.contains("every backslash inside a string written twice, as `\\\\`"),
-            "and the rule it broke, which the position alone does not give: {said}"
-        );
-        // and an action written bare where its object goes is shown in it
-        let said = unnamed_operation(
-            &spec,
-            &asking(json!({ UNPARSED: "{\"call\": read, \"path\": \"x\"}" })),
-        )
-        .expect("arguments that never parsed name nothing");
-        assert!(
-            said.contains("`{\"call\": {\"action\": \"read\", ...}}`"),
-            "{said}"
-        );
-        // and a call the model wrapped in that key itself names its operation, which is read
-        // through it
-        assert_eq!(
-            unnamed_operation(
-                &spec,
-                &asking(json!({ UNPARSED: "{\"call\": {\"action\": \"read\"}}" })),
-            ),
-            None
-        );
-
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "fly" } })))
-            .expect("`fly` is not one of these");
-        assert!(said.contains("`fly` is not one of the"), "{said}");
+        assert_eq!(read(json!({})), "", "nothing held, nothing to say");
 
         // an operation with the next argument written into it, in the model's own markup, is
         // said to be that operation with the rest after it
-        let said = unnamed_operation(
-            &spec,
-            &asking(json!({
-                "action": "read<arg_key>from</arg_key><arg_value>658",
-                "path": "x"
-            })),
-        )
-        .expect("the action is not an operation");
+        let said = read(json!({
+            "action": "read<arg_key>from</arg_key><arg_value>658",
+            "path": "x"
+        }));
         assert!(
-            said.contains("it is `read` with `<arg_key>from</arg_key><arg_value>658` after it"),
+            said.contains("It is `read` with `<arg_key>from</arg_key><arg_value>658` after it"),
             "{said}"
         );
         assert!(said.contains("send `action` as `read` alone"), "{said}");
-        // and a name that merely begins with one is not taken for it
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "reader" } })))
-            .expect("`reader` is not one of these");
-        assert!(!said.contains("after it"), "{said}");
-
-        // one operation cannot be widened to, and a tool that takes no wrapper is not this
-        // convention, so neither gets a sentence about it
-        let one = ToolSpec::new("shell", "runs things")
-            .with_schema(std::sync::Arc::new(schema(
-                &[Op::new("run", "runs it", vec![])],
-                Default::default(),
-            )))
-            .with_capabilities(vec![Capability::exec("run")]);
-        assert_eq!(unnamed_operation(&one, &asking(json!({}))), None);
-
-        // and a call whose `needs` answered for less than the whole tool is not one nobody could
-        // place, whatever its arguments look like
-        let asking_for = |capabilities: Vec<Capability>, args| PermissionRequest {
-            id: nachalnik::PermissionId(1),
-            call: nachalnik::ToolCallId("c1".to_owned()),
-            tool: "fs".to_owned(),
-            capabilities,
-            args: std::sync::Arc::new(args),
-        };
-        assert_eq!(
-            unnamed_operation(
-                &spec,
-                &asking_for(
-                    vec![Capability::fs("read")],
-                    json!({ WRAPPER: { "path": "x" } })
-                ),
-            ),
-            None,
-            "and a rule did match, so the widening the call brought is not what is being judged"
-        );
-
-        let flat = ToolSpec::new("fs", "the filesystem")
-            .with_schema(std::sync::Arc::new(json!({ "type": "object" })))
-            .with_capabilities(spec.capabilities.clone());
-        assert_eq!(unnamed_operation(&flat, &asking(json!({}))), None);
+        // and a name that merely begins with one is not taken for it, nor is a name it is not
+        assert_eq!(read(json!({ "action": "reader" })), "");
+        assert_eq!(read(json!({ "action": "fly" })), "");
+        // and an `action` that is not a name is the tool's to say, in the words it says that in
+        assert_eq!(read(json!({ "action": ["read"] })), "");
     }
 
-    /// A flat tool has no `call` to put arguments in. It is told so when its call names no
-    /// operation, and when a `call` it was never given arrives.
+    /// A `call` written as text that does not parse says where it stops, and shows that part.
+    ///
+    /// note: what a model's own call markup leaking into the arguments arrives as. Shown only the
+    /// start of it, a model sent the next call the same way.
     #[test]
-    fn a_flat_tool_says_a_call_named_no_operation() {
-        let ops = ops();
-        let spec = ToolSpec::new("fs", "the filesystem")
-            .with_schema(std::sync::Arc::new(schema(&ops, Layout::Flat)))
-            .with_capabilities(
-                actions(&ops)
-                    .into_iter()
-                    .map(Capability::fs)
-                    .collect::<Vec<_>>(),
-            );
-        let asking = |args| PermissionRequest {
-            id: nachalnik::PermissionId(1),
-            call: nachalnik::ToolCallId("c1".to_owned()),
-            tool: "fs".to_owned(),
-            capabilities: spec.capabilities.clone(),
-            args: std::sync::Arc::new(args),
-        };
-
-        let said = unnamed_operation(&spec, &asking(json!({ "path": "x" })))
-            .expect("a flat call that names no operation is one nobody can place");
-        assert!(said.contains("names no operation"), "{said}");
-        assert!(said.contains("`fs:read`"), "{said}");
-
-        // a `call` that is text and not an object is told to go at the top level, not inside `call`
-        let written = "{\"action\": \"read\", \"path";
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: written })))
-            .expect("a wrapper that does not parse places nothing");
+    fn a_wrapper_that_does_not_parse_says_where_it_stops() {
+        let leaked = "{\"action\": \"grep\", \"pattern</arg_key><arg_value>fn x";
+        for layout in [Layout::Wrapped, Layout::Flat] {
+            let said = inner(&json!({ WRAPPER: leaked }))
+                .expect_err("that is not a call")
+                .said(layout);
+            assert!(said.contains("EOF while parsing"), "{said}");
+            assert!(said.contains("</arg_key><arg_value>"), "{said}");
+        }
+        // and a fault past the first characters is shown where it is
+        let escaped = format!(
+            "{{\"action\": \"grep\", \"path\": \"{}\", \"pattern\": \"problems\\(\"}}",
+            "x".repeat(300)
+        );
+        let said = inner(&json!({ WRAPPER: escaped }))
+            .expect_err("that is not a call")
+            .said(Layout::Wrapped);
+        assert!(said.contains("invalid escape"), "{said}");
+        assert!(said.contains("problems\\("), "{said}");
         assert!(
-            said.contains("with every argument at the top level, since this tool takes no `call`"),
+            said.contains("every backslash inside a string written twice"),
             "{said}"
         );
     }

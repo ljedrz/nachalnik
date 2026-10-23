@@ -39,7 +39,7 @@ use serde_json::{Value, json};
 use crate::{
     tools::{
         Careful, Layout, Limits,
-        ops::{Op, actions, inner, unread},
+        ops::{Op, actions, inner, unplaced, unread},
     },
     wiring::Earlier,
 };
@@ -310,13 +310,19 @@ fn malformed(call: &ToolCall, schema: &Value, ops: &[Op]) -> Option<String> {
         Ok(args) => args,
         Err(misread) => return Some(misread.said(Layout::of(schema))),
     };
+    let known = actions(ops);
+    // what the call held instead of an operation, or which one it is with something run into it
+    let more = unplaced(&call.args, &args, &known);
+    let and_more = |said: String| match more.is_empty() {
+        true => said,
+        false => format!("{said}.{more}"),
+    };
     let action = match action(&args) {
         Ok(action) => action,
-        Err(e) => return Some(e.to_string()),
+        Err(e) => return Some(and_more(e.to_string())),
     };
-    let known = actions(ops);
     if !known.contains(&action) {
-        return Some(unknown(action, &known));
+        return Some(and_more(unknown(action, &known)));
     }
 
     unread(action, &args, ops)

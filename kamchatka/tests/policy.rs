@@ -540,48 +540,52 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     );
 }
 
-/// A call to one of this program's own tools whose arguments cannot be read is not asked about:
-/// it goes to the tool, which says what is wrong and runs nothing.
+/// A call to one of this program's own tools whose arguments cannot be read is refused by the tool
+/// before anybody is asked, and one that can be read is not.
 ///
 /// note: the question showed the raw wrapper, which nobody can judge, and a yes only led to the
-/// tool's refusal. A refusal by rule stays one, and a tool from a server is still asked about,
-/// since its `call` may mean something else.
+/// tool's refusal. The policy used to let such a call through for the tool to refuse; the tool now
+/// says so first, through `Tool::malformed`, and the kernel answers it without asking the policy.
 #[test]
-fn a_call_that_cannot_be_read_is_not_asked_about() {
-    let ask = |tool: &str, args: serde_json::Value| PermissionRequest {
-        id: PermissionId(1),
-        call: ToolCallId("c1".to_owned()),
-        tool: tool.to_owned(),
-        capabilities: vec![Capability::exec("run")],
-        args: std::sync::Arc::new(args),
+fn a_call_that_cannot_be_read_is_refused_by_its_tool() {
+    let tools = common::builtin(
+        &common::scratch("unreadable"),
+        true,
+        kamchatka::tools::Limits::default(),
+    );
+    let tool = |id: &str| {
+        tools
+            .iter()
+            .find(|it| it.spec().id == id)
+            .expect("a built-in tool")
     };
-    let policy = Careful::new();
-    policy.offers(&ConstTool::new("shell", "runs").with_capabilities([Capability::exec("run")]));
-    policy.offers(&ConstTool::new("remote", "runs").with_capabilities([Capability::exec("run")]));
-    policy.came_from("remote", "box");
 
     // a wrapper holding text that is not JSON is no call anybody can read
-    let unreadable = json!({ "call": "{\"action\": \"run\", \"cmd\": " });
-    assert_eq!(
-        policy.verdict(&ask("shell", unreadable.clone())),
-        Verdict::Allow
+    let unreadable = nachalnik::ToolCall::new(
+        "c1",
+        "shell",
+        json!({ "call": "{\"action\": \"run\", \"cmd\": " }),
     );
+    let said = tool("shell")
+        .malformed(&unreadable)
+        .expect("refused by the tool");
+    assert!(said.contains("EOF while parsing"), "{said}");
     // one that can be read is a question as ever
-    assert_eq!(
-        policy.verdict(&ask(
-            "shell",
-            json!({ "call": { "action": "run", "cmd": "ls" } })
-        )),
-        Verdict::Ask
+    let readable = nachalnik::ToolCall::new(
+        "c1",
+        "shell",
+        json!({ "call": { "action": "run", "cmd": "ls" } }),
     );
-    // somebody else's tool is asked about whatever its arguments look like
-    assert_eq!(
-        policy.verdict(&ask("remote", unreadable.clone())),
-        Verdict::Ask
+    assert_eq!(tool("shell").malformed(&readable), None);
+    // and the same for `fs`
+    let unreadable = nachalnik::ToolCall::new("c1", "fs", json!({ "call": "read it" }));
+    assert!(tool("fs").malformed(&unreadable).is_some());
+    let readable = nachalnik::ToolCall::new(
+        "c1",
+        "fs",
+        json!({ "call": { "action": "read", "path": "x" } }),
     );
-    // and a refusal is not lifted
-    policy.set(&Subject::parse("exec:run"), Verdict::Deny);
-    assert_eq!(policy.verdict(&ask("shell", unreadable)), Verdict::Deny);
+    assert_eq!(tool("fs").malformed(&readable), None);
 }
 
 /// The two arguments the policy reads are found inside the wrapper the schema puts them in.

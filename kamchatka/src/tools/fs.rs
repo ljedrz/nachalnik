@@ -28,7 +28,7 @@ use crate::{
     tools::{
         Limits,
         files::{Changing, Edit, PATH_ARG, Read, Write},
-        ops::{Arg, Layout, Op, action_of, actions, inner, schema, unread},
+        ops::{Arg, Layout, Op, action_of, actions, inner, schema, unplaced, unread},
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
     },
 };
@@ -189,18 +189,21 @@ impl Fs {
         // note: the operation is checked here as well as in `needs`, because a refusal a model can
         // act on names what was wrong. Dispatching on a default runs something nobody asked for
         let Some(action) = self.op(call) else {
-            let does = actions(&self.ops).join(", ");
+            let ops = actions(&self.ops);
+            let does = ops.join(", ");
+            let more = unplaced(&call.args, &args, &ops);
             return Err(match &args["action"] {
                 // a call carrying its arguments and no `action` read as "`nothing` is not
                 // something `fs` does", which names a word nobody sent
                 Value::Null => format!(
-                    "no `action`, and nothing was done; `fs` does {does}, named in `action`"
+                    "no `action`, and nothing was done; `fs` does {does}, named in `action`.{more}"
                 ),
+                Value::String(named) => {
+                    format!("`{named}` is not something `fs` does; it does {does}.{more}")
+                }
                 other => format!(
-                    "`{}` is not something `fs` does; it does {does}",
-                    other
-                        .as_str()
-                        .map_or_else(|| other.to_string(), str::to_owned)
+                    "`action` is one word, and this one is {}; nothing was done. `fs` does {does}.",
+                    crate::tools::what(other)
                 ),
             });
         };
@@ -234,8 +237,9 @@ impl Tool for Fs {
     }
 
     /// note: `action` and nothing else, so a rule about `fs:read` is about reading whichever way a
-    /// call asked for it. A call naming no operation it has declares both subjects, the strictest
-    /// reading of a call nobody can place, and `invoke` then refuses it by name.
+    /// call asked for it. A call naming no operation it has is refused by `malformed` before the
+    /// policy is asked; one that reaches here anyway declares both subjects, the strictest reading
+    /// of a call nobody can place.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match self.op(call) {
             Some(action) => vec![subject(&action)],
