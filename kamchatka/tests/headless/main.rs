@@ -485,67 +485,6 @@ async fn an_unanswerable_question_is_denied_by_default() {
     );
 }
 
-/// A tool of several operations, taking its arguments under a `call` the way this program's own
-/// do, so that a call which names none of them can be asked about.
-struct Several;
-
-#[async_trait]
-impl Tool for Several {
-    fn spec(&self) -> ToolSpec {
-        ToolSpec::new("fs", "the filesystem")
-            .with_schema(Arc::new(json!({
-                "type": "object",
-                "properties": { "call": { "type": "object" } },
-                "required": ["call"],
-            })))
-            .with_capabilities([Capability::fs("read"), Capability::fs("write")])
-    }
-
-    async fn invoke(&self, _call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        Ok(ToolOutput::new("read it"))
-    }
-}
-
-/// A run with nobody at it says why a rule that was given did not answer the question.
-///
-/// note: the whole of the failure this is about happened in one session and cost twenty calls. No
-/// operation could be read out of the arguments, so the call declared every operation `fs` has -
-/// and `--auto-allow fs:read` then matched nothing. What the run said was
-/// `deny, because nobody is here to be asked`, which is true and is about the wrong thing: the
-/// model went looking for a different approach, and the person watching had no way to see that
-/// their rule and the call could never meet.
-///
-/// note: the call here leaves `action` out, where the session that bought this wrote the whole
-/// wrapper as a string of JSON. That shape is read through now - see `ops::inner` - and the
-/// widening it caused is reached by any call whose operation cannot be read, so the test asks for
-/// the one that is still a call nobody can place.
-#[tokio::test]
-async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
-    let script = vec![
-        ModelResponse::tool_calls(vec![call("c1", "fs", json!({ "call": { "path": "x" } }))]),
-        ModelResponse::text("told it was refused"),
-    ];
-    let run = run("read it\n", script, |app| {
-        app.kernel.add_tool(Arc::new(Several));
-        // told what the tool declares, as `wiring` tells it about every tool a session has
-        app.policy.offers(&Several);
-        app.policy
-            .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
-    })
-    .await;
-
-    assert!(
-        run.prose.contains("names no operation"),
-        "the reason the rule missed is the one thing this run could not work out: {}",
-        run.prose
-    );
-    assert!(
-        run.prose.contains("`fs:read`"),
-        "and it names the rule that would have answered: {}",
-        run.prose
-    );
-}
-
 /// A call naming no operation is refused for that before any rule is consulted, so it is not
 /// blamed on one.
 ///
@@ -598,6 +537,11 @@ async fn a_call_naming_no_operation_is_refused_for_that_and_not_by_a_rule() {
         .collect();
     assert_eq!(told.len(), 1, "{told:?}");
     assert!(told[0].contains("no `action`"), "{}", told[0]);
+    assert!(
+        told[0].contains("holds `path` and no `action`"),
+        "and says what the call held instead: {}",
+        told[0]
+    );
     assert!(
         !told[0].contains("fs:write"),
         "the rule had nothing to do with it: {}",

@@ -318,9 +318,9 @@ impl Tool for Context {
 
     /// note: decided by `action` and nothing else, so a rule about `context:read` covers reading
     /// however a call asked for it, and the reading half and changing half stay separately
-    /// grantable although they are one tool. A call naming no operation this tool has declares all
-    /// four subjects, which is the strictest reading of a call nobody can place, and `invoke` then
-    /// refuses it by name.
+    /// grantable although they are one tool. A call naming no operation this tool has is refused by
+    /// `malformed` before the policy is asked; one that reaches here anyway declares all four
+    /// subjects, which is the strictest reading of a call nobody can place.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
             Some(op) => subjects(&op),

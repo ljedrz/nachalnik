@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### breaking
 
+- **`App::widened` is gone.** It said why a question was about everything a tool does, for a call
+  that named no operation. Such a call to this program's tools is now refused before anybody is
+  asked, so there is no question for it to explain.
 - **`Command::Attach` has a new field, `relaying`**, so code that builds one must set it: `None`
   for anything but a relay. On the wire the field is optional, so older clients and sessions still
   talk to newer ones.
@@ -99,7 +102,10 @@ minor bump may break you.
   wrong with it, and nobody is asked. Before, `fs` called with no `action` was put to you as needing
   `fs:read` and `fs:write`, and the model was told the call was malformed only after you allowed
   it. A `shell` call with no `cmd` and a `log` call with arguments it cannot read are refused the
-  same way.
+  same way. The refusal says what the call held instead of an `action`, and when the `action` is
+  an operation with the next argument written into it, which operation that is.
+- **A `call` written as text that is not JSON says where it stops being JSON**, and shows that
+  part of it, rather than its first 200 characters.
 - **RUNNING.md says which commands are asked about by name** where the network cannot be gated
   (`--no-sandbox`, or a kernel that cannot pause a call). It said "a short list of programs", so
   nobody could tell that `git` and `cargo` are asked about and `python3 fetch.py` is not.
@@ -156,6 +162,9 @@ minor bump may break you.
 
 ### removed
 
+- **The line explaining that a question was about everything a tool does**, on the permission
+  panel, in a headless run's prose and in the policy's refusal. It was there for a call that named
+  no operation, and such a call is no longer asked about.
 - **The trace no longer shows how long after the line above each line arrived**, on the trace tab
   or the web page. The line above was often not the wait anybody was asking about: a client
   replaced, or a question somebody sat reading. Each line still says when it happened, and the

@@ -350,11 +350,8 @@ pub struct Careful {
     networked: Mutex<BTreeSet<ToolCallId>>,
     /// What each of the session's own tools declares, by its identifier.
     ///
-    /// note: a rule is the wrong thing to blame for one refusal. A call whose operation cannot be
-    /// read declares everything its tool does, and a rule about one of those refuses a call that
-    /// meant to do another; saying only the rule sends a model to retry the same call when its
-    /// arguments are wrong. Knowing the tool's declaration is how a refusal can tell - see
-    /// `ops::unnamed_operation` - and whoever installs the tools tells it here.
+    /// note: whoever installs the tools tells it here, so that a sentence sending a model to a
+    /// capability can tell whether any tool on offer declares it; see [`Careful::reachable`].
     offered: Mutex<BTreeMap<String, ToolSpec>>,
     /// Which actions of a tool with several need each subject, by the subject: `fs:read` is needed
     /// by `fs`'s `read`, `glob` and `grep`.
@@ -572,28 +569,13 @@ impl Careful {
         // the strictest answer among the subjects wins, so a call that needs both an allowed one
         // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
         // fold for exactly this. A call that needs nothing is allowed: the empty fold
-        let verdict = self
-            .judges(request)
+        //
+        // note: a call this program's own tools cannot read never gets here. Each tool says so
+        // through `Tool::malformed`, and the kernel answers it before any policy is asked
+        self.judges(request)
             .iter()
             .map(|subject| self.stance(subject))
-            .fold(Verdict::Allow, Verdict::strictest);
-
-        // note: a question about a call this program's own tool cannot read is one whose `yes` runs
-        // nothing: the tool reads its arguments before anything else and answers with what is wrong
-        // with them. So it is let through to say that, rather than put to a person shown a wrapper
-        // they cannot judge. A refusal stays a refusal, and somebody else's tool is still asked
-        // about - a server's tool may take a `call` that means something else
-        match verdict == Verdict::Ask && self.unreadable(request) {
-            true => Verdict::Allow,
-            false => verdict,
-        }
-    }
-
-    /// Whether a call is to one of this program's own tools and its arguments cannot be read.
-    fn unreadable(&self, request: &PermissionRequest) -> bool {
-        self.offered.lock().contains_key(&request.tool)
-            && !self.servers.lock().contains_key(&request.tool)
-            && super::ops::inner(&request.args).is_err()
+            .fold(Verdict::Allow, Verdict::strictest)
     }
 
     /// What it answers about one subject; anything unmentioned gets `Ask`.
@@ -1025,17 +1007,6 @@ impl PermissionPolicy for Careful {
                     blamed.join(" and ")
                 ),
             };
-            // the arguments first, where they are why the rule applied at all
-            let widened = self
-                .offered
-                .lock()
-                .get(&request.tool)
-                .and_then(|spec| super::ops::unnamed_operation(spec, request));
-            let why = match widened {
-                Some(widened) => format!("{widened}; {why}"),
-                None => why,
-            };
-
             // nobody is obliged to read these; a session that never does should not grow a queue
             let mut refusals = self.refusals.lock();
             match refusals
