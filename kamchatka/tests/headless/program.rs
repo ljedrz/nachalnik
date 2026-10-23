@@ -806,7 +806,7 @@ async fn a_run_with_no_sandbox_signals_whatever_it_can_reach() {
     );
 }
 
-/// `--sandbox-devices` reaches the shell the program wires: a command that reads `/dev/zero`
+/// `--shell-devices` reaches the shell the program wires: a command that reads `/dev/zero`
 /// succeeds under the usual list and fails where only `/dev/null` was named.
 ///
 /// note: read out of a `/save`, since a headless run prints no tool's output and a command that
@@ -868,7 +868,7 @@ async fn the_devices_the_program_is_given_are_the_shells() {
     assert!(usual.contains("exit: 0"), "{usual}");
     let narrowed = run(
         "program-devices-narrowed",
-        &["--sandbox-devices", "/dev/null"],
+        &["--shell-devices", "/dev/null"],
     )
     .await;
     assert!(narrowed.contains("exit: 1"), "{narrowed}");
@@ -2732,6 +2732,7 @@ async fn reaching_out(dir: &str, on_ask: Grant) -> Option<crate::Run> {
                 workdir: dir.clone(),
                 writable: Vec::new(),
                 readable: Vec::new(),
+                shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 confiner: Some(common::program()),
                 limits: kamchatka::tools::Limits::default(),

@@ -537,9 +537,13 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // is not `main`
     let setup = args.setup_from(filed.as_ref())?;
     // said the way the kernel's gaps are below: once on standard error, and into each session
-    let unstarted = args.unstarted(filed.as_ref());
-    if let Some(unstarted) = &unstarted {
-        let _ = writeln!(std::io::stderr(), "· {unstarted}");
+    let cautions: Vec<String> = args
+        .unstarted(filed.as_ref())
+        .into_iter()
+        .chain(args.shell_cautions(filed.as_ref()))
+        .collect();
+    for caution in &cautions {
+        let _ = writeln!(std::io::stderr(), "· {caution}");
     }
 
     #[cfg(feature = "shell-advisor")]
@@ -719,8 +723,8 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         if let Some(weaker) = &weaker {
             app.say(Speaker::Note, weaker.clone());
         }
-        if let Some(unstarted) = &unstarted {
-            app.say(Speaker::Note, unstarted.clone());
+        for caution in &cautions {
+            app.say(Speaker::Note, caution.clone());
         }
         // a resumed session already has a conversation; replay it instead of reading it one item at
         // a time.

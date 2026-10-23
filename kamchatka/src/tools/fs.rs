@@ -290,6 +290,7 @@ mod tests {
                 workdir: std::env::temp_dir(),
                 writable: Vec::new(),
                 readable: Vec::new(),
+                shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 confined: true,
             })
         };

@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### breaking
 
+- **`--sandbox-devices` is `--shell-devices`**, flag and settings-file key together, with no alias;
+  the old name is refused until it is updated. `Args` and `Settings` have `shell_devices` in place
+  of `sandbox_devices`. It sits beside the new `shell-read` (below), and the `shell-` in front says
+  that only `shell` uses the list.
+- **`Sandbox`, `Shell`, `Reach` and `Setup` have a `shell_readable` field**, the `shell-read`
+  paths, so code that builds one must set it: `sandbox::SYSTEM` for what `shell` read before, less
+  `/run`. `--confine-and-run` takes the list after the `--sandbox-read` paths, as a count and the
+  paths, so a script that spelled its arguments out needs one more list.
 - **`App::widened` is gone.** It said why a question was about everything a tool does, for a call
   that named no operation. Such a call to this program's tools is now refused before anybody is
   asked, so there is no question for it to explain.
@@ -22,6 +30,13 @@ minor bump may break you.
 
 ### added
 
+- **`--shell-read`, and `shell-read` in a settings file: the paths a shell command reads and `fs`
+  does not.** They were a fixed list in the code. The shipped `kamchatka.json` now spells them out,
+  and the list replaces the default rather than adding to it, as `shell-devices` does. A leading
+  `~` is the home directory, as in `sandbox-read`. A path beneath the working directory, or beneath
+  another path the tools reach, is left out of the ruleset. A command can read it anyway, and
+  leaving it out means a link a command puts there is not followed. An empty list is warned about at startup, since a command then
+  finds no program unless `sandbox-read` holds one.
 - **The trace names a browser tab by the browser's address**: "192.168.1.7:51234 (web UI)". The
   session sees only the `--web` relay's own connection, so the relay sends the browser's
   address in the attach, as `relaying`. The session believes it only from its own relay, which it
@@ -97,6 +112,12 @@ minor bump may break you.
 
 ### changed
 
+- **A shell command no longer reads `/run` unless `shell-read` names it.** It holds the person's
+  running session: the session bus, the compositor and the container daemon, any USB drive under
+  `/run/media`, who is logged in. Where `/etc/resolv.conf` leads somewhere no granted path covers,
+  as systemd-resolved's stub does, startup says so and names the directory to add, since
+  commands can no longer look up host names there. A shell-command permission error lists the
+  `shell-read` paths one by one, where it said "the system directories".
 - **A call this program's tools cannot run is refused without asking you.** A call that names no
   operation, one the tool does not have, or an argument it does not take is answered with what is
   wrong with it, and nobody is asked. Before, `fs` called with no `action` was put to you as needing
