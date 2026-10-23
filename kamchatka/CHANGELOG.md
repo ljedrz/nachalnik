@@ -135,6 +135,8 @@ minor bump may break you.
   on the screen only**, sent to no browser and no `--connect` client. Both were the first lines on
   every browser tab. They are for whoever started the program: a client knows where it
   connected, and cannot change who else can. A run with no screen prints both, as before.
+- **The web page no longer shows a command typed into it.** It stayed in the chat until `/cleanup`,
+  while the terminal never shows one. What the command says back is still shown.
 - **`/web` has no empty line between the QR code and the text under it.** The code's own white
   border already separates them.
 
