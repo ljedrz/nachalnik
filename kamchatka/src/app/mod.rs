@@ -412,6 +412,8 @@ pub struct App {
     /// that went back to nothing silently swallows the next `said` lines for the rest of the
     /// session. Compare it, and start again from nothing when it moves.
     cleared: u64,
+    /// Whether the chat opens with the greeting; see [`App::greet`].
+    pub(crate) greeting: bool,
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
     /// The prompt.
@@ -752,6 +754,7 @@ impl App {
             failed: None,
             loose: Vec::new(),
             cleared: 0,
+            greeting: false,
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
             input,
@@ -1475,9 +1478,19 @@ impl App {
     /// sequence grows. This is the one thing that empties it, so a caller that did not notice would
     /// skip the next `said` lines for good.
     pub fn clear_notices(&mut self) {
+        self.greeting = false;
         self.loose
             .retain(|entry| entry.open || !matches!(entry.speaker, Speaker::Note | Speaker::Error));
         self.cleared += 1;
+    }
+
+    /// Opens the chat on this screen with the keys for the tabs and where to find the rest.
+    ///
+    /// note: drawn by the chat tab rather than said into the conversation. In a served session the
+    /// conversation reaches every client, and a browser has none of these keys; drawn here, only
+    /// the screen that has them shows them. `ctrl+l` takes it away with the other notes.
+    pub fn greet(&mut self) {
+        self.greeting = true;
     }
 
     /// Tells the policy what to answer about one of the permissions tab's rows from here on.

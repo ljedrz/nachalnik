@@ -22,7 +22,7 @@ use tui_markdown::StyleSheet as _;
 
 use crate::{
     app::when::read_off,
-    app::{App, Focus, Going, Speaker},
+    app::{App, Focus, Going, Said, Speaker},
     tools::{Careful, Exit},
     ui::{
         markdown::{Chunk, Markdown, chunks, highlighted, markdown, rule, separate},
@@ -31,7 +31,7 @@ use crate::{
     },
 };
 
-use super::{Scrolled, faint, in_view, quiet};
+use super::{GREETING, Scrolled, faint, in_view, quiet};
 
 // ------------------------------------------------------------------------------ the conversation
 
@@ -60,7 +60,12 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // what the answers came to on the last frame, and what they come to on this one; see `Drawn`
     let mut kept = DRAWN.take().at(width);
     let mut fresh = HashMap::new();
-    for said in app.conversation(&items, going) {
+    let greeting = app.greeting.then(|| Said {
+        speaker: Speaker::Note,
+        text: GREETING.into(),
+        item: None,
+    });
+    for said in greeting.into_iter().chain(app.conversation(&items, going)) {
         let item = said.item;
 
         // what the model is no longer shown is drawn so the eye can tell without reading it. It
