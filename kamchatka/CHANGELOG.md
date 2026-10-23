@@ -24,6 +24,8 @@ minor bump may break you.
   address in the attach, as `relaying`. The session believes it only from its own relay, which it
   recognises by the connection. From any other client the field is ignored, and the client is named
   by the address the session sees.
+- **`alt+tab` opens the next tab**, as `ctrl+t` does. Plain `tab` still moves the keys between the
+  prompt and whatever else on the screen wants them.
 
 ### fixed
 
@@ -113,6 +115,10 @@ minor bump may break you.
   a short line starting at the left edge, which looked like a row that had lost its columns.
 - **The guide lists every domain and its operations, and how a rule is spelled**: a whole domain,
   one operation, a path rule, or a server, which has settings of its own.
+- **The keys for the tabs are in the first line of a new session, not along the bottom of the chat
+  tab.** The bottom of the chat tab listed `alt+1` to `alt+4` all the time. It is now empty unless
+  the conversation is scrolled back. The first line names `ctrl+t`, `alt+tab` and `alt+1` to
+  `alt+4`, and F1 lists them as before.
 
 ### removed
 

@@ -46,9 +46,13 @@ use crate::ui::{
 ///
 /// note: `pub` for the same reason [`SECTIONS`] is: a test can check that the first screen shows
 /// what the keys do. `tab` does not move to the context; on the chat tab it moves the keys onto a
-/// waiting question, and the trace is two presses of `ctrl+t` away rather than one.
-pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt+1 comes back · \
-                            ctrl+p shows the next request · F1 lists the keys";
+/// waiting question. Plain `alt+tab` does.
+///
+/// note: the tab keys are here rather than along the bottom of the chat tab, where they took the
+/// footer's place on every screen for something read once.
+pub const GREETING: &str = "ctrl+t or alt+tab opens the next tab · alt+1 / 2 / 3 / 4 opens chat / \
+                            context / trace / permissions · ctrl+p shows the next request · \
+                            F1 lists the keys";
 
 /// How many rows a set of lines occupies once soft-wrapped to `width`.
 ///
@@ -317,23 +321,15 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
     match app.tab {
         // note: a conversation scrolled back stays where it was left, so this line says there is
         // more underneath and how to reach it. Without it, "sticky" reads as "stuck": the window
-        // stops moving and nothing explains why
-        Tab::Chat => {
-            let mut parts = Vec::new();
-            if !app.follow {
-                parts.push(
-                    match app.rendered.saturating_sub(app.viewport + app.scroll) {
-                        0 => "ctrl+e follows the newest".to_owned(),
-                        n => format!("{} line(s) below · ctrl+e follows them", thousands(n)),
-                    },
-                );
-            }
-            if parts.is_empty() {
-                parts.push("alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions".into());
-            }
-
-            parts
-        }
+        // stops moving and nothing explains why. Following, it says nothing: the tab keys are in
+        // the greeting and in F1
+        Tab::Chat if app.follow => Vec::new(),
+        Tab::Chat => vec![
+            match app.rendered.saturating_sub(app.viewport + app.scroll) {
+                0 => "ctrl+e follows the newest".to_owned(),
+                n => format!("{} line(s) below · ctrl+e follows them", thousands(n)),
+            },
+        ],
         Tab::Context => {
             // counted by whether the model is shown what the item says. An elided item is in the
             // request but not shown; calling it "going" would be more misleading

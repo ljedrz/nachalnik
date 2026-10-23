@@ -817,10 +817,30 @@ async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
         .on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT))
         .await;
     assert_eq!(harness.app.tab, Tab::Chat);
+    for (digit, tab) in [
+        ('2', Tab::Context),
+        ('3', Tab::Trace),
+        ('4', Tab::Permissions),
+    ] {
+        harness
+            .app
+            .on_key(KeyEvent::new(KeyCode::Char(digit), KeyModifiers::ALT))
+            .await;
+        assert_eq!(harness.app.tab, tab, "alt+{digit}");
+    }
+
+    // alt+tab is ctrl+t, and plain tab is still not
+    for tab in [Tab::Chat, Tab::Context, Tab::Trace] {
+        harness
+            .app
+            .on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::ALT))
+            .await;
+        assert_eq!(harness.app.tab, tab, "alt+tab goes round");
+    }
 
     // and every key it names is one F1 lists, which is itself checked against the code
     let help = ui::everything();
-    for key in ["ctrl+t", "alt+1", "ctrl+p", "F1"] {
+    for key in ["ctrl+t", "alt+tab", "alt+1", "ctrl+p", "F1"] {
         assert!(
             help.contains(key) || help.contains(&key.to_lowercase()),
             "the greeting offers `{key}` and the help does not mention it"
