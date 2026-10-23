@@ -124,6 +124,10 @@
      squeezing the one control on the row down to nothing */
   .head { display: flex; gap: 8px; align-items: flex-start; }
   .name { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+  /* the trace view's rows, in the colours the trace tab draws them in; see `traced` */
+  .name.failed { color: var(--bad); }
+  .name.tool { color: var(--code); }
+  .name.asked { color: var(--changes); }
   .state {
     font: inherit; font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 4px;
     white-space: nowrap; flex: none;
@@ -802,6 +806,20 @@ document.getElementById("view").onclick = () => {
 };
 
 /** One row: a name, a line of figures under it, and a reason where there is one. */
+/**
+ * What colour a trace row's name is drawn in, as the terminal's trace tab draws it: a failure red,
+ * a tool cyan, and a permission or a policy event the yellow of the question. `null` is the plain
+ * text colour, which is what the rest are.
+ *
+ * note: a copy of the match in `ui/tabs.rs`, in the same order. Change both together.
+ */
+function traced(name) {
+  if (name.endsWith(".failed")) return "failed";
+  if (name.startsWith("tool")) return "tool";
+  if (name.startsWith("permission") || name.startsWith("policy.")) return "asked";
+  return null;
+}
+
 function row(into, name, figures, why) {
   const el = document.createElement("div");
   el.className = "row";
@@ -1004,6 +1022,8 @@ function draw() {
         continue;
       }
       const el = row(panel, event.name, when, null);
+      const kind = traced(event.name);
+      if (kind) el.querySelector(".name").classList.add(kind);
       if (event.detail) {
         const detail = document.createElement("div");
         detail.className = "detail";

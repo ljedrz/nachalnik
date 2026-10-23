@@ -652,3 +652,23 @@ async fn a_switch_of_model_names_the_address_only_where_the_two_differ_by_it() {
         "a switch that kept the name has to say where it went: {moved}"
     );
 }
+
+/// A rule the policy was given is the yellow of the question it answers, on the trace as a
+/// permission is.
+#[tokio::test]
+async fn a_rule_on_the_trace_is_the_colour_of_a_permission() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .record_rule("exec:run", nachalnik::Verdict::Allow, None, false);
+    harness.drain();
+    harness.tab(Tab::Trace);
+
+    assert_eq!(
+        harness.style_of("policy.ruled").0,
+        Color::Yellow,
+        "{}",
+        harness.screen()
+    );
+}

@@ -813,8 +813,13 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         };
         // note: these are the two colours the chat tab reads by: a tool call is cyan there, and a
         // permission is the colour of the question, so a trace row and the line it accounts for
-        // agree without a second scheme to learn. `.failed` is matched first: a call that went
-        // wrong is a failure before it is a call.
+        // agree without a second scheme to learn. The policy's events, a rule given to it and the
+        // policy being set, are the same yellow, because the policy is what answers a question
+        // before it is asked. `.failed` is matched first: a call that went wrong is a failure
+        // before it is a call.
+        //
+        // note: the web page's trace view colours its rows by the same rules; see `traced` in
+        // `web/browser.html`. Change both together.
         //
         // note: named colours are used rather than the logo's own `#59b8b2`, which cyan stands in
         // for. Every colour in this program is named, so the terminal's palette and background
@@ -824,6 +829,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             _ if event.name.ends_with(".failed") => Color::Red,
             _ if event.name.starts_with("tool") => Color::Cyan,
             _ if event.name.starts_with("permission") => Color::Yellow,
+            _ if event.name.starts_with("policy.") => Color::Yellow,
             _ if event.name.is_empty() => Color::Gray,
             _ => Color::White,
         };
