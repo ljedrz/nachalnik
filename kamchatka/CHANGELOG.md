@@ -19,8 +19,8 @@ minor bump may break you.
 
 ### added
 
-- **The trace names a browser tab by the browser's address**: "192.168.1.7:51234 through the web
-  page". The session sees only the `--web` relay's own connection, so the relay sends the browser's
+- **The trace names a browser tab by the browser's address**: "192.168.1.7:51234 (web UI)". The
+  session sees only the `--web` relay's own connection, so the relay sends the browser's
   address in the attach, as `relaying`. The session believes it only from its own relay, which it
   recognises by the connection. From any other client the field is ignored, and the client is named
   by the address the session sees.
