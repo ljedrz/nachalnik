@@ -237,9 +237,9 @@ not the log.
 
 Both are off by default, because neither is part of the runtime:
 
-* `selectors` — a small language for naming context items (`17`, `tool:grep:latest`,
-  `all:tool_results`, `state:elided`, `file:src/foo.rs`) that resolves to the identifiers a client
-  acts on.
+* `selectors` — a small language for naming context items (`17`, `10-15`,
+  `tool:grep:latest`, `all:tool_results`, `state:elided`, `file:src/foo.rs`) that resolves to the
+  identifiers a client acts on.
 * `test` — a scripted provider, dummy tools, off-the-shelf permission policies and a mechanical
   compactor, so an agent built on the kernel can be tested without a network.
 

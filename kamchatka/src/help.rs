@@ -350,6 +350,7 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
 /// at a terminal, `/exclude` down a pipe and the model's own `context` each have a different way
 /// back.
 pub(crate) const SELECTORS: &str = "  17                      the item with that number
+  10-15                   every item from 10 to 15, both included
   all                     every item, whatever state it is in
 
   tool_results            every item from that source; also: files, diagnostics,

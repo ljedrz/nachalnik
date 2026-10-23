@@ -305,7 +305,7 @@ impl Tool for Context {
              system instruction, the turn you are speaking in, or an item the person you work \
              with pinned - those are not yours. A pin of your own is, and `restore` undoes it.\n\
              Where an operation takes a `select`, it is a class of items instead of `ids`: an \
-             item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
+             item number; a range of them, `10-15`, both ends included; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
              instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
              taking the words `look` prints in those columns; `tool:<name>`, optionally `:first` \
              or `:latest`; `source:<name>`, and the notes you wrote are `source:agent`; \

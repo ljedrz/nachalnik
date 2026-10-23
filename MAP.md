@@ -29,7 +29,7 @@ A file-by-file map of the workspace, with reasons wherever the layout isn't obvi
 | `event.rs` | `Event` (everything observable about a session), `Delta`, `DeltaSink`, `OutputSink`. |
 | `session.rs` | `Session`, `Record`, `Snapshot`, and `FORMAT`, their format version. `tests/records/` holds one of each event and a snapshot per format version: the schema for other programs that read them. |
 | `config.rs`, `error.rs` | `Config` (every knob, with the reasoning for the defaults that need it), `Error`. |
-| `selectors.rs` | feature `selectors`: `17`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
+| `selectors.rs` | feature `selectors`: `17`, `10-15`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
 | `test.rs` | feature `test`: scripted providers, fake tools, table policies and a compactor. Use these rather than writing another mock. |
 
 `nachalnik/examples`: `transparency`, `compaction` and `pricing_a_picture` need no key and run in
