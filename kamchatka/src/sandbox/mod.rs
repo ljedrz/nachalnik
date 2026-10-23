@@ -919,14 +919,26 @@ impl fmt::Display for Sandbox {
 /// shell reads unless somebody says otherwise. `--shell-read` and the settings file's `shell-read`
 /// replace the list.
 ///
-/// note: not `/run`, though a command reaches some of it on some systems. What is in there is the
-/// person's running session: the sockets of the session bus, the compositor and the container
-/// daemon, which run a command outside the sandbox on its behalf and below Linux 7.1 take a
-/// connection from anyone who can read their path; a USB drive under `/run/media`; who is logged
-/// in. A system whose `/etc/resolv.conf` leads in there - systemd-resolved's stub - is told at
-/// startup which directory to add, and NixOS needs `/run/current-system` for everything on `PATH`.
+/// note: not `/run`, but for systemd-resolved's directory in it. What is in there is the person's
+/// running session: the sockets of the session bus, the compositor and the container daemon, which
+/// run a command outside the sandbox on its behalf and below Linux 7.1 take a connection from
+/// anyone who can read their path; a USB drive under `/run/media`; who is logged in.
+/// `/run/systemd/resolve` holds the resolver's configuration and its own sockets and nothing else,
+/// and Ubuntu, Fedora and Debian make `/etc/resolv.conf` a link into it: without it, no command
+/// there could look up a host. A system without it is granted nothing by the rule, as one without
+/// `/lib64` is. Any other `/etc/resolv.conf` that leads outside the list is said at startup, and
+/// NixOS needs `/run/current-system` for everything on `PATH`.
 pub const SYSTEM: &[&str] = &[
-    "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys",
+    "/usr",
+    "/etc",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/opt",
+    "/proc",
+    "/sys",
+    "/run/systemd/resolve",
 ];
 
 /// The devices a confined command may read and write unless somebody says otherwise, by name;

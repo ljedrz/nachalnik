@@ -14,8 +14,8 @@ minor bump may break you.
   of `sandbox_devices`. It sits beside the new `shell-read` (below), and the `shell-` in front says
   that only `shell` uses the list.
 - **`Sandbox`, `Shell`, `Reach` and `Setup` have a `shell_readable` field**, the `shell-read`
-  paths, so code that builds one must set it: `sandbox::SYSTEM` for what `shell` read before, less
-  `/run`. `--confine-and-run` takes the list after the `--sandbox-read` paths, as a count and the
+  paths, so code that builds one must set it: `sandbox::SYSTEM` for what `shell` read before, with
+  `/run` narrowed to `/run/systemd/resolve`. `--confine-and-run` takes the list after the `--sandbox-read` paths, as a count and the
   paths, so a script that spelled its arguments out needs one more list.
 - **`App::widened` is gone.** It said why a question was about everything a tool does, for a call
   that named no operation. Such a call to this program's tools is now refused before anybody is
@@ -112,11 +112,12 @@ minor bump may break you.
 
 ### changed
 
-- **A shell command no longer reads `/run` unless `shell-read` names it.** It holds the person's
-  running session: the session bus, the compositor and the container daemon, any USB drive under
-  `/run/media`, who is logged in. Where `/etc/resolv.conf` leads somewhere no granted path covers,
-  as systemd-resolved's stub does, startup says so and names the directory to add, since
-  commands can no longer look up host names there. A shell-command permission error lists the
+- **A shell command reads only `/run/systemd/resolve` of `/run`, unless `shell-read` names more.**
+  The rest holds the person's running session: the session bus, the compositor and the container
+  daemon, any USB drive under `/run/media`, who is logged in. `/run/systemd/resolve` stays because
+  Ubuntu, Fedora and Debian make `/etc/resolv.conf` a link into it. Where `/etc/resolv.conf` leads
+  anywhere else no granted path covers, startup says so and names the directory to add, since
+  commands there can no longer look up host names. A shell-command permission error lists the
   `shell-read` paths one by one, where it said "the system directories".
 - **A call this program's tools cannot run is refused without asking you.** A call that names no
   operation, one the tool does not have, or an argument it does not take is answered with what is

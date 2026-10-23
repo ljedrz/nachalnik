@@ -33,11 +33,14 @@ What changes to this workspace must keep true about what is and isn't enforced.
   Landlock: it re-runs itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` means a refused TCP `connect`, and nothing outside the allowed directories can be
   touched. A command also reads the `shell-read` paths, which `fs` doesn't: `/usr`, `/etc`, `/bin`,
-  `/sbin`, `/lib`, `/lib64`, `/opt`, `/proc` and `/sys` unless the list is replaced. They're the
+  `/sbin`, `/lib`, `/lib64`, `/opt`, `/proc`, `/sys` and `/run/systemd/resolve` unless the list
+  is replaced. They're the
   shell's alone because `/proc/self` is a different file to each tool: to a command it's the
   command, and to `fs`, which runs inside `kamchatka`, it's `kamchatka`, with the API keys in its
-  environment. `/run` isn't on the list, since it holds the session bus, the compositor and the
-  container daemon, whose sockets take a connection from anyone who can read them below Linux 7.1.
+  environment. The rest of `/run` isn't on the list, since it holds the session bus, the compositor
+  and the container daemon, whose sockets take a connection from anyone who can read them below
+  Linux 7.1. `/run/systemd/resolve` holds only the resolver's configuration and its own sockets,
+  and `/etc/resolv.conf` is a link into it on Ubuntu, Fedora and Debian.
   One more directory is writable: a command's own temporary directory, handed to it as
   `TMPDIR`, even where the working directory is read-only, and removed when the command ends.
   Landlock covers TCP from ABI 4 (Linux 6.7). On older kernels the ruleset is reported as

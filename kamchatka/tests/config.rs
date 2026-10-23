@@ -966,6 +966,16 @@ fn shell_read_says_what_it_leaves_out() {
         );
     }
 
+    // the usual list covers a resolver in `/etc` and systemd-resolved's stub, so neither is
+    // warned about. Leaving all of `/run` out failed every lookup on Ubuntu, where the stub is
+    let (ok, said) = run(&[], "");
+    assert!(ok, "{said}");
+    if std::fs::canonicalize("/etc/resolv.conf").is_ok_and(|resolver| {
+        resolver.starts_with("/etc") || resolver.starts_with("/run/systemd/resolve")
+    }) {
+        assert!(!said.contains("`/etc/resolv.conf` leads to"), "{said}");
+    }
+
     // and nothing at all with no sandbox, where a command reads everything
     let path = settings("shell-read-unconfined", r#"{ "shell-read": [] }"#);
     let (ok, said) = run(&["--no-sandbox", "--config-file", &path], "");
