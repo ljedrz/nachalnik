@@ -414,6 +414,8 @@ pub struct App {
     cleared: u64,
     /// Whether the chat opens with the greeting; see [`App::greet`].
     pub(crate) greeting: bool,
+    /// Lines for this screen alone, under the greeting; see [`App::tell`].
+    pub(crate) aside: Vec<String>,
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
     /// The prompt.
@@ -755,6 +757,7 @@ impl App {
             loose: Vec::new(),
             cleared: 0,
             greeting: false,
+            aside: Vec::new(),
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
             input,
@@ -1479,6 +1482,7 @@ impl App {
     /// skip the next `said` lines for good.
     pub fn clear_notices(&mut self) {
         self.greeting = false;
+        self.aside.clear();
         self.loose
             .retain(|entry| entry.open || !matches!(entry.speaker, Speaker::Note | Speaker::Error));
         self.cleared += 1;
@@ -1491,6 +1495,16 @@ impl App {
     /// the screen that has them shows them. `ctrl+l` takes it away with the other notes.
     pub fn greet(&mut self) {
         self.greeting = true;
+    }
+
+    /// Says a line on this screen alone, at the top of the chat, and to no client.
+    ///
+    /// note: for what concerns whoever started this program rather than whoever is attached to it:
+    /// where it is serving, and who on the network could reach it. A browser or a `--connect`
+    /// client already knows where it connected, and cannot change who else can. Like the
+    /// greeting, `ctrl+l` takes these away with the other notes.
+    pub fn tell(&mut self, text: impl Into<String>) {
+        self.aside.push(text.into());
     }
 
     /// Tells the policy what to answer about one of the permissions tab's rows from here on.

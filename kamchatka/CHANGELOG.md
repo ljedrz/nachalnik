@@ -125,6 +125,10 @@ minor bump may break you.
   conversation, which every client reads, so a served session left it out to keep it from browsers
   that have none of these keys. It is now drawn by the screen alone and sent to no client.
   `ctrl+l` clears it with the other notes.
+- **Where a session serves, and the warning that the page is reachable from the local network, are
+  on the screen only**, sent to no browser and no `--connect` client. Both were the first lines on
+  every browser tab. They are for whoever started the program: a client knows where it
+  connected, and cannot change who else can. A run with no screen prints both, as before.
 
 ### removed
 

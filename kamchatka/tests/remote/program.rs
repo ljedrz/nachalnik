@@ -1465,15 +1465,14 @@ async fn a_served_run_whose_stdout_nobody_is_reading_still_serves() {
             None => panic!("the session closed the connection"),
         }
     };
-    // what it hands a client is the conversation, and the opening is the line saying where this
-    // session is being served from - which went to a stdout nobody read, so this is where it is
-    // still to be had
+    // the line saying where it serves is for the screen of whoever started it, and a client is not
+    // handed it: it knows where it connected
     assert!(
         attached
             .conversation
             .iter()
-            .any(|line| line.text.contains("serving on")),
-        "a client that attached was not told what it had joined: {:?}",
+            .all(|line| !line.text.contains("serving on")),
+        "a client was handed the server's own line: {:?}",
         attached.conversation
     );
 

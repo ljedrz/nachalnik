@@ -1483,19 +1483,15 @@ fn name(command: &Command) -> &'static str {
 
 /// What a session about to be driven from somewhere else should say for itself.
 ///
-/// note: through [`App::say`], because it is addressed to whoever is reading rather than to the
-/// model, so a `/save` cannot mistake it for something the model was told. Every client that
-/// attaches later reads it in the conversation, where somebody arriving looks for what they have
-/// joined.
+/// note: through [`App::tell`], on the screen of whoever started the program and to no client. A
+/// client knows where it connected, and the rest is in RUNNING.md. Said into the conversation, it
+/// was the first line on every browser tab, which has no use for a socket address.
 pub fn opening(app: &mut App, address: &str) {
-    app.say(
-        Speaker::Note,
-        format!(
-            "serving on {address}: the session is this program's rather than any client's, so it \
+    app.tell(format!(
+        "serving on {address}: the session is this program's rather than any client's, so it \
              carries on when they leave, and waits when a tool needs an answer nobody is here to \
              give"
-        ),
-    );
+    ));
 }
 
 /// Whether an answer to an attach can be sent in one frame: a projection no longer than a client
