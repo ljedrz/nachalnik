@@ -21,8 +21,9 @@
 //! note: a unix socket is a filesystem matter, not a network one. sandlock's supervisor holds a
 //! `connect` to a pathname socket and lets it through only where the command may write, on any
 //! kernel: the session bus, the compositor and the container daemon are each a socket under `/run`,
-//! which is readable, and each runs a command outside the confinement on the caller's behalf, so a
-//! connection to one is a way out. It pins the socket it checked and connects to that, so a link
+//! and each runs a command outside the confinement on the caller's behalf, so a connection to one
+//! is a way out. Whether the command may read the socket's directory does not enter into it: a
+//! `shell-read` or `--sandbox-read` path holding a socket does not let a command connect to it. It pins the socket it checked and connects to that, so a link
 //! swapped in after the check leads nowhere - which means the connection is made by this process,
 //! and the other end sees this process's credentials rather than the command's; see
 //! `from_a_command`. A path relative to the command's directory is refused, since the supervisor
@@ -563,8 +564,8 @@ impl Sandbox {
     /// one.
     ///
     /// note: the other half of [`Sandbox::reaches`], which asks about reading. A socket is held to
-    /// the writing half of the ruleset, so a session can read the path of a socket under `/run` and
-    /// be refused the connection. It is judged by the file's type, not by the error's words, which
+    /// the writing half of the ruleset, so a session can read the path of a socket and be refused
+    /// the connection - one in `/run/systemd/resolve`, or anywhere `--sandbox-read` opened. It is judged by the file's type, not by the error's words, which
     /// a client chooses. sandlock's supervisor refuses such a connection with `EACCES`, which
     /// is the error that brings a refusal here.
     ///

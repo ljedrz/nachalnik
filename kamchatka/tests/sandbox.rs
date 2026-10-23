@@ -438,6 +438,22 @@ fn the_shell_reads_what_shell_read_names_and_no_more() {
     let (ok, said) = run(&without_etc, "cat /etc/passwd");
     assert!(!ok, "`/etc` was left off the list: {said}");
     assert!(said.contains("Permission denied"), "{said}");
+
+    // `/proc` too, which sandlock serves itself rather than through a rule: the list still decides
+    let (ok, said) = run(
+        &sandbox(common::workdir("shell-read-proc"), true, Network::Shut),
+        "cat /proc/self/status",
+    );
+    assert!(
+        ok && said.contains("Pid:"),
+        "`/proc` is on the usual list: {said}"
+    );
+    let mut without_proc = sandbox(common::workdir("shell-read-proc"), true, Network::Shut);
+    without_proc
+        .shell_readable
+        .retain(|path| path != Path::new("/proc"));
+    let (ok, said) = run(&without_proc, "cat /proc/self/status");
+    assert!(!ok, "`/proc` was left off the list: {said}");
 }
 
 /// A `shell-read` path beneath the working directory grants nothing of its own, so a link put
@@ -1085,6 +1101,42 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     let (ok, said) = run(&sandbox(dir, true, Network::Shut), &connect_to(&inside));
 
     assert!(ok, "{said}");
+    drop(listening);
+}
+
+/// A socket the command may read the path of and not write is refused all the same: a
+/// `shell-read` path, as `/run/systemd/resolve` is, or a `--sandbox-read` one.
+///
+/// note: the connection is held to the writing half of the ruleset, so reading the directory a
+/// socket is in buys nothing. A list that opened a daemon's directory for reading must not open the
+/// daemon.
+#[test]
+fn a_command_cannot_connect_to_a_socket_it_may_only_read() {
+    if !enforced() || !sockets() {
+        return;
+    }
+    let readable = common::scratch("connect-readable");
+    let socket = readable.join("s.sock");
+    let listening = UnixListener::bind(&socket).expect("a socket outside the working directory");
+
+    for granted in ["shell-read", "sandbox-read"] {
+        let mut read_only = sandbox(
+            common::workdir("connect-readable-work"),
+            true,
+            Network::Shut,
+        );
+        match granted {
+            "shell-read" => read_only.shell_readable.push(readable.clone()),
+            _ => read_only.readable.push(readable.clone()),
+        }
+        let (ok, said) = run(&read_only, &connect_to(&socket));
+
+        assert!(
+            !ok,
+            "{granted}: a socket that may only be read was connected to: {said}"
+        );
+        assert!(said.contains("Permission denied"), "{granted}: {said}");
+    }
     drop(listening);
 }
 
