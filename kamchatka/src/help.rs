@@ -237,7 +237,7 @@ pub const QUESTION: &str =
 /// the rest: both answer "what works no matter where I am", and two headings answering that make
 /// the panel look longer.
 pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
-    ctrl+t              the next tab
+    ctrl+t / alt+tab    the next tab
     alt+1 / 2 / 3 / 4   chat / context / trace / permissions
     tab                 move the keys between the prompt and whatever else on
                         the screen wants them; from a tab that has no prompt,

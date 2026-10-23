@@ -8,10 +8,10 @@ session. [The README](README.md) says what the program is; this says how to use 
 
 ## 👉 four tabs, one window
 
-<kbd>ctrl+t</kbd> switches to the next tab, and <kbd>alt+1</kbd> … <kbd>alt+4</kbd> go to one
-directly. The status line is shown under all of them, so the budget is always visible. The prompt
-is on the chat tab, and on the context tab while an item is being edited; otherwise the other
-three are for reading and operating rather than typing.
+<kbd>ctrl+t</kbd> or <kbd>alt+tab</kbd> switches to the next tab, and <kbd>alt+1</kbd> …
+<kbd>alt+4</kbd> go to one directly. The status line is shown under all of them, so the budget
+is always visible. The prompt is on the chat tab, and on the context tab while an item is being
+edited; otherwise the other three are for reading and operating rather than typing.
 <kbd>tab</kbd> takes you back to the prompt from any of them.
 
 ![Four sessions side by side, one on each tab: the chat with a shell command waiting to be allowed,
@@ -181,7 +181,7 @@ else on the screen is treated as markdown: a tool's output is shown exactly as t
 | <kbd>home</kbd> / <kbd>end</kbd> | start / end of the prompt, as in any text field |
 | <kbd>ctrl+e</kbd> | follow the newest output again |
 | <kbd>tab</kbd> | move the keys between the prompt and whatever else on screen can use them; from a tab without a prompt, go back to the chat |
-| <kbd>ctrl+t</kbd> | next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for a specific one |
+| <kbd>ctrl+t</kbd>, <kbd>alt+tab</kbd> | next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for a specific one |
 | <kbd>esc</kbd> | close an open search box; otherwise stop what's running and keep what arrived, or, when stopped in `ready`, drop the calls waiting to run |
 | <kbd>ctrl+c</kbd> | stop what's running, or quit when nothing is |
 | <kbd>ctrl+d</kbd> | quit, from anywhere, including a permission prompt, where <kbd>d</kbd> alone means something else |

@@ -1377,6 +1377,8 @@ impl App {
         match (key.code, ctrl) {
             (KeyCode::Esc, _) if self.stoppable() => self.interrupt(),
             (KeyCode::Char('t'), true) => self.show(self.next_tab()),
+            // ahead of plain `tab` below, which moves the keys rather than the tab
+            (KeyCode::Tab, _) if alt => self.show(self.next_tab()),
             (KeyCode::Char('1'), _) if alt => self.show(Tab::Chat),
             (KeyCode::Char('2'), _) if alt => self.show(Tab::Context),
             (KeyCode::Char('3'), _) if alt => self.show(Tab::Trace),
