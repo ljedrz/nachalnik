@@ -483,7 +483,7 @@ async fn a_relay_is_named_by_the_browser_it_relays_for_and_nobody_else_is() {
     relay.send(relaying()).await;
     while !matches!(relay.recv().await, Message::Attached(_)) {}
     let (mut next, attached) = attached(&session.at).await;
-    assert_eq!(said(&attached), ["192.0.2.7:51234 through the web page"]);
+    assert_eq!(said(&attached), ["192.0.2.7:51234 (web UI)"]);
     next.send(Command::Submit {
         line: "/quit".to_owned(),
     })

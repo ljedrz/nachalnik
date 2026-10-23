@@ -772,7 +772,7 @@ impl Serving {
     }
 
     /// A client as the trace names it: where it came from, `127.0.0.1:53430` or `pid 4123`, or
-    /// `192.168.1.7:51234 through the web page`.
+    /// `192.168.1.7:51234 (web UI)`.
     ///
     /// note: a `--serve tcp:` port only listens on loopback, so its clients are always `127.0.0.1`
     /// or `::1`, and the port is what tells two of them apart; `ss -tp` says which process has it.
@@ -783,7 +783,7 @@ impl Serving {
             return "unknown".to_owned();
         };
         match (&origin.relaying, origin.seen) {
-            (Some(browser), _) => format!("{browser} through the web page"),
+            (Some(browser), _) => format!("{browser} (web UI)"),
             (None, Some(Seen::Tcp(peer))) => peer.to_string(),
             (None, Some(Seen::Unix(pid))) => format!("pid {pid}"),
             (None, None) => "unknown".to_owned(),
