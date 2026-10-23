@@ -119,6 +119,10 @@ minor bump may break you.
   tab.** The bottom of the chat tab listed `alt+1` to `alt+4` all the time. It is now empty unless
   the conversation is scrolled back. The first line names `ctrl+t`, `alt+tab` and `alt+1` to
   `alt+4`, and F1 lists them as before.
+- **A served session greets the screen too**, `--web` included. The first line was said into the
+  conversation, which every client reads, so a served session left it out to keep it from browsers
+  that have none of these keys. It is now drawn by the screen alone and sent to no client.
+  `ctrl+l` clears it with the other notes.
 
 ### removed
 

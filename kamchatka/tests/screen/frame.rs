@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
-    app::{Focus, Speaker, Tab},
+    app::{Focus, Tab},
     tools::Limits,
     ui,
 };
@@ -798,7 +798,7 @@ fn every_command_that_exists_is_in_the_help() {
 #[tokio::test]
 async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
     let mut harness = Harness::new([]);
-    harness.app.say(Speaker::Note, ui::GREETING);
+    harness.app.greet();
     let screen = harness.screen();
     assert!(screen.contains("ctrl+t"), "{screen}");
 
@@ -846,6 +846,36 @@ async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
             "the greeting offers `{key}` and the help does not mention it"
         );
     }
+}
+
+/// The greeting is on the screen and nowhere a client reads, so a served session shows it too.
+///
+/// note: it was said into the conversation, and so left out of every served session, `--web`
+/// included, to keep it from browsers that have none of its keys.
+#[tokio::test]
+async fn the_greeting_is_for_the_screen_alone() {
+    let mut harness = Harness::new([]);
+    harness.app.greet();
+    let screen = harness.screen();
+    assert!(screen.contains("alt+tab"), "{screen}");
+
+    // a client reads the notes, and an attach reads the conversation
+    assert_eq!(harness.app.notes(0).count(), 0, "a client is told nothing");
+    let items = harness.app.kernel.items();
+    let going = harness.app.going();
+    assert!(
+        harness
+            .app
+            .conversation(&items, &going)
+            .iter()
+            .all(|said| !said.text.contains("alt+tab")),
+        "an attach is not told it"
+    );
+
+    // ctrl+l takes it away with the program's other lines
+    harness.chord(KeyCode::Char('l')).await;
+    let screen = harness.screen();
+    assert!(!screen.contains("alt+tab"), "{screen}");
 }
 
 /// A panel with room for all it says shows all of it, on a terminal narrower than the panel.

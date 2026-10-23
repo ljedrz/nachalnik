@@ -758,14 +758,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                 );
             }
         }
-        // note: `server.is_none()` as well as `!headless`, because they are two different
-        // questions. The greeting tells the reader that `ctrl+p` shows the next request and `F1`
-        // lists the keys. It goes into the conversation, which is in every projection, so in a
-        // served session it would reach every client that ever attached, none of which has this
-        // program's keys
+        // only for the screen: a served session's clients never see it; see `App::greet`
         #[cfg(feature = "tui")]
-        if !headless && server.is_none() && !(first && args.resume.is_some()) {
-            app.say(Speaker::Note, ui::GREETING);
+        if !headless && !(first && args.resume.is_some()) {
+            app.greet();
         }
         // said again here, where a screen and a served session's clients read, because this is the
         // line a person needs before wondering where a setting came from. Not in a headless run
