@@ -402,7 +402,7 @@ async fn every_line_says_when_it_happened() {
 /// is what a pane that puts the clock in front of one row and not the other gets wrong.
 #[tokio::test]
 async fn a_detail_that_wraps_hangs_under_the_column_its_name_is_in() {
-    use std::time::{Instant, SystemTime};
+    use std::time::SystemTime;
 
     use kamchatka::app::Traced;
 
@@ -416,9 +416,7 @@ async fn a_detail_that_wraps_hangs_under_the_column_its_name_is_in() {
             "X0 alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima mike \
                  november oscar"
                 .to_owned(),
-        at: Instant::now(),
         wall: SystemTime::now(),
-        after_a_person: false,
     });
     harness.tab(Tab::Trace);
 
@@ -476,9 +474,7 @@ async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
         harness.app.trace.push_back(Traced {
             name: name.to_owned(),
             detail: "the long one".to_owned(),
-            at: std::time::Instant::now(),
             wall: midnight + Duration::from_secs(86_400 * n as u64),
-            after_a_person: false,
         });
     }
 

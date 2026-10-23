@@ -139,8 +139,3 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   not been done. Doing it means carrying one projection and its cost from the budget through the
   compactor to the request, and making a fresh one only where something changed in between.
   Worth doing together with the next change to `maybe_compact` or `build_request`.
-
-- **Three public fields that nothing uses: `Tracing::gap`, `Traced::after_a_person` and
-  `Traced::at`.** `gap` is always `None`, `after_a_person` is always `false`, and nothing reads
-  `at`. Removing a public field breaks the API, so they wait for the next release that breaks it
-  anyway.
