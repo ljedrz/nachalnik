@@ -296,6 +296,79 @@ async fn a_call_whose_arguments_did_not_parse_is_answered_by_the_kernel() {
     assert!(!sent.contains("_unparsed"), "{sent}");
 }
 
+/// A call the tool says is malformed is answered with what the tool said, before the policy is
+/// asked, and the tool is not run; a call it finds nothing wrong with is asked about as before.
+#[tokio::test]
+async fn a_malformed_call_is_refused_before_anybody_is_asked() {
+    /// A tool with two operations, which knows a call naming neither is not one it can run.
+    struct Picky;
+
+    #[async_trait::async_trait]
+    impl nachalnik::Tool for Picky {
+        fn spec(&self) -> nachalnik::ToolSpec {
+            nachalnik::ToolSpec::new("fs", "files")
+                .with_capabilities([Capability::fs("read"), Capability::fs("write")])
+        }
+
+        fn malformed(&self, call: &nachalnik::ToolCall) -> Option<String> {
+            (call.args["action"].as_str() != Some("read"))
+                .then(|| "no `action`; `fs` does read".to_owned())
+        }
+
+        async fn invoke(
+            &self,
+            call: &nachalnik::ToolCall,
+            _output: OutputSink,
+        ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+            assert_eq!(call.args["action"], "read", "a malformed call was run");
+            Ok(nachalnik::ToolOutput::new("read it"))
+        }
+    }
+
+    // the default policy asks about everything, so a question would leave the turn deciding
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "fs", json!({ "path": "x" }))]),
+        ModelResponse::text("ok"),
+    ])));
+    kernel.add_tool(Arc::new(Picky));
+    kernel.push(ContextItem::user("look"));
+
+    let mut events = kernel.subscribe();
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Finished { .. }
+    ));
+    let said = names(&mut events);
+    assert!(
+        !said.contains(&"permission.requested".to_owned()),
+        "{said:?}"
+    );
+    assert!(!said.contains(&"tool.started".to_owned()), "{said:?}");
+    let results = tool_results(&kernel);
+    assert_eq!(results.len(), 1);
+    assert!(
+        results[0]
+            .content
+            .to_text()
+            .contains("no `action`; `fs` does read")
+    );
+
+    // and a well-formed call is still a question
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "fs",
+            json!({ "action": "read", "path": "x" }),
+        )]),
+    ])));
+    kernel.push(ContextItem::user("again"));
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Deciding { .. }
+    ));
+}
+
 /// The text quoted back from a call that did not parse is the text around the fault, cut at
 /// characters, and a tool that adds nothing adds nothing to the answer.
 #[tokio::test]

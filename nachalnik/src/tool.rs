@@ -126,11 +126,29 @@ pub trait Tool: Send + Sync {
     /// note: called with the kernel's tool registry locked, so it must not call back into the
     /// [`Kernel`] it is registered with; [`Tool::invoke`] runs with no lock held and may.
     ///
-    /// note: it must not panic. A panic in [`Tool::invoke`], [`Tool::needs`], [`Tool::limit`] or
-    /// [`Tool::unparsed`], which read what a model wrote, is caught and answers the call; this one
-    /// reads nothing the model wrote, is asked wherever a tool is described, and is outside any
-    /// catch.
+    /// note: it must not panic. A panic in [`Tool::invoke`], [`Tool::malformed`], [`Tool::needs`],
+    /// [`Tool::limit`] or [`Tool::unparsed`], which read what a model wrote, is caught and answers
+    /// the call; this one reads nothing the model wrote, is asked wherever a tool is described, and
+    /// is outside any catch.
     fn spec(&self) -> ToolSpec;
+
+    /// Why *this* call cannot be run whatever anybody answers, if the tool can tell from the
+    /// arguments alone; `None` is a call worth asking about.
+    ///
+    /// note: asked before the policy, and a call answered here is never asked about. A call that
+    /// names no operation, or an operation the tool does not have, or an argument it does not
+    /// take, is refused by [`Tool::invoke`] in any case. Asked about first, somebody approves it
+    /// and the model then learns it was malformed, and a call that named no operation is put to
+    /// them as one that needs everything the tool can do.
+    ///
+    /// note: the kernel answers the call with what this returns, as an error, and records it as a
+    /// result of the tool's: no permission is asked or decided. It is about the shape of the call,
+    /// and must not depend on anything a permission would let it reach - reading a path to find out
+    /// it does not exist is the call itself. The default finds nothing wrong.
+    fn malformed(&self, call: &ToolCall) -> Option<String> {
+        let _ = call;
+        None
+    }
 
     /// What *this* call needs, at most what the spec declares.
     ///

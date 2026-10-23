@@ -27,7 +27,7 @@ use serde_json::Value;
 
 use crate::tools::{
     Limits, domains,
-    ops::{Arg, Layout, Op, action_of, actions, inner, schema, unread},
+    ops::{Arg, Layout, Op, action_of, actions, inner, schema},
     yes_or_no,
 };
 
@@ -338,20 +338,20 @@ impl Tool for Context {
         crate::tools::ops::advice(written, Layout::of(&self.schema))
     }
 
+    fn malformed(&self, call: &ToolCall) -> Option<String> {
+        super::malformed(call, &self.schema, &self.ops)
+    }
+
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
-        // an operation this tool does not have falls through to the arm naming the ones it does, so
-        // nothing holds its arguments yet; a word it knows is held to them before anything is done
-        // with it
-        let args = match inner(&call.args) {
-            Ok(args) => args,
-            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
-        };
-        let args = &*args;
-        if let Some(refusal) = unread(action(args)?, args, &self.ops) {
+        // an operation this tool does not have, or an argument it does not take, is refused before
+        // anything is done with it
+        if let Some(refusal) = self.malformed(call) {
             return Ok(ToolOutput::error(refusal));
         }
+        let args = inner(&call.args).map_err(|misread| misread.said(Layout::of(&self.schema)))?;
+        let args = &*args;
 
         match action(args)? {
             "look" => {

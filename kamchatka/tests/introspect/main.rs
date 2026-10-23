@@ -162,6 +162,27 @@ fn all_answers(kernel: &Kernel) -> Vec<String> {
     answers_from(kernel, &["context"])
 }
 
+/// The answers to these calls, in the order they are named here.
+///
+/// note: by call rather than by position. A call its tool refuses before anybody is asked is
+/// answered as the calls are prepared, ahead of the ones that run, so the order results are
+/// recorded in is not the order the calls were made in.
+fn answers_to(kernel: &Kernel, calls: &[&str]) -> Vec<String> {
+    let items = kernel.items();
+    calls
+        .iter()
+        .map(|wanted| {
+            items
+                .iter()
+                .find(|item| {
+                    matches!(&item.kind, ContextKind::ToolResult { call, .. } if call.0 == *wanted)
+                })
+                .map(|item| item.content.to_text().into_owned())
+                .unwrap_or_else(|| panic!("`{wanted}` was not answered"))
+        })
+        .collect()
+}
+
 /// Every result one of these tools produced, oldest first.
 fn answers_from(kernel: &Kernel, tools: &[&str]) -> Vec<String> {
     kernel

@@ -546,15 +546,16 @@ async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
     );
 }
 
-/// A call a standing rule refused because it named no operation is told that, not only the rule.
+/// A call naming no operation is refused for that before any rule is consulted, so it is not
+/// blamed on one.
 ///
 /// note: the refusal reached the model as `refused by \`fs:write\`. That is a
 /// standing rule`, for a call whose operation could not be read, and a model told that retries the
-/// same call: the rule is the wrong thing to blame, and the arguments are the thing to fix. The real
-/// `fs`, wired, because what is being checked is that the policy knows what the session's own
-/// tools declare.
+/// same call: the rule is the wrong thing to blame, and the arguments are the thing to fix. The call
+/// is now refused by `fs` itself before the policy is asked; see `Tool::malformed`. The real `fs`,
+/// wired, because what is being checked is the session's own tool.
 #[tokio::test]
-async fn a_rule_that_refused_a_call_naming_no_operation_says_the_call_named_none() {
+async fn a_call_naming_no_operation_is_refused_for_that_and_not_by_a_rule() {
     let wired = Setup {
         tools: Some(vec!["fs".to_owned()]),
         compact: None,
@@ -596,11 +597,15 @@ async fn a_rule_that_refused_a_call_naming_no_operation_says_the_call_named_none
         .map(|item| item.content.to_text().into_owned())
         .collect();
     assert_eq!(told.len(), 1, "{told:?}");
-    assert!(told[0].contains("names no operation"), "{}", told[0]);
+    assert!(told[0].contains("no `action`"), "{}", told[0]);
     assert!(
-        told[0].contains("holds `path` and no `action`"),
-        "and says what the call held instead: {}",
+        !told[0].contains("fs:write"),
+        "the rule had nothing to do with it: {}",
         told[0]
+    );
+    assert!(
+        !String::from_utf8_lossy(&records).contains("permission.decided"),
+        "nothing was asked or decided"
     );
 }
 

@@ -31,12 +31,16 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, ContextId, ContextItem, ContextKind, ContextState, Kernel, selectors::Selector,
+    BoxError, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall,
+    selectors::Selector,
 };
 use serde_json::{Value, json};
 
 use crate::{
-    tools::{Careful, Layout, Limits},
+    tools::{
+        Careful, Layout, Limits,
+        ops::{Op, actions, inner, unread},
+    },
     wiring::Earlier,
 };
 
@@ -293,6 +297,29 @@ fn action(args: &Value) -> Result<&str, BoxError> {
         )
         .into()),
     }
+}
+
+/// What `context`, `fork` and `setup` refuse a call for before doing anything: arguments that are
+/// not where they go, an `action` that is missing or is not one of theirs, or an argument the
+/// operation does not take. `None` is a call worth asking about; see `Tool::malformed`.
+///
+/// note: each tool's `invoke` asks this first as well, so a call handed to it directly is held to
+/// the same check, in the same words.
+fn malformed(call: &ToolCall, schema: &Value, ops: &[Op]) -> Option<String> {
+    let args = match inner(&call.args) {
+        Ok(args) => args,
+        Err(misread) => return Some(misread.said(Layout::of(schema))),
+    };
+    let action = match action(&args) {
+        Ok(action) => action,
+        Err(e) => return Some(e.to_string()),
+    };
+    let known = actions(ops);
+    if !known.contains(&action) {
+        return Some(unknown(action, &known));
+    }
+
+    unread(action, &args, ops)
 }
 
 /// What to say about an action nobody implements.

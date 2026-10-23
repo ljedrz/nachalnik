@@ -572,31 +572,43 @@ impl Tool for Shell {
         crate::tools::ops::advice(written, self.layout)
     }
 
-    async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+    /// note: what `invoke` refuses before anything runs, so a command that could never run is not
+    /// put to somebody to allow first.
+    fn malformed(&self, call: &ToolCall) -> Option<String> {
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(misread) => return Some(misread.said(self.layout)),
+        };
+        let args = &*args;
         // note: named rather than assumed, for the reason `fs` refuses one it does not have: a call
         // that meant something else and was answered as `run` is a command nobody asked for. The
         // tool is `shell` and the operation is `run`; the domain it declares is `exec`, which is
         // what a permission rule is written against
-        let args = match inner(&call.args) {
-            Ok(args) => args,
-            Err(misread) => return Ok(ToolOutput::error(misread.said(self.layout))),
-        };
-        let args = &*args;
         let named = &args["action"];
         if !named.is_null() && named.as_str() != Some("run") {
             let named = named
                 .as_str()
                 .map_or_else(|| named.to_string(), str::to_owned);
-            return Ok(ToolOutput::error(format!(
+            return Some(format!(
                 "`{named}` is not something `shell` does; it does run"
-            )));
+            ));
         }
         // the rule the other tools hold to: an ignored argument comes back as a real answer - the
         // answer to the call without it. `cmd` beside a stray `path` is a command meant to point
         // somewhere
         if let Some(refusal) = ops::unread("run", args, &ops()) {
+            return Some(refusal);
+        }
+
+        arg(args, "cmd").err().map(|e| e.to_string())
+    }
+
+    async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+        if let Some(refusal) = self.malformed(call) {
             return Ok(ToolOutput::error(refusal));
         }
+        let args = inner(&call.args).map_err(|misread| misread.said(self.layout))?;
+        let args = &*args;
         let cmd = arg(args, "cmd")?;
 
         // what the command may reach, which is a different question from whether it may run: the

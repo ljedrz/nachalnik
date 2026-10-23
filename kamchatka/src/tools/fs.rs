@@ -16,7 +16,7 @@
 //! What lives here is the schema, the dispatch and the two things only this level can answer:
 //! which subject a call needs, and how much of its answer the model is shown.
 
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use nachalnik::{
     BoxError, Capability, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
@@ -179,6 +179,38 @@ impl Fs {
     fn op(&self, call: &ToolCall) -> Option<String> {
         action_of(call, &self.ops)
     }
+
+    /// The arguments and the operation a call names, or why it cannot be run.
+    fn checked<'a>(&self, call: &'a ToolCall) -> Result<(Cow<'a, Value>, String), String> {
+        // the arguments wherever the model put them, which is the one thing that has to happen
+        // before anything here reads one
+        let args = inner(&call.args).map_err(|misread| misread.said(Layout::of(&self.schema)))?;
+
+        // note: the operation is checked here as well as in `needs`, because a refusal a model can
+        // act on names what was wrong. Dispatching on a default runs something nobody asked for
+        let Some(action) = self.op(call) else {
+            let does = actions(&self.ops).join(", ");
+            return Err(match &args["action"] {
+                // a call carrying its arguments and no `action` read as "`nothing` is not
+                // something `fs` does", which names a word nobody sent
+                Value::Null => format!(
+                    "no `action`, and nothing was done; `fs` does {does}, named in `action`"
+                ),
+                other => format!(
+                    "`{}` is not something `fs` does; it does {does}",
+                    other
+                        .as_str()
+                        .map_or_else(|| other.to_string(), str::to_owned)
+                ),
+            });
+        };
+
+        if let Some(refusal) = unread(&action, &args, &self.ops) {
+            return Err(refusal);
+        }
+
+        Ok((args, action))
+    }
 }
 
 #[async_trait]
@@ -219,37 +251,19 @@ impl Tool for Fs {
         crate::tools::ops::advice(written, Layout::of(&self.schema))
     }
 
+    /// note: what `invoke` refuses before it touches the filesystem. A call naming no operation
+    /// would otherwise be put to somebody as one needing both `fs:read` and `fs:write`, and
+    /// refused by name only after they had said yes to it.
+    fn malformed(&self, call: &ToolCall) -> Option<String> {
+        self.checked(call).err()
+    }
+
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
-        // the arguments wherever the model put them, which is the one thing that has to happen
-        // before anything here reads one
-        let args = match inner(&call.args) {
-            Ok(args) => args,
-            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
+        let (args, action) = match self.checked(call) {
+            Ok(checked) => checked,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
         let args = &*args;
-
-        // note: the operation is checked here as well as in `needs`, because a refusal a model can
-        // act on names what was wrong. Dispatching on a default runs something nobody asked for
-        let Some(action) = self.op(call) else {
-            let does = actions(&self.ops).join(", ");
-            return Ok(ToolOutput::error(match &args["action"] {
-                // a call carrying its arguments and no `action` read as "`nothing` is not
-                // something `fs` does", which names a word nobody sent
-                Value::Null => format!(
-                    "no `action`, and nothing was done; `fs` does {does}, named in `action`"
-                ),
-                other => format!(
-                    "`{}` is not something `fs` does; it does {does}",
-                    other
-                        .as_str()
-                        .map_or_else(|| other.to_string(), str::to_owned)
-                ),
-            }));
-        };
-
-        if let Some(refusal) = unread(&action, args, &self.ops) {
-            return Ok(ToolOutput::error(refusal));
-        }
 
         match action.as_str() {
             "read" => self.read.invoke(args, output).await,

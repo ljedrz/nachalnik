@@ -96,6 +96,26 @@ impl Kernel {
                 continue;
             }
 
+            // a call the tool would refuse whatever the answer is refused before anybody is asked,
+            // and joins the turn's checkpoint as an unparsed one does. See `Tool::malformed`
+            //
+            // note: under the same catch as `needs`, and a panic here fails the call the same way
+            match guarded(|| tool.malformed(call)) {
+                Ok(None) => {}
+                Ok(Some(said)) => {
+                    self.refuse(call, Some(&*tool), said, &mut turn);
+                    continue;
+                }
+                Err(panic) => {
+                    self.emit(Event::ToolPanicked {
+                        call: call.id.clone(),
+                        tool: call.tool.clone(),
+                    });
+                    self.refuse(call, None, panicked_needing(&*panic), &mut turn);
+                    continue;
+                }
+            }
+
             // what the call needs rather than what the tool might: see `Tool::needs`
             //
             // note: under the same catch as `invoke`, since it reads the model's arguments too. A
