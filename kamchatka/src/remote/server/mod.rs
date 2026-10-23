@@ -1455,7 +1455,6 @@ fn tracing(app: &App) -> Vec<Tracing> {
         .map(|event| Tracing {
             name: event.name.clone(),
             detail: event.detail.clone(),
-            gap: None,
             at: event
                 .wall
                 .duration_since(std::time::UNIX_EPOCH)

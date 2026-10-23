@@ -137,9 +137,7 @@ async fn the_search_box_counts_events_and_not_the_rows_they_wrapped_into() {
         harness.app.trace.push_back(Traced {
             name: name.to_owned(),
             detail: "mreq".repeat(60 * (n + 1)),
-            at: std::time::Instant::now(),
             wall: SystemTime::UNIX_EPOCH + Duration::from_secs(1_789_171_201),
-            after_a_person: false,
         });
     }
     let events = harness.app.trace.len();

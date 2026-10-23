@@ -7,13 +7,7 @@
 //! builds the drawn line out of both, and [`Said`] is what it builds. What the screen does with
 //! them is `ui/tabs.rs`, which decides nothing.
 
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    path::Path,
-    sync::Arc,
-    time::{Instant, SystemTime},
-};
+use std::{borrow::Cow, collections::BTreeMap, path::Path, sync::Arc, time::SystemTime};
 
 use nachalnik::{
     Block, ContextId, ContextItem, ContextKind, ContextState, Event, Overrun, ToolCallId,
@@ -965,9 +959,7 @@ impl App {
         self.trace.push_back(Traced {
             name: name.into(),
             detail: detail.into(),
-            at: Instant::now(),
             wall: SystemTime::now(),
-            after_a_person: false,
         });
     }
 }

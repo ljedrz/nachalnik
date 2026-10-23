@@ -132,11 +132,6 @@ pub struct Traced {
     pub name: String,
     /// The rest of it.
     pub detail: String,
-    /// When it arrived, on a clock that only goes forwards.
-    ///
-    /// note: nothing here reads it since the pane stopped showing the time since the line above.
-    /// Kept so that removing it waits for a release that breaks the API anyway.
-    pub at: Instant,
     /// When it arrived, on the clock a person reads.
     ///
     /// note: what somebody matching the pane against a server log, a ticket or their own memory
@@ -146,11 +141,6 @@ pub struct Traced {
     /// to know about time zones or column widths. Turning it into digits is the screen's job, and
     /// the screen is the only thing that has a width.
     pub wall: SystemTime,
-    /// Always `false`. It marked the line whose gap to the one above was a person thinking rather
-    /// than the program working, and the pane no longer shows gaps.
-    ///
-    /// note: kept so that removing it waits for a release that breaks the API anyway.
-    pub after_a_person: bool,
 }
 
 /// What is being shown over the top of everything else.

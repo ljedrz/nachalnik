@@ -12,6 +12,10 @@ minor bump may break you.
 - **`Command::Attach` has a new field, `relaying`**, so code that builds one must set it: `None`
   for anything but a relay. On the wire the field is optional, so older clients and sessions still
   talk to newer ones.
+- **`Tracing::gap`, `Traced::after_a_person` and `Traced::at` are gone.** The trace no longer
+  shows the time since the line above, so nothing set or read them. `Traced::wall` and
+  `Tracing::at` still say when each line happened. On the wire `gap` is simply not sent, and an
+  older client reads its absence as `None`.
 
 ### added
 
@@ -115,9 +119,7 @@ minor bump may break you.
 - **The trace no longer shows how long after the line above each line arrived**, on the trace tab
   or the web page. The line above was often not the wait anybody was asking about: a client
   replaced, or a question somebody sat reading. Each line still says when it happened, and the
-  difference between two of those is the time between them. `Tracing::gap` is always `None` now,
-  and `Traced::after_a_person` is always `false`. Both stay, with `Traced::at`, until a release
-  that breaks the API anyway.
+  difference between two of those is the time between them.
 
 ## [0.22.0] - 2026-10-21
 

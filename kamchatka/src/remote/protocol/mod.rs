@@ -758,12 +758,6 @@ pub struct Tracing {
     pub name: String,
     /// The rest of it.
     pub detail: String,
-    /// Always `None`. It was how long after the line above this one arrived, and the trace no
-    /// longer says that: the line above was often not the wait anybody was asking about.
-    ///
-    /// note: kept so that removing it waits for a release that breaks the API anyway. A client that
-    /// wants the time between two lines has `at` on both.
-    pub gap: Option<String>,
     /// When it arrived, in milliseconds since the Unix epoch.
     ///
     /// note: the wall clock rather than the monotonic one, because this is what a reader matches
