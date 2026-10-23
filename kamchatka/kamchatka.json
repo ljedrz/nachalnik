@@ -15,7 +15,7 @@
   "no-sandbox": false,
   "sandbox-write": [],
   "sandbox-read": [],
-  "shell-read": ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys"],
+  "shell-read": ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run/systemd/resolve"],
   "shell-devices": ["/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom"],
   "auto-allow": [],
   "auto-deny": [],

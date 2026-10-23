@@ -741,17 +741,19 @@ real API accepts what is sent and that a real model can act on what the tools re
 
 `sandbox-read` and `sandbox-write` are what both tools reach. On top of those, a sandboxed command
 reads the `shell-read` paths, which `fs` doesn't: by default `/usr`, `/etc`, `/bin`, `/sbin`,
-`/lib`, `/lib64`, `/opt`, `/proc` and `/sys`, the directories a command needs to run at all.
+`/lib`, `/lib64`, `/opt`, `/proc`, `/sys` and `/run/systemd/resolve`, the directories a command
+needs to run at all. A path on the list that isn't there grants nothing.
 `--shell-read` and the settings file's `shell-read` replace the list rather than adding to it, and
 the shipped `kamchatka.json` spells it out. The list is for the shell only because of `/proc`: `fs`
 runs inside `kamchatka`, so for `fs` `/proc/self` would be `kamchatka`, with your API keys in its
 environment.
 
-`/run` isn't on the list: it holds your running session, including the sockets of the session bus,
-the compositor and the container daemon, and any USB drive under `/run/media`. Two kinds of system
-need part of it back. Where `/etc/resolv.conf` is systemd-resolved's stub, a command can't look up
-host names without `/run/systemd/resolve`, and `kamchatka` says so at startup, naming the directory.
-On NixOS, everything on `PATH` is under `/run/current-system`. An empty `shell-read` is allowed,
+The rest of `/run` isn't on the list: it holds your running session, including the sockets of the
+session bus, the compositor and the container daemon, and any USB drive under `/run/media`.
+`/run/systemd/resolve` is on it because Ubuntu, Fedora and Debian make `/etc/resolv.conf` a link to
+systemd-resolved's stub in there, and without it a command can't look up host names. If your
+`/etc/resolv.conf` leads anywhere else the list doesn't cover, `kamchatka` says so at startup,
+naming the directory to add. On NixOS, everything on `PATH` is under `/run/current-system`. An empty `shell-read` is allowed,
 for a sandbox whose `sandbox-read` holds a toolchain of its own, and is warned about at startup.
 
 ## 🧰 a toolchain lives in your home directory
