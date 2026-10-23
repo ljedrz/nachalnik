@@ -60,12 +60,18 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // what the answers came to on the last frame, and what they come to on this one; see `Drawn`
     let mut kept = DRAWN.take().at(width);
     let mut fresh = HashMap::new();
-    let greeting = app.greeting.then(|| Said {
-        speaker: Speaker::Note,
-        text: GREETING.into(),
-        item: None,
-    });
-    for said in greeting.into_iter().chain(app.conversation(&items, going)) {
+    // see `App::greet` and `App::tell`: lines for this screen alone, above the conversation
+    let aside = app
+        .greeting
+        .then_some(GREETING)
+        .into_iter()
+        .chain(app.aside.iter().map(String::as_str))
+        .map(|text| Said {
+            speaker: Speaker::Note,
+            text: text.into(),
+            item: None,
+        });
+    for said in aside.chain(app.conversation(&items, going)) {
         let item = said.item;
 
         // what the model is no longer shown is drawn so the eye can tell without reading it. It

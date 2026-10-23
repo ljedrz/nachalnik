@@ -618,8 +618,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     }
     // the page runs for the whole run, across `/restart`; browsers reconnect by themselves.
     // Connection errors go to stderr, except under a drawn screen, which they would corrupt. A LAN
-    // warning goes to stderr and into each session, because a screen hides stderr and browsers only
-    // see the session
+    // warning goes to stderr and onto the screen of each session, because a screen hides stderr.
+    // Not to the browsers: it is for whoever started this, who is the one who can do something
+    // about it
     #[cfg(feature = "webui")]
     let exposure = web.as_ref().and_then(kamchatka::web::Web::exposure);
     #[cfg(not(feature = "webui"))]
@@ -705,7 +706,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             remote::opening(&mut app, &server.address());
         }
         if let Some(exposure) = &exposure {
-            app.say(Speaker::Note, exposure.clone());
+            app.tell(exposure.clone());
         }
         app.web = page.clone();
         // note: shown as the screen opens where the page is for a phone, because the screen covers

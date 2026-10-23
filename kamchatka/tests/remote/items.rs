@@ -472,10 +472,11 @@ async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
 
     let read = String::from_utf8_lossy(&left.stderr);
     // note: which loop this ran on, read off what the session said rather than assumed from the
-    // pty. A served run says `serving on`; a *headless* one also says `headless: a line is a
-    // message`, and that line's absence is the whole of what says `drawn` was the loop
+    // pty. Being told the session ended and can be attached to again says it was a served one; a
+    // *headless* one also says `headless: a line is a message`, and that line's absence is the
+    // whole of what says `drawn` was the loop
     assert!(
-        read.contains("serving on"),
+        read.contains("`--connect` again attaches"),
         "this was not a served session at all: {read}"
     );
     assert!(

@@ -879,6 +879,34 @@ async fn the_greeting_is_for_the_screen_alone() {
     assert!(!screen.contains("alt+tab"), "{screen}");
 }
 
+/// Where a session serves, and who on the network can reach it, is said on the screen and to no
+/// client: it is for whoever started the program.
+#[tokio::test]
+async fn the_server_s_own_lines_are_for_the_screen_alone() {
+    let mut harness = Harness::new([]);
+    kamchatka::remote::opening(&mut harness.app, "tcp:127.0.0.1:41127");
+    harness
+        .app
+        .tell("the page is reachable from the local network");
+    let screen = harness.sized(200, 30);
+    assert!(
+        screen.contains("serving on tcp:127.0.0.1:41127"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("reachable from the local network"),
+        "{screen}"
+    );
+
+    assert_eq!(harness.app.notes(0).count(), 0, "a client is told nothing");
+    let items = harness.app.kernel.items();
+    let going = harness.app.going();
+    assert!(
+        harness.app.conversation(&items, &going).is_empty(),
+        "an attach is not told them"
+    );
+}
+
 /// A panel with room for all it says shows all of it, on a terminal narrower than the panel.
 ///
 /// note: the box was sized from the body wrapped at the widest a panel is, and drawn at the width
