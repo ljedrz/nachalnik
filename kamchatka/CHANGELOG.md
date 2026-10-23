@@ -140,6 +140,9 @@ minor bump may break you.
   on the screen only**, sent to no browser and no `--connect` client. Both were the first lines on
   every browser tab. They are for whoever started the program: a client knows where it
   connected, and cannot change who else can. A run with no screen prints both, as before.
+- **`policy.ruled` and `policy.changed` are yellow on the trace tab**, as `permission.` rows are.
+- **The web page's trace view uses the trace tab's colours**: failures red, tool events cyan, and
+  permission and policy events yellow.
 - **The web page no longer shows a command typed into it.** It stayed in the chat until `/cleanup`,
   while the terminal never shows one. What the command says back is still shown.
 - **`/web` has no empty line between the QR code and the text under it.** The code's own white
