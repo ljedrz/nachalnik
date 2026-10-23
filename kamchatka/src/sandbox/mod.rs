@@ -87,9 +87,9 @@ pub const SESSION_FLAG: &str = "--in-a-session";
 
 /// What the `shell` tool may reach.
 ///
-/// note: a command that cannot read `/usr/bin` cannot run, so system directories are always
-/// readable. The stances a person changes are what is writable and whether the network is
-/// reachable.
+/// note: a command that cannot read `/usr/bin` cannot run, so the shell reads the paths of
+/// `shell-read` - [`SYSTEM`] unless somebody says otherwise - beside everything the tools reach.
+/// The stances a person changes are what is writable and whether the network is reachable.
 ///
 /// note: "the network" is every socket that can leave the machine where the gate holds, and TCP
 /// where it does not.
@@ -107,6 +107,13 @@ pub struct Sandbox {
     /// `cargo` cannot start without `~/.rustup`, and a model that can replace the toolchain it is
     /// about to run is a worse trade than anybody meant to make.
     pub readable: Vec<PathBuf>,
+    /// Paths the command may read and `fs` may not; see [`SYSTEM`] for the ones it gets unless
+    /// somebody says otherwise.
+    ///
+    /// note: the shell's alone because `/proc/self` is a different file to each tool: to a command
+    /// it is the command, and to `fs`, which runs in this process, it is this process, with the
+    /// keys in its environment.
+    pub shell_readable: Vec<PathBuf>,
     /// Whether the working directory is writable, or only readable.
     pub workdir_writable: bool,
     /// What the command may do about the network.
@@ -244,6 +251,7 @@ impl Sandbox {
                 policy.gates_the_network(),
                 tcp,
             ),
+            shell_readable: SYSTEM.iter().map(PathBuf::from).collect(),
             devices: DEVICES.iter().map(PathBuf::from).collect(),
             closed: closing(tcp, &SERVED.lock().unwrap_or_else(PoisonError::into_inner)),
         }
@@ -266,6 +274,8 @@ impl Sandbox {
         argv.extend(self.writable.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.readable.len().to_string()));
         argv.extend(self.readable.iter().map(|path| path.clone().into()));
+        argv.push(OsString::from(self.shell_readable.len().to_string()));
+        argv.extend(self.shell_readable.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.devices.len().to_string()));
         argv.extend(self.devices.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.closed.len().to_string()));
@@ -297,6 +307,8 @@ impl Sandbox {
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let readable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
+        let shell_readable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
+        let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let devices: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let closed = argv
@@ -311,6 +323,7 @@ impl Sandbox {
                 workdir,
                 writable,
                 readable,
+                shell_readable,
                 workdir_writable,
                 network,
                 devices,
@@ -351,9 +364,9 @@ impl Sandbox {
             return true;
         }
 
-        SYSTEM
+        self.shell_readable
             .iter()
-            .map(PathBuf::from)
+            .cloned()
             .chain(std::iter::once(self.workdir.clone()))
             .chain(scratch.map(Path::to_path_buf))
             .chain(self.writable.iter().cloned())
@@ -733,7 +746,7 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// The device a path given to `--sandbox-devices` names, resolved; `None` where it lands anywhere
+/// The device a path given to `--shell-devices` names, resolved; `None` where it lands anywhere
 /// but beneath `/dev`, or is `/dev` itself.
 ///
 /// note: resolved rather than read off the spelling, because `Path::starts_with` compares
@@ -879,11 +892,11 @@ impl fmt::Display for Sandbox {
             write!(f, ", {} read-only", path.display())?;
         }
         // its own temporary directory, writable even where the working directory is not
-        write!(
-            f,
-            ", its own `$TMPDIR` read-write, the system directories read-only, {}",
-            self.network
-        )?;
+        write!(f, ", its own `$TMPDIR` read-write")?;
+        for path in &self.shell_readable {
+            write!(f, ", {} read-only", path.display())?;
+        }
+        write!(f, ", {}", self.network)?;
         // note: said wherever TCP is not refused outright, since a closed port is the one
         // connection refused there. A command refused it was told only that the network was
         // reachable, with nothing to say why this address was not
@@ -902,13 +915,22 @@ impl fmt::Display for Sandbox {
         Ok(())
     }
 }
-/// The directories a command has to be able to read before it can be a command at all.
-const SYSTEM: &[&str] = &[
-    "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run",
+/// The directories a command has to be able to read before it can be a command at all, which the
+/// shell reads unless somebody says otherwise. `--shell-read` and the settings file's `shell-read`
+/// replace the list.
+///
+/// note: not `/run`, though a command reaches some of it on some systems. What is in there is the
+/// person's running session: the sockets of the session bus, the compositor and the container
+/// daemon, which run a command outside the sandbox on its behalf and below Linux 7.1 take a
+/// connection from anyone who can read their path; a USB drive under `/run/media`; who is logged
+/// in. A system whose `/etc/resolv.conf` leads in there - systemd-resolved's stub - is told at
+/// startup which directory to add, and NixOS needs `/run/current-system` for everything on `PATH`.
+pub const SYSTEM: &[&str] = &[
+    "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys",
 ];
 
 /// The devices a confined command may read and write unless somebody says otherwise, by name;
-/// nothing else under `/dev`. `--sandbox-devices` and the settings file's `sandbox-devices` replace
+/// nothing else under `/dev`. `--shell-devices` and the settings file's `shell-devices` replace
 /// the list, which is how a pty is had back - `/dev/ptmx` and `/dev/pts` - at the price below.
 ///
 /// note: by name rather than `/dev` beneath, because beneath reaches more than a command needs.

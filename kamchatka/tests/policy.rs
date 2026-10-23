@@ -51,6 +51,7 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     // the moment the credential list exists for: somebody has answered `always` to an ordinary
@@ -224,6 +225,7 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
             workdir: dir.clone(),
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             confined: true,
         };
         assert_eq!(
@@ -244,6 +246,7 @@ fn the_reach_refuses_what_is_outside_it() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -259,6 +262,7 @@ fn the_reach_refuses_what_is_outside_it() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: false,
     };
     assert_eq!(
@@ -711,6 +715,7 @@ fn a_file_allowed_on_its_own_can_be_opened() {
         workdir: work,
         writable: vec![allowed.clone()],
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -761,6 +766,7 @@ fn a_chain_of_links_too_long_to_follow_is_refused() {
         workdir: work.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 

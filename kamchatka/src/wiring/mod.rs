@@ -136,6 +136,9 @@ pub struct Setup {
     pub writable: Vec<std::path::PathBuf>,
     /// Paths outside the working directory the tools may read but not change.
     pub readable: Vec<std::path::PathBuf>,
+    /// Paths a confined command may read and `fs` may not; [`sandbox::SYSTEM`] unless somebody
+    /// says otherwise.
+    pub shell_readable: Vec<std::path::PathBuf>,
     /// The devices under `/dev` a confined command may read and write, and no others;
     /// [`sandbox::DEVICES`] unless somebody says otherwise.
     pub devices: Vec<std::path::PathBuf>,
@@ -189,6 +192,10 @@ impl Default for Setup {
             confine: true,
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: sandbox::SYSTEM
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect(),
             devices: sandbox::DEVICES
                 .iter()
                 .map(std::path::PathBuf::from)
@@ -286,6 +293,7 @@ fn built() -> Vec<Arc<dyn nachalnik::Tool>> {
             workdir: std::path::PathBuf::new(),
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
             limits: Limits::default(),
@@ -296,6 +304,7 @@ fn built() -> Vec<Arc<dyn nachalnik::Tool>> {
             workdir: std::path::PathBuf::new(),
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: Vec::new(),
             confined: true,
         },
         Limits::default(),
@@ -484,12 +493,12 @@ impl Flagged {
 
 /// Why [`Setup::check`] refused a setup, and which setting said what it refused.
 ///
-/// note: the key is spelled as in a settings file, such as `sandbox-devices` or
+/// note: the key is spelled as in a settings file, such as `shell-devices` or
 /// `auto-allow-servers`; a flag spells it with `--` in front. It is `None` when no setting said it, such as a working
 /// directory that cannot be found.
 ///
 /// note: it lets a caller holding a settings file name the file beside a value the file said, so a
-/// `--sandbox-devices` typed on the command line is not mistaken for a file setting.
+/// `--shell-devices` typed on the command line is not mistaken for a file setting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Refused {
@@ -658,9 +667,9 @@ impl Setup {
             .find(|device| sandbox::device(device).is_none())
         {
             return Err(refused(
-                "sandbox-devices",
+                "shell-devices",
                 format!(
-                    "{}: `--sandbox-devices` names a device under `/dev`; a path anywhere else is \
+                    "{}: `--shell-devices` names a device under `/dev`; a path anywhere else is \
                      `--sandbox-write`",
                     stray.display()
                 ),
@@ -853,6 +862,13 @@ impl Setup {
             let reach = sandbox::Reach {
                 writable: resolved(self.writable),
                 readable: resolved(self.readable),
+                // as written rather than resolved: nothing is granted by them here, and the screens
+                // name them. Resolved, `/bin` and `/sbin` both read `/usr/bin` on most systems
+                shell_readable: self
+                    .shell_readable
+                    .into_iter()
+                    .map(|path| workdir.join(path))
+                    .collect(),
                 workdir,
                 confined: self.confine,
             };
@@ -862,6 +878,7 @@ impl Setup {
                     workdir: reach.workdir.clone(),
                     writable: reach.writable.clone(),
                     readable: reach.readable.clone(),
+                    shell_readable: reach.shell_readable.clone(),
                     devices: self.devices,
                     // Set the confiner only when it would actually confine anything. A binary
                     // replaced since this one started, or a kernel without Landlock, gives a

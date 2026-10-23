@@ -478,7 +478,7 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
         ),
         (
             "device",
-            r#"{ "sandbox-devices": ["/home"] }"#,
+            r#"{ "shell-devices": ["/home"] }"#,
             "names a device under `/dev`",
         ),
     ] {
@@ -910,37 +910,88 @@ fn an_advisor_this_build_does_not_have_is_refused() {
 /// anywhere else, and a writable path the screens never mention.
 #[test]
 fn a_device_outside_dev_is_refused() {
-    let (ok, said) = run(&["--sandbox-devices", "/tmp/not-a-device"], "");
+    let (ok, said) = run(&["--shell-devices", "/tmp/not-a-device"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
-    let path = settings("device-outside", r#"{ "sandbox-devices": ["/home"] }"#);
+    let path = settings("device-outside", r#"{ "shell-devices": ["/home"] }"#);
     let (ok, said) = run(&["--config-file", &path], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
     // begins with `/dev` by its components, and is `/tmp` once the `..` is settled
-    let (ok, said) = run(&["--sandbox-devices", "/dev/../tmp"], "");
+    let (ok, said) = run(&["--shell-devices", "/dev/../tmp"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
     // and with no confinement being built, where the list is not used: the value is a path
     // leading out of `/dev` whatever the sandbox is doing, and a run switched between the two
     // should not change which values are acceptable
-    let (ok, said) = run(
-        &["--no-sandbox", "--sandbox-devices", "/dev/../home/you"],
-        "",
-    );
+    let (ok, said) = run(&["--no-sandbox", "--shell-devices", "/dev/../home/you"], "");
     assert!(!ok, "a device nobody checks is a device nobody has: {said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
 
     let path = settings(
         "device-outside-unconfined",
-        r#"{ "sandbox-devices": ["/etc/shadow"] }"#,
+        r#"{ "shell-devices": ["/etc/shadow"] }"#,
     );
     let (ok, said) = run(&["--no-sandbox", "--config-file", &path], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
+}
+
+/// `shell-read` replaces the usual list, and what a list leaves out that a command is likely to
+/// need is said at startup: everything, for an empty one, and the resolver, for one that does not
+/// reach where `/etc/resolv.conf` leads.
+///
+/// note: said rather than refused. An empty list is right for a sandbox whose `sandbox-read` holds
+/// a toolchain of its own, and a session that never looks up a host never misses the resolver.
+#[test]
+fn shell_read_says_what_it_leaves_out() {
+    let path = settings("shell-read-empty", r#"{ "shell-read": [] }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(ok, "an empty list is allowed: {said}");
+    assert!(said.contains("`--shell-read` is empty"), "{said}");
+
+    // `/usr` alone reaches no `/etc/resolv.conf`, wherever it leads
+    let (ok, said) = run(&["--shell-read", "/usr"], "");
+    assert!(ok, "{said}");
+    if let Ok(resolver) = std::fs::canonicalize("/etc/resolv.conf") {
+        assert!(
+            said.contains(&format!(
+                "`/etc/resolv.conf` leads to {}, which no `--shell-read` path covers",
+                resolver.display()
+            )),
+            "{said}"
+        );
+    }
+
+    // and nothing at all with no sandbox, where a command reads everything
+    let path = settings("shell-read-unconfined", r#"{ "shell-read": [] }"#);
+    let (ok, said) = run(&["--no-sandbox", "--config-file", &path], "");
+    assert!(ok, "{said}");
+    assert!(!said.contains("`--shell-read` is empty"), "{said}");
+}
+
+/// A `shell-read` path inside one the tools may write is taken, unlike a `sandbox-read` one: it
+/// makes nothing read-only, and the confinement leaves it out; see `sandbox.rs`.
+///
+/// note: refused, it stopped a session started in `/`, or with `--sandbox-write /usr`, over a
+/// flag nobody passed, since the usual list was beneath the writable root.
+#[test]
+fn a_shell_read_path_inside_a_writable_one_is_taken() {
+    let inside = elsewhere().join("toolchain");
+    let (ok, said) = run(&["--shell-read", &inside.display().to_string()], "");
+    assert!(ok, "{said}");
+}
+
+/// `sandbox-devices` is `shell-devices` now, and the old key is refused rather than ignored.
+#[test]
+fn the_old_name_for_shell_devices_is_refused() {
+    let path = settings("sandbox-devices", r#"{ "sandbox-devices": ["/dev/null"] }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("sandbox-devices"), "{said}");
 }
 
 /// A file that is not there says so, naming it.
@@ -2336,7 +2387,7 @@ fn a_file_named_on_the_command_line_says_why_it_could_not_be_read() {
 ///
 /// note: the refusals that come after the merge - a device, a path rule, a tool - were prefixed
 /// with the file whenever `tools` was not typed, and `tools` can only ever come from a file, so a
-/// typed `--sandbox-devices /home` was answered `kamchatka.json: /home: ...` by a file that said
+/// typed `--shell-devices /home` was answered `kamchatka.json: /home: ...` by a file that said
 /// nothing about devices. Which setting was refused is part of the refusal now, and the file is
 /// named only where it carried that setting.
 #[test]
@@ -2350,7 +2401,7 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
         &[
             "--config-file",
             "kamchatka.json",
-            "--sandbox-devices",
+            "--shell-devices",
             "/home",
         ],
         "",
@@ -2365,7 +2416,7 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
     // and the same refusal, the file's own, still names it
     std::fs::write(
         dir.join("kamchatka.json"),
-        r#"{ "tools": ["fs"], "sandbox-devices": ["/home"] }"#,
+        r#"{ "tools": ["fs"], "shell-devices": ["/home"] }"#,
     )
     .expect("written");
     let (ok, out) = run_from(&dir, &["--config-file", "kamchatka.json"], "");

@@ -24,6 +24,7 @@ fn the_file_tools_are_held_to_the_same_boundary() {
         workdir: dir.clone(),
         writable: vec![PathBuf::from("/usr/share")],
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -172,6 +173,7 @@ fn a_directory_that_may_only_be_searched_is_still_reached() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     let read = reach
@@ -243,6 +245,7 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
         workdir: inside.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -315,6 +318,7 @@ fn a_root_swapped_for_a_link_reaches_nothing() {
         workdir: base.join("elsewhere"),
         writable: vec![shelf.clone()],
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     std::fs::create_dir_all(&reach.workdir).expect("a working directory");
@@ -344,6 +348,7 @@ fn a_root_swapped_for_a_link_reaches_nothing() {
         workdir: work.join("proj"),
         writable: vec![work.clone()],
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     std::fs::create_dir_all(&swapped.workdir).expect("a working directory");
@@ -376,6 +381,7 @@ fn a_path_turned_into_a_link_within_after_it_was_checked_is_not_opened() {
         workdir: inside.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -421,6 +427,7 @@ fn a_directory_turned_into_a_link_out_is_not_made_through() {
         workdir: inside.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -458,6 +465,7 @@ fn a_directory_made_under_one_that_may_only_be_searched() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     let written = reach
@@ -492,6 +500,7 @@ fn a_directory_that_cannot_be_searched_is_left_to_the_write() {
         workdir: inside.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     let written = reach
@@ -532,6 +541,7 @@ fn a_refusal_names_what_was_opened_up() {
         workdir: dir.clone(),
         writable: vec![PathBuf::from("/usr/share")],
         readable: vec![PathBuf::from("/usr/lib")],
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -593,6 +603,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
             workdir: dir.clone(),
             writable: vec![opened.clone()],
             readable: Vec::new(),
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
             confiner: None,
@@ -604,6 +615,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
             workdir: dir.clone(),
             writable: vec![opened.clone()],
             readable: Vec::new(),
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             confined: true,
         },
         Limits::default(),
@@ -658,6 +670,7 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
                 workdir: dir.clone(),
                 writable: Vec::new(),
                 readable: Vec::new(),
+                shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 policy,
                 confiner: None,
@@ -669,6 +682,7 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
                 workdir: dir.clone(),
                 writable: Vec::new(),
                 readable: Vec::new(),
+                shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 confined: true,
             },
             Limits::default(),
@@ -696,6 +710,8 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
 
     let system = refused(Arc::new(Careful::new()), "/etc/passwd").await;
     assert!(system.contains("`shell` reads"), "{system}");
+    // the `shell-read` path it is under, not a phrase standing for the whole list
+    assert!(system.contains("under /etc,"), "{system}");
     assert!(system.contains(&dir.display().to_string()), "{system}");
     assert!(!system.contains("opened up"), "{system}");
 
@@ -724,6 +740,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
 
@@ -788,6 +805,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
             workdir: dir.clone(),
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: Arc::new(Careful::new()),
             confiner: None,
@@ -1042,6 +1060,7 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
             readable: vec![PathBuf::from("/opt/three")],
             workdir_writable: false,
             network,
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: vec![PathBuf::from("/dev/null"), PathBuf::from("/dev/pts")],
             closed: vec![7878, 9],
         };
@@ -1080,6 +1099,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1215,6 +1235,7 @@ fn the_punctuation_around_a_path_is_not_part_of_it() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1260,6 +1281,7 @@ fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() 
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1312,6 +1334,7 @@ fn a_refusal_written_in_any_of_its_spellings_is_a_refusal() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1357,6 +1380,7 @@ fn an_absolute_path_that_looks_like_a_url_is_still_named() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1432,6 +1456,7 @@ fn a_relative_path_is_judged_from_the_working_directory() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1458,6 +1483,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1481,7 +1507,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
 /// is the file's own permissions and nothing is said.
 ///
 /// note: `--sandbox-write` and `--sandbox-read` are granted under `/dev` as anywhere, and only
-/// `--sandbox-devices` is limited to it. Judging `/dev` by the devices alone told a command that a
+/// `--shell-devices` is limited to it. Judging `/dev` by the devices alone told a command that a
 /// terminal beneath an allowed `/dev/pts` was out of reach, when it was the terminal's owner who
 /// refused it.
 #[test]
@@ -1496,6 +1522,7 @@ fn a_root_named_under_dev_is_reached() {
             readable,
             workdir_writable: true,
             network: kamchatka::sandbox::Network::NoTcp,
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             closed: Vec::new(),
         };
@@ -1648,6 +1675,7 @@ fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1689,6 +1717,7 @@ fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1718,6 +1747,7 @@ fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
         workdir: dir.join("w"),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     std::fs::create_dir_all(dir.join("w")).expect("the working directory");
@@ -1771,6 +1801,7 @@ fn a_chain_of_links_longer_than_the_bound_is_refused() {
         workdir: dir.join("w"),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     std::fs::create_dir_all(&reach.workdir).expect("the working directory");
@@ -1821,6 +1852,7 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
         readable: Vec::new(),
         workdir_writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1853,6 +1885,7 @@ fn a_closed_port_is_part_of_what_a_command_is_said_to_reach() {
         readable: Vec::new(),
         workdir_writable: true,
         network,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: Vec::new(),
         closed: vec![18790],
     };

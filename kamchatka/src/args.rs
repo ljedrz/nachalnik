@@ -187,10 +187,15 @@ pub struct Args {
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub sandbox_read: Vec<std::path::PathBuf>,
 
+    /// A path the shell may read and `fs` may not: what a command needs to be a command at all.
+    /// The list replaces the usual one rather than adding to it.
+    #[arg(long, value_name = "PATH", value_delimiter = ',', default_values = crate::sandbox::SYSTEM)]
+    pub shell_read: Vec<std::path::PathBuf>,
+
     /// A `/dev` device the shell may read and write. The list replaces the usual one rather than
     /// adding to it. Everything else under `/dev` stays out of reach.
     #[arg(long, value_name = "PATH", value_delimiter = ',', default_values = crate::sandbox::DEVICES)]
-    pub sandbox_devices: Vec<std::path::PathBuf>,
+    pub shell_devices: Vec<std::path::PathBuf>,
 
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
     /// excluded item that can still be read.
@@ -360,7 +365,8 @@ impl Args {
             no_sandbox,
             sandbox_write,
             sandbox_read,
-            sandbox_devices,
+            shell_read,
+            shell_devices,
             auto_allow,
             auto_deny,
             auto_allow_servers,
@@ -724,7 +730,8 @@ impl Args {
             confine: !self.no_sandbox,
             writable: self.sandbox_write.clone(),
             readable: self.sandbox_read.clone(),
-            devices: self.sandbox_devices.clone(),
+            shell_readable: self.shell_read.clone(),
+            devices: self.shell_devices.clone(),
             layout: match self.flat_tool_arguments {
                 true => crate::tools::Layout::Flat,
                 false => crate::tools::Layout::Wrapped,
@@ -792,6 +799,51 @@ impl Args {
                 these(&servers)
             )
         })
+    }
+
+    /// What the paths a shell command reads leave out that it is likely to need, as sentences for
+    /// the person; nothing under `--no-sandbox`, where it reads everything.
+    ///
+    /// note: said rather than refused, like [`Args::unstarted`]. An empty `shell-read` is right
+    /// for a sandbox whose `sandbox-read` holds a toolchain of its own, and a resolver nobody
+    /// reaches is a session without names to look up, which some sessions never miss.
+    ///
+    /// note: the resolver because `/run` is not on the usual list, and systemd-resolved's stub is
+    /// an `/etc/resolv.conf` leading in there. Without this, a person whose names resolved
+    /// yesterday found every command that fetches anything failing to find a host, and nothing
+    /// saying that the sandbox was why.
+    pub fn shell_cautions(&self, filed: Option<&Filed>) -> Vec<String> {
+        if self.no_sandbox {
+            return Vec::new();
+        }
+        let at = filed_at(filed, "shell_read").unwrap_or_default();
+        if self.shell_read.is_empty() {
+            return vec![format!(
+                "{at}`--shell-read` is empty, so a shell command reads nothing but the working \
+                 directory and the paths of `--sandbox-read` and `--sandbox-write`, and finds no \
+                 program to run unless one of those holds it"
+            )];
+        }
+
+        let Ok(resolver) = std::fs::canonicalize("/etc/resolv.conf") else {
+            return Vec::new();
+        };
+        let reached = self
+            .shell_read
+            .iter()
+            .chain(&self.sandbox_read)
+            .chain(&self.sandbox_write)
+            .filter_map(|path| std::fs::canonicalize(path).ok())
+            .any(|root| resolver.starts_with(root));
+        match (reached, resolver.parent()) {
+            (false, Some(parent)) => vec![format!(
+                "{at}`/etc/resolv.conf` leads to {}, which no `--shell-read` path covers, so a \
+                 shell command cannot look up a host name; add {} to `--shell-read` for it to",
+                resolver.display(),
+                parent.display()
+            )],
+            _ => Vec::new(),
+        }
     }
 
     /// How long a call to an MCP server's tool may wait: `--mcp-timeout-seconds`, ten minutes by

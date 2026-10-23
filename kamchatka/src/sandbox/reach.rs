@@ -10,7 +10,7 @@ use nachalnik::{Capability, Verdict};
 
 use crate::tools::{Careful, barred, path_matches};
 
-use super::{SYSTEM, resolve, writes};
+use super::{resolve, writes};
 
 /// Where the tools may work, for the ones the kernel cannot confine.
 ///
@@ -34,6 +34,9 @@ pub struct Reach {
     pub writable: Vec<PathBuf>,
     /// Paths outside the working directory the user opened up for reading only.
     pub readable: Vec<PathBuf>,
+    /// The paths `shell` reads and these tools do not: `shell-read`. Nothing here reaches them;
+    /// they are what a refusal sends the model to `shell` for.
+    pub shell_readable: Vec<PathBuf>,
     /// Whether to hold them to it at all; `--no-sandbox` turns this off.
     pub confined: bool,
 }
@@ -240,6 +243,15 @@ impl Reach {
         }
 
         let readable = matches!(doing, Access::Reading);
+        let shell_read = (readable && shell)
+            .then(|| {
+                // compared resolved, since they are held as written: `/bin` is a link on most
+                // systems, and a path through it resolves to `/usr/bin`
+                self.shell_readable
+                    .iter()
+                    .find(|root| resolve(root).is_some_and(|root| resolved.starts_with(root)))
+            })
+            .flatten();
         match self.within(&resolved, doing) {
             true => Ok(resolved),
             // note: written for the model, which reads it. The model cannot restart this program or
@@ -264,19 +276,17 @@ impl Reach {
                     self.writable()
                 ))
             }
-            // note: the system directories are in the shell's reach, read-only, and not in this
+            // note: the `shell-read` paths are in the shell's reach, read-only, and not in this
             // reach. A model sent to ask for one to be opened asks for a file it could already
             // `cat`; told where it can be read, it reads it there
-            false
-                if readable
-                    && shell
-                    && SYSTEM.iter().any(|system| resolved.starts_with(system)) =>
-            {
+            false if shell_read.is_some() => {
+                let root = shell_read.expect("the guard found one");
                 Err(format!(
-                    "{}: in the system directories, which `shell` reads and `fs` does not - `fs` \
-                     reaches {} - so this path will be refused here again as it stands. Read it \
-                     through `shell` instead.",
+                    "{}: under {}, which `shell` reads and `fs` does not - `fs` reaches {} - so \
+                     this path will be refused here again as it stands. Read it through `shell` \
+                     instead.",
                     path.display(),
+                    root.display(),
                     self.range(writing)
                 ))
             }

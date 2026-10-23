@@ -218,6 +218,9 @@ pub struct Shell {
     pub writable: Vec<PathBuf>,
     /// Paths outside the working directory the user asked to open up for reading only.
     pub readable: Vec<PathBuf>,
+    /// Paths a confined command may read that `fs` may not; see
+    /// [`SYSTEM`](crate::sandbox::SYSTEM) for the usual ones.
+    pub shell_readable: Vec<PathBuf>,
     /// The devices under `/dev` a confined command may read and write; see
     /// [`DEVICES`](crate::sandbox::DEVICES) for the usual ones.
     pub devices: Vec<PathBuf>,
@@ -536,11 +539,22 @@ impl Tool for Shell {
                 self.workdir.display(),
                 match self.confiner.is_some() {
                     true => format!(
-                        " It runs confined: outside the working directory it can read this \
-                         machine's system paths{} and no more{network} - so a permission error \
-                         there is the confinement rather than the command. `$TMPDIR` is a \
-                         directory of the command's own that it may write in, removed when it \
-                         ends.{}",
+                        " It runs confined: outside the working directory it can read {}{} and \
+                         no more{network} - so a permission error there is the confinement rather \
+                         than the command. `$TMPDIR` is a directory of the command's own that it \
+                         may write in, removed when it ends.{}",
+                        match self.shell_readable.as_slice() {
+                            [] => "nothing of this machine's own".to_owned(),
+                            [one] => one.display().to_string(),
+                            [rest @ .., last] => format!(
+                                "{} and {}",
+                                rest.iter()
+                                    .map(|path| path.display().to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                last.display()
+                            ),
+                        },
                         match opened.is_empty() {
                             true => String::new(),
                             false => format!(", and {},", opened.join(" and ")),
@@ -617,6 +631,7 @@ impl Tool for Shell {
         // note: kept rather than built and dropped, because it can tell afterwards whether a
         // permission error came from this boundary; see `Sandbox::note_for`
         let sandbox = self.confiner.is_some().then(|| Sandbox {
+            shell_readable: self.shell_readable.clone(),
             devices: self.devices.clone(),
             ..Sandbox::of(
                 &self.policy,
@@ -1595,6 +1610,7 @@ mod tests {
             workdir: std::env::temp_dir(),
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
             limits: Limits::default(),
@@ -1963,6 +1979,7 @@ mod tests {
                 workdir: std::env::temp_dir(),
                 writable: Vec::new(),
                 readable: Vec::new(),
+                shell_readable: crate::sandbox::SYSTEM.iter().map(Into::into).collect(),
                 devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
                 // the sentence is only written where there is a confinement to be confined by
                 confiner: Some(std::env::temp_dir().join("kamchatka-is-not-run-here")),

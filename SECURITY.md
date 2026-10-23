@@ -32,7 +32,13 @@ What changes to this workspace must keep true about what is and isn't enforced.
 - **Confinement happens where processes are spawned.** `kamchatka` sandboxes its `shell` tool with
   Landlock: it re-runs itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` means a refused TCP `connect`, and nothing outside the allowed directories can be
-  touched. One more directory is writable: a command's own temporary directory, handed to it as
+  touched. A command also reads the `shell-read` paths, which `fs` doesn't: `/usr`, `/etc`, `/bin`,
+  `/sbin`, `/lib`, `/lib64`, `/opt`, `/proc` and `/sys` unless the list is replaced. They're the
+  shell's alone because `/proc/self` is a different file to each tool: to a command it's the
+  command, and to `fs`, which runs inside `kamchatka`, it's `kamchatka`, with the API keys in its
+  environment. `/run` isn't on the list, since it holds the session bus, the compositor and the
+  container daemon, whose sockets take a connection from anyone who can read them below Linux 7.1.
+  One more directory is writable: a command's own temporary directory, handed to it as
   `TMPDIR`, even where the working directory is read-only, and removed when the command ends.
   Landlock covers TCP from ABI 4 (Linux 6.7). On older kernels the ruleset is reported as
   `Partial`: files are still restricted, TCP is left to the network gate (below) where available,
@@ -93,7 +99,7 @@ What changes to this workspace must keep true about what is and isn't enforced.
   `y` into the input `kamchatka` reads keys from and answer its own permission question (on kernels
   that still allow `TIOCSTI`), or draw over the question on any kernel. If the child can't detach
   from the terminal, it runs nothing. In `/dev`, the ruleset allows `null`, `zero`, `full`, `random`
-  and `urandom` and nothing else (`sandbox-devices` replaces the list), since other devices reach
+  and `urandom` and nothing else (`shell-devices` replaces the list), since other devices reach
   beyond the command: the person's other terminals, shared memory, cameras and microphones. Under
   `--no-sandbox`, a command keeps the terminal and `/dev`, along with everything else the person
   has access to.

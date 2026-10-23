@@ -90,6 +90,7 @@ fn sandbox(workdir: PathBuf, workdir_writable: bool, network: Network) -> Sandbo
         readable: Vec::new(),
         workdir_writable,
         network,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     }
@@ -119,6 +120,7 @@ fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
             readable: Vec::new(),
             workdir_writable: false,
             network: Network::Open,
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: Vec::new(),
             closed: Vec::new(),
         };
@@ -276,6 +278,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
             workdir: dir.clone(),
             writable: vec![opened.clone()],
             readable: Vec::new(),
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
             confiner: Some(common::program()),
@@ -488,6 +491,59 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
         "touch /etc/kamchatka-probe",
     );
     assert!(!wrote, "a system directory is not writable: {said}");
+}
+
+/// The shell reads what `shell-read` names and nothing it leaves out: `/run` by default, and
+/// `/etc` once somebody's list does without it.
+///
+/// note: the list was a constant nobody could see or change, and `/run` was on it - the person's
+/// running session, with the sockets that run a command outside the sandbox on its behalf.
+#[test]
+fn the_shell_reads_what_shell_read_names_and_no_more() {
+    if !enforced() {
+        return;
+    }
+    let (ok, said) = run(
+        &sandbox(common::workdir("shell-read-run"), true, Network::NoTcp),
+        "ls /run",
+    );
+    assert!(!ok, "`/run` is not on the usual list: {said}");
+
+    let mut without_etc = sandbox(common::workdir("shell-read-etc"), true, Network::NoTcp);
+    without_etc
+        .shell_readable
+        .retain(|path| path != Path::new("/etc"));
+    let (ok, said) = run(&without_etc, "cat /etc/passwd");
+    assert!(!ok, "`/etc` was left off the list: {said}");
+    assert!(said.contains("Permission denied"), "{said}");
+}
+
+/// A `shell-read` path beneath the working directory grants nothing of its own, so a link put
+/// there leads nowhere.
+///
+/// note: its rule follows links, as `/bin` needs. Beneath a root a command may write, one command
+/// could leave a link at its name and the next command's rule would grant reading wherever the
+/// link led; the root grants reading the path anyway.
+#[test]
+fn a_shell_read_path_beneath_a_root_grants_nothing_of_its_own() {
+    if !enforced() {
+        return;
+    }
+    let outside = common::scratch("shell-read-outside");
+    std::fs::write(outside.join("secret.txt"), "hunter2").expect("a file outside");
+    let dir = common::workdir("shell-read-beneath");
+    std::os::unix::fs::symlink(&outside, dir.join("tools"))
+        .expect("a link in the working directory");
+
+    let mut linked = sandbox(dir.clone(), true, Network::NoTcp);
+    linked.shell_readable.push(dir.join("tools"));
+    let (ok, said) = run(&linked, "cat tools/secret.txt");
+
+    assert!(
+        !ok,
+        "a link beneath the working directory was followed: {said}"
+    );
+    assert!(!said.contains("hunter2"), "{said}");
 }
 
 /// `/proc` is readable, and the environment of the process that spawned a command is not.
@@ -1367,6 +1423,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
         workdir: workdir.to_path_buf(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     }));
@@ -1429,6 +1486,7 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
@@ -1613,6 +1671,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         readable: Vec::new(),
         workdir_writable: true,
         network: Network::NoTcp,
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
@@ -1821,6 +1880,7 @@ async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
         workdir: common::workdir("scratch-refusal"),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
@@ -1875,6 +1935,7 @@ async fn a_command_reading_its_input_reads_end_of_file() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
         confiner: None,
@@ -1912,6 +1973,7 @@ fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
         workdir: dir.to_path_buf(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
@@ -2377,6 +2439,7 @@ async fn a_confined_command_leads_a_session_of_its_own() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
         confiner: Some(common::program()),
@@ -2406,7 +2469,7 @@ fn a_confined_command_reaches_named_devices_and_not_another_terminal() {
     if !enforced() {
         return;
     }
-    let dir = common::workdir("sandbox-devices");
+    let dir = common::workdir("shell-devices");
     let confined = |cmd: &str| {
         let mut argv = vec![common::program().into_os_string()];
         argv.extend(sandbox(dir.clone(), true, Network::NoTcp).argv(cmd));
@@ -2631,6 +2694,7 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
@@ -2682,6 +2746,7 @@ async fn a_job_is_given_a_grace_to_leave_and_no_more_than_it_needs() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
@@ -2746,6 +2811,7 @@ async fn a_job_that_left_its_group_is_stopped_too() {
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };

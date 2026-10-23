@@ -1111,6 +1111,7 @@ async fn agent(
         // where `workdir` *is* the process directory. Off, `Reach` hands back what it was given
         // and a relative path goes to the process directory instead - which in a test run is the
         // repository, so every file the test had just written came back absent
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         confined: true,
     };
     for tool in kamchatka::tools::builtin(
@@ -1119,6 +1120,7 @@ async fn agent(
             workdir: reach.workdir.clone(),
             writable: Vec::new(),
             readable: Vec::new(),
+            shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             // no Landlock: what is under test is what the tools say, and a session that cannot
             // start a confined child would report that as every one of these failing

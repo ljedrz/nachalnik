@@ -630,6 +630,7 @@ print('answered' if got else 'hung up')
         workdir: dir.clone(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: std::sync::Arc::new(Careful::new()),
         confiner: Some(program),

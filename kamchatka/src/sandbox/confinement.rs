@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{DEVICES, Network, SESSION_FLAG, SYSTEM, Sandbox, device};
+use super::{DEVICES, Network, SESSION_FLAG, SYSTEM, Sandbox, device, resolve};
 
 /// How much of a [`Sandbox`] the kernel agreed to.
 ///
@@ -362,9 +362,30 @@ pub fn confine_saying(
         .chain(sandbox.writable.iter().cloned())
         .collect();
     let scratch = scratch.map(|scratch| Ok(PathBeneath::new(scratch.held.as_fd(), rights)));
-    let system: Vec<PathBuf> = SYSTEM.iter().map(PathBuf::from).collect();
     let readable: Vec<PathBuf> = std::iter::once(sandbox.workdir.clone())
         .chain(sandbox.readable.iter().cloned())
+        .collect();
+    // note: a `shell-read` path beneath one of the session's own roots is left out. The root grants
+    // reading it already, and is opened without following a link; this rule would follow one, and
+    // a command that may write beside the path could swap it for a link the next command's rule
+    // then led through
+    let shell_readable: Vec<PathBuf> = sandbox
+        .shell_readable
+        .iter()
+        .filter(|path| {
+            // where the name is, not where a link at it leads: its directory resolved, and the name
+            // itself as it is
+            let path = match (path.parent().and_then(resolve), path.file_name()) {
+                (Some(parent), Some(name)) => parent.join(name),
+                _ => path.to_path_buf(),
+            };
+            !readable
+                .iter()
+                .chain(&writable)
+                .filter_map(|root| resolve(root))
+                .any(|root| path.starts_with(root))
+        })
+        .cloned()
         .collect();
     let devices: Vec<PathBuf> = sandbox
         .devices
@@ -375,7 +396,10 @@ pub fn confine_saying(
     let restricted = ruleset
         .create()
         .and_then(|created| {
-            created.add_rules(path_beneath_rules(&system, AccessFs::from_read(abi)))
+            created.add_rules(path_beneath_rules(
+                &shell_readable,
+                AccessFs::from_read(abi),
+            ))
         })
         .and_then(|created| created.add_rules(unlinked(&readable, AccessFs::from_read(abi))))
         .and_then(|created| {
@@ -408,9 +432,9 @@ pub fn confine_saying(
 /// root inside a directory a command may write - one beneath the working directory, or the
 /// working directory beneath a `--sandbox-write` path - can be renamed by one command and a link
 /// left at its name, and opened by its path the next command was granted wherever the link
-/// pointed. Such a root is left out and said on standard error, which the model reads. The system
-/// directories are opened as `path_beneath_rules` opens them, following links: `/bin` is one on
-/// most systems, and nothing confined can write beside them.
+/// pointed. Such a root is left out and said on standard error, which the model reads. The
+/// `shell-read` paths are opened as `path_beneath_rules` opens them, following links: `/bin` is one
+/// on most systems, and one beneath a root of the session's is left out; see `confine_saying`.
 ///
 /// note: where the kernel has no `openat2` (before 5.6), or a container's seccomp filter refuses
 /// it, the root is opened following links, with the window SECURITY.md describes.
@@ -611,6 +635,7 @@ pub fn available(program: &Path) -> Probed {
         workdir: std::env::temp_dir(),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: SYSTEM.iter().map(PathBuf::from).collect(),
         workdir_writable: true,
         network: Network::Shut,
         devices: DEVICES.iter().map(PathBuf::from).collect(),

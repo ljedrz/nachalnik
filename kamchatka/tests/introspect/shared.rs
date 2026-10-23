@@ -448,6 +448,7 @@ async fn the_shell_says_how_much_of_an_answer_it_will_hand_back() {
         workdir: std::path::PathBuf::from("/w"),
         writable: Vec::new(),
         readable: Vec::new(),
+        shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
         confiner: None,

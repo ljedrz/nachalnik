@@ -88,8 +88,10 @@ pub struct Settings {
     pub sandbox_write: Option<Vec<PathBuf>>,
     /// Paths outside the working directory the tools may read but not change.
     pub sandbox_read: Option<Vec<PathBuf>>,
+    /// Paths the shell may read and `fs` may not, replacing the usual list.
+    pub shell_read: Option<Vec<PathBuf>>,
     /// The devices under `/dev` the shell may read and write, replacing the usual list.
-    pub sandbox_devices: Option<Vec<PathBuf>>,
+    pub shell_devices: Option<Vec<PathBuf>>,
     /// Capabilities and path rules allowed without asking.
     pub auto_allow: Option<Vec<String>>,
     /// The same, refused without asking.
@@ -326,9 +328,13 @@ impl Settings {
         // home directory rather than the environment. If there is nothing to expand against, every
         // path is left exactly as written.
         if let Some(home) = home() {
-            for paths in [&mut settings.sandbox_write, &mut settings.sandbox_read]
-                .into_iter()
-                .flatten()
+            for paths in [
+                &mut settings.sandbox_write,
+                &mut settings.sandbox_read,
+                &mut settings.shell_read,
+            ]
+            .into_iter()
+            .flatten()
             {
                 for path in paths.iter_mut() {
                     *path = expanded(std::mem::take(path), &home);
@@ -404,7 +410,7 @@ pub fn underfoot(path: &Path) -> bool {
 ///
 /// note: the list SECURITY.md gives for a file found underfoot. `auto-deny` and `auto-deny-servers`
 /// are not on it, because a file that only refuses can only take something away.
-pub const GRANTING: [&str; 8] = [
+pub const GRANTING: [&str; 9] = [
     "mcp",
     "no-sandbox",
     "auto-allow",
@@ -412,14 +418,15 @@ pub const GRANTING: [&str; 8] = [
     "on-ask",
     "sandbox-write",
     "sandbox-read",
-    "sandbox-devices",
+    "shell-read",
+    "shell-devices",
 ];
 
 /// The keys among [`GRANTING`] that these settings give a value this program would not have chosen
 /// by itself.
 ///
 /// note: measured against [`SHIPPED`] rather than `null`, because the shipped file is every key at
-/// the program's own default and a copy of it is the commonest settings file. Its `sandbox-devices`
+/// the program's own default and a copy of it is the commonest settings file. Its `shell-devices`
 /// lists five devices and its `on-ask` says `deny`, and a question naming those would be a question
 /// about nothing.
 pub fn granting(settings: &Settings) -> Vec<&'static str> {

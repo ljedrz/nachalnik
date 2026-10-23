@@ -504,8 +504,8 @@ lines is told when the limit is reached instead of being billed without notice. 
 
 Every key is optional and named after its command-line argument, and **anything given on the command
 line takes precedence**; a list given there replaces the file's. For the model, the order is the
-command line, then `KAMCHATKA_MODEL`, then the file. A leading `~` in `sandbox-write` and
-`sandbox-read` means your home directory. An unknown key stops the program with its name, and so
+command line, then `KAMCHATKA_MODEL`, then the file. A leading `~` in `sandbox-write`,
+`sandbox-read` and `shell-read` means your home directory. An unknown key stops the program with its name, and so
 does a key that does not apply to the current run: `max-run-seconds` and `on-ask` (other than
 `deny`) with `--serve` or `--web`. Things that only apply to one run (a message, `-r`, `-f`,
 `--headless`) have no key.
@@ -737,9 +737,26 @@ sandbox, sessions driven by lines and over a socket, and MCP servers. `cargo tes
 --no-default-features --features mcp` runs only those. `--test live` needs a key, and checks that a
 real API accepts what is sent and that a real model can act on what the tools return.
 
+## 📂 what a command can read
+
+`sandbox-read` and `sandbox-write` are what both tools reach. On top of those, a sandboxed command
+reads the `shell-read` paths, which `fs` doesn't: by default `/usr`, `/etc`, `/bin`, `/sbin`,
+`/lib`, `/lib64`, `/opt`, `/proc` and `/sys`, the directories a command needs to run at all.
+`--shell-read` and the settings file's `shell-read` replace the list rather than adding to it, and
+the shipped `kamchatka.json` spells it out. The list is for the shell only because of `/proc`: `fs`
+runs inside `kamchatka`, so for `fs` `/proc/self` would be `kamchatka`, with your API keys in its
+environment.
+
+`/run` isn't on the list: it holds your running session, including the sockets of the session bus,
+the compositor and the container daemon, and any USB drive under `/run/media`. Two kinds of system
+need part of it back. Where `/etc/resolv.conf` is systemd-resolved's stub, a command can't look up
+host names without `/run/systemd/resolve`, and `kamchatka` says so at startup, naming the directory.
+On NixOS, everything on `PATH` is under `/run/current-system`. An empty `shell-read` is allowed,
+for a sandbox whose `sandbox-read` holds a toolchain of its own, and is warned about at startup.
+
 ## 🧰 a toolchain lives in your home directory
 
-`$HOME` isn't a system directory, so a sandboxed command can't read it, and most toolchains are
+`$HOME` isn't on `shell-read`, so a sandboxed command can't read it, and most toolchains are
 installed there. `cargo` is a rustup shim, rustup reads `~/.rustup/settings.toml` before doing
 anything, and a model asked to build a Rust project gets a `Permission denied` that looks like a
 missing compiler. Give it read-only access to the toolchain:
@@ -777,8 +794,8 @@ so everything it starts runs with `no_new_privs`, including MCP servers. Set-use
 
 **In `/dev`, a command can reach five devices** (`null`, `zero`, `full`, `random` and `urandom`) and
 nothing else: the rest of `/dev` includes your other terminals, which a command could read your
-typing from, shared memory, and on a desktop the camera and microphone. `--sandbox-devices` and the
-settings file's `sandbox-devices` replace this list rather than adding to it. A command that needs a
+typing from, shared memory, and on a desktop the camera and microphone. `--shell-devices` and the
+settings file's `shell-devices` replace this list rather than adding to it. A command that needs a
 pseudo-terminal (`script`, `expect`) needs `/dev/ptmx` and `/dev/pts`, which give access to all your
 other terminals too.
 
