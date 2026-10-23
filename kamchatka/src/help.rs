@@ -214,9 +214,12 @@ pub const QUESTION: &str =
                         the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
+    s                   the same, and end the turn there, as /stop does: the
+                        model reads why with the next message
     (a command reaching for the network takes y, a and n, and the answer
      holds for the rest of that command; a is net:reach allowed from then
-     on. esc stops the turn it is running in, which takes the question too)
+     on. esc or s stops the turn it is running in, which takes the question
+     too)
     (a compaction takes y, n, esc and the scrolling keys, and nothing else.
      It is holding nothing up: alt+2 to the context tab, p on what should
      stay, back, and answer - the pass is worked out again, so what you kept
@@ -270,10 +273,11 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /continue           run the rest of the turn; ctrl+r where there are keys to
                         press
     /stop               stop what is running, keeping whatever arrived; in
-                        ready, drop the calls waiting to run. esc where there
-                        are keys to press, and ctrl+c for a running turn;
-                        typing it is how a client with no keys - a browser -
-                        reaches the same act
+                        ready, drop the calls waiting to run; at a question,
+                        drop the calls waiting on it and end the turn. esc
+                        where there are keys to press, and ctrl+c for a
+                        running turn; typing it is how a client with no keys
+                        - a browser - reaches the same act
     /request            the request that would go next
     /payload            the provider's own rendering of it, field for field
     /raw                the provider's own last answer

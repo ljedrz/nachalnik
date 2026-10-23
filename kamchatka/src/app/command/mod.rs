@@ -289,11 +289,7 @@ impl App {
                 // a listing or a pass still out is stopped with the turn, or alone
                 (true, _) => self.interrupt(),
                 _ if self.errand.is_some() => self.interrupt(),
-                (false, true) => self.say(
-                    Speaker::Note,
-                    "the turn is waiting on a question, which stopping does not answer; deny it \
-                     to end the turn there",
-                ),
+                (false, true) => self.stop_pending(),
                 (false, false) if self.ready() => self.drop_decided(),
                 (false, false) => self.say(Speaker::Note, "nothing is running"),
             },

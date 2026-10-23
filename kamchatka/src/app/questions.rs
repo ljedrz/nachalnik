@@ -27,6 +27,25 @@ impl App {
         );
     }
 
+    /// Drops every call the model is waiting on an answer for, tells it so, and ends the turn there.
+    ///
+    /// note: `d` at a question gives the model a turn to answer the refusals, and it often
+    /// answers by asking for more calls. This gives it no turn: the refusals are in the context,
+    /// and it reads them with the next message. `/stop` does this too when the turn is waiting on
+    /// a question, which is how a browser reaches it, and why this is here rather than in
+    /// `keys.rs`: a session built without the screen has `/stop` too.
+    pub(super) fn stop_pending(&mut self) {
+        let dropped = self.kernel.cancel_pending_calls("the turn was stopped");
+        self.overlay = None;
+        self.say(
+            Speaker::Note,
+            format!(
+                "{dropped} call(s) dropped and the turn stopped; the model reads why with the next \
+                 message"
+            ),
+        );
+    }
+
     /// Answers one of the questions the kernel is waiting on, and carries the turn on if that was
     /// the last of them.
     ///

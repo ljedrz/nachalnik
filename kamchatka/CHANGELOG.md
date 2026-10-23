@@ -28,6 +28,11 @@ minor bump may break you.
   the model's `context` tool where it takes a `select`.
 - **`alt+tab` opens the next tab**, as `ctrl+t` does. Plain `tab` still moves the keys between the
   prompt and whatever else on the screen wants them.
+- **`s` at a permission question drops every call waiting and ends the turn**, and so does
+  `/stop`, which before only said to deny the question. `d` drops the calls too, but then sends
+  the model a request, and it often asks for more calls. After `s` nothing is sent until your
+  next message, which carries the reason the calls were dropped. The web page has a `stop` button
+  beside `deny` for it.
 - **`introspect::build`** builds the four introspection tools the way `install` does, but hands
   them back instead of registering them, for a caller that offers only some of them.
 

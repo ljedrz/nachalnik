@@ -286,6 +286,7 @@
       <button class="allow" data-grant="allow">allow</button>
       <button class="allow" data-grant="always">always</button>
       <button class="deny" data-grant="deny">deny</button>
+      <button class="deny" data-grant="stop">stop</button>
     </div>
   </div>
 </footer>
@@ -1156,6 +1157,12 @@ function band(next) {
 document.getElementById("answers").onclick = (e) => {
   const grant = e.target.dataset.grant;
   if (!grant || !(asking.length || reaching.length)) return;
+  // `s` at the terminal: every call waiting is dropped and the turn ends there, or, at a running
+  // command's question, the turn is stopped. Sent as `/stop`, which does both
+  if (grant === "stop") {
+    send({ do: "submit", line: "/stop" });
+    return;
+  }
   send({
     // note: two commands because the two questions are numbered by different things - the kernel's
     // by the kernel, a running command's by the policy holding it - and the one on the panel is
