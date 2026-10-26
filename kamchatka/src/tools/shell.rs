@@ -975,7 +975,8 @@ impl Gatekeeper {
                             allow
                         }
                     };
-                    attempt.resolve(match allow {
+                    // note: only a `Grant` can be refused, and none is given here
+                    let _ = attempt.resolve(match allow {
                         true => sandlock_core::policy_fn::Verdict::Allow,
                         false => sandlock_core::policy_fn::Verdict::DenyWith(libc::EACCES),
                     });
@@ -1084,9 +1085,8 @@ impl Confined {
         }
 
         let (builder, rules) = sandbox.sandlock(scratch, gate, false);
-        let argv = crate::sandbox::command(env, cmd);
-        crate::sandbox::fits(&argv)?;
-        let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+        crate::sandbox::fits(&env, cmd)?;
+        let (builder, argv) = crate::sandbox::command(builder, env, cmd);
         let mut confined = builder.build().map_err(std::io::Error::other)?;
         let mut process = confined
             .popen(
