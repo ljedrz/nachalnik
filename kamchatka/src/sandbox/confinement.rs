@@ -194,7 +194,7 @@ pub fn scope_signals() -> bool {
     // whoever confines themselves
     let scoped = layer.is_ok_and(|layer| {
         rustix::thread::set_no_new_privs(true).is_ok()
-            && sandlock_core::landlock::confine_filesystem(&layer).is_ok()
+            && sandlock_core::landlock_policy::confine_filesystem(&layer).is_ok()
     });
     // a kernel that has the scope but will not apply it is a weaker sandbox than it claims, and
     // `weaker_here` says so
@@ -333,31 +333,30 @@ impl Sandbox {
     }
 }
 
-/// The command sandlock is to run: `cmd` under `sh`, with `env` as its whole environment.
-///
-/// note: the environment is set by `env -i`, not by sandlock. sandlock sets one in the child it
-/// forks, with `std::env`, whose lock that child inherits as it was: held, if another thread of
-/// this process was reading a variable at the moment of the fork, and then the child waits on it
-/// for ever and so does the call. This process reads its environment from any thread at any time.
-/// `env` replaces itself with `sh`, so the command is still the process sandlock started.
-pub fn command(env: impl IntoIterator<Item = (String, String)>, cmd: &str) -> Vec<String> {
-    ["env", "-i", "--"]
+/// The command sandlock is to run, `cmd` under `sh`, and `builder` with `env` as its whole
+/// environment.
+pub fn command(
+    builder: SandboxBuilder,
+    env: impl IntoIterator<Item = (String, String)>,
+    cmd: &str,
+) -> (SandboxBuilder, [&str; 3]) {
+    let builder = env
         .into_iter()
-        .map(str::to_owned)
-        .chain(env.into_iter().map(|(key, value)| format!("{key}={value}")))
-        .chain(["sh", "-c", cmd].map(str::to_owned))
-        .collect()
+        .fold(builder.clean_env(true), |builder, (key, value)| {
+            builder.env_var(key, value)
+        });
+
+    (builder, ["sh", "-c", cmd])
 }
 
-/// Whether the kernel would start `argv`, as [`command`] made it, beside this process's
-/// environment; `E2BIG` where it would not.
+/// Whether the kernel would start `cmd` with `env`, as [`command`] hands them to sandlock;
+/// `E2BIG` where it would not.
 ///
 /// note: asked before sandlock forks, because its child is the one that finds out otherwise, and
 /// says so on the command's standard error with exit 127, which a model cannot tell from a command
-/// that failed. `env` starts with this process's environment and the command's beside it in its
-/// arguments, so both count. One string may be 32 pages; all of them, with a pointer each, a
-/// quarter of the stack's limit and no more than 6 MiB, as `execve` counts them.
-pub fn fits(argv: &[String]) -> std::io::Result<()> {
+/// that failed. One string may be 32 pages; all of them, with a pointer each, a quarter of the
+/// stack's limit and no more than 6 MiB, as `execve` counts them.
+pub fn fits(env: &[(String, String)], cmd: &str) -> std::io::Result<()> {
     const ONE: usize = 32 * 4096;
     const ALL: usize = 6 << 20;
 
@@ -366,8 +365,8 @@ pub fn fits(argv: &[String]) -> std::io::Result<()> {
         None => ALL,
     };
     let pointer = std::mem::size_of::<usize>();
-    let environment = std::env::vars_os().map(|(key, value)| key.len() + value.len() + 2);
-    let arguments = argv.iter().map(|arg| arg.len() + 1);
+    let environment = env.iter().map(|(key, value)| key.len() + value.len() + 2);
+    let arguments = ["sh", "-c", cmd].into_iter().map(|arg| arg.len() + 1);
     let lengths: Vec<usize> = arguments.chain(environment).collect();
     let total: usize = lengths.iter().map(|length| length + pointer).sum();
     let too_long = lengths.iter().any(|length| *length > ONE) || total > room;
@@ -583,10 +582,9 @@ pub fn available() -> Probed {
                 closed: Vec::new(),
             };
             let (builder, rules) = sandbox.sandlock(None, None, false);
+            let (builder, argv) = command(builder, super::environment(), "true");
             let mut confined = builder.build().map_err(|e| e.to_string())?;
             let took = degraded(&confined);
-            let argv = command(super::environment(), "true");
-            let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
             let ran = confined.run(&argv).await.map_err(|e| e.to_string());
             drop(rules);
             match ran?.success() {
@@ -662,8 +660,8 @@ pub fn run_if_asked() -> Option<i32> {
     }
 
     let (builder, rules) = sandbox.sandlock(scratch.as_ref(), None, !in_a_session);
-    let argv = command(env, &cmd.to_string_lossy());
-    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let cmd = cmd.to_string_lossy();
+    let (builder, argv) = command(builder, env, &cmd);
     for line in rules.left_out() {
         eprintln!("{line}");
     }
