@@ -15,7 +15,7 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   job an earlier command left running, in a directory that holds a root, could rename the root and
   leave a link at its name in between. Granting `/proc/self/fd/N` would close it, but sandlock
   skips every grant under `/proc` without saying so. Unblocked by sandlock granting a path by
-  descriptor.
+  descriptor, which [sandlock#313](https://github.com/multikernel/sandlock/issues/313) proposes.
 
 - **A hard link to a protected file is read under its other name without a question.** Path rules
   match the name a tool is given, and a hard link has no target to follow, so `alias` sharing
