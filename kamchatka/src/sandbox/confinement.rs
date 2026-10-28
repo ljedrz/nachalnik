@@ -623,6 +623,10 @@ pub fn available() -> Probed {
 /// note: nobody is there to ask about the network, so a network held for a question is refused
 /// as a shut one is.
 ///
+/// note: the caller's environment is passed on as it is, API keys included, unlike the `shell`
+/// tool's. There is no model here to keep them from: whoever runs this chose the command and its
+/// environment, and one wrapped around a whole agent needs that agent's key.
+///
 /// note: what the command leaves running is stopped when it ends. The supervisor is this process,
 /// and a job outliving it would have its next held call refused by a kernel with nobody left to
 /// answer.
