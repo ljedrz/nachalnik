@@ -1063,8 +1063,8 @@ fn connect_to(socket: &Path) -> String {
 /// `systemd-run --user` over `/run/user/<uid>/bus` read and wrote there anyway, because the work
 /// was done by a process that was never in the domain. The session bus, the compositor and the
 /// container daemon are each a pathname socket under `/run`, which is readable because the system
-/// directories are - and Landlock has no right a `connect` to one is judged by, so the ruleset is
-/// not consulted about any of them. sandlock's supervisor is.
+/// directories are - and Landlock has no right a `connect` to one is judged by below ABI 9 (Linux
+/// 7.1), so there the ruleset is not consulted about any of them. sandlock's supervisor is.
 #[test]
 fn a_command_cannot_connect_to_a_unix_socket_it_could_not_write_to() {
     if !enforced() || !sockets() {
@@ -1101,6 +1101,28 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     let (ok, said) = run(&sandbox(dir, true, Network::Shut), &connect_to(&inside));
 
     assert!(ok, "{said}");
+    drop(listening);
+}
+
+/// A socket named relative to the command's directory is reached from Linux 7.1, where Landlock
+/// judges the `connect` and the command makes it, and refused below, where sandlock's supervisor
+/// makes it and cannot follow the path from this process's directory.
+#[test]
+fn a_socket_named_by_a_relative_path_is_reached_from_linux_7_1() {
+    if !enforced() || !sockets() {
+        return;
+    }
+    let dir = common::workdir("connect-relative");
+    let listening =
+        UnixListener::bind(dir.join("s.sock")).expect("a socket in the working directory");
+
+    let (ok, said) = run(
+        &sandbox(dir, true, Network::Shut),
+        &connect_to(Path::new("s.sock")),
+    );
+
+    let judged_by_landlock = sandlock_core::landlock_abi_version().is_ok_and(|abi| abi >= 9);
+    assert_eq!(ok, judged_by_landlock, "{said}");
     drop(listening);
 }
 

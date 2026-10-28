@@ -1,8 +1,8 @@
 //! A command this session confined is not a client of it, and nothing else in this binary is.
 //!
-//! note: a binary of its own because of how the check works. sandlock connects a confined command
-//! to a unix socket from its supervisor, in this process, so while a command runs, a connection
-//! this process makes to its own session's socket is taken for the command's. The program reaches
+//! note: a binary of its own because of how the check works. Below Linux 7.1 sandlock connects a
+//! confined command to a unix socket from its supervisor, in this process, so while a command runs,
+//! a connection this process makes to its own session's socket is taken for the command's. The program reaches
 //! its own session without the socket; a test of the remote suite connecting by hand beside this
 //! one was refused.
 
@@ -34,8 +34,9 @@ fn wired() -> Wired {
 /// unconfined is answered.
 ///
 /// note: a socket file in the working directory, which a confined command may connect to since it
-/// may write there - and sandlock makes that connection from this process, so the session is told
-/// it is this process at the other end. A client answers permission questions, so this one would
+/// may write there. From Linux 7.1 the command connects in its own name and is found by its process
+/// group; below that sandlock makes the connection from this process, so the session is told it is
+/// this process at the other end. A client answers permission questions, so this one would
 /// be answering its own. The probe sends a
 /// line that is not a message, which a session answers with a failure before it closes; a refused
 /// connection closes with nothing.

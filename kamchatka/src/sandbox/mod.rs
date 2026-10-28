@@ -18,17 +18,20 @@
 //! own. A served session's ports are a deny rule the supervisor applies after any allow, so no
 //! answer opens them.
 //!
-//! note: a unix socket is a filesystem matter, not a network one. sandlock's supervisor holds a
-//! `connect` to a pathname socket and lets it through only where the command may write, on any
-//! kernel: the session bus, the compositor and the container daemon are each a socket under `/run`,
-//! and each runs a command outside the confinement on the caller's behalf, so a connection to one
-//! is a way out. Whether the command may read the socket's directory does not enter into it: a
-//! `shell-read` or `--sandbox-read` path holding a socket does not let a command connect to it. It pins the socket it checked and connects to that, so a link
-//! swapped in after the check leads nowhere - which means the connection is made by this process,
-//! and the other end sees this process's credentials rather than the command's; see
-//! `from_a_command`. A path relative to the command's directory is refused, since the supervisor
-//! cannot follow it from here. An abstract socket made outside the command's confinement is refused
-//! by Landlock's scope (Linux 6.12).
+//! note: a unix socket is a filesystem matter, not a network one. A `connect` to a pathname socket
+//! goes through only where the command may write, on any kernel: the session bus, the compositor
+//! and the container daemon are each a socket under `/run`, and each runs a command outside the
+//! confinement on the caller's behalf, so a connection to one is a way out. Whether the command may
+//! read the socket's directory does not enter into it: a `shell-read` or `--sandbox-read` path
+//! holding a socket does not let a command connect to it. From Linux 7.1 Landlock judges the
+//! `connect` itself, and the command makes it. Below that, sandlock's supervisor holds it, pins the
+//! socket it checked and connects to that, so a link swapped in after the check leads nowhere -
+//! which means the connection is made by this process, and the other end sees this process's
+//! credentials rather than the command's; see `from_a_command`. A datagram sent to a pathname
+//! socket is the supervisor's on every kernel, since the network gate holds every send, and so is
+//! sent from here. A path relative to the command's directory is refused wherever the supervisor
+//! is the one following it, since it cannot follow it from here. An abstract socket made outside
+//! the command's confinement is refused by Landlock's scope (Linux 6.12).
 //!
 //! note: signals have a scope of the same age, and it is not in a command's own ruleset: each
 //! command is confined in its own domain, so it would refuse a command stopping a server an
@@ -994,9 +997,10 @@ fn live(sessions: &mut Vec<sandlock_core::Controller>) -> Vec<i32> {
 /// note: `SO_PEERCRED` gives a served socket this pid. A process that has since exited has no
 /// group left to ask about, and refusing it loses nothing because there is nobody there to serve.
 ///
-/// note: this process is a command too, while any command is running. sandlock lets a command reach
-/// a unix socket by connecting to it on the command's behalf, from its supervisor here, so the pid
-/// the other end is given is this one - and it does so only for a process alive in a sandbox. A
+/// note: this process is a command too, while any command is running. Below Linux 7.1 sandlock lets
+/// a command reach a unix socket by connecting to it on the command's behalf, from its supervisor
+/// here, so the pid the other end is given is this one - and it does so only for a process alive in
+/// a sandbox. From 7.1 the command connects in its own name and is found by its group instead. A
 /// client in this process reaches a session served here without a socket - see
 /// `remote::server::door` - so the socket is not how anything else comes from here while a command
 /// could be the one.
