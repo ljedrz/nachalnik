@@ -119,11 +119,14 @@ What changes to this workspace must keep true about what is and isn't enforced.
   after the session.
 - **Restricting `open` isn't enough.** A command that can reach a unix socket can ask the process
   behind it to act on its behalf, outside the sandbox: the session bus, the compositor, a container
-  daemon. sandlock's supervisor holds every `connect` and `send` to a named unix socket, on any
-  kernel, and lets it through only where the command may write: the socket file is resolved as the
-  command would see it, held, and connected to from the supervisor, so a symlink swapped in after
-  the check leads nowhere. Because the supervisor makes the connection, the process at the other end
-  sees `kamchatka`'s credentials rather than the command's (see the served session below). A socket
+  daemon. A `connect` or `send` to a named unix socket goes through only where the command may
+  write, on any kernel. From Landlock ABI 9 (Linux 7.1), Landlock checks a `connect` and the
+  command makes the connection itself, so the process at the other end sees the command's
+  credentials. Below 7.1, sandlock's supervisor checks each `connect`; it checks each `send` to a
+  named socket on every kernel, because the network gate holds every send. The supervisor resolves
+  the socket file as the command would see it, holds it, and connects or sends from `kamchatka`,
+  so a symlink swapped in after the check leads nowhere. The process at the other end then sees
+  `kamchatka`'s credentials rather than the command's (see the served session below), and a socket
   named by a relative path is refused, since the supervisor can't resolve it from the command's
   directory. Abstract sockets have no path for that rule to check, and the X server listens on one
   and accepts any of the user's processes, which means a connection that can type into the person's
@@ -234,13 +237,13 @@ What changes to this workspace must keep true about what is and isn't enforced.
   answer. A socket file is reachable by any command that may write where it is, so a connection to a
   served unix socket is refused when the process at the other end is in one of this session's
   sandboxes, or is `kamchatka` itself while any command it sandboxed is still running, since that is
-  how a command's connection arrives (see unix sockets above); the web page's relay, which is
-  `kamchatka` too, reaches the session without the socket. What gets through: the `gateway`
-  example's page (a separate process, so it cannot close its port to the session's commands), and
-  any *other* served session on the machine. A session only closes its own ports, and a TCP
-  connection does not identify the process behind it, so one process's sandboxed command is an
-  ordinary client to a session in another, and that session's addresses are up to whoever started
-  it. A command allowed on the network can reach both.
+  how a command's connection arrives below Linux 7.1 (see unix sockets above); the web page's
+  relay, which is `kamchatka` too, reaches the session without the socket. What gets through: the
+  `gateway` example's page (a separate process, so it cannot close its port to the session's
+  commands), and any *other* served session on the machine. A session only closes its own ports,
+  and a TCP connection does not identify the process behind it, so one process's sandboxed command
+  is an ordinary client to a session in another, and that session's addresses are up to whoever
+  started it. A command allowed on the network can reach both.
 - **An MCP server.** It is a program the person chose, running unconfined with the person's
   environment and access to everything the person can read. `kamchatka` controls what its answers
   can do: its tools are judged under the server's name, and what it returns goes into the context
