@@ -95,7 +95,10 @@ What changes to this workspace must keep true about what is and isn't enforced.
   with `--no-sandbox` it can, so removing the variables only keeps them out of the command's own
   environment. MCP servers keep the keys: they're programs the person chose, running unconfined with
   access to everything the person can read, so stripping their environment would be an annoyance,
-  not protection.
+  not protection. A command run with `--confine-and-run` keeps them too: it gets the caller's
+  environment unchanged, as it would under `bwrap` or `firejail`. There is no model involved, and
+  the person running it chose both the command and the environment. To leave a key out, use
+  `env -u`.
 - **A sandboxed command can't use a terminal, and can open only five devices.** Its standard input
   is `/dev/null` and its output goes to pipes, `/dev/tty` won't open, and sandlock refuses the
   `TIOCSTI` and `TIOCLINUX` requests on any terminal. With terminal access, a command could inject a

@@ -17,6 +17,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   skips every grant under `/proc` without saying so. Unblocked by sandlock granting a path by
   descriptor, which [sandlock#313](https://github.com/multikernel/sandlock/issues/313) proposes.
 
+- **The list of variables the shell removes can't be changed.** The `shell` tool removes
+  kamchatka's own API keys (`endpoint::KEYS`) and any base URL with a `user:password@` in it.
+  Nobody can add to that list, for example to hide `GH_TOKEN` or cloud credentials from the
+  model, or empty it to give a command the keys. A `shell-env-exclude` setting would allow both:
+  a list of variable names and patterns that starts as today's list. When it no longer includes
+  kamchatka's keys, the permissions tab should say so. It waits until somebody asks for it.
+
 - **A hard link to a protected file is read under its other name without a question.** Path rules
   match the name a tool is given, and a hard link has no target to follow, so `alias` sharing
   `.env`'s inode reads as an ordinary file. Catching it means finding a file's other names, which

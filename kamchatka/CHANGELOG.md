@@ -173,7 +173,8 @@ minor bump may break you.
   - sockets of every family but unix, inet and netlink are refused;
   - a confined shell is always `network gated` on the permissions tab: the sandbox and the gate
     start together or not at all.
-  `--confine-and-run` is still there for confining a command by hand.
+  `--confine-and-run` is still there for confining a command by hand. It passes on the caller's
+  environment as it is, API keys included, as `bwrap` does; the `shell` tool still removes them.
 - **RUNNING.md says which commands are asked about by name** where the network cannot be gated
   (`--no-sandbox`, or a kernel the sandbox does not start on). It said "a short list of programs",
   so nobody could tell that `git` and `cargo` are asked about and `python3 fetch.py` is not.
