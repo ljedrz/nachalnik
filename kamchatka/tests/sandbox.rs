@@ -1228,7 +1228,7 @@ fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
     if !enforced() || !sockets() {
         return;
     }
-    let opened = common::scratch("connect-readable");
+    let opened = common::scratch("connect-read-opened");
     let socket = opened.join("s.sock");
     let listening = UnixListener::bind(&socket).expect("a socket in the readable directory");
 
