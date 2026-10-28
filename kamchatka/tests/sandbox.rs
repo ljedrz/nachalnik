@@ -2270,9 +2270,8 @@ async fn an_attempt_after_the_call_is_over_is_refused_without_a_question() {
     );
 }
 
-/// A confined command has no controlling terminal: it cannot open the one the program reads its
-/// keys from, to push a `y` into it or to draw over the question on it. Started by something that
-/// leads a group, and so could not leave that terminal, nothing is run.
+/// A confined command cannot open the terminal the program reads its keys from, to push a `y` into
+/// it or to draw over the question on it, whether or not what started it holds that terminal.
 ///
 /// note: under a terminal of the test's own, which `python3`'s `pty` makes, and with the standard
 /// streams `/dev/null` and a pipe as `shell` hands them out. The same command unconfined reaches the
@@ -2299,7 +2298,7 @@ fn a_confined_command_has_no_terminal_to_type_into() {
     assert!(!said.contains("reached"), "{said}");
 
     let led = under_a_terminal(&confined, &dir, true);
-    assert!(led.contains("nothing was run"), "{led}");
+    assert!(led.contains("refused"), "{led}");
     assert!(!led.contains("reached"), "{led}");
 }
 
