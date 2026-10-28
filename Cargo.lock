@@ -2452,7 +2452,7 @@ dependencies = [
 [[package]]
 name = "sandlock-core"
 version = "0.9.0"
-source = "git+https://github.com/multikernel/sandlock?rev=4d68f080495ceebbcb3d9dadd9f99e618ac1dc0f#4d68f080495ceebbcb3d9dadd9f99e618ac1dc0f"
+source = "git+https://github.com/multikernel/sandlock?rev=1f4dcbe82b06f281be0c0a2ce9fa7b3dc5b17edf#1f4dcbe82b06f281be0c0a2ce9fa7b3dc5b17edf"
 dependencies = [
  "goblin",
  "landlock",
@@ -3039,7 +3039,6 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
- "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",

@@ -113,8 +113,8 @@ pub(crate) const LOCAL_BUFFER: usize = 64 * 1024;
 /// this process.
 ///
 /// note: the web page's relay is such a client, and it is why there is a way in that is not the
-/// socket. A confined command's connection to a unix socket is made by sandlock's supervisor, in
-/// this process, so on the socket a command looks like this process - see
+/// socket. Below Linux 7.1 a confined command's connection to a unix socket is made by sandlock's
+/// supervisor, in this process, so on the socket a command looks like this process - see
 /// [`crate::sandbox::from_a_command`] - and a client here that came through the socket would look
 /// like a command.
 #[allow(clippy::type_complexity)]

@@ -165,7 +165,9 @@ minor bump may break you.
     the sandbox starts on. A refused network now refuses TCP on kernels older than 6.7, and UDP on
     kernels the old filter could not be installed on;
   - a unix socket can be reached only where a command may write, on every kernel rather than from
-    Linux 7.1, and a socket named by a relative path is refused;
+    Linux 7.1. From 7.1 the command connects to the socket itself. Below 7.1 `kamchatka` makes the
+    connection, so the other end sees `kamchatka`'s credentials, and a socket named by a relative
+    path is refused. A datagram sent to a named socket is sent from `kamchatka` on every kernel;
   - stopping a call stops everything the command started, a process that left with `setsid`
     included;
   - sockets of every family but unix, inet and netlink are refused;
