@@ -554,6 +554,9 @@ pub fn remove_scratch(path: &Path) -> std::io::Result<()> {
     emptied
 }
 
+/// The deepest [`remove_scratch`] follows a directory into.
+const DEEPEST: usize = 256;
+
 /// Empties `dir`, held without being read, after opening it up; `depth` is how far below the
 /// temporary directory it is.
 ///
@@ -564,9 +567,6 @@ fn empty(dir: OwnedFd, depth: usize) -> std::io::Result<()> {
         fs::{AtFlags, Mode, OFlags},
         io::Errno,
     };
-
-    /// The deepest a directory is followed into.
-    const DEEPEST: usize = 256;
 
     // through the name the kernel gives the descriptor, which leads to what is held and nowhere
     // else; `fchmod` takes no descriptor opened only to be held, and a directory nobody may read
