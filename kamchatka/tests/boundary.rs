@@ -1303,7 +1303,7 @@ fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() 
         workdir: dir.clone(),
         ..confined.clone()
     };
-    let mut stderr: String = (0..999)
+    let mut stderr: String = (0..99)
         .map(|i| format!("cat: {}/missing{i}: Permission denied\n", dir.display()))
         .collect();
     stderr.push_str("cat: /elsewhere/last.txt: Permission denied\n");
@@ -1312,7 +1312,7 @@ fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() 
         .expect("a refusal out of reach was judged");
     assert!(
         note.contains("/elsewhere/last.txt is outside what this session reaches"),
-        "the 1000th path judged is named, not stopped short of: {note}"
+        "the 100th path judged is named, not stopped short of: {note}"
     );
 }
 

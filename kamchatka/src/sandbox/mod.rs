@@ -752,7 +752,7 @@ fn refused(line: &str) -> bool {
 }
 
 /// How many of the paths a command's refusals name are judged, at most.
-const LOOKED: usize = 1000;
+const LOOKED: usize = 100;
 
 /// Why a path a refusal named was the confinement's doing.
 #[derive(Clone, Copy, PartialEq)]

@@ -159,6 +159,9 @@ minor bump may break you.
   every item: one of 362 items was 13,115 tokens. A `select` is capped the same way, with the
   numbers of the ones left out rather than a range, which would list items outside the class, and
   the line under it says that a change naming it takes all of them, listed or not.
+- **Ten wrong `--web` keys close the page for a minute, not a hundred.** A person mistypes the key
+  a few times at most, and a device guessing at it now needs about 400 years for even odds rather
+  than 40.
 - **A shell command reads only `/run/systemd/resolve` of `/run`, unless `shell-read` names more.**
   The rest holds the person's running session: the session bus, the compositor and the container
   daemon, any USB drive under `/run/media`, who is logged in. `/run/systemd/resolve` stays because

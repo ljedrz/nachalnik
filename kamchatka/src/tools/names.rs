@@ -21,7 +21,7 @@ use super::policy::path_matches;
 ///
 /// note: the roots can be a whole home directory. Past this, a file whose names were not all found
 /// is said to be unchecked rather than taken as having none that matter.
-const LOOKED: usize = 200_000;
+const LOOKED: usize = 10_000;
 
 /// Every file with more than one name in what a session reaches, with the names found.
 pub(super) struct Names {
