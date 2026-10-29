@@ -105,7 +105,7 @@ type Named = Arc<Mutex<Option<String>>>;
 type Said = Arc<dyn Fn(String) + Send + Sync>;
 
 /// How many wrong keys are taken before the page closes for [`PAUSE`].
-const GUESSES: u32 = 100;
+const GUESSES: u32 = 10;
 
 /// How long the page refuses everything once [`GUESSES`] wrong keys have been tried.
 const PAUSE: std::time::Duration = std::time::Duration::from_secs(60);
@@ -123,9 +123,10 @@ impl Guessing {
     /// Whether the page is closed to everybody, the right key included, for wrong ones.
     ///
     /// note: the key is 32 bits so somebody can type it, and 32 bits is a few billion guesses. A
-    /// device on the same network can make them in days, one request at a time; a hundred a minute
-    /// is the better part of a century for half of them. The right key is refused with the rest
-    /// while it is closed, because a guess checked while closed would not be counted. The cost is a
+    /// device on the same network can make them in days, one request at a time; ten a minute is
+    /// four centuries for half of them, and still more than a person mistypes it. The right key is
+    /// refused with the rest while it is closed, because a guess checked while closed would not be
+    /// counted. The cost is a
     /// minute in which the page does not answer its owner either, which something on their network
     /// guessing at it ought to cost them anyway, and it is said where they will read it.
     fn closed(&mut self, now: std::time::Instant) -> bool {
@@ -997,7 +998,7 @@ mod tests {
         assert_eq!(beneath("/00000010/events", "00000001"), None);
     }
 
-    /// A hundred wrong keys close the page to everybody for a minute, and then it opens again.
+    /// Ten wrong keys close the page to everybody for a minute, and then it opens again.
     #[test]
     fn wrong_keys_close_the_page_for_a_while() {
         let mut guessing = Guessing::default();
@@ -1006,7 +1007,7 @@ mod tests {
             assert!(!guessing.wrong(now));
             assert!(!guessing.closed(now));
         }
-        assert!(guessing.wrong(now), "the hundredth closes it");
+        assert!(guessing.wrong(now), "the tenth closes it");
         assert!(guessing.closed(now));
         assert!(guessing.closed(now + PAUSE - std::time::Duration::from_secs(1)));
         assert!(!guessing.closed(now + PAUSE));
@@ -1031,8 +1032,9 @@ mod tests {
         assert!(warned.contains(&web.address()), "{warned}");
     }
 
-    /// Only an address whose first part is as long as the key counts as a guess at it: a hundred
-    /// requests for the browser's own icon leave the page open, and a hundred wrong keys close it.
+    /// Only an address whose first part is as long as the key counts as a guess at it: as many
+    /// requests for the browser's own icon as close it leave the page open, and that many wrong
+    /// keys close it.
     #[tokio::test]
     async fn only_a_wrong_key_counts_towards_closing_the_page() {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
