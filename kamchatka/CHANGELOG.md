@@ -79,6 +79,13 @@ minor bump may break you.
   so an answer written a line at a time (a greentext's `>` lines, a poem, an address) was drawn as
   one long line, while the web page drew a row per line. Each line break inside a paragraph is now
   drawn as one, as on the web page.
+- **`fs` refuses a hard link to a file a path rule covers.** A rule matches the name a tool is
+  given, and a hard link has no target to follow, so `notes.txt` sharing `.env`'s file was read,
+  searched and written as an ordinary file. For a file with more than one link, `fs` now looks for
+  its other names in the directories the session reaches and refuses it, naming the other one, as
+  it does a symlink to it; `grep` and `glob` skip it and count it. This walks those directories
+  once per call, and only for a file with more than one link while a rule other than `allow` is
+  set.
 - **A confined command is granted each root of the session by the directory `kamchatka` opened.**
   Each was opened without following a symlink and then granted by its path, which sandlock opened
   again in the command's process, so a job an earlier command left running could rename a root it

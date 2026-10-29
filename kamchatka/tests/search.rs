@@ -262,6 +262,62 @@ async fn a_path_rule_keeps_a_walk_out_of_a_file() {
     assert!(named.contains(".env:1:TOKEN=Kernel-of-a-secret"), "{named}");
 }
 
+/// A hard link to a file a path rule covers is refused under its other name, by `read`, by a walk
+/// and by `write`, and the refusal names the file it shares.
+///
+/// note: a rule matches the name a tool is given, and a hard link has no target to follow, so
+/// `notes.txt` sharing `.env`'s inode read as an ordinary file. Its other names are found by a walk
+/// of what the session reaches.
+#[tokio::test]
+async fn a_hard_link_to_a_file_a_rule_covers_is_refused_under_its_other_name() {
+    let dir = tree("hard-link-barred");
+    put(&dir, ".env", "TOKEN=Kernel-of-a-secret\n");
+    std::fs::hard_link(dir.join(".env"), dir.join("notes.txt")).expect("a hard link");
+
+    let read = ask(&dir, "read", json!({ "path": "notes.txt" })).await;
+    assert!(
+        !read.contains("TOKEN="),
+        "read under its other name: {read}"
+    );
+    assert!(
+        read.contains("another name for `.env`") && read.contains("name it as `.env`"),
+        "{read}"
+    );
+
+    let walked = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    assert!(!walked.contains("TOKEN="), "a walk read it: {walked}");
+    assert!(
+        walked.contains("skipped: 2 file(s) a path rule says to ask about"),
+        "{walked}"
+    );
+
+    let written = ask(
+        &dir,
+        "write",
+        json!({ "path": "notes.txt", "content": "TOKEN=mine\n" }),
+    )
+    .await;
+    assert!(written.contains("another name for `.env`"), "{written}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".env")).expect("still there"),
+        "TOKEN=Kernel-of-a-secret\n"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A file with two names neither of which a rule covers is read as any other.
+#[tokio::test]
+async fn a_hard_link_no_rule_covers_is_read_as_any_other() {
+    let dir = tree("hard-link-free");
+    std::fs::hard_link(dir.join("notes.md"), dir.join("also.md")).expect("a hard link");
+
+    let read = ask(&dir, "read", json!({ "path": "also.md" })).await;
+    assert!(read.contains("nothing to see"), "{read}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The rules are consulted refusals first, so a link that lands under two of them is reported by
 /// the one that refuses - and the refusal is the one a model must not be offered a way round.
 ///
