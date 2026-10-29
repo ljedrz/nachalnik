@@ -31,7 +31,12 @@ use serde_json::Value;
 
 use crate::{
     sandbox::{Access, Reach},
-    tools::{Careful, Limits, arg, files::allowed, path_matches, truth, whole, words},
+    tools::{
+        Careful, Limits, arg,
+        files::allowed,
+        names::{self, Names, Other},
+        path_matches, truth, whole, words,
+    },
 };
 
 /// How many matching lines one `grep` answers with.
@@ -344,6 +349,8 @@ fn walked(
 ) -> (bool, Skipped) {
     let mut skipped = Skipped::default();
     let inside = under(root);
+    let resolved = under(workdir);
+    let mut names = None;
     for entry in walk(root) {
         if sink.is_interrupted() {
             return (true, skipped);
@@ -415,6 +422,25 @@ fn walked(
         }
 
         let opening = leads.unwrap_or_else(|| entry.path().to_path_buf());
+        // and by the other names of a file that has more than one, found once for the whole walk
+        // the first time one is come to; see `Names`
+        let meta = std::fs::metadata(&opening)
+            .ok()
+            .filter(|meta| !barred.is_empty() && entry.path() != root && names::shared(meta));
+        if let Some(meta) = meta {
+            let names = names.get_or_insert_with(|| Names::of(reach));
+            match names.other(&path, &opening, &meta, &resolved, barred) {
+                Some(Other::Barred((_, Verdict::Deny), _)) => {
+                    skipped.refused += 1;
+                    continue;
+                }
+                Some(_) => {
+                    skipped.asked += 1;
+                    continue;
+                }
+                None => {}
+            }
+        }
         if each(Seen { path, opening }, &mut skipped).is_break() {
             break;
         }

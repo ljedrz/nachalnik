@@ -7,8 +7,9 @@
 //!
 //! note: one file each, because they answer to three traits and are read at three moments. `fs` and
 //! `shell` are the tools; `fs` dispatches to `files` and `search` for opening one file and walking
-//! many. `policy` decides whether one runs. `shedder` handles results the conversation is done
-//! with, and whole exchanges when there is no room left. `ops` underlies them all: what a tool that
+//! many, and both ask `names` for the other names of a file with more than one. `policy` decides
+//! whether one runs. `shedder` handles results the conversation is done with, and whole exchanges
+//! when there is no room left. `ops` underlies them all: what a tool that
 //! does several things declares, and the schema shown to a model.
 
 use std::{
@@ -26,6 +27,7 @@ use serde_json::Value;
 pub(crate) mod advice;
 mod files;
 mod fs;
+mod names;
 pub(crate) mod ops;
 mod policy;
 mod reaching;

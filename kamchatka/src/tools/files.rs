@@ -19,7 +19,11 @@ use crate::sandbox::{Access, Reach};
 use nachalnik::{BoxError, Capability, OutputSink, ToolOutput, Verdict};
 use serde_json::Value;
 
-use crate::tools::{CEILING, Careful, KEPT, Limits, arg, number};
+use crate::tools::{
+    CEILING, Careful, KEPT, Limits, arg,
+    names::{self, Names, Other},
+    number,
+};
 
 /// What every tool here says about the path it takes.
 ///
@@ -116,14 +120,15 @@ fn linked(
     doing: &str,
 ) -> Option<String> {
     let barred = super::search::barred(policy);
-    let (rule, verdict) = super::search::led_past(named, resolved, &reach.workdir, &barred)?;
-    let target = super::search::climbing(
-        resolved,
-        &reach
-            .workdir
-            .canonicalize()
-            .unwrap_or_else(|_| reach.workdir.clone()),
-    );
+    let workdir = reach
+        .workdir
+        .canonicalize()
+        .unwrap_or_else(|_| reach.workdir.clone());
+    let Some((rule, verdict)) = super::search::led_past(named, resolved, &reach.workdir, &barred)
+    else {
+        return shared(named, resolved, reach, &workdir, &barred, doing);
+    };
+    let target = super::search::climbing(resolved, &workdir);
 
     Some(match verdict {
         Verdict::Deny => format!(
@@ -139,6 +144,48 @@ fn linked(
             target.display(),
         ),
     })
+}
+
+/// Why a path is refused for being another name of a file a path rule has not allowed; see
+/// [`Names`].
+///
+/// note: refused rather than asked about, for the reason [`linked`] gives. Looked for only where a
+/// rule could apply and the file has another name, since finding its names is a walk of everything
+/// the session reaches.
+fn shared(
+    named: &str,
+    resolved: &Path,
+    reach: &Reach,
+    workdir: &Path,
+    barred: &[(String, Verdict)],
+    doing: &str,
+) -> Option<String> {
+    let meta = std::fs::metadata(resolved)
+        .ok()
+        .filter(|meta| !barred.is_empty() && names::shared(meta))?;
+
+    Some(
+        match Names::of(reach).other(named, resolved, &meta, workdir, barred)? {
+            Other::Barred((rule, Verdict::Deny), other) => format!(
+                "`{named}` is another name for `{}`, the same file, which the path rule for \
+                 `{rule}` refuses, so nothing was {doing}. Asked for by that name it is refused as \
+                 well.",
+                other.display(),
+            ),
+            Other::Barred((rule, _), other) => format!(
+                "`{named}` is another name for `{}`, the same file, which the path rule for \
+                 `{rule}` has not allowed, so nothing was {doing}. A rule is about the name a file \
+                 is asked for by: name it as `{}` and it is asked about like any other.",
+                other.display(),
+                other.display(),
+            ),
+            Other::Unchecked(links) => format!(
+                "`{named}` is one of {links} names for the same file, and there was too much to \
+                 look through to find the others, so whether a path rule covers one of them is \
+                 not known and nothing was {doing}."
+            ),
+        },
+    )
 }
 
 /// Which lines of a file a `read` asked for.

@@ -55,7 +55,7 @@ the floating panel, `markdown.rs` and `table.rs` render a model's answers as sty
 `text.rs` wraps and fits text by the columns it takes on screen rather than by its characters.
 
 **`tools/`**: `fs.rs` is the filesystem tool (`files.rs` for single files, `search.rs` for
-searching), `shell.rs` the shell, including `joints`, which finds where a command line's stages meet
+searching, `names.rs` for the other names a hard-linked file has), `shell.rs` the shell, including `joints`, which finds where a command line's stages meet
 (it's here rather than behind `tui` because it's about the command, not the display). `policy.rs` is
 `Careful`, `reaching.rs` handles a running command waiting on the network gate, `shedder.rs` is the
 compactor, `ops.rs` the table multi-operation tools are declared from, and `mod.rs` the `Limits` and
