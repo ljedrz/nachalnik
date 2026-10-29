@@ -175,8 +175,8 @@ const SUSPECT: &[&str] = &[
 ///
 /// note: this cannot see a symlink. A rule is about a name, and a name that resolves elsewhere
 /// resolves after this has answered. `fs` checks where the link led once resolved - see
-/// `search::led_past` - and the sandbox boundary does not care about names - see
-/// [`crate::sandbox`].
+/// `search::led_past` - and for a hard link, which has no target, where its other names are - see
+/// `names` - and the sandbox boundary does not care about names - see [`crate::sandbox`].
 ///
 /// note: names are compared exactly, as the filesystem here compares them: `.ENV` is another file
 /// than `.env`, and folding a rule would reach files it was not written for. A backslash is a

@@ -24,10 +24,12 @@ What changes to this workspace must keep true about what is and isn't enforced.
   tool without any is judged as before. Path rules compare names exactly, as the filesystem does
   (`.ENV` and `.env` are different files), and `fs` refuses to follow a symlink to a protected path,
   since a link is just another name for it: reading `alias -> .env` is refused and reported as
-  `.env`, and asking for `.env` directly goes through the normal question. A hard link is not
-  caught this way: it is the same file under a second name, and a rule that matches names does
-  not know the two names are one file. `fs` makes no links, and a command that makes one could read the file itself,
-  since path rules cover tools given a path and `shell` is given a command. A rule for a domain or
+  `.env`, and asking for `.env` directly goes through the normal question. A hard link has no
+  target to follow, so for a file with more than one link `fs` looks for its other names in the
+  directories the session reaches, and refuses it the same way when a rule covers one of them;
+  a search skips it and counts it. A name outside those directories isn't looked for: a confined
+  command can't link a file into them from outside, and `fs` can't read the file under that name.
+  The search stops after 200,000 entries, and a file whose names it didn't all find is refused. A rule for a domain or
   operation that no call is ever judged under is rejected when it's given, rather than kept.
 - **Confinement happens where processes are spawned.** `kamchatka` runs each `shell` command in a
   [sandlock](https://github.com/multikernel/sandlock) sandbox: a Landlock ruleset, a seccomp filter,
