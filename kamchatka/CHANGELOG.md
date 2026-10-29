@@ -79,6 +79,12 @@ minor bump may break you.
   so an answer written a line at a time (a greentext's `>` lines, a poem, an address) was drawn as
   one long line, while the web page drew a row per line. Each line break inside a paragraph is now
   drawn as one, as on the web page.
+- **A confined command is granted each root of the session by the directory `kamchatka` opened.**
+  Each was opened without following a symlink and then granted by its path, which sandlock opened
+  again in the command's process, so a job an earlier command left running could rename a root it
+  could write beside and leave a symlink at its name in between, and the command was granted
+  wherever the symlink led. sandlock now takes the descriptor (sandlock#313), and the pin moves
+  from 1f4dcbe to da288a5 for it.
 - **A tool left off the `tools` list in a settings file is never offered.** Every built-in tool was
   registered and the ones not on the list were taken off again after the rules were recorded, so
   the trace opened with `tools.changed` offering `fs` and `shell` to a session told not to have

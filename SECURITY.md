@@ -60,11 +60,10 @@ What changes to this workspace must keep true about what is and isn't enforced.
   `--sandbox-read` paths) are resolved once, when the session starts, and are used only while no
   symlink stands on the way to them: `fs` checks that on every call, and before each command
   `kamchatka` opens each with `openat2` and `RESOLVE_NO_SYMLINKS` and leaves out one a symlink now
-  stands on, telling the command so. sandlock takes paths rather than descriptors, though, and opens
-  each again in its child, so a command left running that renames an allowed directory it can write
-  beside, and leaves a symlink at its name between the two opens, gets that symlink's target
-  granted. Granting the descriptor would close that (see POSTPONED.md). On kernels older than 5.6
-  `kamchatka`'s own open follows symlinks too.
+  stands on, telling the command so. The command is granted the directory it opened, by its
+  descriptor, so a command left running that renames an allowed directory it can write beside and
+  leaves a symlink at its name grants the next command nothing through it. On kernels older than
+  5.6 `kamchatka`'s own open follows symlinks.
 - **Network access is asked about when a command tries to use it, not based on the command's name.**
   This is the network gate. sandlock's supervisor holds every `connect`, `bind`, `sendto`, `sendmsg` and `sendmmsg` a
   sandboxed command makes, with its destination, and `kamchatka` answers for an internet address
