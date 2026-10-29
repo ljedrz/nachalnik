@@ -171,6 +171,44 @@ async fn a_root_swapped_for_a_link_while_the_sandbox_is_built_grants_nothing() {
     assert!(!root.join("secret/planted.txt").exists());
 }
 
+/// A command's temporary directory is removed once it is over, even where the command shut a
+/// directory in it, and a link it left there leads the removal nowhere.
+///
+/// note: `remove_dir_all` gave up on a directory it could not read, so `chmod 000` on one inside
+/// left the whole temporary directory behind with whatever was written to it.
+#[test]
+fn a_temporary_directory_the_command_shut_is_removed_all_the_same() {
+    if !enforced() {
+        return;
+    }
+
+    let work = common::workdir("tmpdir-shut");
+    std::fs::create_dir_all(work.join("kept")).expect("a directory of the working directory's");
+    std::fs::write(work.join("kept/file.txt"), "kept").expect("a file in it");
+    let cmd = "mkdir -p \"$TMPDIR/a/b/c\" && echo left > \"$TMPDIR/a/b/c/left.txt\" \
+               && ln -s \"$PWD/kept\" \"$TMPDIR/a/out\" \
+               && chmod 000 \"$TMPDIR/a/b\" && chmod 500 \"$TMPDIR/a\" && printf '%s' \"$TMPDIR\"";
+    let (ok, said) = run(&sandbox(work.clone(), true, Network::Shut), cmd);
+    assert!(ok, "{said}");
+    let tmpdir = PathBuf::from(said.lines().last().expect("it said where"));
+
+    assert!(
+        tmpdir.starts_with(std::env::temp_dir()) && !tmpdir.exists(),
+        "left behind: {}",
+        tmpdir.display()
+    );
+    assert_eq!(
+        std::fs::read_to_string(work.join("kept/file.txt")).expect("still there"),
+        "kept"
+    );
+    let mode = std::os::unix::fs::PermissionsExt::mode(
+        &std::fs::metadata(work.join("kept"))
+            .expect("still there")
+            .permissions(),
+    );
+    assert_ne!(mode & 0o700, 0, "opened up through the link: {mode:o}");
+}
+
 /// A root a command swapped for a link grants the next command nothing: not where the link
 /// points, and not through it - whether the root was one beneath the working directory or the
 /// working directory beneath a root.

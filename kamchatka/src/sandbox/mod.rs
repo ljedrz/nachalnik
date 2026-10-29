@@ -63,8 +63,8 @@ mod reach;
 
 pub use confinement::{
     Confinement, Probed, Rules, Scratch, available, command, confines_abstract_sockets,
-    confines_signals, degraded, fits, make_scratch, run_if_asked, scope_signals, scratch_path,
-    weaker_here,
+    confines_signals, degraded, fits, make_scratch, remove_scratch, run_if_asked, scope_signals,
+    scratch_path, weaker_here,
 };
 pub use reach::{Access, Reach};
 
