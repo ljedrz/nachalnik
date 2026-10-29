@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`OpenAiCompatible` asks only an address on this machine or a private network whether it is an
+  ollama.** A `/v1` address whose listing named no context length was asked for `/api/version` on
+  every probe, so a hosted endpoint was a second round trip on every start to learn it is not one.
+  An address counts as nearby when it is a loopback, private or link-local IP, `localhost`, a
+  `.local` name, or a name with no dot. An ollama reached through a public name is measured
+  against no limit, as one behind a proxy already is.
+
 ## [0.10.2] - 2026-10-21
 
 ### changed
