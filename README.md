@@ -47,12 +47,15 @@ $ ANTHROPIC_API_KEY=sk-ant-... kamchatka --api anthropic -m claude-haiku-4-5 "wh
 
 **A shell sandboxed by the kernel, not by a list of forbidden commands.** Each command runs in a
 [sandlock](https://github.com/multikernel/sandlock) sandbox, and Landlock confines what it can
-touch. It writes only where you allow it and reads nothing private outside the working
-directory. A seccomp filter catches a command when it reaches for the network, including a DNS
-lookup, and holds it until it has an answer. By default the answer is yours: you are asked when a
-command actually tries, not based on its name. [SECURITY.md](SECURITY.md) says where each stops. A
-released binary reproduces byte for byte and carries a provenance attestation and its dependency
-list. [Its readme](kamchatka/README.md#-installing) says how to check all three.
+touch. It reads the working directory and the paths you open up, and writes only the ones you open
+up for writing, and only while you allow writing. It has a temporary directory of its own. Outside
+those it reads the system directories on the `shell-read` list, which nothing runs without, opens a
+few devices such as `/dev/null`, and reaches nothing else on the filesystem. A seccomp filter
+catches a command when it reaches for an internet address, including a DNS lookup, and holds it
+until it has an answer. By default the answer is yours: you are asked when a command actually tries,
+not based on its name. [SECURITY.md](SECURITY.md) says where each stops. A released binary
+reproduces byte for byte and carries a provenance attestation and its dependency list. [Its
+readme](kamchatka/README.md#-installing) says how to check all three.
 
 ![The context tab: five items with what each sends and holds back, and a pinned note opened to show
 why it is there.][shot-context]

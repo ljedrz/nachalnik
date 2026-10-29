@@ -27,31 +27,39 @@ What changes to this workspace must keep true about what is and isn't enforced.
   `.env`, and asking for `.env` directly goes through the normal question. A hard link has no
   target to follow, so for a file with more than one link `fs` looks for its other names in the
   directories the session reaches, and refuses it the same way when a rule covers one of them;
-  a search skips it and counts it. A name outside those directories isn't looked for: a confined
-  command can't link a file into them from outside, and `fs` can't read the file under that name.
-  The search stops after 10,000 entries, and a file whose names it didn't all find is refused. A rule for a domain or
-  operation that no call is ever judged under is rejected when it's given, rather than kept.
+  a search skips it and counts it. The search stops after 10,000 entries, and a file whose names
+  it didn't all find is refused. This keeps the path rules from being read past; it does not
+  change the sandbox boundary. A name outside the session's directories isn't looked for, so a
+  hard link that somebody made inside them to a file outside them is read under its inside name,
+  whatever a rule says about the outside one. `shell` reaches that file too, since Landlock judges
+  a file by the path it is opened at. A confined command can't make such a link, because Landlock
+  refuses linking a file into a directory from one it wasn't granted; under `--no-sandbox` a
+  command can. A rule for a domain or operation that no call is ever judged under is rejected when
+  it's given, rather than kept.
 - **Confinement happens where processes are spawned.** `kamchatka` runs each `shell` command in a
   [sandlock](https://github.com/multikernel/sandlock) sandbox: a Landlock ruleset, a seccomp filter,
   and a supervisor in `kamchatka`'s own process that answers the calls the filter holds. sandlock
   forks a child, confines it and executes the command in it, so the command is the process that is
-  confined, and nothing outside the allowed directories can be touched. A command also reads the
-  `shell-read` paths, which `fs` doesn't: `/usr`, `/etc`, `/bin`, `/sbin`, `/lib`, `/lib64`,
-  `/opt`, `/proc`, `/sys` and `/run/systemd/resolve` unless the list is replaced. They're the
-  shell's alone because `/proc/self` is a different file to each tool: to a command it's the
-  command, and to `fs`, which runs inside `kamchatka`, it's `kamchatka`, with the API keys in its
-  environment. The rest of `/run` isn't on the list, since it holds the person's running session:
-  the session bus, the compositor, the container daemon and any mounted drive.
-  `/run/systemd/resolve` holds only the resolver's configuration and its own sockets, and
-  `/etc/resolv.conf` is a link into it on Ubuntu, Fedora and Debian. One more directory is
-  writable: a command's own temporary directory, handed to it as `TMPDIR`, even where the working
-  directory is read-only, and removed when the command ends, with any directory in it the command
-  shut opened up first, one held directory at a time and never through a symlink. An older kernel's Landlock lacks some
-  rights, and the sandbox goes without them: below Linux 5.19 a command can't move or link a file
-  into another directory at all, truncating a file by name isn't restricted below 6.2, and device
-  `ioctl`s aren't below 6.10. Such a sandbox is `Partial`, and the permissions tab says "partly
-  confined". Where the sandbox doesn't start at all (no Landlock, or seccomp refused), the shell
-  runs unconfined and says so; it is never left half-built.
+  confined. On the filesystem it reaches only what it was granted. It reads the working directory
+  and the `--sandbox-read` and `--sandbox-write` paths, and writes the working directory and the
+  `--sandbox-write` paths unless `fs:write` is refused. It also writes its own temporary directory,
+  reads and writes the `shell-devices`, and reads the `shell-read` paths. Those last two are granted
+  by default, not by the person: nothing runs without `/usr`. A command reads the `shell-read` paths
+  and `fs` doesn't: `/usr`, `/etc`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/opt`, `/proc`, `/sys`
+  and `/run/systemd/resolve` unless the list is replaced. They're the shell's alone because
+  `/proc/self` is a different file to each tool: to a command it's the command, and to `fs`, which
+  runs inside `kamchatka`, it's `kamchatka`, with the API keys in its environment. The rest of
+  `/run` isn't on the list, since it holds the person's running session: the session bus, the
+  compositor, the container daemon and any mounted drive. `/run/systemd/resolve` holds only the
+  resolver's configuration and its own sockets, and `/etc/resolv.conf` is a link into it on Ubuntu,
+  Fedora and Debian. The temporary directory is handed to the command as `TMPDIR`, is writable even
+  where the working directory is read-only, and is removed when the command ends. Any directory in it
+  the command shut is opened up first, one held directory at a time and never through a symlink.
+  An older kernel's Landlock lacks some rights, and the sandbox goes without them: below Linux 5.19
+  a command can't move or link a file into another directory at all, truncating a file by name isn't
+  restricted below 6.2, and device `ioctl`s aren't below 6.10. Such a sandbox is `Partial`, and the
+  permissions tab says "partly confined". Where the sandbox doesn't start at all (no Landlock, or
+  seccomp refused), the shell runs unconfined and says so; it is never left half-built.
   The `fs` tool runs in-process, so it enforces the same boundary in its own code, which is a
   weaker guarantee: it resolves the path (following symlinks), checks it, and then opens it with
   `openat2` and `RESOLVE_BENEATH` relative to the allowed directory, so if a path component is
