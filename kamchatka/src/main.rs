@@ -572,6 +572,10 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     } = setup
         .wire(provider.clone())
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+    // what the endpoint says about the model, asked now that there is a session to hold the first
+    // line for it, so the screen does not wait on a round trip; a `/restart` keeps the provider and
+    // what it was told
+    app.look_up_the_model();
     // the record beside the snapshot is read before this session's own is started. That one
     // begins with what this reads, so it is the whole session rather than the part this run saw,
     // and `App::replay` below says how much of it came back. The path is the one typed, so the log
@@ -803,6 +807,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
                 .then(|| args.message.join(" "))
                 .filter(|message| !message.trim().is_empty())
         {
+            // measured against what the endpoint says about the model, which a typed line waits
+            // for by being held and this does not come in as one
+            app.settle().await;
             app.ask(&message);
             app.start_turn();
         }

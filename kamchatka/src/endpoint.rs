@@ -14,7 +14,7 @@ use std::{env, sync::Arc};
 
 use nachalnik::BoxError;
 use nachalnik_providers::{
-    Anthropic, Attribution, Gemini, OpenAiCompatible,
+    Anthropic, Attribution, Dialect, Gemini, OpenAiCompatible,
     anthropic::DEFAULT_BASE_URL as ANTHROPIC_BASE_URL, gemini::DEFAULT_BASE_URL, is_openrouter,
 };
 
@@ -417,6 +417,20 @@ async fn connected(
     responses: bool,
     send_reasoning: bool,
 ) -> Result<Arc<OpenAiCompatible>, BoxError> {
+    let provider = built(model, responses, send_reasoning)?;
+    if model.is_some() {
+        provider.probe().await;
+    }
+
+    Ok(provider)
+}
+
+/// [`connected`] without asking the endpoint anything; see [`unprobed`].
+fn built(
+    model: Option<&str>,
+    responses: bool,
+    send_reasoning: bool,
+) -> Result<Arc<OpenAiCompatible>, BoxError> {
     let provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
         addressed("KAMCHATKA_BASE_URL", base_url())?,
@@ -427,12 +441,27 @@ async fn connected(
     .send_reasoning(send_reasoning)
     .attributed_to(attribution());
 
-    let provider = Arc::new(provider);
-    if model.is_some() {
-        provider.probe().await;
-    }
+    Ok(Arc::new(provider))
+}
 
-    Ok(provider)
+/// The provider `wire` names, built from the environment as its `connect` builds it, without
+/// asking the endpoint about the model.
+///
+/// note: for a session that asks once its screen is up, as `/model` does; see
+/// [`App::look_up_the_model`](crate::app::App::look_up_the_model). Asking here held the screen
+/// back for a listing and, where the listing named no context length, a question to the address
+/// about whether it is an ollama - seconds in a debug build, on every `-r`, which names a model.
+pub(crate) fn unprobed(
+    wire: Wire,
+    model: Option<&str>,
+    send_reasoning: bool,
+) -> Result<Arc<dyn Dialect>, BoxError> {
+    Ok(match wire {
+        Wire::OpenAi => built(model, false, send_reasoning)?,
+        Wire::Responses => built(model, true, false)?,
+        Wire::Gemini => gemini::built(model)?,
+        Wire::Anthropic => anthropic::built(model)?,
+    })
 }
 
 /// The advisor: a System One model, asked about tool calls rather than about turns - see
@@ -806,19 +835,24 @@ pub mod gemini {
     /// note: the model is optional for the reason above. Without one, the probe asks for
     /// `{base}/models/{model}` by name, so it would ask the endpoint about a model called nothing.
     pub async fn connect(model: Option<&str>) -> Result<Arc<Gemini>, BoxError> {
-        let provider = Arc::new(
+        let provider = built(model)?;
+        if model.is_some() {
+            provider.probe().await;
+        }
+
+        Ok(provider)
+    }
+
+    /// [`connect`] without asking the endpoint anything; see [`super::unprobed`].
+    pub(crate) fn built(model: Option<&str>) -> Result<Arc<Gemini>, BoxError> {
+        Ok(Arc::new(
             Gemini::new(
                 model.unwrap_or_default(),
                 addressed("KAMCHATKA_BASE_URL", base_url())?,
                 key_for(&base_url())?,
             )
             .with_context_limit(checked_limit()?),
-        );
-        if model.is_some() {
-            provider.probe().await;
-        }
-
-        Ok(provider)
+        ))
     }
 }
 
@@ -866,8 +900,18 @@ pub mod anthropic {
     /// since OpenRouter serves this API too and ranks the apps calling it here as it does for chat
     /// completions; the provider sends the headers only to OpenRouter.
     pub async fn connect(model: Option<&str>) -> Result<Arc<Anthropic>, BoxError> {
+        let provider = built(model)?;
+        if model.is_some() {
+            provider.probe().await;
+        }
+
+        Ok(provider)
+    }
+
+    /// [`connect`] without asking the endpoint anything; see [`super::unprobed`].
+    pub(crate) fn built(model: Option<&str>) -> Result<Arc<Anthropic>, BoxError> {
         let url = base_url();
-        let provider = Arc::new(
+        Ok(Arc::new(
             Anthropic::new(
                 model.unwrap_or_default(),
                 addressed("KAMCHATKA_BASE_URL", url.clone())?,
@@ -875,12 +919,7 @@ pub mod anthropic {
             )
             .with_context_limit(checked_limit()?)
             .attributed_to(attribution()),
-        );
-        if model.is_some() {
-            provider.probe().await;
-        }
-
-        Ok(provider)
+        ))
     }
 }
 

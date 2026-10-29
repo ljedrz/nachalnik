@@ -348,6 +348,13 @@ impl App {
         }
     }
 
+    /// Waits for a switch still settling - a `/model`, an `/endpoint`, or
+    /// [`App::look_up_the_model`] - for something about to be sent that did not come in as a line
+    /// and so is not held behind it; see [`App::in_flight`].
+    pub async fn settle(&mut self) {
+        self.settled(None).await;
+    }
+
     /// Waits for a `/model` or `/endpoint` still settling, and says what the switch had to say.
     ///
     /// note: the notice is taken when the switch finishes because it is about that switch. Left for

@@ -918,24 +918,14 @@ impl Args {
     /// saying the choice was not theirs. Without a model the session still starts: the address and
     /// key are settled, `/models` lists what is served, and `/model` picks one. Until a model is
     /// picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
+    ///
+    /// note: the endpoint is not asked about the model here. A wired session asks once its screen
+    /// is up, and holds the first line until it has an answer; see
+    /// [`App::look_up_the_model`](crate::app::App::look_up_the_model).
     pub async fn provider(&self) -> Result<Arc<dyn Dialect>> {
-        let model = self.model.as_deref();
-        let provider = match self.wire() {
-            endpoint::Wire::Gemini => endpoint::gemini::connect(model)
-                .await
-                .map(|it| it as Arc<dyn Dialect>),
-            endpoint::Wire::Anthropic => endpoint::anthropic::connect(model)
-                .await
-                .map(|it| it as Arc<dyn Dialect>),
-            endpoint::Wire::Responses => endpoint::responses::connect(model)
-                .await
-                .map(|it| it as Arc<dyn Dialect>),
-            endpoint::Wire::OpenAi => endpoint::connect_with(model, self.send_reasoning)
-                .await
-                .map(|it| it as Arc<dyn Dialect>),
-        }
-        .map_err(|e| anyhow::anyhow!("{e}"))
-        .context("could not reach the model")?;
+        let provider = endpoint::unprobed(self.wire(), self.model.as_deref(), self.send_reasoning)
+            .map_err(|e| anyhow::anyhow!("{e}"))
+            .context("could not reach the model")?;
         if let Some(seconds) = self.max_silence_seconds {
             provider.set_patience(std::time::Duration::from_secs(seconds));
         }

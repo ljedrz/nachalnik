@@ -2492,7 +2492,16 @@ async fn a_switch_settling_when_a_ctrl_c_ends_a_served_session_is_recorded_first
     let at = format!("unix:{}", dir.join("s.sock").display());
     let mut socket = Socket::connect(&at).await;
     socket.send(crate::attaching(None, None)).await;
-    while !matches!(socket.recv().await, Message::Attached(_)) {}
+    let busy = loop {
+        if let Message::Attached(attached) = socket.recv().await {
+            break attached.busy;
+        }
+    };
+    // the session asks the endpoint about its model once it has started, and a `/model` sent
+    // meanwhile is held behind that rather than settling; see `App::look_up_the_model`
+    if busy {
+        while !matches!(socket.recv().await, Message::Busy { busy: false }) {}
+    }
     socket
         .send(Command::Submit {
             line: "/model second".to_owned(),
