@@ -641,7 +641,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2352,7 +2352,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2408,7 +2408,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2452,7 +2452,7 @@ dependencies = [
 [[package]]
 name = "sandlock-core"
 version = "0.9.0"
-source = "git+https://github.com/multikernel/sandlock?rev=1f4dcbe82b06f281be0c0a2ce9fa7b3dc5b17edf#1f4dcbe82b06f281be0c0a2ce9fa7b3dc5b17edf"
+source = "git+https://github.com/multikernel/sandlock?rev=da288a54cd08e8b47ccd10b542676a9d5764cc6b#da288a54cd08e8b47ccd10b542676a9d5764cc6b"
 dependencies = [
  "goblin",
  "landlock",
@@ -3464,7 +3464,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
