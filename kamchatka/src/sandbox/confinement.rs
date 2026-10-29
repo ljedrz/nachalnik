@@ -6,7 +6,7 @@
 use std::{
     ffi::OsString,
     fmt,
-    os::fd::OwnedFd,
+    os::fd::{AsRawFd as _, OwnedFd},
     path::{Path, PathBuf},
 };
 
@@ -429,6 +429,11 @@ impl Rules {
     }
 }
 
+/// The name the kernel gives `fd` in this process.
+fn fd_path(fd: &OwnedFd) -> PathBuf {
+    PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()))
+}
+
 /// How much of the sandbox `sandbox` came to: `Full` where every protection asked for is in force,
 /// and `Partial` where the kernel was too old for some of them.
 pub fn degraded(sandbox: &sandlock_core::Sandbox) -> Confinement {
@@ -492,7 +497,7 @@ pub fn make_scratch(path: &Path) -> Option<Scratch> {
     if private().is_err() {
         // ours from a run whose identifier has come round, or somebody else's; only ours can be
         // unlinked, and `/tmp` being sticky makes that true
-        let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
+        let _ = remove_scratch(path).or_else(|_| std::fs::remove_file(path));
         private().ok()?;
     }
     let held = rustix::fs::open(
@@ -521,6 +526,83 @@ impl Scratch {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+/// Removes a confined command's temporary directory at `path`, with everything in it, opening up
+/// on the way each directory the command shut.
+///
+/// note: not `remove_dir_all`, which gives up on a directory it cannot read: a command that runs
+/// `chmod 000` on one inside would leave it behind, holding whatever was written there. The command
+/// runs as this process's user, so this process owns each directory in there and may open it up.
+///
+/// note: every step is taken relative to a directory already open, and never through a link,
+/// since something the command left running may still be renaming things in there. A name it swaps
+/// for a link is unlinked as a link; a directory is opened up only once it is held, so a `chmod`
+/// never reaches past the directory it was meant for. A directory moved in from elsewhere is
+/// removed as one the command made, which it could have done itself.
+pub fn remove_scratch(path: &Path) -> std::io::Result<()> {
+    use rustix::fs::{AtFlags, Mode, OFlags};
+
+    let held = rustix::fs::open(
+        path,
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?;
+    let emptied = empty(held, 0);
+    rustix::fs::unlinkat(rustix::fs::CWD, path, AtFlags::REMOVEDIR)?;
+
+    emptied
+}
+
+/// Empties `dir`, held without being read, after opening it up; `depth` is how far below the
+/// temporary directory it is.
+///
+/// note: one descriptor is held for each level, so a command that nests directories without end
+/// cannot run this process out of them; what is deeper than [`DEEPEST`] stays.
+fn empty(dir: OwnedFd, depth: usize) -> std::io::Result<()> {
+    use rustix::{
+        fs::{AtFlags, Mode, OFlags},
+        io::Errno,
+    };
+
+    /// The deepest a directory is followed into.
+    const DEEPEST: usize = 256;
+
+    // through the name the kernel gives the descriptor, which leads to what is held and nowhere
+    // else; `fchmod` takes no descriptor opened only to be held, and a directory nobody may read
+    // can be opened no other way
+    rustix::fs::chmod(fd_path(&dir), Mode::RWXU)?;
+    let mut entries = rustix::fs::Dir::new(rustix::fs::openat(
+        &dir,
+        c".",
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?)?;
+    drop(dir);
+    let mut emptied = Ok(());
+    while let Some(entry) = entries.read() {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == c"." || name == c".." {
+            continue;
+        }
+        let at = entries.fd()?;
+        let removed = match rustix::fs::unlinkat(at, name, AtFlags::empty()) {
+            Err(Errno::ISDIR) if depth < DEEPEST => rustix::fs::openat(
+                at,
+                name,
+                OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(std::io::Error::from)
+            .and_then(|inner| empty(inner, depth + 1))
+            .and_then(|()| Ok(rustix::fs::unlinkat(at, name, AtFlags::REMOVEDIR)?)),
+            removed => removed.map_err(std::io::Error::from),
+        };
+        emptied = emptied.and(removed);
+    }
+
+    emptied
 }
 
 /// What a probe found here: how much of a sandbox the kernel takes, and whether its network is
@@ -692,7 +774,7 @@ pub fn run_if_asked() -> Option<i32> {
         }
     });
     if let Some(scratch) = scratch {
-        let _ = std::fs::remove_dir_all(scratch.path());
+        let _ = remove_scratch(scratch.path());
     }
 
     Some(code)

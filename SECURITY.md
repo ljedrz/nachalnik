@@ -43,7 +43,8 @@ What changes to this workspace must keep true about what is and isn't enforced.
   `/run/systemd/resolve` holds only the resolver's configuration and its own sockets, and
   `/etc/resolv.conf` is a link into it on Ubuntu, Fedora and Debian. One more directory is
   writable: a command's own temporary directory, handed to it as `TMPDIR`, even where the working
-  directory is read-only, and removed when the command ends. An older kernel's Landlock lacks some
+  directory is read-only, and removed when the command ends, with any directory in it the command
+  shut opened up first, one held directory at a time and never through a symlink. An older kernel's Landlock lacks some
   rights, and the sandbox goes without them: below Linux 5.19 a command can't move or link a file
   into another directory at all, truncating a file by name isn't restricted below 6.2, and device
   `ioctl`s aren't below 6.10. Such a sandbox is `Partial`, and the permissions tab says "partly

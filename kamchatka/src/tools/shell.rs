@@ -820,7 +820,8 @@ impl Tool for Shell {
         };
         // after the note, which compares against the directory and needs it still there
         if let Some(scratch) = scratch {
-            let _ = tokio::fs::remove_dir_all(scratch).await;
+            let _ =
+                tokio::task::spawn_blocking(move || crate::sandbox::remove_scratch(&scratch)).await;
         }
         // note: what came of it, where the command reached for the network. Up here with the rest,
         // for the same reason, and said because the output alone cannot say it: a refused socket is
@@ -1035,7 +1036,7 @@ impl Confined {
             Ok(started) => Ok(Started { scratch, ..started }),
             Err(e) => {
                 if let Some(scratch) = scratch {
-                    let _ = std::fs::remove_dir_all(scratch.path());
+                    let _ = crate::sandbox::remove_scratch(scratch.path());
                 }
                 Err(e)
             }
@@ -1240,7 +1241,7 @@ impl Drop for Running {
             let _ = killing(pid).status();
         }
         if let Some(scratch) = &self.scratch {
-            let _ = std::fs::remove_dir_all(scratch);
+            let _ = crate::sandbox::remove_scratch(scratch);
         }
     }
 }
