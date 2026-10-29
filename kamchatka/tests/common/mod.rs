@@ -169,6 +169,15 @@ pub async fn endpoint(answers: Vec<String>) -> String {
 pub async fn hearing(
     answers: Vec<String>,
 ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    listing_after(std::time::Duration::ZERO, answers).await
+}
+
+/// [`hearing`], with the model listing answered only after `delay`, for a test about what waits
+/// on the listing.
+pub async fn listing_after(
+    delay: std::time::Duration,
+    answers: Vec<String>,
+) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering::SeqCst},
@@ -205,6 +214,9 @@ pub async fn hearing(
                     log.lock().expect("not poisoned").push(body.to_owned());
                 }
 
+                if head.contains("/models") {
+                    tokio::time::sleep(delay).await;
+                }
                 let (kind, body) = match head.contains("/models") {
                     true => (
                         "application/json",

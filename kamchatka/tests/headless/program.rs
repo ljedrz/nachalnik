@@ -596,6 +596,48 @@ fn a_resumed_run_says_the_spend_is_this_runs() {
     );
 }
 
+/// The endpoint is asked about the model once the session is up, and the first message waits for
+/// the answer: the context limit the listing gives is in the record before the request is.
+///
+/// note: it was asked before the session was wired, and the screen waited on it. Asked later, a
+/// line that did not wait would be measured against no limit, and compacted against none.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_first_message_waits_for_what_the_endpoint_says_about_the_model() {
+    use std::io::Write as _;
+
+    // a message on the command line, which is sent as the session starts, and one piped in, which
+    // is read as a line
+    for (args, piped) in [(vec!["hi"], ""), (vec![], "hi\n")] {
+        // slow enough that a message that did not wait would go out first
+        let (base, _) = common::listing_after(
+            std::time::Duration::from_millis(500),
+            vec![common::answer("hello")],
+        )
+        .await;
+
+        let mut child = common::command()
+            .args(["--headless", "--no-record", "-m", "nothing"])
+            .args(&args)
+            .current_dir(common::workdir("program-looked-up"))
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+        let mut stdin = child.stdin.take().expect("stdin is a pipe");
+        stdin.write_all(piped.as_bytes()).expect("written");
+        drop(stdin);
+        let out = child.wait_with_output().expect("it ran");
+        let records = String::from_utf8_lossy(&out.stdout);
+
+        let at = |what: &str| records.lines().position(|line| line.contains(what));
+        let limited = at(r#""context_limit":128000"#).expect("the listing's limit is recorded");
+        let requested = at("model.requested").expect("the message was sent");
+        assert!(limited < requested, "{args:?} {piped:?}: {records}");
+    }
+}
+
 /// The program finds the gate for itself and puts the shell behind it: a command that opens a
 /// socket under `--auto-allow exec:run` is asked about when it tries, and a run with nobody at it
 /// answers with `--on-ask`.
@@ -2295,12 +2337,13 @@ async fn a_run_stopped_after_a_failed_turn_leaves_with_the_stop() {
     assert!(said.contains("the last turn failed"), "{said}");
 }
 
-/// `--max-run-seconds` ends a run still starting: a server that never answers its handshake, and an
-/// endpoint that never answers at all.
+/// `--max-run-seconds` ends a run held up by somebody else's program: a server that never answers
+/// its handshake, before the session starts, and an endpoint that never answers what it is asked
+/// about the model, which the session asks once it has started.
 ///
-/// note: both are waits on somebody else's program with no bound of their own, before the driver
-/// that keeps the deadline exists. The listener is bound and never accepted from, so a connection
-/// is made and nothing ever comes back on it.
+/// note: the first is a wait with no bound of its own before the driver that keeps the deadline
+/// exists, and the second one the driver ends. The listener is bound and never accepted from, so a
+/// connection is made and nothing ever comes back on it.
 #[cfg(feature = "mcp")]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_deadline_ends_a_run_that_is_still_starting() {
@@ -2312,7 +2355,7 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
             "http://127.0.0.1:1/v1",
             "starting the MCP servers",
         ),
-        (vec!["-m", "nothing"], silent.as_str(), "reaching the model"),
+        (vec!["-m", "nothing"], silent.as_str(), ""),
     ] {
         let mut child = common::command()
             .args(["--headless", "--no-record", "--max-run-seconds", "1"])
@@ -2329,9 +2372,12 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
         let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
 
         // the deadline's status wherever it falls, so a script need not know how far it got
-        let said = heard(&said, &format!("out of time {step}"));
+        let said = heard(&said, "out of time");
         assert_eq!(status.code(), Some(124), "{said}");
-        assert!(said.contains(&format!("out of time {step}")), "{said}");
+        assert!(
+            said.contains(&format!("out of time {step}").trim_end()),
+            "{said}"
+        );
     }
 }
 

@@ -115,6 +115,30 @@ impl App {
         });
     }
 
+    /// Asks the endpoint about the model this session starts with - its context limit, what it
+    /// takes, whether it is served there - while the screen is already up, and holds the first
+    /// line until the answer is in, as a `/model` switch does; see [`App::in_flight`].
+    ///
+    /// note: a switch to the model the session already has, because that is the question a switch
+    /// asks, and the kernel is told the same way. It was asked before the session was wired, and
+    /// the screen waited for it: on every `-r`, which names the model the record last talked to,
+    /// that was a listing and, where the listing named no context length, a question to the
+    /// address about whether it is an ollama.
+    ///
+    /// note: nothing is asked where no model is named. The session holds no provider until
+    /// `/model` picks one, and that switch asks.
+    pub fn look_up_the_model(&mut self) {
+        let model = self.provider.model();
+        if model.is_empty() {
+            return;
+        }
+        let (provider, kernel) = (self.provider.clone(), self.kernel.clone());
+        self.switch(async move {
+            provider.set_model(model).await;
+            kernel.provider_changed();
+        });
+    }
+
     /// `/params` sets one parameter to a JSON value or takes it away with `null`, then shows what
     /// is set and what the model makes of it.
     ///

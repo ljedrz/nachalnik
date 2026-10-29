@@ -112,6 +112,14 @@ minor bump may break you.
 
 ### changed
 
+- **A session draws its screen before asking the endpoint about the model.** The context limit,
+  what the model takes and whether it is served there were asked before the session was wired, so
+  the screen waited a round trip or two. Every `-r` paid it, since a resume names the model the
+  record last talked to. The session now asks once it is up, as `/model` does, and the first
+  message waits for the answer: a line typed or piped in is held, and a message on the command
+  line is sent once the answer is in. `App::look_up_the_model` starts it, `App::settle` waits for
+  it, and `Args::provider` no longer asks; the `endpoint` `connect` functions still do.
+
 - **A shell command reads only `/run/systemd/resolve` of `/run`, unless `shell-read` names more.**
   The rest holds the person's running session: the session bus, the compositor and the container
   daemon, any USB drive under `/run/media`, who is logged in. `/run/systemd/resolve` stays because
