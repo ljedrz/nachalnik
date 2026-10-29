@@ -13,8 +13,8 @@ sandbox, served sessions, the interface, and the three API clients in
 
 It only builds for Linux, on x86_64 and aarch64, because its shell sandbox relies on Linux
 features: its commands run in [sandlock](https://github.com/multikernel/sandlock) sandboxes, where
-Landlock restricts what they can touch and a seccomp filter pauses every attempt to use the network
-until you answer.
+Landlock limits the files they reach to the ones they are granted, and a seccomp filter holds every
+connection to an internet address until it is answered: by you, unless a rule answers first.
 
 ```console
 $ cargo install kamchatka # or download the released binary
@@ -37,8 +37,9 @@ You may want `kamchatka` if any of these apply:
 - you distrust generic community tools hosted by `npm`
 - you want fine-grained control over the agent's decisions
 - you want the shell sandboxed by the kernel, not by a list of forbidden commands: it writes only
-  where you let it, reads nothing private outside the working directory, and reaches the network
-  only when you say so
+  where you let it, reads only the working directory, the paths you open up, the system
+  directories it needs to run, a temporary directory of its own and a few devices, and reaches
+  the internet only when you say so
 - you want a minimal agent with a small OS footprint and transparent configuration
 - you want detailed, auditable, local transcripts of past conversations
 

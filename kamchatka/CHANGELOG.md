@@ -85,7 +85,8 @@ minor bump may break you.
   its other names in the directories the session reaches and refuses it, naming the other one, as
   it does a symlink to it; `grep` and `glob` skip it and count it. This walks those directories
   once per call, and only for a file with more than one link while a rule other than `allow` is
-  set.
+  set. A name outside those directories isn't looked for, so a hard link somebody made inside them
+  to a file outside them is still read under its inside name.
 - **A confined command is granted each root of the session by the directory `kamchatka` opened.**
   Each was opened without following a symlink and then granted by its path, which sandlock opened
   again in the command's process, so a job an earlier command left running could rename a root it
