@@ -2375,7 +2375,7 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
         let said = heard(&said, "out of time");
         assert_eq!(status.code(), Some(124), "{said}");
         assert!(
-            said.contains(&format!("out of time {step}").trim_end()),
+            said.contains(format!("out of time {step}").trim_end()),
             "{said}"
         );
     }
