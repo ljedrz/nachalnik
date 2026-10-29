@@ -572,8 +572,12 @@ impl OpenAiCompatible {
     /// asked and most answer `/v1/models` while saying nothing about context length. A non-ollama
     /// address has no `/api/ps`, and one that takes rather than refuses the request waits both
     /// probes - a minute and a half of startup - to answer nothing.
+    ///
+    /// note: and only an address on this machine or a private network is asked at all; see
+    /// [`nearby`]. A hosted endpoint's listing often names no context length, and asking it whether
+    /// it is an ollama was a round trip on every start to learn that it is not.
     async fn loaded_limit(&self, root: &str) -> Option<usize> {
-        if !self.answers_like_ollama(root).await {
+        if !nearby(root) || !self.answers_like_ollama(root).await {
             return None;
         }
 
@@ -712,6 +716,36 @@ impl OpenAiCompatible {
         .into_iter()
         .find_map(|limit| limit.as_u64().filter(|limit| *limit > 0))
         .map(|limit| limit as usize)
+    }
+}
+
+/// Whether `root` is on this machine or a private network, which is where an ollama is served: a
+/// loopback, private or link-local address, `localhost`, a `.local` name, or a name with no dot in
+/// it, which only a local resolver answers.
+///
+/// note: an ollama reached through a public name is then measured against no limit rather than its
+/// own, as one behind a proxy already is; see `answers_like_ollama`.
+fn nearby(root: &str) -> bool {
+    use std::net::IpAddr;
+
+    let Some(host) = reqwest::Url::parse(root).ok().and_then(|url| {
+        url.host_str()
+            .map(|host| host.trim_matches(['[', ']']).to_owned())
+    }) else {
+        return false;
+    };
+
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        Ok(IpAddr::V6(ip)) => {
+            ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local()
+        }
+        Err(_) => {
+            host == "localhost"
+                || host.ends_with(".localhost")
+                || host.ends_with(".local")
+                || !host.contains('.')
+        }
     }
 }
 
@@ -1149,6 +1183,33 @@ mod tests {
             Some(4096),
             "the limit the loaded model is served with, or none where the load was given up on"
         );
+    }
+
+    /// Only an address on this machine or a private network is asked whether it is an ollama: a
+    /// hosted endpoint whose listing names no context length was asked on every start.
+    #[test]
+    fn only_a_nearby_address_is_asked_whether_it_is_ollama() {
+        for root in [
+            "http://127.0.0.1:11434",
+            "http://localhost:11434",
+            "http://[::1]:11434",
+            "http://192.168.1.36:11434",
+            "http://10.0.0.2",
+            "http://[fd00::2]:11434",
+            "http://gpubox:11434",
+            "http://gpubox.local:11434",
+        ] {
+            assert!(nearby(root), "{root}");
+        }
+        for root in [
+            "https://api.cheaperinference.com",
+            "https://openrouter.ai/api",
+            "http://8.8.8.8:11434",
+            "http://[2001:db8::1]:11434",
+            "not an address",
+        ] {
+            assert!(!nearby(root), "{root}");
+        }
     }
 
     /// A `/v1` address whose listing names no context length is asked whether it is an ollama, and
