@@ -223,7 +223,7 @@ a terminal, and a browser that loses the connection reconnects and catches up by
 
 The page has no encryption, and no authentication but a random key in its address, printed at
 startup: every route is beneath it, so a browser must be given the whole address. The key is eight
-hex digits; after 100 wrong ones the page refuses everything for a minute and says so. It listens on
+hex digits; after 10 wrong ones the page refuses everything for a minute and says so. It listens on
 loopback, or on this machine's IP address on a private network (10/8, 172.16/12, 192.168/16,
 fc00::/7):
 

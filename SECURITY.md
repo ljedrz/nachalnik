@@ -29,7 +29,7 @@ What changes to this workspace must keep true about what is and isn't enforced.
   directories the session reaches, and refuses it the same way when a rule covers one of them;
   a search skips it and counts it. A name outside those directories isn't looked for: a confined
   command can't link a file into them from outside, and `fs` can't read the file under that name.
-  The search stops after 200,000 entries, and a file whose names it didn't all find is refused. A rule for a domain or
+  The search stops after 10,000 entries, and a file whose names it didn't all find is refused. A rule for a domain or
   operation that no call is ever judged under is rejected when it's given, rather than kept.
 - **Confinement happens where processes are spawned.** `kamchatka` runs each `shell` command in a
   [sandlock](https://github.com/multikernel/sandlock) sandbox: a Landlock ruleset, a seccomp filter,
@@ -223,8 +223,8 @@ What changes to this workspace must keep true about what is and isn't enforced.
   its socket `0600`; there is no other authentication. `--web` serves a page for the session whose
   only credential is a random key in its address, printed at startup; whoever has the address
   controls the session like the person at the keyboard. The key is 32 bits so it can be typed on a
-  phone; after 100 wrong keys the page refuses everything for a minute, which puts guessing it at
-  about 40 years for even odds. A connection has 10 seconds to send its request, and at most 64 may
+  phone; after 10 wrong keys the page refuses everything for a minute, which puts guessing it at
+  about 400 years for even odds. A connection has 10 seconds to send its request, and at most 64 may
   be waiting at once, so a device that can reach the port without the key can keep the page from
   loading for as long as it keeps trying, but cannot use up the file descriptors the session needs
   for its record and its commands. It listens on loopback or on an IP address in a private range;
