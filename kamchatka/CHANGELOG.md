@@ -85,6 +85,11 @@ minor bump may break you.
   could write beside and leave a symlink at its name in between, and the command was granted
   wherever the symlink led. sandlock now takes the descriptor (sandlock#313), and the pin moves
   from 1f4dcbe to da288a5 for it.
+- **A command's temporary directory is removed even when the command shut a directory in it.**
+  A `chmod 000` on a directory inside left the whole temporary directory behind, with whatever was
+  written to it. Each directory is opened up before it is emptied, relative to one already held
+  and never through a symlink, so something the command left running cannot point the removal
+  elsewhere.
 - **A tool left off the `tools` list in a settings file is never offered.** Every built-in tool was
   registered and the ones not on the list were taken off again after the rules were recorded, so
   the trace opened with `tools.changed` offering `fs` and `shell` to a session told not to have

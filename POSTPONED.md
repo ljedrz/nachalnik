@@ -118,15 +118,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   apart needs the writer to mark one of them, which is a snapshot format change. Unblocked by
   deciding whether the old form still has to be read, or by the next format change.
 
-- **A command can leave its temporary directory behind.** The directory a confined command gets
-  as `TMPDIR` is removed when the call ends, and a failed removal is not reported. A command that
-  makes a directory inside it unreadable (`chmod 000`) makes the removal fail, and the directory
-  stays in the temporary directory with whatever was written to it. Opening such directories up
-  before removing them is done by this unconfined process while something the command left
-  running may still be swapping names for links, so it needs `chmod`s relative to a held
-  directory that never follow a link. Unblocked by writing that walk, or by deciding a report of
-  what was left is enough.
-
 - **`--connect` writes the session's records from where it attached, not from the start.** A
   client's standard output is documented as the whole log, the bytes `/save` writes. It writes
   records live as they stream, and fetches the ones from before it attached only when it detaches,
