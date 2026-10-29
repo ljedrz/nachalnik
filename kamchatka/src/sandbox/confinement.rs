@@ -6,7 +6,7 @@
 use std::{
     ffi::OsString,
     fmt,
-    os::fd::{AsRawFd as _, OwnedFd},
+    os::fd::OwnedFd,
     path::{Path, PathBuf},
 };
 
@@ -205,19 +205,13 @@ pub fn scope_signals() -> bool {
     scoped
 }
 
-/// What a command's sandbox holds open for the roots it grants, and what it says about
-/// the roots it left out.
+/// What a command's sandbox says about the roots it left out.
 ///
 /// note: each of the session's own roots is opened here without following a link, and granted by
-/// the path the kernel gives back for what was opened. sandlock takes paths only, opens each again
-/// in the child it forks and follows whatever is there by then, so between the two a command left
-/// running could still swap a root for a link; the window runs from here, through building the
-/// sandbox and forking, until the child has opened every path. Naming the descriptor as
-/// `/proc/self/fd/N` would close it, but sandlock leaves out every grant under `/proc`, since it
-/// serves `/proc` to a command itself. See POSTPONED.md.
+/// the descriptor rather than by a path. Landlock puts the rule on what the descriptor holds and
+/// sandlock's supervisor judges by where that is now, so a command left running that swaps a root
+/// for a link between here and the child's confinement moves nothing the grant covers.
 pub struct Rules {
-    /// The descriptors the rules name.
-    held: Vec<OwnedFd>,
     /// A line for each root left out, for the command's standard error.
     left_out: Vec<String>,
 }
@@ -280,21 +274,20 @@ impl Sandbox {
             }
         }
         let mut rules = Rules {
-            held: Vec::new(),
             left_out: Vec::new(),
         };
         let readable = std::iter::once(&self.workdir).chain(&self.readable);
         for root in readable {
-            if let Some(named) = rules.hold(root) {
-                builder = builder.fs_read(named);
+            if let Some(held) = rules.hold(root) {
+                builder = builder.fs_read_fd(held);
             }
         }
         let writable = std::iter::once(&self.workdir)
             .filter(|_| self.workdir_writable)
             .chain(&self.writable);
         for root in writable {
-            if let Some(named) = rules.hold(root) {
-                builder = builder.fs_write(named);
+            if let Some(held) = rules.hold(root) {
+                builder = builder.fs_write_fd(held);
             }
         }
         // a device that is not plugged in is not granted; sandlock refuses a rule for a path that is
@@ -305,10 +298,8 @@ impl Sandbox {
                 builder = builder.fs_write(device);
             }
         }
-        if let Some(named) =
-            scratch.and_then(|scratch| std::fs::read_link(fd_path(&scratch.held)).ok())
-        {
-            builder = builder.fs_write(named);
+        if let Some(held) = scratch.and_then(|scratch| scratch.held.try_clone().ok()) {
+            builder = builder.fs_write_fd(held);
         }
 
         // note: `*:*` is TCP and UDP to anywhere, and `icmp://*` the ping sockets, which nothing
@@ -395,8 +386,7 @@ impl Rules {
         &self.left_out
     }
 
-    /// Opens `root` without following a link, keeps the descriptor, and names it for sandlock;
-    /// `None` where it is left out.
+    /// Opens `root` without following a link, for sandlock to grant; `None` where it is left out.
     ///
     /// note: the roots were resolved once, when the session started, and are never followed again.
     /// A root inside a directory a command may write - one beneath the working directory, or the
@@ -409,7 +399,7 @@ impl Rules {
     /// note: where the kernel has no `openat2` (before 5.6), or a container's seccomp filter refuses
     /// it, the root is opened following links, with the window SECURITY.md describes. A root that is
     /// not there is left out without a word, as Landlock leaves out a rule it cannot build.
-    fn hold(&mut self, root: &Path) -> Option<PathBuf> {
+    fn hold(&mut self, root: &Path) -> Option<OwnedFd> {
         use rustix::{
             fs::{Mode, OFlags, ResolveFlags},
             io::Errno,
@@ -434,17 +424,9 @@ impl Rules {
             }
             opened => opened,
         };
-        let opened = opened.ok()?;
-        let named = std::fs::read_link(fd_path(&opened)).ok()?;
-        self.held.push(opened);
 
-        Some(named)
+        opened.ok()
     }
-}
-
-/// The name the kernel gives `fd` in this process.
-fn fd_path(fd: &OwnedFd) -> PathBuf {
-    PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()))
 }
 
 /// How much of the sandbox `sandbox` came to: `Full` where every protection asked for is in force,
@@ -500,10 +482,7 @@ pub fn scratch_path() -> PathBuf {
 /// writable, and [`Sandbox::note_for`] on the permission error that follows.
 ///
 /// note: opened as soon as it is made, refusing a link at its name, and held, and the sandbox is
-/// granted the path the kernel gives back for what is held. sandlock opens that path again in the
-/// child, with the window [`Rules`] describes. Nothing a command runs can make an entry in `/tmp`,
-/// where the directory is, and another account cannot rename or remove ours there, since `/tmp` is
-/// sticky.
+/// granted what is held, as [`Rules`] describes.
 pub fn make_scratch(path: &Path) -> Option<Scratch> {
     use std::os::unix::fs::DirBuilderExt as _;
 
@@ -581,13 +560,12 @@ pub fn available() -> Probed {
                 devices: DEVICES.iter().map(PathBuf::from).collect(),
                 closed: Vec::new(),
             };
-            let (builder, rules) = sandbox.sandlock(None, None, false);
+            let (builder, _) = sandbox.sandlock(None, None, false);
             let (builder, argv) = command(builder, super::environment(), "true");
             let mut confined = builder.build().map_err(|e| e.to_string())?;
             let took = degraded(&confined);
-            let ran = confined.run(&argv).await.map_err(|e| e.to_string());
-            drop(rules);
-            match ran?.success() {
+            let ran = confined.run(&argv).await.map_err(|e| e.to_string())?;
+            match ran.success() {
                 true => Ok(took),
                 false => Err("the probe's command did not run".to_owned()),
             }
@@ -713,7 +691,6 @@ pub fn run_if_asked() -> Option<i32> {
             }
         }
     });
-    drop(rules);
     if let Some(scratch) = scratch {
         let _ = std::fs::remove_dir_all(scratch.path());
     }

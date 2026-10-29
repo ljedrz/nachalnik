@@ -1018,9 +1018,6 @@ enum Child {
 struct Confined {
     sandbox: sandlock_core::Sandbox,
     controller: sandlock_core::Controller,
-    /// What the sandbox's rules name, open for as long as the sandbox is; see
-    /// [`crate::sandbox::Rules`].
-    rules: crate::sandbox::Rules,
 }
 
 impl Confined {
@@ -1123,7 +1120,6 @@ impl Confined {
             child: Child::Confined(Box::new(Self {
                 sandbox: confined,
                 controller,
-                rules,
             })),
             scratch: None,
         })
@@ -1146,7 +1142,6 @@ impl Confined {
         let Self {
             mut sandbox,
             controller,
-            rules,
         } = self;
         tokio::spawn(async move {
             while controller
@@ -1156,7 +1151,6 @@ impl Confined {
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
             let _ = sandbox.shutdown().await;
-            drop(rules);
         });
     }
 }

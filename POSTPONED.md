@@ -9,14 +9,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
 
 ---
 
-- **A root a command could write beside can be swapped for a link before sandlock opens it.**
-  kamchatka opens each root of a command's sandbox without following links, but sandlock takes
-  paths only and opens each again in the child it forks, following whatever is there by then. A
-  job an earlier command left running, in a directory that holds a root, could rename the root and
-  leave a link at its name in between. Granting `/proc/self/fd/N` would close it, but sandlock
-  skips every grant under `/proc` without saying so. Unblocked by sandlock granting a path by
-  descriptor, which [sandlock#313](https://github.com/multikernel/sandlock/issues/313) proposes.
-
 - **The list of variables the shell removes can't be changed.** The `shell` tool removes
   kamchatka's own API keys (`endpoint::KEYS`) and any base URL with a `user:password@` in it.
   Nobody can add to that list, for example to hide `GH_TOKEN` or cloud credentials from the

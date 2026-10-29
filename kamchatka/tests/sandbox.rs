@@ -122,6 +122,55 @@ async fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
     assert!(!root.join("elsewhere/planted.txt").exists());
 }
 
+/// A root swapped for a link after it was held, and before the sandbox is built, is still the one
+/// granted, and the link grants nothing.
+///
+/// note: each root was opened without following a link and then granted by the path the kernel
+/// gave back, which sandlock opened again in the child it forked. A job an earlier command left
+/// running could rename the root in between and leave a link at its name, and the command was
+/// granted wherever the link led. A root is granted by its descriptor now.
+#[tokio::test]
+async fn a_root_swapped_for_a_link_while_the_sandbox_is_built_grants_nothing() {
+    if !enforced() {
+        return;
+    }
+
+    let root = common::scratch("root-swap-built")
+        .canonicalize()
+        .expect("it exists");
+    for dir in ["work/shelf", "secret"] {
+        std::fs::create_dir_all(root.join(dir)).expect("a directory");
+    }
+    let (shelf, moved) = (root.join("work/shelf"), root.join("work/shelf-was"));
+    let sandbox = Sandbox {
+        writable: vec![shelf.clone()],
+        ..sandbox(root.join("work"), false, Network::Open)
+    };
+    let (built, _) = sandbox.sandlock(None, None, true);
+    std::fs::rename(&shelf, &moved).expect("moved aside");
+    std::os::unix::fs::symlink(root.join("secret"), &shelf).expect("a link in its place");
+
+    let mut built = built.build().expect("it builds");
+    let cmd = format!(
+        "(echo x > {}/planted.txt) 2>/dev/null && echo through; (echo x > {}/kept.txt) && echo held",
+        shelf.display(),
+        moved.display()
+    );
+    let ran = built.run(&["sh", "-c", &cmd]).await.expect("it ran");
+    let said = ran.stdout_str().unwrap_or_default();
+
+    assert!(
+        !said.contains("through"),
+        "a link put at a root's name was granted what it pointed at: {said}"
+    );
+    assert!(
+        said.contains("held"),
+        "the root that was held was not granted: {said} {:?}",
+        ran.stderr_str()
+    );
+    assert!(!root.join("secret/planted.txt").exists());
+}
+
 /// A root a command swapped for a link grants the next command nothing: not where the link
 /// points, and not through it - whether the root was one beneath the working directory or the
 /// working directory beneath a root.
