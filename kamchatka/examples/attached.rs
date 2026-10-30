@@ -23,8 +23,8 @@
 //! newline-delimited JSON, one object per line:
 //!
 //! ```text
-//! → {"do":"attach","since":null,"session":null,"version":1}
-//! ← {"is":"attached","version":1,"session":"…","seq":9,"busy":false,"conversation":[…], …}
+//! → {"do":"attach","since":null,"session":null,"version":2}
+//! ← {"is":"attached","version":2,"session":"…","seq":9,"busy":false,"conversation":[…], …}
 //! → {"do":"submit","line":"what is 2+2"}
 //! ← {"is":"replied","did":{"asked":1},"page":null,"busy":true}
 //! ← {"is":"record","seq":10,"at":1789226532741,"event":{"event":"context.added","id":1, …}}

@@ -347,19 +347,33 @@ async fn watermark<W: AsyncWrite + Unpin>(
     else {
         return Err("that is not an attach".to_owned().into());
     };
-    // note: a version this session does not know is refused before anything else is read off the
-    // message, because the meaning of the rest depends on it. An older one it knows is served - see
-    // `protocol::VERSION`
-    let spoken = version.unwrap_or(1);
-    if spoken > protocol::VERSION {
-        return Err(Refused {
-            about: "version",
-            error: format!(
-                "you speak version {spoken} of this protocol and this session speaks {}; the \
-                 older end is this one",
-                protocol::VERSION
-            ),
-        });
+    // note: a version other than this session's is refused before anything else is read off the
+    // message, because the meaning of the rest depends on it: a newer one this session does not
+    // know, and an older one it cannot serve - see `protocol::VERSION`. A client that names none is
+    // one written by hand against the wire, which reads a record as whatever JSON it is, and is
+    // served
+    match version {
+        Some(spoken) if spoken > protocol::VERSION => {
+            return Err(Refused {
+                about: "version",
+                error: format!(
+                    "you speak version {spoken} of this protocol and this session speaks {}; the \
+                     older end is this one",
+                    protocol::VERSION
+                ),
+            });
+        }
+        Some(spoken) if spoken < protocol::VERSION => {
+            return Err(Refused {
+                about: "version",
+                error: format!(
+                    "you speak version {spoken} of this protocol and this session speaks {}, \
+                     whose records a client of version {spoken} cannot read; update the client",
+                    protocol::VERSION
+                ),
+            });
+        }
+        _ => {}
     }
     let Some(since) = since else {
         let answered = ask(

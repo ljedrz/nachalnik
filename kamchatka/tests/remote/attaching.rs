@@ -334,8 +334,12 @@ async fn a_watermark_from_another_session_is_refused() {
 /// note: both halves, because the field is only worth having if the second is true. A default of
 /// "unknown" would refuse exactly the clients the field was added to keep working - everything
 /// written against this wire before it had a version at all.
+///
+/// note: an older version is refused too, and told to update. Version 2 writes a request's items
+/// as runs, which the records a version-1 build of this program deserializes cannot hold, and
+/// nothing serves an older version what it can read.
 #[tokio::test]
-async fn a_client_from_a_later_version_is_refused_and_one_that_says_nothing_is_not() {
+async fn a_client_of_another_version_is_refused_and_one_that_says_nothing_is_not() {
     let session = served(vec![], |_| {}).await;
 
     let mut ahead = Peer::connect(&session.at).await;
@@ -358,6 +362,25 @@ async fn a_client_from_a_later_version_is_refused_and_one_that_says_nothing_is_n
     // named for itself rather than as the attach it arrived on, because the two want opposite
     // things done about them: an attach refusal is mended by attaching afresh and this is mended
     // by nothing. See `a_version_the_session_refuses_is_not_attached_to_again`
+    assert_eq!(about, "version");
+
+    let mut behind = Peer::connect(&session.at).await;
+    behind
+        .send(Command::Attach {
+            since: None,
+            session: None,
+            version: Some(protocol::VERSION - 1),
+            relaying: None,
+        })
+        .await;
+    let Message::Failed { about, error } = behind.recv().await else {
+        panic!("a version this session cannot serve was accepted");
+    };
+    assert!(
+        error.contains(&format!("version {}", protocol::VERSION - 1))
+            && error.contains("update the client"),
+        "{error}"
+    );
     assert_eq!(about, "version");
 
     // and the wire as it was written before the field existed, by hand, which is the case the

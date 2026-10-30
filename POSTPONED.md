@@ -37,14 +37,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   a cache write, and blocks are counted after thinking and elision change them. Unblocked by a live
   comparison of placements on a session that edits its context, measuring what is read and written.
 
-- **Serving clients older than the session, which `protocol::VERSION` promises.** A session should
-  serve the older protocol versions it knows. `watermark` checks a client's version without storing
-  it, so once `VERSION` is `2`, nothing knows a connection is a version-1 client and nothing stops
-  version-2 messages being sent to it. Nothing is needed while the version is `1`. When it changes,
-  each connection must remember its version. Every write in `remote::server::connection::attend`
-  must check it, so each message type must declare the version it was added in. `Message::Unknown`
-  lets clients survive messages they don't know, and `Attached::version` tells them what the server
-  speaks.
+- **Serving clients older than the session.** A session refuses a client that names an older
+  protocol version, because version 2 writes records a version-1 build of `kamchatka` cannot
+  read. Serving it instead means keeping each connection's version and checking every write in
+  `remote::server::connection::attend` against it: each message type, and each record format,
+  would have to declare the version it was added in, and a version-1 client be sent request
+  records with their items written out. It waits on someone needing to reach a newer session from
+  an older build. `Message::Unknown` lets clients survive messages they don't know, and
+  `Attached::version` tells them what the server speaks.
 
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning appears only there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it. No
