@@ -64,6 +64,10 @@ minor bump may break you.
 
 ### fixed
 
+- **The terminal keeps the lines a model broke.** Markdown joins a paragraph's lines with a space,
+  so an answer written a line at a time (a greentext's `>` lines, a poem, an address) was drawn as
+  one long line, while the web page drew a row per line. Each line break inside a paragraph is now
+  drawn as one, as on the web page.
 - **A tool left off the `tools` list in a settings file is never offered.** Every built-in tool was
   registered and the ones not on the list were taken off again after the rules were recorded, so
   the trace opened with `tools.changed` offering `fs` and `shell` to a session told not to have

@@ -1373,6 +1373,7 @@ dependencies = [
  "nucleo-matcher",
  "parking_lot",
  "proptest",
+ "pulldown-cmark",
  "ratatui",
  "ratatui-textarea",
  "rustix",

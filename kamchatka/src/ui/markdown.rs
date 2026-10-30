@@ -7,6 +7,8 @@
 //! both live in one file. Tables are the third case and are big enough to have their own: see
 //! [`super::table`].
 
+use std::borrow::Cow;
+
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span},
@@ -499,6 +501,49 @@ pub(super) fn markdown() -> tui_markdown::Options<Markdown> {
     tui_markdown::Options::new(Markdown)
 }
 
+/// `prose` with every line break inside a paragraph made one the renderer keeps.
+///
+/// note: markdown joins the lines of a paragraph with a space, and a model breaking a line almost
+/// always means it: a greentext, a poem, an address, an answer laid out a line per point. The web
+/// page keeps those lines (`pre-wrap` on a paragraph), so this is the terminal doing the same.
+/// Two spaces before the line ending are markdown's own hard break; they go only where the parser,
+/// given the options `tui-markdown` gives it, finds a soft one, so a line inside a code span or
+/// before a block that is not a paragraph is left as it was.
+pub(super) fn broken(prose: &str) -> Cow<'_, str> {
+    use pulldown_cmark::{Event, Options, Parser};
+
+    let options = Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_HEADING_ATTRIBUTES
+        | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
+        | Options::ENABLE_SUPERSCRIPT
+        | Options::ENABLE_SUBSCRIPT
+        | Options::ENABLE_MATH
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_DEFINITION_LIST
+        | Options::ENABLE_GFM
+        | Options::ENABLE_TABLES;
+    let mut out = String::new();
+    let mut copied = 0;
+    for (event, range) in Parser::new_ext(prose, options).into_offset_iter() {
+        if event != Event::SoftBreak {
+            continue;
+        }
+        let Some(ending) = prose[range.start..].find(['\r', '\n']) else {
+            continue;
+        };
+        let at = range.start + ending;
+        out.push_str(&prose[copied..at]);
+        out.push_str("  ");
+        copied = at;
+    }
+    if copied == 0 {
+        return Cow::Borrowed(prose);
+    }
+    out.push_str(&prose[copied..]);
+    Cow::Owned(out)
+}
+
 /// Whether a line is a horizontal rule, which markdown spells in punctuation.
 ///
 /// note: Only outside a fenced block, where `---` is three characters a tool printed rather than
@@ -753,5 +798,57 @@ mod tests {
             split("intro\n```rust\nfn main() {}\n```\n"),
             ["prose \"intro\\n\"", "code \"rust\" \"fn main() {}\\n\""]
         );
+    }
+
+    /// A line the model broke is a line when drawn, in a quote as in a paragraph, whichever line
+    /// ending it used.
+    ///
+    /// note: markdown joins a paragraph's lines with a space, so a greentext - a quote of `>`
+    /// lines, each ending `\r\n` - was drawn as one long line, where the web page drew one per row.
+    #[test]
+    fn a_line_the_model_broke_stays_broken() {
+        let drawn = |prose: &str| -> Vec<String> {
+            tui_markdown::from_str_with_options(&broken(prose), &markdown())
+                .lines
+                .iter()
+                .map(|line| {
+                    line.spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect()
+                })
+                .map(|line: String| line.trim_end().to_owned())
+                .collect()
+        };
+        assert_eq!(
+            drawn(">be me \r\n>stoned at 3 AM \r\n>goodnight spaghetti"),
+            ["> be me", "> stoned at 3 AM", "> goodnight spaghetti"]
+        );
+        assert_eq!(
+            drawn("roses are red\nviolets are blue"),
+            ["roses are red", "violets are blue"]
+        );
+    }
+
+    /// Only a break inside a paragraph is touched: a line in a code span, one already hard, the end
+    /// of a heading or of a list item, and a paragraph of one line are left as they were written.
+    #[test]
+    fn only_a_soft_break_is_made_hard() {
+        assert_eq!(broken("a\nb"), "a  \nb");
+        assert_eq!(broken("a\r\nb"), "a  \r\nb");
+        for untouched in [
+            "one line",
+            "a  \nb",
+            "# title\ntext",
+            "- a\n- b",
+            "a\n\nb",
+            "`a\nb`",
+        ] {
+            assert!(
+                matches!(broken(untouched), Cow::Borrowed(_)),
+                "{untouched:?} was changed to {:?}",
+                broken(untouched)
+            );
+        }
     }
 }

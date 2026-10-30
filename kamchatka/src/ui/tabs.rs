@@ -25,7 +25,7 @@ use crate::{
     app::{App, Focus, Going, Said, Speaker},
     tools::{Careful, Exit},
     ui::{
-        markdown::{Chunk, Markdown, chunks, highlighted, markdown, rule, separate},
+        markdown::{Chunk, Markdown, broken, chunks, highlighted, markdown, rule, separate},
         table::{draw_table, table},
         text::{clip, columns, fitted, gutter, pad, refit, wrapped},
     },
@@ -636,7 +636,9 @@ fn answer(said: &str, width: usize) -> Vec<Line<'static>> {
             Chunk::Prose(prose) => prose,
         };
 
-        for line in tui_markdown::from_str_with_options(prose, &markdown()).lines {
+        // a line the model broke stays broken, as it does on the web page
+        let prose = broken(prose);
+        for line in tui_markdown::from_str_with_options(&prose, &markdown()).lines {
             // an *indented* block still arrives this way; the fenced ones never reach here
             match line.style == Markdown.code() {
                 true => lines.extend(gutter(&line, width)),
