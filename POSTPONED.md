@@ -16,6 +16,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   a list of variable names and patterns that starts as today's list. When it no longer includes
   kamchatka's keys, the permissions tab should say so. It waits until somebody asks for it.
 
+- **A directory rule doesn't see the working directory's own path.** `Careful::judges` matches
+  path rules against the `path` argument as written, so `.ssh/` matches `.ssh/config` but not
+  `config` read from a session started inside `~/.ssh`, although the rule is meant to cover that
+  directory wherever it sits. Matching the resolved path instead would make every call ask in a
+  project that happens to live under a directory such a rule names (`secrets/`, `.aws/`). It waits
+  on choosing between that, matching the working directory's components once at startup and
+  warning, or leaving it as it is.
+
 - **A turn recorded by another dialect goes to Gemini with its thinking unsigned.** A turn kept as
   `content` and `reasoning` rather than as blocks, which is how the OpenAI dialects record one, is
   sent to Gemini as a `thought: true` part with no `thoughtSignature`, and its calls without one
