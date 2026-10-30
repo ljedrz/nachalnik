@@ -51,16 +51,18 @@ ANSWERED = {"end_turn", "refusal"}
 # how a cut's message is known in a snapshot, which holds what each message said (`drive.py`'s
 # `CARRY` and `OVERRUN` start so); the records do not, and NAME.carried counts them there instead
 CARRIED = "The context passed its ceiling"
+# and how its nudge after a turn answered without a tool call is (`drive.py`'s `IDLE`)
+IDLED = "Your turn ended without a single tool call"
 
 
 def carried(name):
-    """How many messages `drive.py` sent of its own in this part, and how many messages it sent
-    early: `(cuts, wrap-ups)`."""
+    """How many messages `drive.py` sent of its own in this part, cuts and nudges, and how many
+    messages it sent early: `(cuts, nudges, wrap-ups)`."""
     try:
         lines = open(path(name, ".carried")).read().split()
     except FileNotFoundError:
-        return 0, 0
-    return lines.count("carry"), lines.count("wrap")
+        return 0, 0, 0
+    return lines.count("carry"), lines.count("idle"), lines.count("wrap")
 
 
 def path(name, suffix):
@@ -254,9 +256,10 @@ def state(name, now=None):
             pass  # not written yet, or moved aside while this read
     changed = max(times, default=now)
     # note: a cut is a message the session was sent and INFILE does not have, and it and a wrap-up
-    # are each sent after a turn that did not end, on purpose
-    cuts, wraps = carried(name)
-    sent = max(0, records.sent - cuts)
+    # are each sent after a turn that did not end, on purpose; a nudge is one INFILE does not have
+    # either
+    cuts, nudges, wraps = carried(name)
+    sent = max(0, records.sent - cuts - nudges)
     ended = records.ended
     # note: a resume with nothing to continue and no message in its log yet carries on from an
     # answer that ended, which is in its snapshot and not in its log. Read off the log alone, a
