@@ -247,9 +247,11 @@ def resumable(name):
         items = json.load(open(snapshot))["items"]
     except (OSError, ValueError, KeyError):
         return None
-    # a cut's message is not one of NAME.in's
+    # a cut's message is not one of NAME.in's, nor is a nudge
     sent = sum(1 for i in items if i["kind"].get("kind") == "user_message"
-               and i.get("source") == "user" and sweeps.CARRIED not in json.dumps(i.get("content")))
+               and i.get("source") == "user"
+               and not any(own in json.dumps(i.get("content"))
+                           for own in (sweeps.CARRIED, sweeps.IDLED)))
     last = items[-1]["kind"].get("kind") if items else None
     cont = last != "assistant_message" or not s.get("ended")
     return {"RESUME": snapshot, "SENT": str(sent), "CONTINUE": "1" if cont else ""}

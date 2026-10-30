@@ -38,6 +38,11 @@ wrapped up instead: taken as answered, so that the next line - a sweep's request
 findings - goes. Each cut and each wrap-up is a line, `carry` or `wrap`, in NAME.carried, since
 the records cannot tell such a message from one in INFILE.
 
+A message with another after it whose turns ended in an answer without a single tool call is sent
+`IDLE`, up to `DRIVE_NUDGES` (3) times, before the next line goes: some models end a turn on the
+sentence announcing what they will read, and the next message, a sweep's request for its findings,
+was then answered with searches never made. Each is a line `idle` in NAME.carried.
+
 note: a cut and not a stop, because a stop loses what the model had not yet written down, and a
 cut loses nothing: its replies stay whole, an elided result is a marker it can `restore` by id,
 and what a lead in progress costs is reading one file again.
@@ -72,6 +77,7 @@ RESUMES = int(os.environ.get("DRIVE_RESUMES", 0))
 PAUSES = int(os.environ.get("DRIVE_PAUSES", 100))
 CUT = int(os.environ.get("DRIVE_CUT", 0))
 CUTS = int(os.environ.get("DRIVE_CUTS", 3))
+NUDGES = int(os.environ.get("DRIVE_NUDGES", 3))
 # what a cut sends; `sweeps.CARRIED`, how both start, is how a snapshot's copy is known
 CARRY = (
     "The context passed its ceiling, so the tool results you had read are now elided: each stands "
@@ -87,6 +93,12 @@ OVERRUN = (
     "back one you need. Your FINDING lines stand; do not repeat them. Carry on with the scope "
     "where you left off: first finish what you were in the middle of, restoring only what it "
     "needs, then the parts not yet read."
+)
+# what a turn answered without a tool call is sent, where another message follows
+IDLE = (
+    "Your turn ended without a single tool call, so nothing has been read yet. Do the work the "
+    "message before asks for now, with the tools, in this turn: do not describe what you will do, "
+    "and do not end the turn until it is done."
 )
 # the stops after which there is nothing to continue: `/continue` refuses both
 ENDED = {"end_turn", "refusal"}
@@ -130,6 +142,7 @@ class Session:
         self.records = Records(out.name)
         self.name = name
         self.cuts = 0
+        self.calls = 0  # tool calls in the turns of the message being delivered
         self.last_input = 0  # how large the latest request was, in tokens
         self.overrun = False  # whether the latest turn failed for a request over the limit
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=out, stderr=self.err,
@@ -164,6 +177,8 @@ class Session:
                 if kind == "model.finished":
                     answers += 1
                     self.last_input = (event.get("usage") or {}).get("input_tokens") or 0
+                elif kind == "tool.requested":
+                    self.calls += 1
                 elif kind in ("model.failed", "step.failed"):
                     failed = True
                     self.overrun = bool(event.get("overrun"))
@@ -196,7 +211,8 @@ class Session:
         Returns `answered`, `left` (given up on, the message in the context), `none` (it started
         no turn) or `exited`. With `more`, a message follows it, and a turn past `CUT` may be cut
         or wrapped up (see above)."""
-        wait, fails, turns, pauses = WAIT, 0, 0, 0
+        wait, fails, turns, pauses, nudges = WAIT, 0, 0, 0, 0
+        self.calls = 0
         while True:
             if not self.send(line):
                 return "exited"
@@ -207,6 +223,12 @@ class Session:
                 pauses += 1
             else:
                 turns += 1
+            if how == "answer" and more and not self.calls and nudges < NUDGES:
+                nudges += 1
+                self.say(f"the turn was answered without a tool call; nudged, {nudges} of {NUDGES}")
+                self.carried("idle")
+                line = IDLE
+                continue
             if how == "answer":
                 return "answered"
             if how == "exited":
