@@ -15,7 +15,7 @@ use crate::{model::Content, tokens::TokenCounter};
 mod item;
 
 pub(crate) use item::WHOLE_OUTPUT;
-pub use item::{ContextId, ContextItem, ContextKind, ContextState};
+pub use item::{ContextId, ContextIds, ContextItem, ContextKind, ContextState};
 
 /// The set of context items, in the order they were added.
 ///

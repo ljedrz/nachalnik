@@ -224,7 +224,7 @@ pub use crate::compaction::Removed;
 pub use crate::{
     compaction::{Budget, CompactionPlan, CompactionReport, Compactor, ReportItem},
     config::Config,
-    context::{Context, ContextId, ContextItem, ContextKind, ContextState},
+    context::{Context, ContextId, ContextIds, ContextItem, ContextKind, ContextState},
     error::{BoxError, Error, Result},
     event::{Delta, DeltaSink, Event, OutputSink},
     kernel::{Kernel, State, StateChange},

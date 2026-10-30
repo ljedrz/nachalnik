@@ -68,11 +68,11 @@ impl App {
                 self.pending = items.iter().fold(Anchor::default(), |mut anchor, id| {
                     match self
                         .kernel
-                        .item(*id)
+                        .item(id)
                         .is_some_and(|it| going.sends_content(&it))
                     {
-                        true => anchor.sent.push(*id),
-                        false => anchor.markers += going.costs.get(id).copied().unwrap_or(0),
+                        true => anchor.sent.push(id),
+                        false => anchor.markers += going.costs.get(&id).copied().unwrap_or(0),
                     }
 
                     anchor

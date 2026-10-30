@@ -198,6 +198,11 @@ minor bump may break you.
   on the line it showed while those counts settle, and a page moves half a screen of what is
   shown.
 
+- **A long session holds less than half the memory it did.** The session log kept, for every
+  request, the id of every item the request carried, so it grew with the square of the session.
+  A session of a thousand turns held about 55 MB, now about 24 MB, which is about two and a half
+  times the text in its context. See nachalnik's `ContextIds`.
+
 ### removed
 
 - **The line explaining that a question was about everything a tool does**, on the permission

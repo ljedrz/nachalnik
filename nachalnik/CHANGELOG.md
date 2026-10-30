@@ -7,7 +7,20 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Event::ModelRequested`'s `items` is a `ContextIds`, not a `Vec<ContextId>`.** Each request
+  named every item in the context, and the session log keeps every request, so the log grew with
+  the square of the session: about 32 MB of item ids in a session of a thousand turns.
+  `ContextIds` holds them as runs of consecutive ids and has `iter`, `contains`, `len` and
+  `is_empty`. It is serialized as the same plain list, so logs and clients read and write it
+  unchanged. Code that builds the event writes `vec![...].into()`, and code that reads `items`
+  gets ids by value from `iter`.
+
 ### added
+
+- **`ContextIds`**, a list of context item ids held as runs of consecutive ones, built with
+  `collect`, `push` or `From<Vec<ContextId>>`. See `Event::ModelRequested` above.
 
 - **`Tool::malformed`**: a tool can say a call cannot be run whatever anybody answers, from its
   arguments alone - no operation named, an operation it does not have, an argument it does not

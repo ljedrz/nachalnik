@@ -44,7 +44,7 @@ async fn an_answer_stopped_partway_is_shown_once_rather_than_twice() {
         messages: 1,
         tools: 0,
         tokens: 4,
-        items: Vec::new(),
+        items: Default::default(),
         skipped: Vec::new(),
         repairs: Vec::new(),
     });
@@ -93,7 +93,7 @@ async fn an_answer_from_a_provider_that_does_not_stream_still_appears() {
         messages: 1,
         tools: 0,
         tokens: 4,
-        items: Vec::new(),
+        items: Default::default(),
         skipped: Vec::new(),
         repairs: Vec::new(),
     });

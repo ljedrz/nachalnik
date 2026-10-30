@@ -58,7 +58,7 @@ async fn several_repairs_at_once_are_one_line_rather_than_a_wall_of_them() {
         messages: 1,
         tools: 0,
         tokens: 4,
-        items: Vec::new(),
+        items: Default::default(),
         skipped: Vec::new(),
         repairs: vec![
             "dropped the call `a`".to_owned(),
@@ -91,7 +91,7 @@ async fn a_repair_that_stands_is_said_once_rather_than_every_turn() {
         messages: 1,
         tools: 0,
         tokens: 4,
-        items: Vec::new(),
+        items: Default::default(),
         skipped: Vec::new(),
         repairs,
     };

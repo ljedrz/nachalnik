@@ -80,7 +80,7 @@ impl Kernel {
             messages: request.messages.len(),
             tools: request.tools.len(),
             tokens: cost.tokens,
-            items: projection.included,
+            items: projection.included.iter().copied().collect(),
             skipped: projection.skipped,
             repairs: projection.repairs,
         });
