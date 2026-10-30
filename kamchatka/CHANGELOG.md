@@ -193,9 +193,10 @@ minor bump may break you.
 - **The chat tab draws only the turns on the screen.** A resize, or the first frame of a resumed
   session, used to lay out every turn at the new width, about a third of a second for a thousand
   turns. Now a frame draws what it shows and a few dozen more. The heights of the rest are
-  estimated until a frame draws them, so the scrollbar and the count of lines below can be off
-  for the first few frames of a long session. A view scrolled back stays on the line it showed
-  while those counts settle.
+  estimated until a frame draws them, so for the first few frames of a long session the scrollbar
+  is approximate and the count of lines below has a `~` in front of it. A view scrolled back stays
+  on the line it showed while those counts settle, and a page moves half a screen of what is
+  shown.
 
 ### removed
 

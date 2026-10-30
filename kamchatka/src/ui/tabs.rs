@@ -156,12 +156,36 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         heights[..at].iter().map(|(rows, _)| rows).sum()
     };
 
-    // the block the view was held to, where it is not following and no key has moved it since
-    // the last frame; see `Anchor`
-    let anchor = ANCHOR
-        .take()
-        .filter(|anchor| !follow && anchor.scroll == scroll)
-        .and_then(|anchor| anchor.found(&keys));
+    // where the view is held, when it is not following: the block its top row is in, and how far
+    // into it. Found from the block the last frame showed and however far a key has moved it
+    // since, counted in this frame's rows; see `Anchor`
+    //
+    // note: `scroll` at zero is the top whatever moved it there, since that is what `ctrl+home`
+    // asks for, and a top reached by counting from a block below it is off by every estimate in
+    // between
+    let held = match follow {
+        true => None,
+        false => {
+            let top = match ANCHOR.take().and_then(|anchor| anchor.found(&keys)) {
+                Some((at, offset, was)) if scroll != 0 => {
+                    let anchored = start(at, &heights) + offset;
+                    let moved = scroll as i128 - was as i128;
+                    (anchored as i128 + moved).max(0) as usize
+                }
+                _ => scroll,
+            };
+            // note: not held to the bottom here, which is a count of estimates until the blocks
+            // on screen are drawn: a block still being written is estimated from its length, and
+            // short lines made that a tenth of what it was, so the view went to the top. The rows
+            // are held to the bottom once they are counted, below
+            let (mut at, mut begins) = (0, 0);
+            while at + 1 < blocks.len() && begins + heights[at].0 <= top {
+                begins += heights[at].0;
+                at += 1;
+            }
+            Some((at, top - begins))
+        }
+    };
 
     // the blocks on screen first, measured from the end the view is held to: the bottom when it
     // follows, and the first block it shows when it does not
@@ -176,23 +200,12 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             at
         }
         false => {
-            let (at, start) = match anchor {
-                Some((at, _)) => (at, start(at, &heights)),
-                None => {
-                    let total: usize = heights.iter().map(|(rows, _)| rows).sum();
-                    let top = scroll.min(total.saturating_sub(viewport));
-                    let (mut at, mut start) = (0, 0);
-                    while at + 1 < blocks.len() && start + heights[at].0 <= top {
-                        start += heights[at].0;
-                        at += 1;
-                    }
-                    (at, start)
-                }
-            };
-            let top = start + anchor.map_or(0, |(_, offset)| offset);
+            let (at, offset) = held.unwrap_or_default();
+            let start = start(at, &heights);
+            let top = start + offset;
             let mut rows = start;
             let mut next = at;
-            while next < blocks.len() && rows < top + viewport {
+            while next < blocks.len() && rows < top.saturating_add(viewport) {
                 draw(next, &mut heights);
                 rows += heights[next].0;
                 next += 1;
@@ -226,7 +239,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     let total: usize = heights.iter().map(|(rows, _)| rows).sum();
     let bottom = total.saturating_sub(viewport);
     // held to its block, wherever what was counted above it now puts that block
-    if let Some((at, offset)) = anchor {
+    if let Some((at, offset)) = held.filter(|_| !blocks.is_empty()) {
         scroll = start(at, &heights) + offset.min(heights[at].0.saturating_sub(1));
     }
     if follow {
@@ -241,7 +254,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         block += 1;
     }
     ANCHOR.set(keys.get(block).map(|&key| Anchor {
-        scroll: at,
+        scroll,
         block,
         key,
         offset: at - begins,
@@ -264,6 +277,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // what the last frame measured is what the scrolling keys are working against
     app.scroll = scroll;
     app.rendered = total;
+    app.estimated = heights.iter().any(|(_, counted)| !counted);
     app.viewport = viewport;
     // note: a counted height wins over an estimate under the same key. Blocks with the same key
     // say the same words and are drawn the same way - every `cargo test` call a session makes -
@@ -489,13 +503,14 @@ thread_local! {
     static ANCHOR: Cell<Option<Anchor>> = const { Cell::new(None) };
 }
 
-/// The block the top row of the last frame was in, and how far into it, so that the next frame
-/// shows the same line wherever what is counted above it puts it.
+/// The block the top row of the last frame was in, how far into it, and the `scroll` that frame
+/// left, so that the next frame shows the same line wherever what is counted above it puts it.
 ///
 /// note: a row number alone would not do. Above the view, blocks are estimated until a frame draws
 /// them, and every one that comes out taller or shorter than its estimate - after a resize, most
-/// of them - would move what somebody is reading by as much, frame after frame. Used only while
-/// `scroll` is what the last frame left it at: a key that moved it says where to go instead.
+/// of them - would move what somebody is reading by as much, frame after frame. A key that moved
+/// `scroll` since moves the view by as many rows from where it was held, so a page is half a screen
+/// of what is on it rather than of a count that has changed under it.
 #[derive(Clone, Copy)]
 struct Anchor {
     scroll: usize,
@@ -505,12 +520,12 @@ struct Anchor {
 }
 
 impl Anchor {
-    /// Its block in this frame's blocks, and the offset into it: at the same place if it still
-    /// has the same key there, or the nearest block that has it, where something was added or
-    /// taken away above it.
-    fn found(self, keys: &[Key]) -> Option<(usize, usize)> {
+    /// Its block in this frame's blocks, the offset into it, and the `scroll` it was taken at: at
+    /// the same place if it still has the same key there, or the nearest block that has it, where
+    /// something was added or taken away above it.
+    fn found(self, keys: &[Key]) -> Option<(usize, usize, usize)> {
         if keys.get(self.block) == Some(&self.key) {
-            return Some((self.block, self.offset));
+            return Some((self.block, self.offset, self.scroll));
         }
         (1..keys.len())
             .flat_map(|distance| {
@@ -521,7 +536,7 @@ impl Anchor {
             })
             .flatten()
             .find(|at| keys.get(*at) == Some(&self.key))
-            .map(|at| (at, self.offset))
+            .map(|at| (at, self.offset, self.scroll))
     }
 }
 
