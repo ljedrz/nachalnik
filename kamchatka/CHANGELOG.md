@@ -32,6 +32,9 @@ minor bump may break you.
   carries nachalnik's log records as they are, and in log format 2 a request's items are written
   as runs, which a version-1 build cannot read. Such a client is told to update. A client that
   names no version, one written by hand, is still served.
+- **Sessions are recorded in nachalnik's log format 2, which an older build will not resume.**
+  `kamchatka -r` from a build before this one refuses a session recorded now, saying it is
+  written in a later format. This build resumes sessions recorded in format 1.
 
 ### added
 

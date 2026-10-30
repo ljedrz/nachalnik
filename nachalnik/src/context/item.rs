@@ -47,7 +47,11 @@ impl fmt::Display for ContextId {
 /// in the same order are equal however they were built or written.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ContextIds {
-    /// The first identifier of each run, and how many follow it one by one, the first included.
+    /// The first and last identifier of each run, both included.
+    ///
+    /// note: the last rather than how many, so that nothing here adds past it: an identifier at
+    /// the end of the range, which a log can hold however the kernel numbers, overflowed a sum of
+    /// the first and the count, a panic in a debug build and an empty run in a release one.
     runs: Vec<(u64, u64)>,
     len: usize,
 }
@@ -60,16 +64,16 @@ impl ContextIds {
 
     /// Adds an identifier at the end.
     pub fn push(&mut self, id: ContextId) {
-        self.extend_run(id.0, 1);
+        self.len += 1;
+        self.extend_run(id.0, id.0);
     }
 
-    /// Adds `count` consecutive identifiers from `first` at the end, onto the last run where they
-    /// continue it.
-    fn extend_run(&mut self, first: u64, count: u64) {
-        self.len += count as usize;
+    /// Adds the identifiers from `first` to `last`, both included, at the end, onto the last run
+    /// where they continue it. The caller counts them into `len`.
+    fn extend_run(&mut self, first: u64, last: u64) {
         match self.runs.last_mut() {
-            Some((start, held)) if start.checked_add(*held) == Some(first) => *held += count,
-            _ => self.runs.push((first, count)),
+            Some((_, end)) if end.checked_add(1) == Some(first) => *end = last,
+            _ => self.runs.push((first, last)),
         }
     }
 
@@ -87,14 +91,14 @@ impl ContextIds {
     pub fn iter(&self) -> impl Iterator<Item = ContextId> + '_ {
         self.runs
             .iter()
-            .flat_map(|&(first, count)| (first..first + count).map(ContextId))
+            .flat_map(|&(first, last)| (first..=last).map(ContextId))
     }
 
     /// Whether `id` is one of them.
     pub fn contains(&self, id: &ContextId) -> bool {
         self.runs
             .iter()
-            .any(|&(first, count)| (first..first + count).contains(&id.0))
+            .any(|&(first, last)| (first..=last).contains(&id.0))
     }
 }
 
@@ -130,31 +134,35 @@ enum Run {
 
 impl Serialize for ContextIds {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(self.runs.iter().map(|&(first, count)| match count {
-            1 => Run::One(first),
-            _ => Run::Many([first, first + count - 1]),
+        serializer.collect_seq(self.runs.iter().map(|&(first, last)| match first == last {
+            true => Run::One(first),
+            false => Run::Many([first, last]),
         }))
     }
 }
 
 impl<'de> Deserialize<'de> for ContextIds {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+
         let mut ids = Self::new();
         for run in Vec::<Run>::deserialize(deserializer)? {
-            let (first, count) = match run {
-                Run::One(id) => (id, 1),
+            let (first, last) = match run {
+                Run::One(id) => (id, id),
+                Run::Many([first, last]) if first <= last => (first, last),
                 Run::Many([first, last]) => {
-                    match last.checked_sub(first).and_then(|n| n.checked_add(1)) {
-                        Some(count) => (first, count),
-                        None => {
-                            return Err(serde::de::Error::custom(format!(
-                                "a run of identifiers from {first} to {last} runs backwards or has no end"
-                            )));
-                        }
-                    }
+                    return Err(D::Error::custom(format!(
+                        "a run of identifiers from {first} to {last} runs backwards"
+                    )));
                 }
             };
-            ids.extend_run(first, count);
+            // note: counted with a check, since a run is two numbers however many it stands for,
+            // and two long enough ones would otherwise go round
+            ids.len = usize::try_from(last - first)
+                .ok()
+                .and_then(|more| ids.len.checked_add(more)?.checked_add(1))
+                .ok_or_else(|| D::Error::custom("more identifiers than can be counted"))?;
+            ids.extend_run(first, last);
         }
 
         Ok(ids)
@@ -568,7 +576,7 @@ mod tests {
         // a gap where something was left out, and an item moved to where the one it replaces was
         let written = [1, 2, 3, 5, 6, 9, 7, 8].map(ContextId);
         let ids: ContextIds = written.iter().copied().collect();
-        assert_eq!(ids.runs, [(1, 3), (5, 2), (9, 1), (7, 2)]);
+        assert_eq!(ids.runs, [(1, 3), (5, 6), (9, 9), (7, 8)]);
         assert_eq!(ids.iter().collect::<Vec<_>>(), written);
         assert!(ids.contains(&ContextId(6)) && ids.contains(&ContextId(9)));
         assert!(!ids.contains(&ContextId(4)) && !ids.contains(&ContextId(10)));
@@ -603,11 +611,33 @@ mod tests {
         );
         assert!(serde_json::from_str::<ContextIds>("[]").unwrap().is_empty());
 
-        for wrong in ["[[5,3]]", "[[0,18446744073709551615]]"] {
-            assert!(
-                serde_json::from_str::<ContextIds>(wrong).is_err(),
-                "{wrong} is not a list of runs"
-            );
-        }
+        let backwards = serde_json::from_str::<ContextIds>("[[5,3]]");
+        assert!(backwards.is_err(), "a run that goes backwards");
+        let uncountable = format!("[[0,{max}],[0,{max}]]", max = u64::MAX);
+        assert!(
+            serde_json::from_str::<ContextIds>(&uncountable).is_err(),
+            "two runs too long to count together"
+        );
+    }
+
+    /// The last identifier there can be is held, read, found and written like any other.
+    ///
+    /// note: a run was its first identifier and a count, and the end of it their sum, which
+    /// overflowed here: a panic in a debug build and an empty run in a release one, so a log that
+    /// named this identifier read as a request that held nothing.
+    #[test]
+    fn the_last_identifier_there_can_be_is_one_like_any_other() {
+        let last = ContextId(u64::MAX);
+        let ids: ContextIds = [ContextId(u64::MAX - 1), last].into_iter().collect();
+        assert_eq!(
+            ids.iter().collect::<Vec<_>>(),
+            [ContextId(u64::MAX - 1), last]
+        );
+        assert!(ids.contains(&last));
+
+        let written = serde_json::to_string(&ids).unwrap();
+        let read: ContextIds = serde_json::from_str(&written).unwrap();
+        assert_eq!(read, ids);
+        assert_eq!(read.len(), 2);
     }
 }
