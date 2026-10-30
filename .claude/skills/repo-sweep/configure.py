@@ -339,8 +339,8 @@ def main() -> None:
         # how often a turn pauses, which is how often `drive.py` gets to look at its size
         "max-requests-per-turn": PAUSE_EVERY,
         "tools": ["fs", "context"],
-        "auto-allow": ["fs:read", "fs:grep", "fs:glob", "context"],
-        "auto-deny": ["fs:write", "fs:edit", "exec"],
+        "auto-allow": ["fs:read", "context"],
+        "auto-deny": ["fs:write", "exec"],
         "on-ask": "deny",
     }
     for kind, system in (
