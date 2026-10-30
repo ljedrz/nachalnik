@@ -419,7 +419,7 @@ impl Gathering {
     /// index, one whole call per chunk with its own identifier, and taking a missing index as zero
     /// folds parallel calls into one (`writewritewrite`, a tool that does not exist). So the
     /// identifier decides when there is no index, and a fragment with neither continues whatever
-    /// was last written to.
+    /// was last written to, unless it is a whole call of its own after one already complete.
     fn fold(&mut self, requested: &Value, deltas: &DeltaSink) {
         let at = match requested["index"].as_u64() {
             // note: the index names a call, not a position: minimax numbers calls from one, and
@@ -464,12 +464,17 @@ impl Gathering {
                 // note: the call last written to first, and only then the last announced. They
                 // differ where a call has been opened with a name and no arguments while the one
                 // before it is still being streamed. Where nothing has been written yet, there is
-                // nothing else the fragment can mean
+                // nothing else the fragment can mean.
+                //
+                // note: a whole call after one already complete is a new call, as it is under a
+                // shared identifier. A server that sends each call whole in one chunk, with no
+                // index and no id, otherwise had its calls merged into one, with the names joined
+                // and both sets of arguments `_unparsed`
                 None => match self.latest.or_else(|| self.calls.len().checked_sub(1)) {
-                    Some(at) => at,
-                    None => {
+                    Some(at) if !whole_again(&self.calls[at], requested) => at,
+                    _ => {
                         self.calls.push(PartialCall::default());
-                        0
+                        self.calls.len() - 1
                     }
                 },
             },
@@ -1458,7 +1463,7 @@ mod tests {
     }
 
     /// A name repeated on every fragment is written once. Two whole calls sharing an identifier
-    /// with no index are two calls.
+    /// with no index are two calls, and so are two with neither.
     ///
     /// note: the name was appended to at every fragment, so a repeating server made `fsfs`. Two
     /// calls under one identifier folded into one call with both sets of arguments run together as
@@ -1514,6 +1519,28 @@ mod tests {
             [
                 ("fs", json!({ "path": "a.txt" })),
                 ("fs", json!({ "path": "b.txt" }))
+            ]
+        );
+
+        let mut anonymous = Gathering::default();
+        for (name, path) in [("fs", "a.txt"), ("shell", "b.txt")] {
+            anonymous.fold(
+                &json!({ "function": {
+                    "name": name, "arguments": format!("{{\"path\":\"{path}\"}}")
+                } }),
+                &deltas,
+            );
+        }
+        let calls: Vec<_> = anonymous
+            .calls
+            .iter()
+            .map(|call| (call.name.as_str(), arguments_of(&call.args)))
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                ("fs", json!({ "path": "a.txt" })),
+                ("shell", json!({ "path": "b.txt" }))
             ]
         );
     }

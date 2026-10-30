@@ -16,6 +16,14 @@ minor bump may break you.
   `.local` name, or a name with no dot. An ollama reached through a public name is measured
   against no limit, as one behind a proxy already is.
 
+### fixed
+
+- **Two whole tool calls streamed with neither an index nor an identifier are two calls.** A
+  fragment without either was added to the call written last. A server that sends each call whole
+  in one chunk, with no index and no id, got its calls merged into one: the names joined (`fsshell`)
+  and the arguments `_unparsed`. A whole call that arrives after a complete one now starts a new
+  call, as it already did when two calls shared an id.
+
 ## [0.10.2] - 2026-10-21
 
 ### changed
