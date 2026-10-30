@@ -1526,6 +1526,97 @@ async fn paging_the_transcript_moves_it_by_half_a_screen() {
     assert_eq!(harness.app.scroll, viewport);
 }
 
+/// A session too long for one frame to count: questions, answers with a code block in them, and
+/// results long enough that the chat shows only the start of each.
+fn long_session(turns: usize) -> Harness {
+    let mut harness = Harness::new([]);
+    for n in 0..turns {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("question {n}: why is it slow?")));
+        let id = format!("call_{n}");
+        harness.app.kernel.push(ContextItem::assistant(
+            format!("answer {n}, with some code:\n\n```rust\nlet a = {n};\nlet b = a + 1;\n```\n"),
+            vec![call(&id, "shell", json!({ "cmd": "cargo test" }))],
+        ));
+        let output: String = (0..60)
+            .map(|line| format!("result {n} line {line}\n"))
+            .collect();
+        harness.app.kernel.push(ContextItem::tool_result(
+            id.into(),
+            "shell",
+            nachalnik::Content::text(output),
+            false,
+        ));
+        harness.drain();
+    }
+
+    harness
+}
+
+/// The transcript counts every row there is once it has drawn every block, though a frame draws
+/// only the blocks it shows and a few more.
+///
+/// note: the count decides the scrollbar, the line saying how much is below, and how far the keys
+/// move. Counted against a window tall enough to show the whole session, which draws every block
+/// on the one frame.
+#[tokio::test]
+async fn the_transcript_counts_every_row_once_it_has_drawn_them() {
+    let mut harness = long_session(120);
+    for _ in 0..40 {
+        harness.sized(100, 30);
+    }
+    let counted = harness.app.rendered;
+
+    harness.sized(100, 20_000);
+    assert_eq!(
+        counted, harness.app.rendered,
+        "a window showing every row counts the same rows"
+    );
+}
+
+/// A transcript scrolled back stays where it is while the blocks above it are counted.
+///
+/// note: after a resize every block off the screen is an estimate until a frame draws it, and a
+/// frame draws a few. One above the view that comes out taller or shorter than estimated would
+/// push what somebody is reading down or up by as much, frame after frame, unless the view moves
+/// with it.
+#[tokio::test]
+async fn a_transcript_scrolled_back_stays_put_while_it_is_counted() {
+    let mut harness = long_session(120);
+    for _ in 0..40 {
+        harness.sized(100, 30);
+    }
+    for _ in 0..30 {
+        harness.press(KeyCode::PageUp).await;
+    }
+    assert!(!harness.app.follow);
+
+    // what is being read, without the right-hand border: the scrollbar on it does move, as the
+    // count of everything it measures against converges
+    let pane = |screen: String| {
+        screen
+            .lines()
+            .take(20)
+            .map(|line| {
+                let mut chars = line.chars();
+                chars.next_back();
+                chars.as_str().to_owned()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let before = pane(harness.sized(80, 30));
+    for _ in 0..20 {
+        let now = pane(harness.sized(80, 30));
+        assert_eq!(
+            before, now,
+            "the view moved while the rows above it were counted"
+        );
+    }
+}
+
 #[tokio::test]
 async fn a_message_of_your_own_takes_you_back_to_the_bottom() {
     let mut harness = Harness::new([]);

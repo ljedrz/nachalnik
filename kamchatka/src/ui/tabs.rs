@@ -37,10 +37,9 @@ use super::{GREETING, Scrolled, faint, in_view, quiet};
 
 pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Scrolled {
     let width = inner.width as usize;
-    let mut lines: Vec<Row> = Vec::new();
-    // the item the last marked line belonged to, so a turn and its calls say once between them why
-    // they are not going rather than once each
-    let mut marked: Option<ContextId> = None;
+    let viewport = inner.height as usize;
+    // read here and written back at the end, since the blocks below borrow the app
+    let (follow, mut scroll) = (app.follow, app.scroll);
     // held by the loop, because the lines borrow their words out of these rather than copying
     // the whole conversation once a frame to show what it was already showing
     let items = app.kernel.items();
@@ -57,9 +56,6 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         .filter(|item| item.calls().any(|call| waiting.contains(&call.id)))
         .map(|item| item.id)
         .collect();
-    // what the answers came to on the last frame, and what they come to on this one; see `Drawn`
-    let mut kept = DRAWN.take().at(width);
-    let mut fresh = HashMap::new();
     // see `App::greet` and `App::tell`: lines for this screen alone, above the conversation
     let aside = app
         .greeting
@@ -71,9 +67,18 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             text: text.into(),
             item: None,
         });
-    for said in aside.chain(app.conversation(&items, going)) {
-        let item = said.item;
 
+    // every block of the conversation, in order, with nothing drawn yet
+    //
+    // note: drawn only where a frame shows it. Drawing every block on every frame cost a frame
+    // in proportion to the session: a resize, or the first frame of a resumed session, drew every
+    // answer's markdown at the new width, about a third of a second for a thousand turns. See
+    // `Heights` for how the rows of the rest are counted.
+    let mut blocks: Vec<Block> = Vec::new();
+    // the item the last marked line belonged to, so a turn and its calls say once between them why
+    // they are not going rather than once each
+    let mut marked: Option<ContextId> = None;
+    for said in aside.chain(app.conversation(&items, going)) {
         // what the model is no longer shown is drawn so the eye can tell without reading it. It
         // uses `going.sends_content` rather than the state because an item the projector repaired
         // away is `Active` and not in the request. A line with no item - a note, an error,
@@ -90,134 +95,193 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // time the permission prompt is open, and the line saying why would sit above the call the
         // person is asked to authorise and call it a fault. It is mid-flight, not left out;
         // answering the question already on screen puts it in
-        let held = item.filter(|item| {
+        let held = said.item.filter(|item| {
             !going.sends_content(item) && !item.state.is_elided() && !deciding.contains(&item.id)
         });
-
-        let speaker = said.speaker;
+        let mark = match held {
+            Some(item) if marked != Some(item.id) => {
+                marked = Some(item.id);
+                Some(item)
+            }
+            Some(_) => None,
+            None => {
+                marked = None;
+                None
+            }
+        };
         // note: an elided item already reads as its marker here: the projector's words in brackets,
         // the text the model reads. The substitution is `App::conversation`'s: what an elision
         // means is not a rendering decision, and a second client must not receive the content of an
         // item whose point is that the model no longer has it. What is left is to draw it with the
         // speaker's prefix and dimmed: `> ` still says whose turn it was, and the dimming says
         // nothing is left to read
-        let said = said.text;
-
-        if let Some(item) = held {
-            if marked != Some(item.id) {
-                let (mark, _) = state_mark(item.state);
-                lines.push(Row::Drawn(Line::styled(
-                    format!("{mark} [{}] {}", item.id.0, withheld_why(item, going)),
-                    quiet().italic(),
-                )));
-                marked = Some(item.id);
-            }
-
-            // flattened rather than dimmed on top of itself, and markdown is not rendered here at
-            // all: a highlighted block that kept its colours and lost only its brightness still
-            // reads as live text at a glance, which the mark exists to prevent
-            //
-            // note: the rule is applied afterwards, not passed to `wrapped` as a prefix. A prefix
-            // marks the first row and hangs the rest under it, which is right for `> ` but wrong
-            // here: a long answer would get one marked row and the rest reading as ordinary
-            // indented text
-            let rows = kept_or_drawn(&mut kept, &mut fresh, Look::Held, &said, || {
-                wrapped(&said, width.saturating_sub(2), "")
-                    .into_iter()
-                    .map(|text| {
-                        Line::from(vec![
-                            Span::styled("╎ ", faint()),
-                            Span::styled(text, quiet()),
-                        ])
-                    })
-                    .collect()
-            });
-            lines.extend((0..rows.len()).map(|at| Row::Kept(Rc::clone(&rows), at)));
-            lines.push(Row::Drawn(Line::default()));
-            continue;
-        }
-        marked = None;
-
-        // the model writes markdown; printing the asterisks would show punctuation instead of
-        // emphasis. Nothing else here is markdown: a tool's output is whatever the tool said, and
-        // rendering it would invent structure the tool did not put there
-        if speaker == Speaker::Model {
-            let answer = kept_or_drawn(&mut kept, &mut fresh, Look::Answer, &said, || {
-                answer(&said, width)
-            });
-            lines.extend((0..answer.len()).map(|at| Row::Kept(Rc::clone(&answer), at)));
-            lines.push(Row::Drawn(Line::default()));
-            continue;
-        }
-
-        let (prefix, style) = match speaker {
-            Speaker::User => ("> ", Style::default().fg(Color::White).bold()),
-            Speaker::Reasoning => ("", quiet().italic()),
-            Speaker::Call => ("⟩ ", Style::default().fg(Color::Cyan)),
-            Speaker::Result => ("│ ", quiet()),
-            Speaker::Note => ("· ", quiet()),
-            Speaker::Error => ("! ", Style::default().fg(Color::Red)),
-            Speaker::Model => unreachable!("rendered above"),
+        let look = match (held, said.speaker) {
+            (Some(_), _) => Look::Held,
+            (None, Speaker::Model) => Look::Answer,
+            (None, speaker) => Look::Said(speaker),
         };
-
-        // a shell result opens with what the command's exit said, and that line is the one
-        // somebody watching a command run is waiting for. Drawn in the colour of what it says,
-        // so it answers from across the room and the output under it stays quiet
-        //
-        // note: the rest is wrapped separately under a prefix of the same width, not the speaker's
-        // own. `wrapped` puts the prefix on its first row and hangs the others, so applying the
-        // rule twice would draw a `│` in the middle of one result
-        let (head, rest) = match said.split_once('\n') {
-            Some((head, rest)) => (head, rest),
-            None => (said.as_ref(), ""),
-        };
-        let rows = kept_or_drawn(&mut kept, &mut fresh, Look::Said(speaker), &said, || {
-            let mut rows = Vec::new();
-            match (speaker == Speaker::Result)
-                .then(|| Exit::of(head))
-                .flatten()
-            {
-                Some(exit) => {
-                    for text in wrapped(head, width, prefix) {
-                        rows.push(Line::styled(text, exit_style(exit)));
-                    }
-                    if !rest.is_empty() {
-                        for text in wrapped(rest, width, &" ".repeat(columns(prefix))) {
-                            rows.push(Line::styled(text, style));
-                        }
-                    }
-                }
-                None => {
-                    for text in wrapped(&said, width, prefix) {
-                        rows.push(Line::styled(text, style));
-                    }
-                }
-            }
-            rows
+        blocks.push(Block {
+            look,
+            text: said.text,
+            mark,
         });
-        lines.extend((0..rows.len()).map(|at| Row::Kept(Rc::clone(&rows), at)));
-        lines.push(Row::Drawn(Line::default()));
     }
 
+    // what the answers came to on the last frame, and what they come to on this one; see `Drawn`
+    let mut kept = DRAWN.take().at(width);
+    let mut fresh = HashMap::new();
+    let counted = HEIGHTS.take();
+    let keys: Vec<Key> = blocks.iter().map(Block::key).collect();
+    // how many rows each block takes, and whether that is measured or estimated
+    let mut heights: Vec<(usize, bool)> = blocks
+        .iter()
+        .zip(&keys)
+        .map(|(block, key)| {
+            counted
+                .at(width, key)
+                .unwrap_or_else(|| (block.estimate(width), false))
+        })
+        .collect();
+    let mut drawn: HashMap<usize, Rc<[Line<'static>]>> = HashMap::new();
+    // draws a block, once a frame, and counts it
+    let mut draw = |at: usize, heights: &mut Vec<(usize, bool)>| {
+        let rows = drawn
+            .entry(at)
+            .or_insert_with(|| blocks[at].draw(width, going, &mut kept, &mut fresh));
+        heights[at] = (rows.len(), true);
+        Rc::clone(rows)
+    };
+    // where the block `at` starts, by what is counted so far
+    let start = |at: usize, heights: &[(usize, bool)]| -> usize {
+        heights[..at].iter().map(|(rows, _)| rows).sum()
+    };
+
+    // the block the view was held to, where it is not following and no key has moved it since
+    // the last frame; see `Anchor`
+    let anchor = ANCHOR
+        .take()
+        .filter(|anchor| !follow && anchor.scroll == scroll)
+        .and_then(|anchor| anchor.found(&keys));
+
+    // the blocks on screen first, measured from the end the view is held to: the bottom when it
+    // follows, and the first block it shows when it does not
+    let first = match follow {
+        true => {
+            let (mut at, mut rows) = (blocks.len(), 0);
+            while at > 0 && rows < viewport {
+                at -= 1;
+                draw(at, &mut heights);
+                rows += heights[at].0;
+            }
+            at
+        }
+        false => {
+            let (at, start) = match anchor {
+                Some((at, _)) => (at, start(at, &heights)),
+                None => {
+                    let total: usize = heights.iter().map(|(rows, _)| rows).sum();
+                    let top = scroll.min(total.saturating_sub(viewport));
+                    let (mut at, mut start) = (0, 0);
+                    while at + 1 < blocks.len() && start + heights[at].0 <= top {
+                        start += heights[at].0;
+                        at += 1;
+                    }
+                    (at, start)
+                }
+            };
+            let top = start + anchor.map_or(0, |(_, offset)| offset);
+            let mut rows = start;
+            let mut next = at;
+            while next < blocks.len() && rows < top + viewport {
+                draw(next, &mut heights);
+                rows += heights[next].0;
+                next += 1;
+            }
+            at
+        }
+    };
+
+    // and a few of the rest, nearest the view first, so that what is counted converges on what
+    // is there within a few frames of a resize
+    let mut budget = MEASURED_A_FRAME;
+    let (mut above, mut below) = (first, first);
+    while budget > 0 && (above > 0 || below < blocks.len()) {
+        if above > 0 {
+            above -= 1;
+            if !heights[above].1 {
+                draw(above, &mut heights);
+                budget -= 1;
+            }
+        }
+        if below < blocks.len() {
+            if !heights[below].1 && budget > 0 {
+                draw(below, &mut heights);
+                budget -= 1;
+            }
+            below += 1;
+        }
+    }
+
+    // what the last frame measured is what the scrolling keys are working against
+    let total: usize = heights.iter().map(|(rows, _)| rows).sum();
+    let bottom = total.saturating_sub(viewport);
+    // held to its block, wherever what was counted above it now puts that block
+    if let Some((at, offset)) = anchor {
+        scroll = start(at, &heights) + offset.min(heights[at].0.saturating_sub(1));
+    }
+    if follow {
+        scroll = bottom;
+    }
+    let at = scroll.min(bottom);
+
+    // the rows on screen, from the block the top row is in
+    let (mut block, mut begins) = (0, 0);
+    while block + 1 < blocks.len() && begins + heights[block].0 <= at {
+        begins += heights[block].0;
+        block += 1;
+    }
+    ANCHOR.set(keys.get(block).map(|&key| Anchor {
+        scroll: at,
+        block,
+        key,
+        offset: at - begins,
+    }));
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(viewport);
+    let mut skip = at - begins;
+    while block < blocks.len() && lines.len() < viewport {
+        let rows = draw(block, &mut heights);
+        let room = viewport - lines.len();
+        lines.extend(rows.iter().skip(skip).take(room).cloned());
+        skip = skip.saturating_sub(rows.len());
+        block += 1;
+    }
+
+    drop(blocks);
     DRAWN.set(Drawn {
         width,
         answers: fresh,
     });
-
     // what the last frame measured is what the scrolling keys are working against
-    app.rendered = lines.len();
-    app.viewport = inner.height as usize;
-    let bottom = lines.len().saturating_sub(inner.height as usize);
-    if app.follow {
-        app.scroll = bottom;
+    app.scroll = scroll;
+    app.rendered = total;
+    app.viewport = viewport;
+    // note: a counted height wins over an estimate under the same key. Blocks with the same key
+    // say the same words and are drawn the same way - every `cargo test` call a session makes -
+    // and if the last of them were the one kept, an estimate would replace the height counted
+    // for the others, and every one above the view would move it on the next frame
+    let mut rows: HashMap<Key, (usize, bool)> = HashMap::with_capacity(keys.len());
+    for (key, height) in keys.into_iter().zip(heights) {
+        rows.entry(key)
+            .and_modify(|kept| {
+                if height.1 || !kept.1 {
+                    *kept = height;
+                }
+            })
+            .or_insert(height);
     }
-    let at = app.scroll.min(bottom);
-    let total = lines.len();
+    HEIGHTS.set(Heights { width, rows });
 
-    frame.render_widget(
-        Paragraph::new(Text::from_iter(in_view(lines, at, inner))),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(Text::from_iter(lines)), inner);
 
     Scrolled {
         position: at,
@@ -226,22 +290,238 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     }
 }
 
-/// A row of the chat: one drawn for this frame, or one of an answer's rows kept by [`Drawn`].
+/// How many blocks off the screen a frame draws to measure them, beyond the ones it shows.
 ///
-/// note: an answer's rows are referenced rather than copied, and only the rows on screen become
-/// lines. Copying every answer's rows into every frame, to show one screenful, cost more than
-/// drawing the rest of the chat.
-enum Row {
-    Drawn(Line<'static>),
-    Kept(Rc<[Line<'static>]>, usize),
+/// note: enough that a session of a few hundred blocks is counted exactly within a few frames of a
+/// resize, and few enough that a frame costs about what a screenful does whatever the session.
+const MEASURED_A_FRAME: usize = 32;
+
+/// One block of the chat, before it is drawn: what it says, how it is drawn, and the item whose
+/// held run it opens, if it opens one.
+struct Block<'a> {
+    look: Look,
+    text: std::borrow::Cow<'a, str>,
+    mark: Option<&'a std::sync::Arc<ContextItem>>,
 }
 
-impl From<Row> for Line<'static> {
-    fn from(row: Row) -> Self {
-        match row {
-            Row::Drawn(line) => line,
-            Row::Kept(answer, at) => answer[at].clone(),
+impl Block<'_> {
+    /// Its rows: the line saying why it is held where it opens a held run, what it says, and the
+    /// blank line under it.
+    fn draw(
+        &self,
+        width: usize,
+        going: &Going,
+        kept: &mut Kept,
+        fresh: &mut Kept,
+    ) -> Rc<[Line<'static>]> {
+        let said = &self.text;
+        let body = match self.look {
+            // flattened rather than dimmed on top of itself, and markdown is not rendered here at
+            // all: a highlighted block that kept its colours and lost only its brightness still
+            // reads as live text at a glance, which the mark exists to prevent
+            //
+            // note: the rule is applied afterwards, not passed to `wrapped` as a prefix. A prefix
+            // marks the first row and hangs the rest under it, which is right for `> ` but wrong
+            // here: a long answer would get one marked row and the rest reading as ordinary
+            // indented text
+            Look::Held => kept_or_drawn(kept, fresh, Look::Held, said, || {
+                wrapped(said, width.saturating_sub(2), "")
+                    .into_iter()
+                    .map(|text| {
+                        Line::from(vec![
+                            Span::styled("╎ ", faint()),
+                            Span::styled(text, quiet()),
+                        ])
+                    })
+                    .collect()
+            }),
+            // the model writes markdown; printing the asterisks would show punctuation instead of
+            // emphasis. Nothing else here is markdown: a tool's output is whatever the tool said,
+            // and rendering it would invent structure the tool did not put there
+            Look::Answer => kept_or_drawn(kept, fresh, Look::Answer, said, || answer(said, width)),
+            Look::Said(speaker) => said_by(speaker, said, width, kept, fresh),
+        };
+
+        let mut rows = Vec::with_capacity(body.len() + 2);
+        if let Some(item) = self.mark {
+            let (mark, _) = state_mark(item.state);
+            rows.push(Line::styled(
+                format!("{mark} [{}] {}", item.id.0, withheld_why(item, going)),
+                quiet().italic(),
+            ));
         }
+        rows.extend(body.iter().cloned());
+        rows.push(Line::default());
+
+        rows.into()
+    }
+
+    /// How many rows it would take at this width, without drawing it or reading it: a row for
+    /// each stretch of `width` bytes, and the rows around it.
+    ///
+    /// note: an estimate, for a block no frame has counted at any width: the first frame of a
+    /// session, and what arrives off the screen. It decides where the scrollbar sits and how far
+    /// the keys can move until the block is drawn. Not read line by line, because a resumed session
+    /// would then read every word it holds before showing anything.
+    fn estimate(&self, width: usize) -> usize {
+        self.text.len().div_ceil(width.max(1)).max(1) + usize::from(self.mark.is_some()) + 1
+    }
+
+    /// What its height is kept under; see [`Key`].
+    fn key(&self) -> Key {
+        use std::hash::{Hash, Hasher};
+
+        let text = self.text.as_bytes();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.look.hash(&mut hasher);
+        self.mark.map(|item| item.id).hash(&mut hasher);
+        match &self.text {
+            // the words of an item or an entry, which stay where they are while it does
+            std::borrow::Cow::Borrowed(words) => {
+                (words.as_ptr() as usize).hash(&mut hasher);
+                text.len().hash(&mut hasher);
+                text[..text.len().min(16)].hash(&mut hasher);
+                text[text.len().saturating_sub(16)..].hash(&mut hasher);
+            }
+            // words this frame put together, a call or a marker, which are short
+            std::borrow::Cow::Owned(words) => words.hash(&mut hasher),
+        }
+
+        Key(hasher.finish())
+    }
+}
+
+/// What anyone but the model said, under that speaker's prefix.
+fn said_by(
+    speaker: Speaker,
+    said: &str,
+    width: usize,
+    kept: &mut Kept,
+    fresh: &mut Kept,
+) -> Rc<[Line<'static>]> {
+    let (prefix, style) = match speaker {
+        Speaker::User => ("> ", Style::default().fg(Color::White).bold()),
+        Speaker::Reasoning => ("", quiet().italic()),
+        Speaker::Call => ("⟩ ", Style::default().fg(Color::Cyan)),
+        Speaker::Result => ("│ ", quiet()),
+        Speaker::Note => ("· ", quiet()),
+        Speaker::Error => ("! ", Style::default().fg(Color::Red)),
+        Speaker::Model => unreachable!("drawn as an answer"),
+    };
+
+    // a shell result opens with what the command's exit said, and that line is the one
+    // somebody watching a command run is waiting for. Drawn in the colour of what it says,
+    // so it answers from across the room and the output under it stays quiet
+    //
+    // note: the rest is wrapped separately under a prefix of the same width, not the speaker's
+    // own. `wrapped` puts the prefix on its first row and hangs the others, so applying the
+    // rule twice would draw a `│` in the middle of one result
+    let (head, rest) = match said.split_once('\n') {
+        Some((head, rest)) => (head, rest),
+        None => (said, ""),
+    };
+    kept_or_drawn(kept, fresh, Look::Said(speaker), said, || {
+        let mut rows = Vec::new();
+        match (speaker == Speaker::Result)
+            .then(|| Exit::of(head))
+            .flatten()
+        {
+            Some(exit) => {
+                for text in wrapped(head, width, prefix) {
+                    rows.push(Line::styled(text, exit_style(exit)));
+                }
+                if !rest.is_empty() {
+                    for text in wrapped(rest, width, &" ".repeat(columns(prefix))) {
+                        rows.push(Line::styled(text, style));
+                    }
+                }
+            }
+            None => {
+                for text in wrapped(said, width, prefix) {
+                    rows.push(Line::styled(text, style));
+                }
+            }
+        }
+        rows
+    })
+}
+
+/// What a block's height is kept under: how it is drawn, the item whose held run it opens, and
+/// where its words are, how long they are and how they start and end.
+///
+/// note: not the words themselves, which would mean reading every answer in the session on every
+/// frame to find out how tall the ones off the screen are. Words an item holds stay where they are
+/// for as long as the item does, and a changed item is a new one. Two that land at the same place
+/// with the same length, start and end are counted as one height until one is drawn.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct Key(u64);
+
+/// How many rows each block came to on the last frame, whether that was drawn and counted or
+/// estimated, and the width it was at.
+///
+/// note: kept from one frame to the next so that a frame draws only what it shows and still knows
+/// how tall the rest is. Every block is kept, the estimated ones too, so that a resize can scale
+/// what the frame before it had rather than estimate the whole session again.
+#[derive(Default)]
+struct Heights {
+    width: usize,
+    rows: HashMap<Key, (usize, bool)>,
+}
+
+impl Heights {
+    /// How many rows a block takes at `width`, and whether that was counted: as the last frame
+    /// had it at the same width, and scaled from it, as an estimate, at another.
+    ///
+    /// note: scaled by the ratio of the widths, which is close for prose and a column or two off
+    /// for code, and a resize moves a column at a time, so each frame of one scales what the frame
+    /// before it counted. The blocks on screen are drawn and counted again either way.
+    fn at(&self, width: usize, key: &Key) -> Option<(usize, bool)> {
+        let &(rows, counted) = self.rows.get(key)?;
+        match self.width == width {
+            true => Some((rows, counted)),
+            false => Some(((rows * self.width).div_ceil(width.max(1)).max(1), false)),
+        }
+    }
+}
+
+thread_local! {
+    static HEIGHTS: Cell<Heights> = Cell::default();
+    static ANCHOR: Cell<Option<Anchor>> = const { Cell::new(None) };
+}
+
+/// The block the top row of the last frame was in, and how far into it, so that the next frame
+/// shows the same line wherever what is counted above it puts it.
+///
+/// note: a row number alone would not do. Above the view, blocks are estimated until a frame draws
+/// them, and every one that comes out taller or shorter than its estimate - after a resize, most
+/// of them - would move what somebody is reading by as much, frame after frame. Used only while
+/// `scroll` is what the last frame left it at: a key that moved it says where to go instead.
+#[derive(Clone, Copy)]
+struct Anchor {
+    scroll: usize,
+    block: usize,
+    key: Key,
+    offset: usize,
+}
+
+impl Anchor {
+    /// Its block in this frame's blocks, and the offset into it: at the same place if it still
+    /// has the same key there, or the nearest block that has it, where something was added or
+    /// taken away above it.
+    fn found(self, keys: &[Key]) -> Option<(usize, usize)> {
+        if keys.get(self.block) == Some(&self.key) {
+            return Some((self.block, self.offset));
+        }
+        (1..keys.len())
+            .flat_map(|distance| {
+                [
+                    self.block.checked_sub(distance),
+                    Some(self.block + distance),
+                ]
+            })
+            .flatten()
+            .find(|at| keys.get(*at) == Some(&self.key))
+            .map(|at| (at, self.offset))
     }
 }
 

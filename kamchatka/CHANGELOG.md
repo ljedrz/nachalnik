@@ -190,6 +190,13 @@ minor bump may break you.
   line is sent once the answer is in. `App::look_up_the_model` starts it, `App::settle` waits for
   it, and `Args::provider` no longer asks; the `endpoint` `connect` functions still do.
 
+- **The chat tab draws only the turns on the screen.** A resize, or the first frame of a resumed
+  session, used to lay out every turn at the new width, about a third of a second for a thousand
+  turns. Now a frame draws what it shows and a few dozen more. The heights of the rest are
+  estimated until a frame draws them, so the scrollbar and the count of lines below can be off
+  for the first few frames of a long session. A view scrolled back stays on the line it showed
+  while those counts settle.
+
 ### removed
 
 - **The line explaining that a question was about everything a tool does**, on the permission

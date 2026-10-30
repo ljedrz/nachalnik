@@ -41,11 +41,17 @@ const WIDTH: u16 = 120;
 const HEIGHT: u16 = 40;
 
 /// A redraw with nothing changed since the last one.
+///
+/// note: after as many frames as the session has turns, so that every block has been drawn and
+/// counted once. A frame draws the blocks it shows and a few more, so the first frames of a long
+/// session are still counting the rest; see `ui::tabs::Heights`.
 #[divan::bench(args = TURNS)]
 fn steady(bencher: Bencher, turns: usize) {
     let mut app = session(turns, 0);
     let mut terminal = terminal(WIDTH);
-    draw(&mut terminal, &mut app);
+    for _ in 0..turns {
+        draw(&mut terminal, &mut app);
+    }
 
     bencher.bench_local(|| draw(&mut terminal, &mut app));
 }
