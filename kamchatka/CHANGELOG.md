@@ -297,6 +297,11 @@ minor bump may break you.
   turns held about 55 MB, now about 24 MB, which is about two and a half times the text in its
   context. See nachalnik's `ContextIds`.
 
+- **The refusal for a call with a shell pipe after it says the pipe is shell.** A model that
+  wrote `{"action": "grep", ...} | head -40` was told the text did not parse and shown the object
+  to send. In one sweep it then sent the next call the same way more often than not. The refusal
+  now also says that what follows the object is shell, and that the tool runs no shell.
+
 ### removed
 
 - **The line explaining that a question was about everything a tool does**, on the permission
