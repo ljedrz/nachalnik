@@ -1511,7 +1511,7 @@ async fn a_failed_request_does_not_leave_an_anchor_behind() {
         messages: 1,
         tools: 0,
         tokens: 9,
-        items: vec![asked],
+        items: vec![asked].into(),
         skipped: Vec::new(),
         repairs: Vec::new(),
     });
@@ -1538,7 +1538,7 @@ async fn a_failed_request_does_not_leave_an_anchor_behind() {
         messages: 2,
         tools: 0,
         tokens: 18,
-        items: vec![asked, more],
+        items: vec![asked, more].into(),
         skipped: Vec::new(),
         repairs: Vec::new(),
     });

@@ -31,6 +31,98 @@ impl fmt::Display for ContextId {
     }
 }
 
+/// A list of [`ContextId`]s, in order, held as runs of consecutive ones.
+///
+/// note: what [`Event::ModelRequested`] names the items of a request with. A request names nearly
+/// every item in the context, and the log keeps every request, so as a `Vec` the log grew with the
+/// square of the session: a thousand turns held millions of identifiers, most of the session's
+/// memory. A request's items are consecutive but for what is left out or moved, so this holds one
+/// run for each stretch between those.
+///
+/// note: written as the plain list of identifiers it stands for, so a log or a client written
+/// against a `Vec` reads it unchanged. Runs are made greedily as identifiers are added, so two
+/// lists of the same identifiers in the same order are equal however they were built.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContextIds {
+    /// The first identifier of each run, and how many follow it one by one, the first included.
+    runs: Vec<(u64, u64)>,
+    len: usize,
+}
+
+impl ContextIds {
+    /// An empty list.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds an identifier at the end.
+    pub fn push(&mut self, id: ContextId) {
+        self.len += 1;
+        match self.runs.last_mut() {
+            Some((first, count)) if first.checked_add(*count) == Some(id.0) => *count += 1,
+            _ => self.runs.push((id.0, 1)),
+        }
+    }
+
+    /// How many identifiers there are.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether there are none.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The identifiers, in order.
+    pub fn iter(&self) -> impl Iterator<Item = ContextId> + '_ {
+        self.runs
+            .iter()
+            .flat_map(|&(first, count)| (first..first + count).map(ContextId))
+    }
+
+    /// Whether `id` is one of them.
+    pub fn contains(&self, id: &ContextId) -> bool {
+        self.runs
+            .iter()
+            .any(|&(first, count)| (first..first + count).contains(&id.0))
+    }
+}
+
+impl FromIterator<ContextId> for ContextIds {
+    fn from_iter<I: IntoIterator<Item = ContextId>>(ids: I) -> Self {
+        let mut all = Self::new();
+        for id in ids {
+            all.push(id);
+        }
+        all
+    }
+}
+
+impl From<Vec<ContextId>> for ContextIds {
+    fn from(ids: Vec<ContextId>) -> Self {
+        ids.into_iter().collect()
+    }
+}
+
+impl From<&[ContextId]> for ContextIds {
+    fn from(ids: &[ContextId]) -> Self {
+        ids.iter().copied().collect()
+    }
+}
+
+impl Serialize for ContextIds {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.iter())
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextIds {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Vec::<ContextId>::deserialize(deserializer).map(Self::from)
+    }
+}
+
 /// What a [`ContextItem`] is, in terms of the model protocol.
 ///
 /// note: the only taxonomy the kernel uses. The variants with data carry exactly what rebuilding a
@@ -417,5 +509,51 @@ impl ContextItem {
         };
 
         crate::model::calls_in(ordered, flat)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A request's items, consecutive but for a gap and a move, are held as one run for each
+    /// stretch between them, and read back as the list they were.
+    ///
+    /// note: the point of the type. Held as a `Vec`, every request in the log named every item in
+    /// the context, and a thousand turns kept millions of identifiers.
+    #[test]
+    fn identifiers_are_held_as_runs_and_read_back_as_they_were() {
+        let consecutive: ContextIds = (1..=10_000).map(ContextId).collect();
+        assert_eq!(consecutive.runs.len(), 1);
+        assert_eq!(consecutive.len(), 10_000);
+
+        // a gap where something was left out, and an item moved to where the one it replaces was
+        let written = [1, 2, 3, 5, 6, 9, 7, 8].map(ContextId);
+        let ids: ContextIds = written.iter().copied().collect();
+        assert_eq!(ids.runs, [(1, 3), (5, 2), (9, 1), (7, 2)]);
+        assert_eq!(ids.iter().collect::<Vec<_>>(), written);
+        assert!(ids.contains(&ContextId(6)) && ids.contains(&ContextId(9)));
+        assert!(!ids.contains(&ContextId(4)) && !ids.contains(&ContextId(10)));
+
+        // built at once or one at a time, the same identifiers are the same list
+        let mut pushed = ContextIds::new();
+        for id in written {
+            pushed.push(id);
+        }
+        assert_eq!(pushed, ids);
+        assert!(ContextIds::new().is_empty());
+    }
+
+    /// The identifiers are written as the plain list they stand for, and read from one, so a log
+    /// or a client written against the `Vec` this replaced reads and writes it unchanged.
+    #[test]
+    fn identifiers_are_written_as_a_plain_list() {
+        let ids: ContextIds = [1, 2, 3, 7].map(ContextId).into_iter().collect();
+        assert_eq!(serde_json::to_string(&ids).unwrap(), "[1,2,3,7]");
+
+        let read: ContextIds = serde_json::from_str("[1,2,3,7]").unwrap();
+        assert_eq!(read, ids);
+        let empty: ContextIds = serde_json::from_str("[]").unwrap();
+        assert!(empty.is_empty());
     }
 }

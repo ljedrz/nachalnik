@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{Config, Provider};
 use crate::{
     compaction::CompactionReport,
-    context::{ContextId, ContextState},
+    context::{ContextId, ContextIds, ContextState},
     kernel::{Kernel, State},
     model::{Content, ModelInfo, Overrun, Params, StopReason, ToolCallId, Usage},
     permissions::{Grant, GrantSource, PermissionId, PermissionRequest, Verdict},
@@ -250,7 +250,7 @@ pub enum Event {
         /// The kernel's estimate of the request's size in tokens.
         tokens: usize,
         /// The context items the request was projected from.
-        items: Vec<ContextId>,
+        items: ContextIds,
         /// The items the projector left out of it, and why.
         ///
         /// note: so the log can answer, afterwards, why something was not in the request.
