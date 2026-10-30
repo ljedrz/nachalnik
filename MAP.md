@@ -106,6 +106,10 @@ feature. `webui` (default) is `web/` and `qr.rs`.
 process; `recorded.rs` runs a headless session and saves it in four formats into the git-ignored
 `recorded/`.
 
+`kamchatka/benches/redraw.rs` (feature `tui`, `divan`) times drawing the chat tab for sessions
+of a few lengths: a redraw with nothing changed, one at a new width, and the first frame.
+`cargo bench -p kamchatka --bench redraw` runs it. CI doesn't, since timings there are noise.
+
 ---
 
 ## nachalnik-providers
