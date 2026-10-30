@@ -110,6 +110,11 @@ process; `recorded.rs` runs a headless session and saves it in four formats into
 of a few lengths: a redraw with nothing changed, one at a new width, and the first frame.
 `cargo bench -p kamchatka --bench redraw` runs it. CI doesn't, since timings there are noise.
 
+`kamchatka/benches/memory.rs` (feature `tui`, `heapster` as the global allocator) runs a session
+of up to a thousand turns. It prints how much heap the session holds next to how much text its
+context holds, and how much more a redraw and a snapshot take.
+`cargo bench -p kamchatka --bench memory` runs it.
+
 ---
 
 ## nachalnik-providers

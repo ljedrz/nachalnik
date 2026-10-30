@@ -210,8 +210,16 @@ tokio = { workspace = true, features = ["net", "test-util"] }
 # default `wrap_help`, which turns on clap's and would wrap the program's own `--help` at the
 # terminal's width, since features are shared with the binary the tests run
 divan = { version = "0.1.21", default-features = false }
+# `benches/memory.rs`, which measures what a session holds on the heap; `use_max` for the peaks,
+# which brings `use_curr`, the live figure
+heapster = { version = "0.9", features = ["use_max"] }
 
 [[bench]]
 name = "redraw"
+harness = false
+required-features = ["tui"]
+
+[[bench]]
+name = "memory"
 harness = false
 required-features = ["tui"]
