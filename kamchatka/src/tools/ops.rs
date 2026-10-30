@@ -466,8 +466,8 @@ fn fault(written: &str, layout: Layout, parsed: usize) -> (String, usize, String
 }
 
 /// What to write instead, where a model makes a fault without seeing it: a regex's `\(` put into a
-/// string as it stands, a line break typed into one, or the action written bare where the wrapper's
-/// object goes.
+/// string as it stands, a line break typed into one, the action written bare where the wrapper's
+/// object goes, or a shell pipe written after the object.
 ///
 /// note: the line and column say where, but that was not enough. A model that writes `\(` in a
 /// pattern reads it as the pattern it meant, sends it again unchanged and is told the same thing;
@@ -481,6 +481,22 @@ fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
     }
     if said.starts_with("control character") {
         return ", with a line break inside a string written as `\\n`".to_owned();
+    }
+    // note: `{"action": "grep", ...} | head -40`, the call written as a shell command line. A model
+    // that does this thinks the tool is a shell, and told only that the text did not parse, it
+    // sent the next call the same way more often than not
+    if said.starts_with("trailing characters") {
+        let mut values = serde_json::Deserializer::from_str(written).into_iter::<Value>();
+        if let Some(Ok(Value::Object(_))) = values.next() {
+            let after = written[values.byte_offset()..].trim();
+            if after.starts_with(['|', '>', ';', '&']) {
+                let shown: String = after.chars().take(40).collect();
+                return format!(
+                    ", with nothing after the object: `{shown}` is shell, and this tool runs no \
+                     shell"
+                );
+            }
+        }
     }
 
     let bare = written
@@ -1406,6 +1422,37 @@ mod tests {
             said.contains("a line break inside a string written as `\\n`"),
             "{said}"
         );
+    }
+
+    /// A shell pipe written after the call's object is said to be shell, which this tool does not
+    /// run.
+    ///
+    /// note: the shape `glyph-cluster` sent in a repo sweep, a quarter of all its calls: the call
+    /// as text in `call`, with `| head -40` or `| grep kind` after it. Told the text did not parse
+    /// and shown the object, it sent the next call the same way more often than not.
+    #[test]
+    fn a_shell_pipe_after_the_object_is_said_to_be_shell() {
+        let piped = "{\"action\": \"grep\", \"path\": \"src\", \"pattern\": \"kind\"} | head -40";
+        let said = Misread::Text(piped.to_owned()).said(Layout::Wrapped);
+        assert!(
+            said.contains("with nothing after the object: `| head -40` is shell"),
+            "{said}"
+        );
+
+        let said = unreadable(&format!("{{\"call\": {piped}}}"), Layout::Wrapped);
+        assert!(
+            !said.contains("is shell"),
+            "a pipe inside an object that never closed is not after it: {said}"
+        );
+        let said = unreadable(
+            "{\"call\": {\"action\": \"read\"}} > out.txt",
+            Layout::Wrapped,
+        );
+        assert!(said.contains("`> out.txt` is shell"), "{said}");
+
+        let said =
+            Misread::Text("{\"action\": \"read\"} trailing words".to_owned()).said(Layout::Wrapped);
+        assert!(!said.contains("is shell"), "words are not shell: {said}");
     }
 
     /// An action written bare where the wrapper's object goes is shown in that object.

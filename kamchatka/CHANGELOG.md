@@ -196,6 +196,11 @@ minor bump may break you.
   line is sent once the answer is in. `App::look_up_the_model` starts it, `App::settle` waits for
   it, and `Args::provider` no longer asks; the `endpoint` `connect` functions still do.
 
+- **The refusal for a call with a shell pipe after it says the pipe is shell.** A model that
+  wrote `{"action": "grep", ...} | head -40` was told the text did not parse and shown the object
+  to send. In one sweep it then sent the next call the same way more often than not. The refusal
+  now also says that what follows the object is shell, and that the tool runs no shell.
+
 ### removed
 
 - **The line explaining that a question was about everything a tool does**, on the permission
