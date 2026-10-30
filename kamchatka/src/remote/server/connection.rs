@@ -278,8 +278,11 @@ where
                     {
                         caught_up(&mut events, kernel, &mut last, write, progress_recorded)
                             .await?;
+                        // note: through `voiced`, like every other line the session says: one
+                        // too long for a client to read goes out as missed, since sending it
+                        // would close the connection
                         for message in &standing {
-                            protocol::write(write, message).await?;
+                            voiced(write, message).await?;
                         }
                     }
                 }
@@ -673,5 +676,63 @@ mod tests {
         voiced(&mut written, &short).await.expect("written");
         let said: Message = serde_json::from_slice(&written).expect("one frame");
         assert!(matches!(said, Message::Said { .. }), "{said:?}");
+    }
+
+    /// A line too long to read is missed when it is said again after the voice lagged, as it is
+    /// the first time, rather than sent and refused, which closes the connection.
+    #[tokio::test]
+    async fn a_line_too_long_to_read_is_missed_when_said_again_after_a_lag() {
+        let (theirs, ours) = tokio::io::duplex(64 * 1024);
+        let (asks, mut asked) = mpsc::unbounded_channel();
+        let kernel = Kernel::new(nachalnik::Config::default());
+        tokio::spawn(serve(1, ours, kernel, asks, Arc::new(Notify::new())));
+
+        let (read, mut write) = tokio::io::split(theirs);
+        let mut frames = protocol::Frames::new(BufReader::new(read));
+        protocol::write(
+            &mut write,
+            &Command::Attach {
+                since: Some(0),
+                session: None,
+                version: None,
+                relaying: None,
+            },
+        )
+        .await
+        .expect("written");
+
+        let Some(FromClient::Asked { answer, .. }) = asked.recv().await else {
+            panic!("the attach was not put to the session");
+        };
+        let (voice, heard) = broadcast::channel(2);
+        let _ = answer.send(Answered {
+            message: Some(Message::Busy { busy: false }),
+            voice: Some(heard),
+            standing: Vec::new(),
+        });
+        // more than the channel holds, before the connection has read any of it
+        for n in 0..8 {
+            let _ = voice.send(Arc::new(Message::Said {
+                speaker: crate::app::Speaker::Note,
+                text: n.to_string(),
+            }));
+        }
+        let Some(FromClient::Standing { answer }) = asked.recv().await else {
+            panic!("the lag did not ask where the session stands");
+        };
+        let _ = answer.send(vec![Message::Said {
+            speaker: crate::app::Speaker::Note,
+            text: "x".repeat(protocol::MAX_LINE + 1),
+        }]);
+
+        let mut missed = Vec::new();
+        while missed.len() < 2 {
+            match protocol::read::<Message>(&mut frames).await {
+                Ok(Some(Message::Missed { frames })) => missed.push(frames),
+                Ok(Some(_)) => {}
+                other => panic!("the connection ended before the long line was missed: {other:?}"),
+            }
+        }
+        assert_eq!(missed[1], 1, "{missed:?}");
     }
 }

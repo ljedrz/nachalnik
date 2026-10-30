@@ -110,6 +110,12 @@ minor bump may break you.
   permissions tab listed the `fs` tools as what it covered. This applies to any `<domain>:*`, in a
   flag or a settings file.
 
+- **A message too long for a client to read is reported as missed after a lag too.** When a
+  client falls behind on a served session's messages, the session sends it the current state
+  again: the model, any network question, whether it is busy. Those messages skipped the size
+  check every other message gets, so one over the 32 MB a client reads in a line would have closed
+  the connection. It is now reported as one missed message, as it is the first time it is sent.
+
 ### changed
 
 - **A shell command reads only `/run/systemd/resolve` of `/run`, unless `shell-read` names more.**
