@@ -1,0 +1,16 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "context.replaced",
+    "id": 4,
+    "tokens_before": 0,
+    "tokens_after": 1,
+    "was": {
+      "blob": {
+        "media_type": "image/png",
+        "data": "aGVsbG8="
+      }
+    }
+  }
+}

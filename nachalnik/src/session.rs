@@ -36,7 +36,11 @@ use crate::{
 /// field not at all. A new [`ContextState`](crate::ContextState) does move it: there is no
 /// catch-all, so a reader that does not know it cannot read an item in it. `0` is what a record or
 /// snapshot from before formats were numbered reads as.
-pub const FORMAT: u32 = 1;
+///
+/// note: `2` writes the items of [`Event::ModelRequested`] as runs of identifiers, `[[1, 40], 42]`,
+/// where `1` wrote every one; see [`ContextIds`](crate::ContextIds). A reader of `2` reads `1`
+/// unchanged. A snapshot holds no request, so a snapshot is the same in both but for its number.
+pub const FORMAT: u32 = 2;
 
 /// A single entry in a session's history.
 ///

@@ -1,0 +1,12 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "step.failed",
+    "overrun": {
+      "tokens": 3906,
+      "limit": 10
+    },
+    "error": "the request is about 3906 tokens and the model takes 10, so it was not sent"
+  }
+}

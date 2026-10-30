@@ -1,0 +1,17 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "context.added",
+    "id": 1,
+    "kind": "reference",
+    "source": "file",
+    "label": "src/a.rs",
+    "tokens": 1,
+    "because": null,
+    "meta": {
+      "buffer": 3,
+      "priority": "low"
+    }
+  }
+}

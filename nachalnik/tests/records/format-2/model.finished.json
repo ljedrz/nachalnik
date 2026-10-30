@@ -1,0 +1,16 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "model.finished",
+    "stop": "end_turn",
+    "usage": {
+      "input_tokens": 901,
+      "output_tokens": 8,
+      "reasoning_tokens": 139,
+      "cached_input_tokens": 16
+    },
+    "tool_calls": [],
+    "item": 2
+  }
+}

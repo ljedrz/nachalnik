@@ -13,9 +13,13 @@ minor bump may break you.
   named every item in the context, and the session log keeps every request, so the log grew with
   the square of the session: about 32 MB of item ids in a session of a thousand turns.
   `ContextIds` holds them as runs of consecutive ids and has `iter`, `contains`, `len` and
-  `is_empty`. It is serialized as the same plain list, so logs and clients read and write it
-  unchanged. Code that builds the event writes `vec![...].into()`, and code that reads `items`
+  `is_empty`. Code that builds the event writes `vec![...].into()`, and code that reads `items`
   gets ids by value from `iter`.
+- **`FORMAT` is 2: a request's items are written as runs.** A run of more than one id is
+  `[first, last]` and a run of one is the id, so `[[1, 40], 42]`, where every id was written
+  before. The log on disk grew with the square of the session too. Logs in format 1 are read
+  unchanged, but a reader of format 1 cannot read a format-2 request record. A snapshot holds no
+  requests, so only its number changes.
 
 ### added
 
