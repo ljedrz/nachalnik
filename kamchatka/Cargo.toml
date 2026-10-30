@@ -206,3 +206,10 @@ nachalnik = { workspace = true, features = ["selectors", "test"] }
 # `net` for the test that serves a model listing (for the status line's parameters); `test-util`
 # for a paused clock, so a client's one-minute reconnect timeout passes instantly
 tokio = { workspace = true, features = ["net", "test-util"] }
+# `benches/redraw.rs`, which measures drawing the chat tab as a session grows
+divan = "0.1.21"
+
+[[bench]]
+name = "redraw"
+harness = false
+required-features = ["tui"]
