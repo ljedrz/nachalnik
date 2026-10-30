@@ -323,11 +323,18 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
         // more underneath and how to reach it. Without it, "sticky" reads as "stuck": the window
         // stops moving and nothing explains why. Following, it says nothing: the tab keys are in
         // the greeting and in F1
+        //
+        // note: with a `~` while some of the lines below are estimated, which they are for the
+        // first frames of a long session or after a resize; the chat draws only what is on screen
         Tab::Chat if app.follow => Vec::new(),
         Tab::Chat => vec![
             match app.rendered.saturating_sub(app.viewport + app.scroll) {
                 0 => "ctrl+e follows the newest".to_owned(),
-                n => format!("{} line(s) below · ctrl+e follows them", thousands(n)),
+                n => format!(
+                    "{}{} line(s) below · ctrl+e follows them",
+                    if app.estimated { "~" } else { "" },
+                    thousands(n)
+                ),
             },
         ],
         Tab::Context => {

@@ -525,6 +525,10 @@ pub struct App {
     spend: Option<u64>,
     /// How many wrapped lines the transcript came to, as of the last frame.
     pub rendered: usize,
+    /// Whether some of those lines were estimated rather than counted, because the last frame did
+    /// not draw every turn; see `ui::tabs::Heights`.
+    #[cfg(feature = "tui")]
+    pub(crate) estimated: bool,
     /// How many lines fit, as of the last frame.
     pub viewport: usize,
     /// The `/` filter over this tab's rows, while its box is on the screen.
@@ -790,6 +794,8 @@ impl App {
             receipt: None,
             spend: None,
             rendered: 0,
+            #[cfg(feature = "tui")]
+            estimated: false,
             viewport: 0,
             #[cfg(feature = "tui")]
             search: None,

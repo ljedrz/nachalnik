@@ -1617,6 +1617,55 @@ async fn a_transcript_scrolled_back_stays_put_while_it_is_counted() {
     }
 }
 
+/// A page while the rows above are still being counted is half a screen of what is on the screen,
+/// and the line saying how much is below says the count is an estimate.
+///
+/// note: a page moves `scroll`, a row number, and the rows above change as they are counted. Read
+/// against them afresh, a page landed wherever the new count put that number, not half a screen
+/// from what was being read.
+#[tokio::test]
+async fn a_page_while_the_transcript_is_counted_is_half_a_screen_of_it() {
+    let mut harness = long_session(120);
+    for _ in 0..40 {
+        harness.sized(100, 30);
+    }
+    for _ in 0..30 {
+        harness.press(KeyCode::PageUp).await;
+    }
+
+    // the pane's rows, without the borders, the scrollbar being on the right-hand one
+    let rows = |screen: String| -> Vec<String> {
+        screen
+            .lines()
+            .skip(1)
+            .take(20)
+            .map(|line| {
+                let mut chars = line.chars();
+                chars.next_back();
+                chars.as_str().to_owned()
+            })
+            .collect()
+    };
+    // at another width, where every block off the screen is an estimate
+    let before = rows(harness.sized(80, 30));
+    harness.press(KeyCode::PageUp).await;
+    let after = rows(harness.sized(80, 30));
+    let half = harness.app.viewport / 2;
+    assert_eq!(
+        after[half..],
+        before[..after.len() - half],
+        "the rows that were at the top are half a screen ({half}) down"
+    );
+
+    let screen = harness.sized(80, 30);
+    assert!(
+        screen
+            .lines()
+            .any(|line| line.contains(" line(s) below") && line.contains('~')),
+        "a count resting on estimates says so: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn a_message_of_your_own_takes_you_back_to_the_bottom() {
     let mut harness = Harness::new([]);
