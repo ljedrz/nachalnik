@@ -24,6 +24,12 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   on choosing between that, matching the working directory's components once at startup and
   warning, or leaving it as it is.
 
+- **A model that repeats one refused call word for word gets the same refusal every time.** A
+  model in a loop can send the same call that cannot be read many times in a row, and each gets
+  the same sentence until the turn's request ceiling ends it. Nothing counts such repeats. It waits on choosing between saying that the call is
+  the same one refused N times before, ending the turn after some number of repeats, or leaving
+  it to the request ceiling.
+
 - **A turn recorded by another dialect goes to Gemini with its thinking unsigned.** A turn kept as
   `content` and `reasoning` rather than as blocks, which is how the OpenAI dialects record one, is
   sent to Gemini as a `thought: true` part with no `thoughtSignature`, and its calls without one
