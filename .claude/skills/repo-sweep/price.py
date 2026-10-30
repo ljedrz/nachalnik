@@ -45,9 +45,14 @@ def listed(model):
 
 
 def priced(pricing):
-    """The prices in a listing that are not zero; OpenRouter and Vercel's gateway give strings."""
+    """The prices in a listing that are not zero; OpenRouter and Vercel's gateway give strings.
+
+    Some listings keep a discount beside the prices (`discount_percent`), which is not one.
+    """
     out = {}
     for name, value in pricing.items():
+        if "discount" in name or "percent" in name:
+            continue
         try:
             if float(value) != 0:
                 out[name] = value
