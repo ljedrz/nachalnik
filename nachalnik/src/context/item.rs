@@ -39,9 +39,12 @@ impl fmt::Display for ContextId {
 /// memory. A request's items are consecutive but for what is left out or moved, so this holds one
 /// run for each stretch between those.
 ///
-/// note: written as the plain list of identifiers it stands for, so a log or a client written
-/// against a `Vec` reads it unchanged. Runs are made greedily as identifiers are added, so two
-/// lists of the same identifiers in the same order are equal however they were built.
+/// note: written as it is held: a list in which a run of more than one is `[first, last]` and a
+/// run of one is the identifier, so `[[1, 40], 42, [44, 90]]`. Written as the plain list it stands
+/// for, the log on disk still grew with the square of the session. A plain list is still read,
+/// since it is a list of runs of one, which is what logs before [`FORMAT`](crate::FORMAT) 2 hold.
+/// Runs are made greedily as identifiers are added or read, so two lists of the same identifiers
+/// in the same order are equal however they were built or written.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ContextIds {
     /// The first identifier of each run, and how many follow it one by one, the first included.
@@ -57,10 +60,16 @@ impl ContextIds {
 
     /// Adds an identifier at the end.
     pub fn push(&mut self, id: ContextId) {
-        self.len += 1;
+        self.extend_run(id.0, 1);
+    }
+
+    /// Adds `count` consecutive identifiers from `first` at the end, onto the last run where they
+    /// continue it.
+    fn extend_run(&mut self, first: u64, count: u64) {
+        self.len += count as usize;
         match self.runs.last_mut() {
-            Some((first, count)) if first.checked_add(*count) == Some(id.0) => *count += 1,
-            _ => self.runs.push((id.0, 1)),
+            Some((start, held)) if start.checked_add(*held) == Some(first) => *held += count,
+            _ => self.runs.push((first, count)),
         }
     }
 
@@ -111,15 +120,44 @@ impl From<&[ContextId]> for ContextIds {
     }
 }
 
+/// One entry of a written [`ContextIds`]: an identifier, or the first and last of a run.
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum Run {
+    One(u64),
+    Many([u64; 2]),
+}
+
 impl Serialize for ContextIds {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(self.iter())
+        serializer.collect_seq(self.runs.iter().map(|&(first, count)| match count {
+            1 => Run::One(first),
+            _ => Run::Many([first, first + count - 1]),
+        }))
     }
 }
 
 impl<'de> Deserialize<'de> for ContextIds {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Vec::<ContextId>::deserialize(deserializer).map(Self::from)
+        let mut ids = Self::new();
+        for run in Vec::<Run>::deserialize(deserializer)? {
+            let (first, count) = match run {
+                Run::One(id) => (id, 1),
+                Run::Many([first, last]) => {
+                    match last.checked_sub(first).and_then(|n| n.checked_add(1)) {
+                        Some(count) => (first, count),
+                        None => {
+                            return Err(serde::de::Error::custom(format!(
+                                "a run of identifiers from {first} to {last} runs backwards or has no end"
+                            )));
+                        }
+                    }
+                }
+            };
+            ids.extend_run(first, count);
+        }
+
+        Ok(ids)
     }
 }
 
@@ -544,16 +582,32 @@ mod tests {
         assert!(ContextIds::new().is_empty());
     }
 
-    /// The identifiers are written as the plain list they stand for, and read from one, so a log
-    /// or a client written against the `Vec` this replaced reads and writes it unchanged.
+    /// The identifiers are written as their runs, a run of one as the identifier, and read from
+    /// that or from the plain list a log before format 2 holds.
+    ///
+    /// note: written as the plain list, the log on disk grew with the square of the session as
+    /// the log in memory did. A run that goes backwards, or past the last identifier there can be,
+    /// is refused rather than read as some other list.
     #[test]
-    fn identifiers_are_written_as_a_plain_list() {
-        let ids: ContextIds = [1, 2, 3, 7].map(ContextId).into_iter().collect();
-        assert_eq!(serde_json::to_string(&ids).unwrap(), "[1,2,3,7]");
+    fn identifiers_are_written_as_runs_and_read_from_runs_or_a_plain_list() {
+        let ids: ContextIds = [1, 2, 3, 7, 9, 10].map(ContextId).into_iter().collect();
+        assert_eq!(serde_json::to_string(&ids).unwrap(), "[[1,3],7,[9,10]]");
+        assert_eq!(
+            serde_json::from_str::<ContextIds>("[[1,3],7,[9,10]]").unwrap(),
+            ids
+        );
+        assert_eq!(
+            serde_json::from_str::<ContextIds>("[1,2,3,7,9,10]").unwrap(),
+            ids,
+            "a log in format 1"
+        );
+        assert!(serde_json::from_str::<ContextIds>("[]").unwrap().is_empty());
 
-        let read: ContextIds = serde_json::from_str("[1,2,3,7]").unwrap();
-        assert_eq!(read, ids);
-        let empty: ContextIds = serde_json::from_str("[]").unwrap();
-        assert!(empty.is_empty());
+        for wrong in ["[[5,3]]", "[[0,18446744073709551615]]"] {
+            assert!(
+                serde_json::from_str::<ContextIds>(wrong).is_err(),
+                "{wrong} is not a list of runs"
+            );
+        }
     }
 }

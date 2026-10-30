@@ -1,0 +1,20 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "context.annotated",
+    "id": 2,
+    "meta": {
+      "pinned": {
+        "by": "context",
+        "note": "both now"
+      }
+    },
+    "was": {
+      "pinned": {
+        "by": "context",
+        "note": "still keeping it"
+      }
+    }
+  }
+}
