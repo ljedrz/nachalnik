@@ -30,16 +30,15 @@ pub use frames::{
 /// note: the field exists before it is needed because it cannot be added once two ends are
 /// deployed. `RUNNING.md` recommends reaching a session with `ssh -L` from another machine, where
 /// two installed versions meet and where a session that has grown a [`Message`] variant meets a
-/// client that has not. A session refuses a version it does not know and serves an older version it
-/// does.
+/// client that has not. A session refuses a version it does not know, and for now an older one as
+/// well, saying which end to update. A client that names no version is served.
 ///
-/// note: the second half of that rule is not implemented yet, and has nothing to do while the
-/// version is `1`. Serving an older client means not sending it a message its version lacks, which
-/// needs the version number kept per connection and every write to check it. Meanwhile
-/// [`Message::Unknown`] makes an unrecognised message something a client survives rather than
-/// something that ends it. When the version moves past `1`, both ends need the whole rule;
-/// `POSTPONED.md` says what that costs.
-pub const VERSION: u32 = 1;
+/// note: `2` carries records in nachalnik's log format 2, whose request records a client of `1`
+/// cannot read; see `nachalnik::ContextIds`. Serving an older client means not sending it what its
+/// version cannot read, which needs the version kept per connection and every write to check it,
+/// and is not built; `POSTPONED.md` says what it costs. Meanwhile [`Message::Unknown`] makes an
+/// unrecognised message something a client survives rather than something that ends it.
+pub const VERSION: u32 = 2;
 
 /// What a client asks a session to do.
 ///
@@ -78,9 +77,10 @@ pub enum Command {
         session: Option<String>,
         /// Which version of this wire the client speaks; see [`VERSION`].
         ///
-        /// note: `None` is a client written before the field existed, so it is version 1 by
-        /// definition. A default of "unknown" would refuse the clients the field was added to keep
-        /// working.
+        /// note: `None` is a client that does not say, one written by hand against the wire or
+        /// before the field existed, and it is served. A default of "unknown" would refuse the
+        /// clients the field was added to keep working. Such a client reads a record as whatever
+        /// JSON it is, so the change in version `2` does not stop it reading one.
         version: Option<u32>,
         /// The address of the person a relay passes the session on to: the browser's, for the
         /// `--web` page. `None` for a client that is not a relay.

@@ -28,6 +28,11 @@ minor bump may break you.
   `Tracing::at` still say when each line happened. On the wire `gap` is simply not sent, and an
   older client reads its absence as `None`.
 
+- **The remote protocol is version 2, and a client that names version 1 is refused.** A session
+  carries nachalnik's log records as they are, and in log format 2 a request's items are written
+  as runs, which a version-1 build cannot read. Such a client is told to update. A client that
+  names no version, one written by hand, is still served.
+
 ### added
 
 - **`--shell-read`, and `shell-read` in a settings file: the paths a shell command reads and `fs`
@@ -198,10 +203,11 @@ minor bump may break you.
   on the line it showed while those counts settle, and a page moves half a screen of what is
   shown.
 
-- **A long session holds less than half the memory it did.** The session log kept, for every
-  request, the id of every item the request carried, so it grew with the square of the session.
-  A session of a thousand turns held about 55 MB, now about 24 MB, which is about two and a half
-  times the text in its context. See nachalnik's `ContextIds`.
+- **A long session holds less than half the memory it did, and writes a much smaller record.**
+  The session log kept, for every request, the id of every item the request carried, so it grew
+  with the square of the session, in memory and in the record on disk. A session of a thousand
+  turns held about 55 MB, now about 24 MB, which is about two and a half times the text in its
+  context. See nachalnik's `ContextIds`.
 
 ### removed
 
