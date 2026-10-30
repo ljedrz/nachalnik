@@ -946,6 +946,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapster"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91af867d6455bd15918bc5ef5c2d061a332dc69876e54066677e3aca9b1e708f"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1354,6 +1363,7 @@ dependencies = [
  "globset",
  "grep-regex",
  "grep-searcher",
+ "heapster",
  "ignore",
  "landlock",
  "libc",
