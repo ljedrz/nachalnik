@@ -490,8 +490,8 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
     }
 }
 
-/// What a refusal adds when the selector that matched nothing was a `file:` one, or one naming the
-/// person's notes.
+/// What a refusal adds when the selector that matched nothing was a `file:` one, one naming the
+/// person's notes, or a kind of item written where `all:` takes a source.
 ///
 /// note: `memories` are the notes the person wrote at the prompt, and the ones the model wrote are
 /// `source:agent`. A model looking for its own notes reaches for `memories`, matches nothing, and
@@ -513,6 +513,22 @@ pub(crate) fn unmatched(kernel: &Kernel, select: &str) -> String {
         return " `memories` are the notes the person wrote; the notes you wrote are \
                 `source:agent`."
             .to_owned();
+    }
+    // note: `all:` reads the word after it as a source, so a kind written there is a source no
+    // item has. `all:tool_results` matching is what makes `all:assistant_messages` look like the
+    // same thing; a model wrote that one, was told only that nothing matched, and listed the whole
+    // context instead
+    let kind = match source.strip_suffix('s').unwrap_or(source) {
+        "assistant" | "assistant_message" => Some("assistant_message"),
+        "user_message" => Some("user_message"),
+        "reference" => Some("reference"),
+        _ => None,
+    };
+    if let Some(kind) = kind {
+        return format!(
+            " `{source}` is a kind of item rather than where one came from; \
+             `kind:{kind}` names every {kind}."
+        );
     }
     if !select.trim_start().starts_with("file:") {
         return String::new();

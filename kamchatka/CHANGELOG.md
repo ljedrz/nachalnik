@@ -67,6 +67,10 @@ minor bump may break you.
 - **`context` with `look` and `ids` shows the calls an assistant turn made.** A turn kept with its
   calls beside its text read back as an empty `content`, though its row said `[1 call(s)]`. Each
   call is now listed with its arguments and the items that answered it, or `no result yet`.
+- **A kind written after `all:` is told the selector for it.** `all:` takes where items came from,
+  so `all:assistant_messages` matched nothing and the refusal said only that. It now names
+  `kind:assistant_message`, and the same for `user_message` and `reference`, with or without the
+  `all:`.
 - **The terminal keeps the lines a model broke.** Markdown joins a paragraph's lines with a space,
   so an answer written a line at a time (a greentext's `>` lines, a poem, an address) was drawn as
   one long line, while the web page drew a row per line. Each line break inside a paragraph is now

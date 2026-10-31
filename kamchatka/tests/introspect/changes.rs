@@ -2439,6 +2439,44 @@ async fn a_selector_for_memories_that_matched_nothing_names_the_agents_notes() {
     }
 }
 
+/// A kind written where `all:` takes a source is told the selector for that kind, by a change and
+/// by a read alike.
+#[tokio::test]
+async fn a_kind_written_after_all_is_told_the_selector_for_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "look", "select": "all:assistant_messages" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "elide", "select": "all:references", "reason": "tidying" }),
+        ),
+        // and without the `all:`, which reads as a label and matches nothing either
+        call(
+            "c3",
+            "context",
+            json!({ "action": "look", "select": "assistant_messages" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::user("go"));
+    kernel.push(ContextItem::assistant("on it", vec![]));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    assert!(
+        said[0].contains("nothing in your context matches"),
+        "{}",
+        said[0]
+    );
+    assert!(said[0].contains("`kind:assistant_message`"), "{}", said[0]);
+    assert!(said[1].contains("`kind:reference`"), "{}", said[1]);
+    assert!(said[2].contains("`kind:assistant_message`"), "{}", said[2]);
+}
+
 /// An `action` that is not a string is refused as what it is, not as missing.
 ///
 /// note: `the \`action\` argument is required`, said about a call that has one, sends a model to
