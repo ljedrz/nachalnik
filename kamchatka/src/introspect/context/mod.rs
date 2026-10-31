@@ -106,8 +106,12 @@ fn ops() -> Vec<Op> {
     let mut ops = vec![
         Op::new(
             "look",
-            "lists every item - what it is, what it costs, whether it is going into the next \
-             request and why not if it is not",
+            format!(
+                "lists the items - what each is, what it costs, whether it is going into the next \
+                 request and why not if it is not. The {} most recent are listed, with the number \
+                 of the ones before them and what lists them",
+                reads::ROWS
+            ),
             vec![
                 Arg::list(
                     "ids",

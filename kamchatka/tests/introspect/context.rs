@@ -1,7 +1,7 @@
 //! `context` reading itself: what `look` lists, what `budget` says it costs, and what `request`
 //! reports is going out.
 
-use crate::{agent, answered, answers_from, branch, one_turn, tokens_in};
+use crate::{agent, all_answers, answered, answers_from, branch, one_turn, tokens_in};
 use kamchatka::{introspect, tools::Careful, tools::Limits, tools::Subject};
 use nachalnik::{
     Block, Config, Content, ContextItem, ContextKind, ContextState, Kernel, ToolCallId, Verdict,
@@ -360,6 +360,59 @@ async fn a_turn_read_back_shows_its_calls_among_its_blocks() {
     assert!(
         said.contains("reading both of them"),
         "and the text block beside it is still read: {said}"
+    );
+}
+
+/// A long context is listed as its most recent hundred rows, with the count of the rest and a range
+/// that lists them, and a class is capped the same way without changing what a change would take.
+#[tokio::test]
+async fn a_long_listing_shows_the_most_recent_rows_and_says_how_to_reach_the_rest() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "context", json!({ "action": "look" })),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "look", "select": "user" }),
+        ),
+    ]));
+
+    for at in 1..=150 {
+        kernel.push(ContextItem::user(format!("message {at}")));
+    }
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    let listed = |answer: &str, id: u64| {
+        answer
+            .lines()
+            .any(|line| line.split_whitespace().next() == Some(&id.to_string()))
+    };
+
+    // 150 messages and the turn that asked, so the oldest 51 are left out
+    let everything = &said[0];
+    assert!(everything.contains("151 items"), "{everything}");
+    assert!(
+        everything.contains("the 51 before them are not here: `select` a range such as `1-51`"),
+        "{everything}"
+    );
+    assert!(!listed(everything, 51), "{everything}");
+    assert!(listed(everything, 52), "{everything}");
+    assert!(listed(everything, 150), "{everything}");
+
+    let class = &said[1];
+    assert!(class.contains("matches 150 of"), "{class}");
+    // and not a range, since a range would list every item numbered in it, in the class or not
+    assert!(
+        class.contains(
+            "the 50 before them are not here: they are numbered 1 to 50, and a narrower class \
+             lists them"
+        ),
+        "{class}"
+    );
+    assert!(!listed(class, 50) && listed(class, 51), "{class}");
+    assert!(
+        class.contains("takes all 150 of them, listed here or not"),
+        "a change takes the whole class however much of it was listed: {class}"
     );
 }
 

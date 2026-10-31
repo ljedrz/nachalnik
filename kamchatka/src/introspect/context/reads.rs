@@ -79,8 +79,7 @@ pub(super) fn look(
          you set a state, because the endpoint will not take it, or because a call of yours has \
          no result yet\n\
          {} change(s) in the person's own undo stack, which is theirs; `undo` walks back what \
-         you did\n\n\
-         {HEAD}",
+         you did\n\n",
         items.len(),
         // what the projection carries, and the turn this call is in, which it will carry once
         // this call has an answer
@@ -100,11 +99,16 @@ pub(super) fn look(
         theirs,
     ));
 
-    for item in &items {
+    let shown = listed(&items);
+    out.push_str(&unlisted(&items, shown.len(), false));
+    out.push_str(HEAD);
+    for item in shown {
         out.push_str(&line(item, &going, &row(item, &going, own)));
     }
-    out.push_str(floor(&items));
-    out.push_str(gaps(&items));
+    // over the rows shown, as both are notes about the table: a `+` on a row not listed, or a
+    // number missing before the first one listed, is nothing the reader can see
+    out.push_str(floor(shown));
+    out.push_str(gaps(shown));
 
     // note: the second sentence is there because the columns are easy to misread. When asked what
     // it could free, a model names the turn holding the most of its own thinking and offers to
@@ -119,6 +123,59 @@ pub(super) fn look(
     );
 
     out
+}
+
+/// How many rows one `look` lists, with a selector or without one.
+///
+/// note: a cap, as `glob` has one, because the listing grows with the session and nothing else
+/// bounds it. A model that called `look` with 362 items in its context was handed 13,115 tokens of
+/// rows, of which an output limit let it see 8,471, and the next request grew by the same. The
+/// header still counts and prices every item, so a capped listing is true about the whole context
+/// and short only of the rows.
+///
+/// note: the most recent rather than the first, as `log` shows its most recent records. The items
+/// a model is deciding about are mostly the ones it has just been handed, and the oldest are the
+/// ones a range reaches in one selector: the line above the table names it.
+pub(super) const ROWS: usize = 100;
+
+/// The rows a listing shows: the last [`ROWS`] of them.
+fn listed(items: &[Arc<ContextItem>]) -> &[Arc<ContextItem>] {
+    &items[items.len().saturating_sub(ROWS)..]
+}
+
+/// The line above a listing that left rows out: how many, and what reaches them.
+///
+/// note: above the table rather than under it, because an output limit cuts from the end, and the
+/// line that says rows are missing is the one a model needs to see whole.
+///
+/// note: a range is offered for the whole context and not for a class. A range lists every item
+/// numbered in it, so the numbers of a class's earlier members can span many more items than the
+/// class has, and a range suggested from them would be cut in turn.
+fn unlisted(items: &[Arc<ContextItem>], shown: usize, class: bool) -> String {
+    let left = items.len() - shown;
+    if left == 0 {
+        return String::new();
+    }
+
+    let reach = match class {
+        true => format!(
+            "they are numbered {} to {}, and a narrower class lists them",
+            items[0].id,
+            items[left - 1].id,
+        ),
+        // the rows just before the ones shown, and no more of them than one listing holds, so the
+        // range it suggests is not cut in turn
+        false => format!(
+            "`select` a range such as `{}-{}` to list them",
+            items[left.saturating_sub(ROWS)].id,
+            items[left - 1].id,
+        ),
+    };
+
+    format!(
+        "showing the {shown} most recent, which is as many as this lists; the {left} before them \
+         are not here: {reach}\n\n"
+    )
 }
 
 /// The head of the table `look` lists items in, with a selector or without one.
@@ -240,8 +297,7 @@ pub(super) fn matched(
         "`{select}` matches {} of {} items · {} of them go into the next request\n\
          ~{} of the ~{} tokens in the context are those items, and ~{} more of what they hold is \
          not going into the request\n\
-         the next request is ~{}, of which ~{} is the tool definitions\n\n\
-         {HEAD}",
+         the next request is ~{}, of which ~{} is the tool definitions\n\n",
         picked.len(),
         items.len(),
         picked
@@ -255,24 +311,36 @@ pub(super) fn matched(
         thousands(budget.tool_tokens),
     ));
 
-    let mut refused = 0;
-    for item in &picked {
+    // the refusals are counted over every item the selector matched, listed or not, because the
+    // sentence under the table is about what a change would take, and a change takes all of them
+    let refused = picked
+        .iter()
+        .filter(|item| protected(item, mine, own).is_some())
+        .count();
+    let shown = listed(&carried);
+    out.push_str(&unlisted(&carried, shown.len(), true));
+    out.push_str(HEAD);
+    for item in shown {
         let mut said = row(item, &going, own);
         if let Some(why) = protected(item, mine, own) {
-            refused += 1;
             said.push_str(&format!(" · not yours to move: {why}"));
         }
         out.push_str(&line(item, &going, &said));
     }
 
-    out.push_str(floor(&carried));
+    out.push_str(floor(shown));
     out.push_str(&format!(
-        "\na change naming the same `select` takes these{}. Giving them up frees what they are \
+        "\na change naming the same `select` takes {}{}. Giving them up frees what they are \
          `sending` and none of what they are holding; `look` with `ids` reads any of them back in \
          full.\n",
-        match refused {
-            0 => String::new(),
-            n => format!(", less the {n} marked as not yours"),
+        match shown.len() == carried.len() {
+            true => "these".to_owned(),
+            false => format!("all {} of them, listed here or not", carried.len()),
+        },
+        match (refused, shown.len() == carried.len()) {
+            (0, _) => String::new(),
+            (n, true) => format!(", less the {n} marked as not yours"),
+            (n, false) => format!(", less the {n} of them not yours"),
         }
     ));
 

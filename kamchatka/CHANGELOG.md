@@ -131,6 +131,12 @@ minor bump may break you.
 
 ### changed
 
+- **`context` with `look` lists at most the 100 most recent items**, as `fs` with `glob` lists at
+  most 200 paths. The header still counts and prices every item, and a line above the table says
+  how many were left out and names a range that lists them. A long session's listing grew with
+  every item: one of 362 items was 13,115 tokens. A `select` is capped the same way, with the
+  numbers of the ones left out rather than a range, which would list items outside the class, and
+  the line under it says that a change naming it takes all of them, listed or not.
 - **A shell command reads only `/run/systemd/resolve` of `/run`, unless `shell-read` names more.**
   The rest holds the person's running session: the session bus, the compositor and the container
   daemon, any USB drive under `/run/media`, who is logged in. `/run/systemd/resolve` stays because
