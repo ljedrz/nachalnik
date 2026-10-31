@@ -536,12 +536,13 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   cargo loses its toolchain.
 - Run one crate at a time. `kamchatka` is the long one: most of its mutants are Unviable, since its
   return types mostly have no `Default`.
-- The runaway is `Sandbox::argv` replaced with `vec![]` or `vec![Default::default()]`. At start-up
-  `sandbox::available` probes the confinement by running the program with `argv("exit 0")`, and
-  with those arguments gone the child is a whole start-up of its own, which probes again. Under
+- The runaway was `Sandbox::argv` replaced with `vec![]` or `vec![Default::default()]`, when a
+  session still probed its confinement at start-up by running the program with `argv("exit 0")`:
+  with those arguments gone the child was a whole start-up of its own, which probed again. Under
   `mutants.sh` at `-j 1` the cap held it at about a thousand processes; under eight shards it
-  outgrew the guard (see "A mutant can start the program over and over" above), so
-  `.cargo/mutants.toml` no longer generates either. Before a run, read this section and the notes
+  outgrew the guard (see "A mutant can start the program over and over" above). The probe now runs
+  in-process, but the sandbox tests still run the program with `argv`, and with it emptied each of
+  them starts a session, so `.cargo/mutants.toml` still generates neither. Before a run, read this section and the notes
   above for every mutant they name, and check `mutants.toml` still excludes the dangerous ones.
 - **A diff's file name is not the mutant's.** cargo-mutants names diffs and logs by line and
   column, numbered within one run, so the first run's `..._line_568_col_27.diff` (`+` made `-`)

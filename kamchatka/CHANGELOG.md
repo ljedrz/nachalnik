@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### breaking
 
+- **`sandbox::SESSION_FLAG` is gone, and `--confine-and-run` takes no `--in-a-session`.** It
+  marked a command a session had confined by running this program again, which left signals to
+  the session's own layer. A session now runs its commands under sandlock from its own process, so
+  nothing wrote it, and `--confine-and-run` always scopes the command's signals to what it started.
+  `Sandbox::argv` no longer writes it, and `Sandbox::from_argv` no longer reads past it.
 - **`--sandbox-devices` is `--shell-devices`**, flag and settings-file key together, with no alias;
   the old name is refused until it is updated. `Args` and `Settings` have `shell_devices` in place
   of `sandbox_devices`. It sits beside the new `shell-read` (below), and the `shell-` in front says

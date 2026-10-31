@@ -3061,14 +3061,12 @@ async fn a_job_that_left_its_group_is_stopped_too() {
     );
 }
 
-/// A confinement run by hand may signal what it started and nothing else, and one of a session's
-/// leaves signals to the session's own layer.
+/// A confinement run by hand may signal what it started and nothing else.
 ///
 /// note: found live: `--confine-and-run` around a whole agent left signals unscoped, since the
 /// scope is put on by the session and there was none, and a mutated test inside it that took every
 /// process for one of its own stopped the person's desktop. The session's half - its commands
-/// signalling each other and nothing outside - is a test in `headless/program.rs`; this process
-/// holds no scope, so here the session's word is what lets the signal out.
+/// signalling each other and nothing outside - is a test in `headless/program.rs`.
 #[test]
 fn a_confinement_run_by_hand_signals_nothing_it_did_not_start() {
     if !enforced() {
@@ -3088,34 +3086,31 @@ fn a_confinement_run_by_hand_signals_nothing_it_did_not_start() {
         outside.id()
     );
     let confined = sandbox(common::workdir("by-hand"), true, Network::Open);
-    let said = |argv: Vec<std::ffi::OsString>| {
-        let child = common::command()
-            .args(argv)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .expect("the binary under test is built");
-        let output = child.wait_with_output().expect("it was spawned");
-        String::from_utf8_lossy(&output.stdout).into_owned()
-            + &String::from_utf8_lossy(&output.stderr)
-    };
-
-    let session = confined.argv(&cmd);
-    let by_hand: Vec<_> = session
-        .iter()
-        .filter(|word| *word != kamchatka::sandbox::SESSION_FLAG)
-        .cloned()
-        .collect();
-    assert_eq!(by_hand.len() + 1, session.len(), "{session:?}");
-    let by_hand = said(by_hand);
-    let session = said(session);
+    let output = common::command()
+        .args(confined.argv(&cmd))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built")
+        .wait_with_output()
+        .expect("it was spawned");
+    let said = String::from_utf8_lossy(&output.stdout).into_owned()
+        + &String::from_utf8_lossy(&output.stderr);
+    // and the process outside is there to be signalled from here, which is what makes a refusal
+    // inside the confinement the confinement's
+    let reachable = std::process::Command::new("kill")
+        .args(["-0", &outside.id().to_string()])
+        .status()
+        .is_ok_and(|status| status.success());
     outside.kill().expect("it is still there to kill");
     outside.wait().expect("and to reap");
 
-    assert!(by_hand.contains("own=reached"), "{by_hand}");
-    assert!(by_hand.contains("outside=refused"), "{by_hand}");
-    assert!(session.contains("own=reached"), "{session}");
-    assert!(session.contains("outside=reached"), "{session}");
+    assert!(
+        reachable,
+        "the process outside could not be signalled even from here"
+    );
+    assert!(said.contains("own=reached"), "{said}");
+    assert!(said.contains("outside=refused"), "{said}");
 }
 
 /// A signal scope the kernel takes is not reported as one it refused.
