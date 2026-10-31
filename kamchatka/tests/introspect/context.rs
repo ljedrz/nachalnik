@@ -363,6 +363,44 @@ async fn a_turn_read_back_shows_its_calls_among_its_blocks() {
     );
 }
 
+/// A turn that only asked for something reads back as the calls it made, and the items that
+/// answered them, rather than as an empty content line.
+#[tokio::test]
+async fn a_turn_read_back_shows_the_calls_it_kept_beside_its_text() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look", "ids": [1] }),
+    )]));
+
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![
+            call("r1", "fs", json!({ "action": "read", "path": "one.rs" })),
+            call("r2", "shell", json!({ "action": "run", "cmd": "ls" })),
+        ],
+    ));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId("r1".into()),
+        "fs",
+        "the first file",
+        false,
+    ));
+    kernel.push(ContextItem::user("go on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("--- 2 call(s) ---"), "{said}");
+    assert!(
+        said.contains(r#"fs({"action":"read","path":"one.rs"}) - answered in [2]"#),
+        "a call reads as the call it is, with the item that answered it: {said}"
+    );
+    assert!(
+        said.contains(r#"shell({"action":"run","cmd":"ls"}) - no result yet"#),
+        "and a call nothing answered says so: {said}"
+    );
+}
+
 #[tokio::test]
 async fn look_with_ids_reads_the_whole_item_and_its_reasoning() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
