@@ -171,6 +171,20 @@ async fn a_root_swapped_for_a_link_while_the_sandbox_is_built_grants_nothing() {
     assert!(!root.join("secret/planted.txt").exists());
 }
 
+/// A command's sandbox is not registered, so nothing else of the person's can find it by name.
+///
+/// note: a registered sandbox can be listed, have its policy read and be killed through an
+/// abstract socket this process binds, by any process of the same user; below Linux 6.12 that
+/// includes a job an earlier command left running.
+#[test]
+fn a_commands_sandbox_is_not_registered() {
+    let sandbox = sandbox(common::workdir("unregistered"), true, Network::Shut);
+    let (built, _) = sandbox.sandlock(None, None, false);
+    let built = built.build().expect("it builds");
+
+    assert!(!built.registration, "a command's sandbox is registered");
+}
+
 /// A command's temporary directory is removed once it is over, even where the command shut a
 /// directory in it, and a link it left there leads the removal nowhere.
 ///

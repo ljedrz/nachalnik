@@ -236,6 +236,13 @@ impl Sandbox {
     /// note: each protection that needs a newer Landlock than the kernel's is asked for where the
     /// kernel has it and gone without where it does not, and [`degraded`] says which. The ones that
     /// matter are said at startup by [`weaker_here`].
+    ///
+    /// note: not registered. A registered sandbox claims a name in a registry every process of the
+    /// person's shares, and is answered on an abstract socket bound here, outside the command's
+    /// confinement: anything of the person's could list the command, read its policy and kill it -
+    /// below Linux 6.12, where nothing scopes an abstract socket, a job an earlier command left
+    /// running among them. This program reaches its sandboxes through their `Controller`s and
+    /// never by name.
     pub fn sandlock(
         &self,
         scratch: Option<&Scratch>,
@@ -243,6 +250,7 @@ impl Sandbox {
         scope: bool,
     ) -> (SandboxBuilder, Rules) {
         let mut builder = sandlock_core::Sandbox::builder()
+            .registration(false)
             .cwd(&self.workdir)
             .allow_degraded(Protection::FsRefer)
             .allow_degraded(Protection::FsTruncate)
