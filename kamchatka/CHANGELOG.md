@@ -93,6 +93,12 @@ minor bump may break you.
   could write beside and leave a symlink at its name in between, and the command was granted
   wherever the symlink led. sandlock now takes the descriptor (sandlock#313), and the pin moves
   from 1f4dcbe to da288a5 for it.
+- **A command's sandbox is no longer registered where anything of yours can find it.** sandlock
+  claimed a name for each one in a registry every process of the user shares, and answered for it
+  on an abstract socket bound in `kamchatka`, outside the command's confinement, so any of your
+  processes could list a command, read its policy and kill it - below Linux 6.12, a job an
+  earlier command left running among them. Registration is now off (sandlock#333), and the pin
+  moves from da288a5 to 6f0ed51 for it. `sandlock ps` no longer shows `kamchatka`'s commands.
 - **A command's temporary directory is removed even when the command shut a directory in it.**
   A `chmod 000` on a directory inside left the whole temporary directory behind, with whatever was
   written to it. Each directory is opened up before it is emptied, relative to one already held
