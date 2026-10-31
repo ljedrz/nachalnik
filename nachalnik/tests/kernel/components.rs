@@ -780,3 +780,73 @@ async fn a_notice_is_recognised_by_all_of_what_it_is() {
         .count();
     assert_eq!(placed, 1, "a lookalike was taken for the notice");
 }
+
+/// A projector that counts how often it is asked.
+struct Counting(LinearProjector, std::sync::atomic::AtomicUsize);
+
+impl nachalnik::Projector for Counting {
+    fn project(&self, items: &[Arc<ContextItem>]) -> nachalnik::Projection {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.project(items)
+    }
+}
+
+/// A step whose compactor finds nothing to do projects the context once, for the compactor and
+/// the request alike, and one that compacts projects it again for what the compactor left.
+///
+/// note: each projection is linear in the context, and a step used to make one for the
+/// compactor's budget and another for the request, with nothing between them that could change
+/// the answer.
+#[tokio::test]
+async fn a_step_projects_the_context_once_unless_the_compactor_changed_it() {
+    let kernel = limited(2);
+    let counting = Arc::new(Counting(LinearProjector::default(), Default::default()));
+    kernel.set_projector(counting.clone());
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    let asked = || counting.1.swap(0, std::sync::atomic::Ordering::SeqCst);
+
+    kernel.push(ContextItem::user("go on"));
+    asked();
+    kernel.turn().await.unwrap();
+    assert_eq!(
+        asked(),
+        1,
+        "a step with nothing to compact projected more than once"
+    );
+
+    // and one the compactor takes from goes out without what it took: the request is built again
+    // after the compaction rather than sent on the projection the compactor was shown
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call("c1", "read", json!({ "path": "big.txt" }))],
+    ));
+    let big = kernel.push(ContextItem::tool_result(
+        "c1".into(),
+        "read",
+        "b".repeat(2_400),
+        false,
+    ));
+    kernel.push(ContextItem::user("and again"));
+    let mut events = kernel.subscribe();
+    kernel.turn().await.unwrap();
+    let events = drain(&mut events);
+    assert_eq!(
+        crate::common::count(&events, "context.compacted"),
+        1,
+        "the compactor took nothing, so this checks nothing"
+    );
+    let sent = events
+        .iter()
+        .find_map(|event| match event {
+            Event::ModelRequested { items, .. } => Some(items.clone()),
+            _ => None,
+        })
+        .expect("a request went out");
+    assert!(
+        !sent.contains(&big),
+        "the request went out on the projection from before the compaction: {sent:?}"
+    );
+}

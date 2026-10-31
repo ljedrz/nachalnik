@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     Kernel, State, StateChange, addition, arriving,
-    request::{projection_cost, tool_cost},
+    request::{Cost, projection_cost, tool_cost},
 };
 
 impl Kernel {
@@ -381,17 +381,19 @@ impl Kernel {
         // otherwise price the tools and context by two different counters
         let counter = self.counter();
         let tools = tool_cost(&self.tool_specs(), &*counter);
-        let limit = self.model_info().and_then(|i| i.context_limit);
-        let reported = self.last_response().and_then(|response| response.usage);
-
         let context = self.projected_with(&*counter).1;
 
+        self.budget_from(context, tools)
+    }
+
+    /// The [`Budget`] of a request whose two halves cost these.
+    pub(super) fn budget_from(&self, context: Cost, tools: Cost) -> Budget {
         Budget {
             context_tokens: context.tokens,
             uncounted: context.uncounted + tools.uncounted,
             tool_tokens: tools.tokens,
-            limit,
-            reported,
+            limit: self.model_info().and_then(|i| i.context_limit),
+            reported: self.last_response().and_then(|response| response.usage),
         }
     }
 
@@ -414,7 +416,7 @@ impl Kernel {
     /// [`Compactor`]: crate::Compactor
     pub fn preview_request(&self) -> Result<ModelRequest> {
         self.build_request(&*self.counter())
-            .map(|(request, _, _)| request)
+            .map(|built| built.request)
     }
 
     /// Renders the payload the provider would send for the next request, exactly as it would send
@@ -431,7 +433,7 @@ impl Kernel {
     /// [`Tool`]: crate::Tool
     pub fn preview_payload(&self) -> Result<Option<Value>> {
         let provider = self.provider().ok_or(Error::NoProvider)?;
-        let (request, _, _) = self.build_request(&*self.counter())?;
+        let request = self.build_request(&*self.counter())?.request;
 
         Ok(provider.render(&request))
     }
