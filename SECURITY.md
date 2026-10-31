@@ -130,6 +130,13 @@ What changes to this workspace must keep true about what is and isn't enforced.
   command's sandbox when `kamchatka` exits. Under `--no-sandbox`, stopping a call kills the
   command's process group, and a process that left it, or cleared its environment, keeps running
   after the session.
+- **Nothing else can find a command's sandbox by name.** sandlock registers each sandbox by
+  default, in a registry every process of the user shares, and answers requests for it on an
+  abstract socket bound in `kamchatka`'s own process, outside the command's confinement. Through it
+  any of the person's processes could list the command, read its policy and kill it - on kernels
+  below Linux 6.12, which don't scope abstract sockets, a job an earlier command left running
+  among them. `kamchatka` turns registration off: it reaches its sandboxes through the handles it
+  holds, so `sandlock ps` doesn't show them and `sandlock kill` can't name them.
 - **Restricting `open` isn't enough.** A command that can reach a unix socket can ask the process
   behind it to act on its behalf, outside the sandbox: the session bus, the compositor, a container
   daemon. A `connect` or `send` to a named unix socket goes through only where the command may

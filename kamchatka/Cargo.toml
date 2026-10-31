@@ -159,9 +159,9 @@ unicode-width = { version = "0.2", optional = true }
 # note: in a target table even though the crate only builds for Linux, so other targets reach the
 # `compile_error!` in `lib.rs`, which explains why, instead of failing inside these crates
 [target.'cfg(target_os = "linux")'.dependencies]
-sandlock-core = { git = "https://github.com/multikernel/sandlock", rev = "da288a54cd08e8b47ccd10b542676a9d5764cc6b", default-features = false }
+sandlock-core = { git = "https://github.com/multikernel/sandlock", rev = "6f0ed51316cd65db83203430473727ac1dc0d563", default-features = false }
 # errno and signal numbers. Already a dependency of `tokio` and `sandlock-core`
-libc = "0.2.187"
+libc = "0.2.191"
 # `openat2` with `RESOLVE_BENEATH`, which `std` lacks, so a path the file tools checked can't be
 # swapped for a symlink before it's opened. `process` for process groups and `pidfd`s, `thread` for
 # the `no_new_privs` the signal scope needs. Screen builds already have it through `crossterm`
