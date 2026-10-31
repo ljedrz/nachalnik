@@ -15,7 +15,7 @@ use sandlock_core::{
     policy_fn::{Permissions, PolicyFn, SyscallCategory, Verdict},
 };
 
-use super::{DEVICES, Network, SESSION_FLAG, SYSTEM, Sandbox, device, resolve};
+use super::{DEVICES, Network, SYSTEM, Sandbox, device, resolve};
 
 /// How much of a [`Sandbox`] the kernel agreed to.
 ///
@@ -220,7 +220,7 @@ impl Sandbox {
     /// A sandlock sandbox for this, around a command given `scratch` as its temporary directory.
     /// `policy` answers the network, where it is not open; `scope`
     /// asks for signals to be scoped to the command, which only a confinement with no session
-    /// above it wants - see [`SESSION_FLAG`].
+    /// above it wants - see [`run_if_asked`].
     ///
     /// note: `scratch` is this run's own directory, handed over as `TMPDIR`, not the whole of
     /// `/tmp`. A command that cannot write a temporary file will not run - a compiler or
@@ -698,10 +698,15 @@ pub fn available() -> Probed {
 /// note: what the command leaves running is stopped when it ends. The supervisor is this process,
 /// and a job outliving it would have its next held call refused by a kernel with nobody left to
 /// answer.
+///
+/// note: the command's signals are scoped to what it started, since nothing above it scopes them:
+/// a session's commands are under the layer [`scope_signals`] puts on the session, and this has
+/// none. Unscoped, `--confine-and-run` around a whole agent was a domain whose processes could
+/// signal everything the person had, and a test under it stopping what it took for its own
+/// left-over jobs stopped the desktop.
 pub fn run_if_asked() -> Option<i32> {
     let argv: Vec<OsString> = std::env::args_os().skip(1).collect();
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
-    let in_a_session = argv.get(1).is_some_and(|word| word == SESSION_FLAG);
 
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -731,7 +736,7 @@ pub fn run_if_asked() -> Option<i32> {
         env.push(("GIT_CONFIG_GLOBAL".to_owned(), global.display().to_string()));
     }
 
-    let (builder, rules) = sandbox.sandlock(scratch.as_ref(), None, !in_a_session);
+    let (builder, rules) = sandbox.sandlock(scratch.as_ref(), None, true);
     let cmd = cmd.to_string_lossy();
     let (builder, argv) = command(builder, env, &cmd);
     for line in rules.left_out() {

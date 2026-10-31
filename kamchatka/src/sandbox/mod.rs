@@ -40,7 +40,7 @@
 //! a command may signal this program and whatever it started, and nothing else. This program is
 //! inside that boundary; keeping it out would take a separate process to start each command from. A
 //! confinement run by hand, with no session above it, has no such layer and has sandlock scope its
-//! signals instead; see [`SESSION_FLAG`].
+//! signals instead; see [`run_if_asked`].
 //!
 //! note: a command is started by sandlock from this process: it forks, confines the child, and
 //! keeps a supervisor here for as long as anything the command started is alive.
@@ -70,16 +70,6 @@ pub use reach::{Access, Reach};
 
 /// The argument that puts this program into the mode that confines itself and runs a command.
 pub const EXEC_FLAG: &str = "--confine-and-run";
-
-/// The word after [`EXEC_FLAG`] that says the command is a session's, under the layer that scopes
-/// its signals - see [`scope_signals`] - so the confinement leaves signals to that layer.
-///
-/// note: without it the confinement scopes signals itself, because then nothing above does.
-/// `--confine-and-run` by hand, around a whole agent, was a domain whose processes could signal
-/// everything the person had: a test under it stopping what it took for its own left-over jobs
-/// stopped the desktop. A forged word buys nothing: inside a session the session's layer still
-/// binds, and outside one it takes the scope from nobody but the caller.
-pub const SESSION_FLAG: &str = "--in-a-session";
 
 /// What the `shell` tool may reach.
 ///
@@ -227,12 +217,11 @@ impl Sandbox {
         }
     }
 
-    /// The arguments that ask this program to confine `cmd` this way and run it, as one of a
-    /// session's commands; see [`SESSION_FLAG`].
+    /// The arguments that ask this program to confine `cmd` this way and run it: what
+    /// [`EXEC_FLAG`] takes after it.
     pub fn argv(&self, cmd: &str) -> Vec<OsString> {
         let mut argv = vec![
             OsString::from(EXEC_FLAG),
-            OsString::from(SESSION_FLAG),
             self.workdir.clone().into(),
             OsString::from(match self.workdir_writable {
                 true => "rw",
@@ -260,15 +249,11 @@ impl Sandbox {
     }
 
     /// Reads back what [`Sandbox::argv`] wrote, plus the command; `None` if this is not one.
-    ///
-    /// note: [`SESSION_FLAG`] is read past rather than required, so that the same arguments
-    /// without it - a confinement somebody runs by hand - read back as the same sandbox.
     pub fn from_argv(argv: &[OsString]) -> Option<(Self, OsString)> {
-        let mut argv = argv.iter().peekable();
+        let mut argv = argv.iter();
         if argv.next()? != EXEC_FLAG {
             return None;
         }
-        argv.next_if(|word| *word == SESSION_FLAG);
         let workdir = PathBuf::from(argv.next()?);
         let workdir_writable = argv.next()? == "rw";
         let network = Network::from_word(argv.next()?)?;
@@ -943,7 +928,7 @@ static SERVED: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 /// note: every sandbox still holding a process, not just the ones whose call is still going. A
 /// command's processes outlive the command in whatever it left running. One that has nothing
 /// left is dropped when the next command starts or a client arrives.
-static SESSIONS: Mutex<Vec<sandlock_core::Controller>> = Mutex::new(Vec::new());
+static SANDBOXES: Mutex<Vec<sandlock_core::Controller>> = Mutex::new(Vec::new());
 
 /// Closes `port` to every command confined from here on; see [`Sandbox::closed`].
 pub(crate) fn serving_on(port: u16) {
@@ -967,16 +952,16 @@ pub(crate) fn stopped_serving_on(port: u16) {
 /// process group its command made, and a session served nowhere never asks [`from_a_command`], so
 /// letting go only there kept two descriptors a command until the process ran out of them.
 pub(crate) fn began(sandbox: sandlock_core::Controller) {
-    let mut sessions = SESSIONS.lock().unwrap_or_else(PoisonError::into_inner);
-    live(&mut sessions);
-    sessions.push(sandbox);
+    let mut sandboxes = SANDBOXES.lock().unwrap_or_else(PoisonError::into_inner);
+    live(&mut sandboxes);
+    sandboxes.push(sandbox);
 }
 
-/// The process groups of every sandbox in `sessions` with something left in it; the others are
+/// The process groups of every sandbox in `sandboxes` with something left in it; the others are
 /// let go of.
-fn live(sessions: &mut Vec<sandlock_core::Controller>) -> Vec<i32> {
+fn live(sandboxes: &mut Vec<sandlock_core::Controller>) -> Vec<i32> {
     let mut live = Vec::new();
-    sessions.retain(|sandbox| match sandbox.process_groups() {
+    sandboxes.retain(|sandbox| match sandbox.process_groups() {
         Ok(groups) if !groups.is_empty() => {
             live.extend(groups);
             true
@@ -1005,7 +990,7 @@ fn live(sessions: &mut Vec<sandlock_core::Controller>) -> Vec<i32> {
 /// `remote::server::door` - so the socket is not how anything else comes from here while a command
 /// could be the one.
 pub(crate) fn from_a_command(pid: u32) -> bool {
-    let live = live(&mut SESSIONS.lock().unwrap_or_else(PoisonError::into_inner));
+    let live = live(&mut SANDBOXES.lock().unwrap_or_else(PoisonError::into_inner));
     if pid == std::process::id() {
         return !live.is_empty();
     }
