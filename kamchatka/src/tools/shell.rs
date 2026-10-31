@@ -1137,20 +1137,13 @@ impl Confined {
     /// Keeps the sandbox for as long as something the command started is running in it, so that
     /// a job left in the background is still answered, and ends it after.
     ///
-    /// note: looked at every second rather than waited on, since sandlock says when a group empties
-    /// only when asked. It is cheap: a read of each group the command made.
+    /// note: `join` waits for the shell and then for the session to have no process left, so the
+    /// `shutdown` after it has nothing to kill. A failed `join` still shuts down, as a sandbox
+    /// nothing is waiting on would otherwise be kept for good.
     fn keep(self) {
-        let Self {
-            mut sandbox,
-            controller,
-        } = self;
+        let Self { mut sandbox, .. } = self;
         tokio::spawn(async move {
-            while controller
-                .process_groups()
-                .is_ok_and(|groups| !groups.is_empty())
-            {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
+            let _ = sandbox.join().await;
             let _ = sandbox.shutdown().await;
         });
     }
