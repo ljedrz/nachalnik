@@ -130,12 +130,11 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   nothing live, or fetching the history on every attach, which the client avoids on purpose for
   somebody watching. Unblocked by choosing which.
 
-- **A step projects and prices the whole context more than once.** With a compactor installed,
-  `maybe_compact` asks for the budget, which projects every item and prices it, and
-  `build_request` then projects and prices the same items again. A step that compacts adds two
-  more projections, one before the plan and one after it, and a step that changes whether the
-  context is full adds another. Each is linear in the context, so a long session pays it a few
-  times per request. That is milliseconds against a request that takes seconds, which is why it has
-  not been done. Doing it means carrying one projection and its cost from the budget through the
-  compactor to the request, and making a fresh one only where something changed in between.
-  Worth doing together with the next change to `maybe_compact` or `build_request`.
+- **A step that compacts projects and prices the whole context four times.** A step with
+  nothing to compact now projects once, and its compactor is shown the cost of the request about
+  to go out. One that compacts builds that request, projects twice more in `apply_compaction` for
+  the report's before and after figures, and builds the request again; one that changes whether
+  the context is full adds a `budget` and, with a notice, a fit check. Unless the context
+  changed while the plan was awaited, the compaction's two figures are the costs of the requests
+  built either side of it, so two of those projections are redundant. Each is linear in the context and milliseconds against a
+  request, and a step compacts rarely, which is why it has not been done.

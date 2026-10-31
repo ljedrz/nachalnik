@@ -39,6 +39,11 @@ minor bump may break you.
 
 ### changed
 
+- **A step projects the context once where its compactor has nothing to do.** It projected and
+  priced the whole context twice, once for the compactor's `Budget` and once for the request, with
+  nothing between them that could change either. The request is now built first and the
+  compactor shown what it costs, and it is built again only after a compaction pass or a full
+  notice placed or retired. A `Projector` is asked half as often in an ordinary step.
 - **`LinearProjector::name` says `reasoning not sent back` where it said `no reasoning`.** The
   switch is `send_reasoning`: whether the reasoning of earlier turns goes back to the model in the
   next request. `no reasoning` read as a model that does not reason, and a model told its projector
