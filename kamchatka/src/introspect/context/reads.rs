@@ -512,6 +512,32 @@ fn full(
         "  --- content ---\n{}\n",
         sampled(&item.content.to_text(), whole)
     ));
+    // note: the calls too, and which items answered them. A turn kept in the kind's own slots
+    // holds its calls beside its text rather than in it, so without this a turn that only asked
+    // for something read back as an empty content line under a row that said `[1 call(s)]`. A
+    // model asked what one of those turns did read it again, three times over, and was shown the
+    // same nothing each time
+    let calls: Vec<&ToolCall> = item.calls().collect();
+    if !calls.is_empty() {
+        out.push_str(&format!("  --- {} call(s) ---\n", calls.len()));
+        for call in calls {
+            let results: Vec<String> = (items.iter())
+                .filter(|it| {
+                    matches!(&it.kind, ContextKind::ToolResult { call: answered, .. } if *answered == call.id)
+                })
+                .map(|it| it.id.to_string())
+                .collect();
+            out.push_str(&format!(
+                "  {}({}) - {}\n",
+                call.tool,
+                sampled(&call.args.to_string(), whole),
+                match results.is_empty() {
+                    true => "no result yet".to_owned(),
+                    false => format!("answered in [{}]", results.join(", ")),
+                }
+            ));
+        }
+    }
 
     out
 }
