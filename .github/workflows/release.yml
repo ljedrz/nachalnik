@@ -112,7 +112,7 @@ jobs:
       # other scanners can tell which crates a downloaded `kamchatka` contains. The action below
       # always runs plain `cargo build`, so a `cargo` wrapper earlier on `PATH` turns `build` into
       # `auditable build` and passes everything else through
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: cargo-auditable
       - name: every build through cargo-auditable
