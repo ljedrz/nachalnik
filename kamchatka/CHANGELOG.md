@@ -104,6 +104,11 @@ minor bump may break you.
   processes could list a command, read its policy and kill it - below Linux 6.12, a job an
   earlier command left running among them. Registration is now off (sandlock#333), and the pin
   moves from da288a5 to 6f0ed51 for it. `sandlock ps` no longer shows `kamchatka`'s commands.
+- **A unix socket named by a relative path is reached from a confined command.** A datagram to
+  one, on every kernel, and a connection, below Linux 7.1, are made by sandlock's supervisor in
+  `kamchatka`, which refused the path with `Connection refused` rather than follow it from the
+  command's directory. It now resolves it there (sandlock#314), still only where the command may
+  write, and the pin moves from 6f0ed51 to 95959ec for it.
 - **A command's temporary directory is removed even when the command shut a directory in it.**
   A `chmod 000` on a directory inside left the whole temporary directory behind, with whatever was
   written to it. Each directory is opened up before it is emptied, relative to one already held
@@ -199,8 +204,8 @@ minor bump may break you.
     kernels the old filter could not be installed on;
   - a unix socket can be reached only where a command may write, on every kernel rather than from
     Linux 7.1. From 7.1 the command connects to the socket itself. Below 7.1 `kamchatka` makes the
-    connection, so the other end sees `kamchatka`'s credentials, and a socket named by a relative
-    path is refused. A datagram sent to a named socket is sent from `kamchatka` on every kernel;
+    connection, so the other end sees `kamchatka`'s credentials. A datagram sent to a named socket
+    is sent from `kamchatka` on every kernel;
   - stopping a call stops everything the command started, a process that left with `setsid`
     included;
   - sockets of every family but unix, inet and netlink are refused;

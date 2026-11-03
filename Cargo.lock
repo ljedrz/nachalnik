@@ -2452,7 +2452,7 @@ dependencies = [
 [[package]]
 name = "sandlock-core"
 version = "0.9.0"
-source = "git+https://github.com/multikernel/sandlock?rev=6f0ed51316cd65db83203430473727ac1dc0d563#6f0ed51316cd65db83203430473727ac1dc0d563"
+source = "git+https://github.com/multikernel/sandlock?rev=95959ec788178ffd16b92ab992e4c3e82dc70d77#95959ec788178ffd16b92ab992e4c3e82dc70d77"
 dependencies = [
  "goblin",
  "landlock",

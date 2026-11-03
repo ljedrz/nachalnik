@@ -771,10 +771,9 @@ The same goes for `~/.nvm`, `~/.pyenv`, `~/.rbenv` and the rest. Both flags take
 list and can be repeated: `--sandbox-write /srv/repo,/tmp/work`.
 
 **Daemons you talk to over a socket need access too.** A sandboxed command can only connect to a
-unix socket where it could have created one, and only by its full path: a socket named relative to
-the command's directory is refused with `Connection refused`. The session bus, the compositor
-and container daemons all return `Permission denied` because each would run requests outside the
-sandbox. Allow the socket itself rather than its directory:
+unix socket where it could have created one. The session bus, the compositor and container daemons
+all return `Permission denied` because each would run requests outside the sandbox. Allow the
+socket itself rather than its directory:
 
 ```console
 $ kamchatka --sandbox-write /run/docker.sock -m …
