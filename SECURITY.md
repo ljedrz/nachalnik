@@ -146,13 +146,13 @@ What changes to this workspace must keep true about what is and isn't enforced.
   named socket on every kernel, because the network gate holds every send. The supervisor resolves
   the socket file as the command would see it, holds it, and connects or sends from `kamchatka`,
   so a symlink swapped in after the check leads nowhere. The process at the other end then sees
-  `kamchatka`'s credentials rather than the command's (see the served session below), and a socket
-  named by a relative path is refused, since the supervisor can't resolve it from the command's
-  directory. Abstract sockets have no path for that rule to check, and the X server listens on one
-  and accepts any of the user's processes, which means a connection that can type into the person's
-  terminal. Landlock can restrict abstract sockets from ABI 6 (Linux 6.12), and `kamchatka` uses
-  that where available: a command may only connect to abstract sockets created inside its own
-  sandbox. On older kernels, all of the user's abstract sockets are reachable.
+  `kamchatka`'s credentials rather than the command's (see the served session below). A socket
+  named by a relative path is resolved from the command's own working directory. Abstract sockets
+  have no path for that rule to check, and the X server listens on one and accepts any of the
+  user's processes, which means a connection that can type into the person's terminal. Landlock
+  can restrict abstract sockets from ABI 6 (Linux 6.12), and `kamchatka` uses that where
+  available: a command may only connect to abstract sockets created inside its own sandbox. On
+  older kernels, all of the user's abstract sockets are reachable.
   `sandbox::confines_abstract_sockets` reports which is the case.
 - **A sandboxed command can only signal processes in the session.** Landlock's signal restriction
   arrived together with the abstract socket one, but it isn't part of each command's own ruleset:

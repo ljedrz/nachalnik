@@ -15,7 +15,7 @@
 
 use std::{
     net::UdpSocket,
-    os::unix::net::UnixListener,
+    os::unix::net::{UnixDatagram, UnixListener},
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -1205,11 +1205,11 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     drop(listening);
 }
 
-/// A socket named relative to the command's directory is reached from Linux 7.1, where Landlock
-/// judges the `connect` and the command makes it, and refused below, where sandlock's supervisor
-/// makes it and cannot follow the path from this process's directory.
+/// A socket named relative to the command's directory is reached on every kernel: from Linux 7.1
+/// Landlock judges the `connect` and the command makes it, and below, sandlock's supervisor
+/// resolves the path from the command's own directory rather than this process's.
 #[test]
-fn a_socket_named_by_a_relative_path_is_reached_from_linux_7_1() {
+fn a_socket_named_by_a_relative_path_is_reached() {
     if !enforced() || !sockets() {
         return;
     }
@@ -1222,9 +1222,60 @@ fn a_socket_named_by_a_relative_path_is_reached_from_linux_7_1() {
         &connect_to(Path::new("s.sock")),
     );
 
-    let judged_by_landlock = sandlock_core::landlock_abi_version().is_ok_and(|abi| abi >= 9);
-    assert_eq!(ok, judged_by_landlock, "{said}");
+    assert!(ok, "{said}");
     drop(listening);
+}
+
+/// And so is a datagram sent to one, which sandlock's supervisor sends on every kernel, because
+/// the network gate holds every send.
+///
+/// note: the same path from a directory beside it, the one the command may not write, is refused,
+/// so the supervisor resolves from the command's directory and still holds what it finds to the
+/// rule.
+#[test]
+fn a_datagram_to_a_socket_named_by_a_relative_path_is_delivered() {
+    if !enforced() || !sockets() {
+        return;
+    }
+    let root = common::scratch("send-relative");
+    let (dir, beside) = (root.join("work"), root.join("beside"));
+    for made in [&dir, &beside] {
+        std::fs::create_dir_all(made).expect("a directory for the socket");
+    }
+    let listening =
+        UnixDatagram::bind(dir.join("d.sock")).expect("a socket in the working directory");
+    listening
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("a timeout on the socket");
+    let refused = UnixDatagram::bind(beside.join("d.sock")).expect("a socket beside it");
+    let send_to = |socket: &str| {
+        format!(
+            "python3 -c \"import socket; socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)\
+             .sendto(b'{socket}', '{socket}')\" 2>&1"
+        )
+    };
+
+    let (ok, said) = run(
+        &sandbox(dir.clone(), true, Network::Shut),
+        &send_to("d.sock"),
+    );
+
+    assert!(ok, "{said}");
+    let mut got = [0; 16];
+    let len = listening.recv(&mut got).expect("the datagram arrived");
+    assert_eq!(&got[..len], b"d.sock");
+
+    let (ok, said) = run(
+        &sandbox(dir, true, Network::Shut),
+        &send_to("../beside/d.sock"),
+    );
+
+    assert!(
+        !ok,
+        "a socket the command may not write was sent to: {said}"
+    );
+    assert!(said.contains("Permission denied"), "{said}");
+    drop(refused);
 }
 
 /// A socket the command may read the path of and not write is refused all the same: a
