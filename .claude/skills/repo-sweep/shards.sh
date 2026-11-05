@@ -28,6 +28,10 @@ cap=$(($(ps -u "$(id -u)" -L --no-headers | wc -l) + 20000))
 # allocate, the second reads the repository's `.gitignore` above its scratch directory
 skips=(a_restart_on_the_drawn_loop_lets_go_of_its_clients_too
     a_gitignore_is_obeyed_outside_a_repository_too)
+# and any the caller names, space-separated: those that fail unmutated under whatever confines the
+# run itself, such as a seccomp filter that refuses binding a socket
+read -r -a extra <<< "${SKIPS:-}"
+skips+=("${extra[@]}")
 skip_args=()
 for s in "${skips[@]}"; do skip_args+=(--skip "$s"); done
 pids=()
