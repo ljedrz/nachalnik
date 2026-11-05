@@ -3353,3 +3353,35 @@ fn a_sandbox_says_what_it_does_about_the_network() {
         assert!(said.ends_with(words), "{said}");
     }
 }
+
+/// A `shell-read` path inside one of the session's roots by way of a link is that root's, not a
+/// grant of its own: where a link in the root leads is not made readable by it.
+///
+/// note: a rule is put on what a path leads to when the sandbox is built, and a command may change
+/// a link in a writable root before the next one's sandbox is. Judged by its directory resolved,
+/// `link/x` is `work/x`, inside the working directory, and is given nothing; judged as written, it
+/// was given a rule of its own, on wherever `x` led, which was outside everything the session
+/// reaches.
+#[test]
+fn a_shell_read_path_inside_a_root_by_a_link_is_not_granted_on_its_own() {
+    if !enforced() {
+        return;
+    }
+    let base = common::scratch("shell-read-linked");
+    let work = base.join("work");
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&work).expect("the working directory");
+    std::fs::create_dir_all(&outside).expect("a directory outside it");
+    std::fs::write(outside.join("secret.txt"), "the secret\n").expect("a file outside");
+    std::os::unix::fs::symlink(&outside, work.join("x")).expect("a link in the working directory");
+    let link = base.join("link");
+    std::os::unix::fs::symlink(&work, &link).expect("a link to the working directory");
+
+    let mut confined = sandbox(work.clone(), true, Network::Shut);
+    confined.shell_readable.push(link.join("x"));
+    let (ok, said) = run(
+        &confined,
+        &format!("cat {}", outside.join("secret.txt").display()),
+    );
+    assert!(!ok && !said.contains("the secret"), "{said}");
+}
