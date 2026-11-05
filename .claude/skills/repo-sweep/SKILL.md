@@ -382,7 +382,10 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    before a build: count each one at a few minutes of the workspace's suite, divided by the shards.
 
    `shards.sh` runs cargo-mutants `--in-place`, one `--shard` in each of the worktrees
-   `$REPO/w1`..`wN` (kept out of `git status` by `.git/info/exclude`), under one `guard.py`. Not
+   `$WORKTREES/w1`..`wN` (`$REPO` by default, where `.git/info/exclude` keeps them out of
+   `git status`), under one `guard.py`. Set `WORKTREES` to a short directory outside the repository
+   wherever the session can write one: a mutant that climbs out of its test's directory then
+   reaches the worktrees and not the repository (see "A mutant can delete the repository"). Not
    `mutants.sh`'s copies: a copy is at `target/agents/mt/cargo-mutants-PKG-XXXXXX.tmp`, and
    kamchatka's served-session tests bind a unix socket under the copy's own target directory -
    118 bytes there, over the 107 a socket path may be - so they fail unmutated and every mutant
