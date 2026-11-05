@@ -3255,3 +3255,43 @@ fn a_confined_command_a_signal_ends_exits_with_128_and_the_signal() {
         assert_eq!(status.code(), Some(code), "SIG{signal}");
     }
 }
+
+/// What fits a confined command's start is counted as `execve` counts it: a string, its name and
+/// value with the `=` and the end, up to 32 pages exactly, and all of them with a pointer each up
+/// to a quarter of the stack's limit.
+///
+/// note: a command that does not fit is refused before sandlock forks, whose child would otherwise
+/// say so with exit 127. Counted short, a command the kernel refuses gets that 127; counted long, a
+/// command it would start is refused.
+#[test]
+fn what_fits_a_command_start_is_counted_to_the_byte() {
+    use kamchatka::sandbox::fits;
+
+    const ONE: usize = 32 * 4096;
+    let fits = |env: &[(String, String)], cmd: &str| fits(env, cmd).is_ok();
+    let var = |length: usize| vec![("K".to_owned(), "v".repeat(length))];
+
+    // one string: `K=` and the value and its end
+    assert!(fits(&var(ONE - 3), "true"), "a string of 32 pages exactly");
+    assert!(!fits(&var(ONE - 2), "true"), "a byte past them");
+    // the command, which is one string with its end
+    assert!(fits(&[], &"x".repeat(ONE - 1)));
+    assert!(!fits(&[], &"x".repeat(ONE)));
+    // a string longer than the rest of the arguments together, which fits
+    assert!(fits(&var(100_000), "true"));
+
+    // and all of them together
+    let room = match rustix::process::getrlimit(rustix::process::Resource::Stack).current {
+        Some(stack) => usize::try_from(stack / 4)
+            .unwrap_or(6 << 20)
+            .clamp(ONE, 6 << 20),
+        None => 6 << 20,
+    };
+    let many = |total: usize| -> Vec<(String, String)> {
+        (0..total / 100_000)
+            .map(|n| (format!("K{n}"), "v".repeat(100_000)))
+            .collect()
+    };
+    assert!(fits(&many(room / 2), "true"), "half the room, of {room}");
+    assert!(!fits(&many(room + ONE), "true"), "past the room, of {room}");
+}
