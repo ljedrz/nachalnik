@@ -1596,6 +1596,29 @@ async fn a_long_transcript_at_first_draws_only_what_is_on_its_screen() {
     );
 }
 
+/// A transcript scrolled back near its end and then widened is drawn, though what is below the
+/// view no longer fills it.
+///
+/// note: the view is held by a block and how far into it, counted at the old width. Widened, long
+/// paragraphs take a fraction of the rows, so the screen held that far into its block runs past
+/// the last one, and the blocks are drawn only while there are any.
+#[tokio::test]
+async fn a_transcript_scrolled_back_near_its_end_can_be_widened() {
+    let mut harness = Harness::new([]);
+    for n in 0..10 {
+        let paragraph = format!("paragraph {n} ") + &"words that wrap ".repeat(120);
+        harness.app.kernel.push(ContextItem::user(paragraph));
+    }
+    harness.drain();
+    harness.sized(40, 30);
+    harness.press(KeyCode::PageUp).await;
+    harness.sized(40, 30);
+    assert!(!harness.app.follow);
+
+    let screen = harness.sized(400, 30);
+    assert!(screen.contains("paragraph 9"), "{screen}");
+}
+
 /// A transcript that follows shows its last row on the first frame, however many blocks fill the
 /// screen.
 ///
