@@ -1655,6 +1655,45 @@ async fn a_tall_screen_scrolled_back_stays_put_through_a_resize() {
     assert_eq!(before, after, "the view moved in the resize");
 }
 
+/// A tall screen scrolled back to the start of a block near the end stays there when the window is
+/// widened.
+///
+/// note: the blocks on a held screen are drawn from its top block down to as far as the screen
+/// reaches, counted from where that block starts. Counted from nothing, as when the view starts
+/// exactly at a block, the screen's last blocks were left at their estimates - a fraction of a
+/// row each in a wider window - and the bottom came out above the view and pulled it up.
+#[tokio::test]
+async fn a_tall_screen_held_at_the_start_of_a_block_stays_there_when_widened() {
+    let mut harness = Harness::new([]);
+    for n in 0..80 {
+        let lines: String = (0..10).map(|line| format!("{n}.{line}\n")).collect();
+        harness.app.kernel.push(ContextItem::user(lines));
+    }
+    harness.drain();
+    for _ in 0..3 {
+        harness.sized(100, 600);
+    }
+    // six rows up from the bottom of 960 on a screen of 594 is row 360, where block 30 starts
+    for _ in 0..6 {
+        harness.press(KeyCode::Up).await;
+        harness.sized(100, 600);
+    }
+    assert_eq!((harness.app.rendered, harness.app.scroll), (960, 360));
+    let top = |screen: String| -> String {
+        screen
+            .lines()
+            .skip(1)
+            .map(|line| line.trim_matches(|c: char| !c.is_ascii_digit() && c != '.'))
+            .find(|line| !line.is_empty())
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let before = top(harness.sized(100, 600));
+
+    let after = top(harness.sized(400, 600));
+    assert_eq!(before, after, "the view moved in the resize");
+}
+
 /// A transcript scrolled back near its end and then widened is drawn, though what is below the
 /// view no longer fills it.
 ///
