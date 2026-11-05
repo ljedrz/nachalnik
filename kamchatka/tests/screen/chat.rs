@@ -1576,6 +1576,26 @@ async fn the_transcript_counts_every_row_once_it_has_drawn_them() {
     );
 }
 
+/// A long transcript's first frame draws the blocks on the screen and a few more rather than all of
+/// them, so a page up from it says the count of what is below rests on estimates.
+///
+/// note: drawing every block of a long session on every frame after a resize was what made the
+/// chat tab slow; how far up the blocks on a following screen are drawn is counted in rows.
+#[tokio::test]
+async fn a_long_transcript_at_first_draws_only_what_is_on_its_screen() {
+    let mut harness = long_session(120);
+    harness.sized(100, 30);
+    harness.press(KeyCode::PageUp).await;
+
+    let screen = harness.sized(100, 30);
+    assert!(
+        screen
+            .lines()
+            .any(|line| line.contains(" line(s) below") && line.contains('~')),
+        "the rest is still an estimate: {screen}"
+    );
+}
+
 /// A transcript that follows shows its last row on the first frame, however many blocks fill the
 /// screen.
 ///
