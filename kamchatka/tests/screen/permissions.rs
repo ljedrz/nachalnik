@@ -3337,6 +3337,13 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() 
         "{:?}",
         harness.app.together()
     );
+    // and nothing else: an action under one row alone needs nothing more than that row
+    assert_eq!(
+        harness.app.together().len(),
+        1,
+        "{:?}",
+        harness.app.together()
+    );
     let screen = harness.flat();
     assert!(
         !screen.contains("`context`'s `undo` and `redo` need"),
