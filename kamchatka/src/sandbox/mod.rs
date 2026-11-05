@@ -29,9 +29,9 @@
 //! which means the connection is made by this process, and the other end sees this process's
 //! credentials rather than the command's; see `from_a_command`. A datagram sent to a pathname
 //! socket is the supervisor's on every kernel, since the network gate holds every send, and so is
-//! sent from here. A path relative to the command's directory is refused wherever the supervisor
-//! is the one following it, since it cannot follow it from here. An abstract socket made outside
-//! the command's confinement is refused by Landlock's scope (Linux 6.12).
+//! sent from here. The supervisor follows a path relative to the command's directory from that
+//! directory, and holds it to the same grants. An abstract socket made outside the command's
+//! confinement is refused by Landlock's scope (Linux 6.12).
 //!
 //! note: signals have a scope of the same age, and it is not in a command's own ruleset: each
 //! command is confined in its own domain, so it would refuse a command stopping a server an
