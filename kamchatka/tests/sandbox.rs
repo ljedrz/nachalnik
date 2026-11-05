@@ -3334,3 +3334,22 @@ async fn a_path_given_to_shell_read_is_read_by_a_command() {
         .into_owned();
     assert!(said.contains("read from elsewhere"), "{said}");
 }
+
+/// What a sandbox says it lets a command reach ends with what it does about the network, in words.
+///
+/// note: said on its own as well as by the test of a shut gate, which needs a socket a confined
+/// session may not be able to bind.
+#[test]
+fn a_sandbox_says_what_it_does_about_the_network() {
+    for (network, words) in [
+        (Network::Open, "the network reachable"),
+        (Network::Shut, "no network"),
+        (
+            Network::Asked,
+            "the network only once the person you are working with allows it",
+        ),
+    ] {
+        let said = sandbox(PathBuf::from("/w"), true, network).to_string();
+        assert!(said.ends_with(words), "{said}");
+    }
+}
