@@ -92,23 +92,6 @@ minor bump may break you.
   once per call, and only for a file with more than one link while a rule other than `allow` is
   set. A name outside those directories isn't looked for, so a hard link somebody made inside them
   to a file outside them is still read under its inside name.
-- **A confined command is granted each root of the session by the directory `kamchatka` opened.**
-  Each was opened without following a symlink and then granted by its path, which sandlock opened
-  again in the command's process, so a job an earlier command left running could rename a root it
-  could write beside and leave a symlink at its name in between, and the command was granted
-  wherever the symlink led. sandlock now takes the descriptor (sandlock#313), and the pin moves
-  from 1f4dcbe to da288a5 for it.
-- **A command's sandbox is no longer registered where anything of yours can find it.** sandlock
-  claimed a name for each one in a registry every process of the user shares, and answered for it
-  on an abstract socket bound in `kamchatka`, outside the command's confinement, so any of your
-  processes could list a command, read its policy and kill it - below Linux 6.12, a job an
-  earlier command left running among them. Registration is now off (sandlock#333), and the pin
-  moves from da288a5 to 6f0ed51 for it. `sandlock ps` no longer shows `kamchatka`'s commands.
-- **A unix socket named by a relative path is reached from a confined command.** A datagram to
-  one, on every kernel, and a connection, below Linux 7.1, are made by sandlock's supervisor in
-  `kamchatka`, which refused the path with `Connection refused` rather than follow it from the
-  command's directory. It now resolves it there (sandlock#314), still only where the command may
-  write, and the pin moves from 6f0ed51 to 95959ec for it.
 - **A command's temporary directory is removed even when the command shut a directory in it.**
   A `chmod 000` on a directory inside left the whole temporary directory behind, with whatever was
   written to it. Each directory is opened up before it is emptied, relative to one already held
@@ -205,12 +188,16 @@ minor bump may break you.
   - a unix socket can be reached only where a command may write, on every kernel rather than from
     Linux 7.1. From 7.1 the command connects to the socket itself. Below 7.1 `kamchatka` makes the
     connection, so the other end sees `kamchatka`'s credentials. A datagram sent to a named socket
-    is sent from `kamchatka` on every kernel;
+    is sent from `kamchatka` on every kernel. A path relative to the command's directory is
+    followed from there either way;
   - stopping a call stops everything the command started, a process that left with `setsid`
     included;
   - sockets of every family but unix, inet and netlink are refused;
   - a confined shell is always `network gated` on the permissions tab: the sandbox and the gate
-    start together or not at all.
+    start together or not at all;
+  - a command's sandbox is not registered with sandlock, so `sandlock ps` does not list it, and no
+    other process of yours can find it there to read its rules or stop it.
+  `kamchatka` needs no sandlock installed: the sandbox is the `sandlock-core` crate, built in.
   `--confine-and-run` is still there for confining a command by hand. It passes on the caller's
   environment as it is, API keys included, as `bwrap` does; the `shell` tool still removes them.
 - **RUNNING.md says which commands are asked about by name** where the network cannot be gated
