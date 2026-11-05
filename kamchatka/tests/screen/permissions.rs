@@ -3295,6 +3295,65 @@ async fn a_domain_rule_names_actions_as_a_rule_about_one_operation_does() {
     assert_eq!(covers("exec"), "shell");
 }
 
+/// A tool whose actions need subjects in two domains: `look` reads files and `run` runs commands.
+struct Spanning;
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for Spanning {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("span", "reads files and runs commands")
+            .with_schema(json!({
+                "type": "object",
+                "properties": { "action": { "enum": ["look", "run"] } },
+            }))
+            .with_capabilities([Capability::fs("read"), Capability::exec("run")])
+    }
+
+    fn needs(&self, call: &nachalnik::ToolCall) -> Vec<Capability> {
+        match call.args["call"]["action"].as_str() {
+            Some("look") => vec![Capability::fs("read")],
+            Some("run") => vec![Capability::exec("run")],
+            _ => Vec::new(),
+        }
+    }
+
+    async fn invoke(
+        &self,
+        _: &nachalnik::ToolCall,
+        _: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        unreachable!("only offered")
+    }
+}
+
+/// A domain's row names the actions of a tool that need what it decides, and not the tool's
+/// others, which are another domain's.
+#[tokio::test]
+async fn a_domain_rule_names_only_the_actions_in_its_domain() {
+    let harness = Harness::new([]);
+    let tool: Arc<dyn nachalnik::Tool> = Arc::new(Spanning);
+    harness.app.policy.offers(&*tool);
+    harness.app.kernel.add_tool(tool);
+    for domain in ["fs", "exec"] {
+        harness
+            .app
+            .policy
+            .set(&Subject::parse(domain), Verdict::Allow);
+    }
+    let covers = |domain: &str| {
+        harness
+            .app
+            .permissions()
+            .into_iter()
+            .find(|row| row.subject == Subject::parse(domain))
+            .unwrap_or_else(|| panic!("`{domain}` is a row"))
+            .covers()
+    };
+
+    assert_eq!(covers("fs"), "span: look");
+    assert_eq!(covers("exec"), "span: run");
+}
+
 /// An action listed under several rows is said to need all of them, as `setup` says it to the
 /// model, but not on the tab, which leaves it to GUIDE.md.
 ///
