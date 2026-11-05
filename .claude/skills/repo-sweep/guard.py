@@ -5,7 +5,7 @@
 
 PID is the cargo-mutants process, or several separated by commas (the shards of one run), ROOT
 the directory its copies live under (mutants.sh's $MUTANTS/mt), or a prefix of the shards'
-worktrees (shards.sh's $REPO/w). A process belongs to the run when its executable, working directory or command
+worktrees (shards.sh's $WORKTREES/w). A process belongs to the run when its executable, working directory or command
 line is under ROOT. Every second:
 
 - a process of the run that init or the user's systemd has adopted, and that is older than

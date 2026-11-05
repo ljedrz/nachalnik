@@ -12,16 +12,25 @@
 # Why not mutants.sh's copies: cargo-mutants copies the tree to TMPDIR/cargo-mutants-PKG-XXXXXX.tmp,
 # and kamchatka's tests serve on unix sockets under the target directory, whose path has a hard
 # limit of 107 bytes. No copy anywhere in this repository is short enough, so those tests fail
-# unmutated and every mutant looks caught. A worktree at $REPO/wI is: the socket prefix is under
+# unmutated and every mutant looks caught. A worktree at $WORKTREES/wI is: the socket prefix is under
 # fifty bytes, the same as the repository's own.
 #
 # A worktree an earlier run was killed in may hold a mutation still; each is reset before use.
+#
+# WORKTREES says where the worktrees go, $REPO by default. Outside the repository is safer: a
+# mutant that escapes its test's directory and climbs, as one of `empty` once did, reaches the
+# worktrees' directory rather than the repository and its `.git`. It has to be writable by the
+# session and short, for the socket paths: `/home/<you>/w` is, a directory under `/tmp` may be a
+# tmpfs that four targets fill.
 set -u
 REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 MUTANTS=${MUTANTS:-$REPO/target/agents}
+WORKTREES=${WORKTREES:-$REPO}
 out=$1 n=$2; shift 2
-mkdir -p "$MUTANTS/mt" "$MUTANTS/out"
-grep -qxF '/w[0-9]*/' "$REPO/.git/info/exclude" 2> /dev/null || echo '/w[0-9]*/' >> "$REPO/.git/info/exclude"
+mkdir -p "$MUTANTS/mt" "$MUTANTS/out" "$WORKTREES"
+if [ "$WORKTREES" = "$REPO" ]; then
+    grep -qxF '/w[0-9]*/' "$REPO/.git/info/exclude" 2> /dev/null || echo '/w[0-9]*/' >> "$REPO/.git/info/exclude"
+fi
 # see mutants.sh: the cap binds this subtree only once the user's total reaches it
 cap=$(($(ps -u "$(id -u)" -L --no-headers | wc -l) + 20000))
 # these two fail unmutated in a worktree here: the first wants a pty this machine will not
@@ -36,7 +45,7 @@ skip_args=()
 for s in "${skips[@]}"; do skip_args+=(--skip "$s"); done
 pids=()
 for i in $(seq 1 "$n"); do
-    wt=$REPO/w$i
+    wt=$WORKTREES/w$i
     [ -e "$wt" ] || git -C "$REPO" worktree add --detach "$wt" HEAD > /dev/null || exit 1
     git -C "$wt" checkout --detach -q -f "$(git -C "$REPO" rev-parse HEAD)"
     git -C "$wt" reset -q --hard
@@ -57,13 +66,13 @@ for i in $(seq 1 "$n"); do
     pids+=($!)
 done
 # see mutants.sh and guard.py
-python3 "$(dirname "$0")/guard.py" "$(IFS=,; echo "${pids[*]}")" "$REPO/w" "$MUTANTS/out/$out.guard" \
+python3 "$(dirname "$0")/guard.py" "$(IFS=,; echo "${pids[*]}")" "$WORKTREES/w" "$MUTANTS/out/$out.guard" \
     --min-avail-gib "${MIN_AVAIL_GIB:-10}" --max-procs "${MAX_PROCS:-4000}" \
     --max-rss-gib "${MAX_RSS_GIB:-8}" &
 guard=$!
 for p in "${pids[@]}"; do wait "$p"; done
 wait "$guard" || echo "guard.py killed the run: see $MUTANTS/out/$out.guard" >&2
 for i in $(seq 1 "$n"); do
-    git -C "$REPO/w$i" reset -q --hard
+    git -C "$WORKTREES/w$i" reset -q --hard
     echo "shard $i: $(python3 "$(dirname "$0")/tainted.py" "$MUTANTS/out/$out-$i" 2>&1 | tail -1)"
 done
