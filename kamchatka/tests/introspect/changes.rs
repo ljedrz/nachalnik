@@ -2460,6 +2460,11 @@ async fn a_kind_written_after_all_is_told_the_selector_for_it() {
             "context",
             json!({ "action": "look", "select": "assistant_messages" }),
         ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "look", "select": "all:user_messages" }),
+        ),
     ]));
 
     kernel.push(ContextItem::user("go"));
@@ -2475,6 +2480,7 @@ async fn a_kind_written_after_all_is_told_the_selector_for_it() {
     assert!(said[0].contains("`kind:assistant_message`"), "{}", said[0]);
     assert!(said[1].contains("`kind:reference`"), "{}", said[1]);
     assert!(said[2].contains("`kind:assistant_message`"), "{}", said[2]);
+    assert!(said[3].contains("`kind:user_message`"), "{}", said[3]);
 }
 
 /// An `action` that is not a string is refused as what it is, not as missing.
