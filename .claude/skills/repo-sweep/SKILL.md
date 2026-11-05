@@ -528,6 +528,25 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   the guard now freezes the run, kills the process groups cargo-mutants made under it as well as
   what is under ROOT, and sweeps until nothing is left. After an EMERGENCY in a `.guard` log,
   count what is still there (`pgrep -fc '^/home/.*/w[0-9]+/target/'`) before anything else.
+- **A mutant can delete the repository.** `empty` in `sandbox/confinement.rs`, which empties a
+  command's temporary directory, with `||` made `&&` in its skip of `.` and `..`, climbed from a
+  test's directory in `w2` up into the repository: it opened up each directory to `0700` and
+  unlinked every file in the root, in each directory at the top and in `.git` - `HEAD`, `config`,
+  the index and `packed-refs` - and stopped only where the session running the sweep could not
+  write. The worktrees are inside the repository, so whatever a test escapes into is the
+  repository. `.cargo/mutants.toml` excludes that skip's mutants now, but other code that removes
+  files can do the same, so **before every run, bundle every ref outside the repository**:
+  ```sh
+  git bundle create $TMPDIR/nachalnik-all.bundle --all && cp .git/config .git/HEAD $TMPDIR/
+  ```
+  A run whose later mutants all fail to build in under a second, with `could not find
+  Cargo.toml` in their logs, took the tree down: stop, look at the root, and find the mutant that
+  was in flight in each shard - the one before the first such log in `outcomes.json`'s order, not
+  the log with the latest time, which for a mutant whose test hangs is when its test started.
+  Without the bundle, the files come back from `git checkout`, the branches from their reflogs
+  and annotated tags from `git fsck --dangling`; anything untracked at those levels does not. A
+  narrower sandlock around each shard, writing only its worktree, would hold it, but under it 144
+  of `kamchatka`'s tests fail on refused sockets and binds.
 - Mutated `kamchatka --headless` binaries ignore SIGTERM and outlive the run. Look for processes
   under `target/agents/mt/cargo-mutants-*` afterwards and SIGKILL them by pid.
 - The sessions' network gate refuses loopback, so they cannot run a test that serves anything,
