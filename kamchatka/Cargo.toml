@@ -159,7 +159,7 @@ unicode-width = { version = "0.2", optional = true }
 # note: in a target table even though the crate only builds for Linux, so other targets reach the
 # `compile_error!` in `lib.rs`, which explains why, instead of failing inside these crates
 [target.'cfg(target_os = "linux")'.dependencies]
-sandlock-core = { git = "https://github.com/multikernel/sandlock", rev = "95959ec788178ffd16b92ab992e4c3e82dc70d77", default-features = false }
+sandlock-core = { version = "0.9.1", default-features = false }
 # errno and signal numbers. Already a dependency of `tokio` and `sandlock-core`
 libc = "0.2.191"
 # `openat2` with `RESOLVE_BENEATH`, which `std` lacks, so a path the file tools checked can't be
