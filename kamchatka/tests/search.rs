@@ -306,6 +306,34 @@ async fn a_hard_link_to_a_file_a_rule_covers_is_refused_under_its_other_name() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A walk counts a hard link to a refused file as refused, beside the file itself.
+#[tokio::test]
+async fn a_walk_counts_a_hard_link_to_a_refused_file_as_refused() {
+    use kamchatka::tools::Subject;
+    use nachalnik::Verdict;
+
+    let dir = tree("hard-link-refused-walk");
+    put(&dir, "secret/plan.txt", "Kernel of a plan\n");
+    std::fs::hard_link(dir.join("secret/plan.txt"), dir.join("plan.txt")).expect("a hard link");
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Path("secret/".to_owned()), Verdict::Deny);
+
+    let walked = ask_under(
+        &dir,
+        policy,
+        "grep",
+        json!({ "pattern": "Kernel of a plan" }),
+    )
+    .await;
+    assert!(!walked.contains("plan.txt:1:"), "{walked}");
+    assert!(
+        walked.contains("skipped: 2 file(s) a path rule refuses"),
+        "{walked}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A file with two names neither of which a rule covers is read as any other.
 #[tokio::test]
 async fn a_hard_link_no_rule_covers_is_read_as_any_other() {
@@ -347,6 +375,11 @@ async fn a_hard_link_whose_other_names_are_not_all_found_is_refused_as_unchecked
 
     let found = ask(&dir, "read", json!({ "path": "also.md" })).await;
     assert!(found.contains("nothing to see"), "{found}");
+    let searched = ask(&dir, "grep", json!({ "pattern": "Kernel", "path": "src" })).await;
+    assert!(
+        searched.contains("src/kernel.rs:1:pub struct Kernel;"),
+        "a file of one name is searched: {searched}"
+    );
     let single = ask(&dir, "read", json!({ "path": "src/kernel.rs" })).await;
     assert!(
         single.contains("pub struct Kernel"),
