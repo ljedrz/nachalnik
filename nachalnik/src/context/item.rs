@@ -588,6 +588,11 @@ mod tests {
         }
         assert_eq!(pushed, ids);
         assert!(ContextIds::new().is_empty());
+        assert!(!ids.is_empty());
+
+        // and from a list, borrowed or owned
+        assert_eq!(ContextIds::from(&written[..]), ids);
+        assert_eq!(ContextIds::from(written.to_vec()), ids);
     }
 
     /// The identifiers are written as their runs, a run of one as the identifier, and read from
