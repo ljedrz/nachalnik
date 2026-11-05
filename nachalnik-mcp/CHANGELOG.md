@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- Requires `nachalnik` 0.11, which is released beside it. Nothing here uses what changed in it,
+  but `Server::tools` hands out the runtime's `Tool`, so this release cannot be mixed with a
+  0.10-series runtime.
+
 ## [0.11.0] - 2026-10-21
 
 ### changed
