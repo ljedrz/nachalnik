@@ -1596,6 +1596,30 @@ async fn a_long_transcript_at_first_draws_only_what_is_on_its_screen() {
     );
 }
 
+/// `ctrl+home` after a resize shows the first row of the conversation, however the rows above the
+/// view were estimated.
+///
+/// note: the view is held by the block the last frame showed, and a key's move counted from
+/// there; a move to the top counted that way is off by every estimate between the top and that
+/// block. `scroll` at zero is the top whatever moved it there.
+#[tokio::test]
+async fn ctrl_home_after_a_resize_is_the_top() {
+    let mut harness = long_session(120);
+    for _ in 0..40 {
+        harness.sized(100, 30);
+    }
+    for _ in 0..30 {
+        harness.press(KeyCode::PageUp).await;
+        harness.sized(100, 30);
+    }
+
+    // on the frame that is the first at the new width, where every height above is scaled
+    harness.chord(KeyCode::Home).await;
+    let screen = harness.sized(80, 30);
+    let first = screen.lines().nth(1).unwrap_or_default();
+    assert!(first.contains("question 0:"), "{screen}");
+}
+
 /// A tall screen scrolled back stays where it is through a resize, though more blocks are on it
 /// than a frame measures beyond it.
 ///
