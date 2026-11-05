@@ -174,6 +174,10 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.11, `nachalnik-mcp` 0.12 and `nachalnik-providers` 0.11. The runtime's
+  `ContextIds` is how a request's items are held and logged, `Tool::malformed` is how a call the
+  tools cannot run is refused before anybody is asked, and `Selector::Range` is the range a
+  selector names; the bridge and the providers are the ones released beside it.
 - **`context` with `look` lists at most the 100 most recent items**, as `fs` with `glob` lists at
   most 200 paths. The header still counts and prices every item, and a line above the table says
   how many were left out and names a range that lists them. A long session's listing grew with
