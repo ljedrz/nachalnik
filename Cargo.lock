@@ -2451,8 +2451,9 @@ dependencies = [
 
 [[package]]
 name = "sandlock-core"
-version = "0.9.0"
-source = "git+https://github.com/multikernel/sandlock?rev=95959ec788178ffd16b92ab992e4c3e82dc70d77#95959ec788178ffd16b92ab992e4c3e82dc70d77"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1b7d871706854b81e2459ac7712b287e51ccd9a76d297bc8a72d634a4c8aac9"
 dependencies = [
  "goblin",
  "landlock",
