@@ -534,8 +534,11 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   unlinked every file in the root, in each directory at the top and in `.git` - `HEAD`, `config`,
   the index and `packed-refs` - and stopped only where the session running the sweep could not
   write. The worktrees are inside the repository, so whatever a test escapes into is the
-  repository. `.cargo/mutants.toml` excludes that skip's mutants now, but other code that removes
-  files can do the same, so **before every run, bundle every ref outside the repository**:
+  repository. `empty` now also refuses a directory that is the one it is emptying or the one above
+  it, by device and inode, so no one change gets past both checks, and the skip's mutants are
+  caught by `a_temporary_directory_the_command_shut_is_removed_all_the_same` instead; the guard's
+  own mutants survive, since the name check holds without it, and are equivalent. Other code that
+  removes files can still climb, so **before every run, bundle every ref outside the repository**:
   ```sh
   git bundle create $TMPDIR/nachalnik-all.bundle --all && cp .git/config .git/HEAD $TMPDIR/
   ```
