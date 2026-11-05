@@ -3698,6 +3698,37 @@ async fn the_policy_is_a_page_and_not_only_a_tab() {
     assert!(!run.names().contains(&"model.requested".to_owned()));
 }
 
+/// And under the rows, what the tab leaves to the guide: an action listed under several of them
+/// needs all of them.
+#[tokio::test]
+async fn the_policy_page_says_which_actions_need_several_rows() {
+    let run = run("/permissions\n", vec![], |app| {
+        // kept for the whole run, which the closure does not outlive
+        std::mem::forget(kamchatka::introspect::install(
+            &app.kernel,
+            app.policy.clone(),
+            kamchatka::tools::Limits::default(),
+            kamchatka::tools::Layout::Wrapped,
+        ));
+        for spec in app.kernel.tool_specs() {
+            if let Some(tool) = app.kernel.tool(&spec.id) {
+                app.policy.offers(&*tool);
+            }
+        }
+        app.policy.set(&Subject::parse("context"), Verdict::Allow);
+        app.policy
+            .set(&Subject::parse("context:revise"), Verdict::Deny);
+    })
+    .await;
+
+    assert!(
+        run.prose
+            .contains("`context`'s `undo` and `redo` need all of"),
+        "{}",
+        run.prose
+    );
+}
+
 /// A policy with nothing decided says so, rather than printing a table of nobody's answers.
 ///
 /// note: the tab does not list a row for a subject nobody has answered about, and a page that did
