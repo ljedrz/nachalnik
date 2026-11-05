@@ -14,6 +14,14 @@ minor bump may break you.
   the session's own layer. A session now runs its commands under sandlock from its own process, so
   nothing wrote it, and `--confine-and-run` always scopes the command's signals to what it started.
   `Sandbox::argv` no longer writes it, and `Sandbox::from_argv` no longer reads past it.
+- **The `gate` module is gone, and so are `Network::NoTcp`, `Shell::confiner`, and `sandbox`'s
+  `confine`, `confine_saying`, `confines_tcp`, `confines_unix_sockets` and `scratch_for`.** They
+  confined a command by running this program again, under a Landlock ruleset and a network filter
+  of its own. Sandlock does both now, from the session's own process (`changed`, below):
+  `Sandbox::sandlock` builds a command's sandbox, `sandbox::command` the command run in it, and
+  `scratch_path` and `make_scratch` its temporary directory. A network the sandbox refuses is
+  `Shut` on every kernel it starts on, so nothing is left that refuses TCP alone.
+  `sandbox::available` takes no program, since it runs nothing but `true`.
 - **`--sandbox-devices` is `--shell-devices`**, flag and settings-file key together, with no alias;
   the old name is refused until it is updated. `Args` and `Settings` have `shell_devices` in place
   of `sandbox_devices`. It sits beside the new `shell-read` (below), and the `shell-` in front says
