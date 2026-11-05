@@ -1192,6 +1192,7 @@ mod tests {
         for root in [
             "http://127.0.0.1:11434",
             "http://localhost:11434",
+            "http://ollama.localhost:11434",
             "http://[::1]:11434",
             "http://192.168.1.36:11434",
             "http://10.0.0.2",
