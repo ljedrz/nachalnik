@@ -3235,3 +3235,23 @@ fn a_command_holds_no_descriptor_on_its_own_temporary_directory() {
         "the command holds its temporary directory: {said}"
     );
 }
+
+/// A confined command a signal ends leaves `--confine-and-run` with what a shell would say of it:
+/// 128 and the signal's number.
+///
+/// note: a script running a command this way reads its status as it would the command's own, so
+/// a command killed has to read as killed, and by what.
+#[test]
+fn a_confined_command_a_signal_ends_exits_with_128_and_the_signal() {
+    let dir = common::scratch("confined-signalled");
+    for (signal, code) in [("TERM", 143), ("KILL", 137)] {
+        let status = common::command()
+            .args(sandbox(dir.clone(), true, Network::Open).argv(&format!("kill -{signal} $$")))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("the binary under test is built");
+        assert_eq!(status.code(), Some(code), "SIG{signal}");
+    }
+}
