@@ -348,7 +348,10 @@ async fn a_hard_link_whose_other_names_are_not_all_found_is_refused_as_unchecked
     let found = ask(&dir, "read", json!({ "path": "also.md" })).await;
     assert!(found.contains("nothing to see"), "{found}");
     let single = ask(&dir, "read", json!({ "path": "src/kernel.rs" })).await;
-    assert!(single.contains("pub struct Kernel"), "a file of one name: {single}");
+    assert!(
+        single.contains("pub struct Kernel"),
+        "a file of one name: {single}"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&elsewhere);
