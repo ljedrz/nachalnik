@@ -1150,6 +1150,101 @@ fn program(segment: &str) -> Option<&str> {
 mod tests {
     use super::*;
 
+    /// A tool of several actions, each needing the subjects given for it.
+    struct Acting {
+        id: &'static str,
+        actions: Vec<(&'static str, Vec<&'static str>)>,
+    }
+
+    #[nachalnik::async_trait]
+    impl nachalnik::Tool for Acting {
+        fn spec(&self) -> nachalnik::ToolSpec {
+            let names: Vec<&str> = self.actions.iter().map(|(name, _)| *name).collect();
+            nachalnik::ToolSpec::new(self.id, "a tool of several actions")
+                .with_schema(serde_json::json!({
+                    "type": "object",
+                    "properties": { "action": { "enum": names } },
+                }))
+                // each once, as a tool declares them
+                .with_capabilities(
+                    self.actions
+                        .iter()
+                        .flat_map(|(_, needs)| needs.iter())
+                        .map(|it| Capability::parse(it).unwrap())
+                        .collect::<std::collections::BTreeSet<_>>(),
+                )
+        }
+
+        fn needs(&self, call: &nachalnik::ToolCall) -> Vec<Capability> {
+            let action = call.args[super::super::ops::WRAPPER]["action"].as_str();
+            self.actions
+                .iter()
+                .filter(|(name, _)| Some(*name) == action)
+                .flat_map(|(_, needs)| needs.iter().map(|it| Capability::parse(it).unwrap()))
+                .collect()
+        }
+
+        async fn invoke(
+            &self,
+            _: &nachalnik::ToolCall,
+            _: nachalnik::OutputSink,
+        ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+            unreachable!("only offered")
+        }
+    }
+
+    /// Actions under the same two rows or more are said together, a tool at a time and a set of
+    /// rows at a time; an action under one row is under nothing else.
+    #[test]
+    fn actions_under_the_same_rows_are_said_together() {
+        let policy = Careful::new();
+        let tools = [
+            Acting {
+                id: "t",
+                actions: vec![
+                    ("a", vec!["fs:read", "fs:write"]),
+                    ("b", vec!["fs:read", "fs:write"]),
+                    ("c", vec!["fs:read"]),
+                    ("d", vec!["fs:read", "exec:run"]),
+                ],
+            },
+            Acting {
+                id: "u",
+                actions: vec![("e", vec!["fs:read", "fs:write"]), ("f", vec!["fs:read"])],
+            },
+        ];
+        for tool in &tools {
+            policy.offers(tool);
+        }
+        let specs: Vec<nachalnik::ToolSpec> = tools.iter().map(nachalnik::Tool::spec).collect();
+
+        let said: Vec<(String, Vec<String>, Vec<String>)> = policy
+            .needed_together(&specs)
+            .into_iter()
+            .map(|it| {
+                let needed = it.needed.iter().map(ToString::to_string).collect();
+                (it.tool, it.actions, needed)
+            })
+            .collect();
+        let both = |a: &str, b: &str| vec![a.to_owned(), b.to_owned()];
+        assert_eq!(
+            said,
+            [
+                ("t".to_owned(), both("a", "b"), both("fs:read", "fs:write")),
+                (
+                    "t".to_owned(),
+                    vec!["d".to_owned()],
+                    both("fs:read", "exec:run")
+                ),
+                (
+                    "u".to_owned(),
+                    vec!["e".to_owned()],
+                    both("fs:read", "fs:write")
+                ),
+            ]
+        );
+    }
+
     /// One action "needs" all of them, several "need" them.
     #[test]
     fn one_action_needs_them_and_several_need_them() {
