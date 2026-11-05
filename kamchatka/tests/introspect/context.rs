@@ -1181,6 +1181,33 @@ async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
     );
 }
 
+/// An earlier turn the projector leaves out is said to be left out for its reason, not as the
+/// turn the model is in.
+#[tokio::test]
+async fn look_says_why_an_earlier_turn_is_not_going() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+
+    kernel.push(ContextItem::user("run it"));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call("c0", "shell", json!({ "cmd": "true" }))],
+    ));
+    kernel.push(ContextItem::user("and now look"));
+    kernel.turn().await.expect("the turn ran");
+
+    let listing = &answers_from(&kernel, &["context"])[0];
+    let row = listing
+        .lines()
+        .find(|line| line.starts_with("2 ") || line.trim_start().starts_with("2 "))
+        .unwrap_or_else(|| panic!("item 2 is listed: {listing}"));
+    assert!(row.contains("· not going: "), "{row}");
+    assert!(!row.contains("the turn you are in"), "{row}");
+}
+
 /// And `look` reports both figures, because one of them is always the wrong answer to something.
 #[tokio::test]
 async fn look_says_what_each_item_sends_and_what_it_is_holding_out() {
