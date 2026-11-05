@@ -21,15 +21,18 @@ minor bump may break you.
   `Sandbox::sandlock` builds a command's sandbox, `sandbox::command` the command run in it, and
   `scratch_path` and `make_scratch` its temporary directory. A network the sandbox refuses is
   `Shut` on every kernel it starts on, so nothing is left that refuses TCP alone.
-  `sandbox::available` takes no program, since it runs nothing but `true`.
+  `sandbox::available` takes no program, since it runs nothing but `true`. `Shell` has a
+  `confined` field where `confiner` was, so code that builds one must set it: `true` where
+  `sandbox::available` said a sandbox starts.
 - **`--sandbox-devices` is `--shell-devices`**, flag and settings-file key together, with no alias;
   the old name is refused until it is updated. `Args` and `Settings` have `shell_devices` in place
   of `sandbox_devices`. It sits beside the new `shell-read` (below), and the `shell-` in front says
   that only `shell` uses the list.
 - **`Sandbox`, `Shell`, `Reach` and `Setup` have a `shell_readable` field**, the `shell-read`
   paths, so code that builds one must set it: `sandbox::SYSTEM` for what `shell` read before, with
-  `/run` narrowed to `/run/systemd/resolve`. `--confine-and-run` takes the list after the `--sandbox-read` paths, as a count and the
-  paths, so a script that spelled its arguments out needs one more list.
+  `/run` narrowed to `/run/systemd/resolve`. `--confine-and-run` takes the list after the
+  `--sandbox-read` paths, as a count and the paths, so a script that spelled its arguments out
+  needs one more list.
 - **`App::widened` is gone.** It said why a question was about everything a tool does, for a call
   that named no operation. Such a call to this program's tools is now refused before anybody is
   asked, so there is no question for it to explain.
