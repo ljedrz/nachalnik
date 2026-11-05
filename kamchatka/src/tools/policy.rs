@@ -1145,3 +1145,33 @@ fn program(segment: &str) -> Option<&str> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One action "needs" all of them, several "need" them.
+    #[test]
+    fn one_action_needs_them_and_several_need_them() {
+        let together = |actions: &[&str]| Together {
+            tool: "context".to_owned(),
+            actions: actions.iter().map(|it| (*it).to_owned()).collect(),
+            needed: ["context:move", "context:revise"]
+                .map(|it| Capability::parse(it).unwrap())
+                .to_vec(),
+        };
+
+        assert_eq!(
+            together(&["undo"]).sentence(),
+            "`context`'s `undo` needs all of `context:move` and `context:revise`, so the strictest \
+             of those applies to `undo`"
+        );
+        assert!(
+            together(&["undo", "redo"])
+                .sentence()
+                .starts_with("`context`'s `undo` and `redo` need all of"),
+            "{}",
+            together(&["undo", "redo"]).sentence()
+        );
+    }
+}
