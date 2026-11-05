@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.11, which is released beside it. Nothing here uses what changed in it,
+  but every provider names runtime types throughout its public interface, so this release cannot
+  be mixed with a 0.10-series runtime.
 - **`OpenAiCompatible` asks only an address on this machine or a private network whether it is an
   ollama.** A `/v1` address whose listing named no context length was asked for `/api/version` on
   every probe, so a hosted endpoint was a second round trip on every start to learn it is not one.

@@ -1604,7 +1604,7 @@ dependencies = [
 
 [[package]]
 name = "nachalnik-providers"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "nachalnik",
  "parking_lot",
