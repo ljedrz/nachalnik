@@ -836,6 +836,8 @@ mod tests {
     fn only_a_soft_break_is_made_hard() {
         assert_eq!(broken("a\nb"), "a  \nb");
         assert_eq!(broken("a\r\nb"), "a  \r\nb");
+        // the two spaces go at the line ending, after any the line already ends with
+        assert_eq!(broken("a \nb"), "a   \nb");
         for untouched in [
             "one line",
             "a  \nb",
@@ -843,6 +845,13 @@ mod tests {
             "- a\n- b",
             "a\n\nb",
             "`a\nb`",
+            // what only the parser's options make something other than a paragraph, and which the
+            // renderer, parsing with the same options, does not draw as one
+            "---\ntitle: a\nby: b\n---\n",
+            "| a | b |\n|---|---|\n| 1 | 2 |",
+            "$$\na\nb\n$$",
+            "term\n: what it means",
+            "> [!NOTE]\n> said",
         ] {
             assert!(
                 matches!(broken(untouched), Cow::Borrowed(_)),
