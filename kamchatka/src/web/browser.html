@@ -1223,9 +1223,14 @@ prompt.onsubmit = async (e) => {
   }
 };
 
-// enter sends, shift+enter is a newline; and the box grows with what is in it
+// enter sends, shift+enter is a newline, as in the terminal; and the box grows with what is in it.
+// On a touch screen enter is a newline and only the button sends: a phone's keyboard has no shift
+// to hold with enter, so an enter that sent would leave it no way to break a line at all.
+// note: asked at every key rather than once, because a tablet can gain or lose its mouse while the
+// page is open
+const touch = matchMedia("(pointer: coarse)");
 line.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
+  if (e.key === "Enter" && !e.shiftKey && !touch.matches) {
     e.preventDefault();
     prompt.requestSubmit();
   }

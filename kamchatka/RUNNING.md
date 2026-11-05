@@ -267,8 +267,10 @@ note included. The **chat** updates with it, as in the terminal. The **events** 
 with the time each step took; the **permissions** view lists the rules, each with **allow**, **ask**
 and **deny**, and **ask** undoes an `always`.
 
-The prompt is only on the chat. A waiting question colours the tab button, and a mark in the top
-left blinks while a turn is running. The model's answers are rendered as markdown, never as raw
+The prompt is only on the chat. With a mouse, <kbd>enter</kbd> sends and <kbd>shift+enter</kbd>
+starts a new line, as in the terminal; on a touch screen, <kbd>enter</kbd> starts a new line and the
+**send** button sends. A waiting question colours the tab button, and a mark in the top left blinks
+while a turn is running. The model's answers are rendered as markdown, never as raw
 HTML, and links only work for `http`, `https` and `mailto`. Answers stream in as they're written and
 are then replaced by the saved version, as in the terminal.
 

@@ -146,6 +146,10 @@ minor bump may break you.
   but not the session's own lines, which are in no record. So "the turn paused after 8 requests;
   /continue to carry on" could be missing until the page was reloaded. The page now redraws the
   chat from the session once it has reconnected, and when it has fallen behind.
+- **The web page on a phone puts a new line in the prompt.** Enter sent the line and shift+enter
+  broke it, but a phone's keyboard has no shift to hold with enter, so a message there could only
+  ever be one line. On a touch screen enter now breaks the line and the **send** button sends it;
+  with a mouse, enter still sends, as in the terminal.
 - **`context:*` is the whole `context` domain, as `context` is.** It holds a `*`, so it was read as a
   path rule matching files named `context:...`: it granted nothing about `context`, and the
   permissions tab listed the `fs` tools as what it covered. This applies to any `<domain>:*`, in a
