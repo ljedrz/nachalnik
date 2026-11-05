@@ -10,8 +10,16 @@
 # program with. If it is empty or a single empty argument, each of those tests starts a whole
 # session instead of confining one command. When sessions still ran their commands this way, that
 # grew to 14601 processes in a few minutes; it stays excluded rather than finding out again.
+#
+# `empty` in `sandbox/confinement.rs` empties a command's temporary directory, opening up each
+# directory in it, and skips `.` and `..` by name. A mutant of that skip lets it into `..`, and it
+# climbs: it opens up each directory above the temporary one, unlinks every file in it and in the
+# directories beside the ones it came up through. It did so from a mutants worktree up through the
+# whole repository in a run, `.git` included, and stopped only where the session running it could
+# not write.
 exclude_re = [
     'replace Stragglers::call_of -> Option<usize> with Some',
     'replace == with != in Stragglers::call_of',
     'replace Sandbox::argv -> Vec<OsString> with',
+    'sandbox/confinement\.rs:\d+:\d+: replace (\|\| with &&|== with !=) in empty$',
 ]
