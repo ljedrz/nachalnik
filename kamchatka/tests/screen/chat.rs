@@ -1576,6 +1576,29 @@ async fn the_transcript_counts_every_row_once_it_has_drawn_them() {
     );
 }
 
+/// A transcript that follows shows its last row on the first frame, however many blocks fill the
+/// screen.
+///
+/// note: the blocks on the screen are drawn before the few a frame measures beyond them. Left to
+/// those few, a screen holding more blocks than they are drew the rest at their estimate, which a
+/// block of short lines is far under, and the rows those really took pushed the end off the
+/// bottom.
+#[tokio::test]
+async fn a_transcript_that_follows_shows_its_end_however_many_blocks_fill_the_screen() {
+    let mut harness = Harness::new([]);
+    for n in 0..60 {
+        let lines: String = (0..10).map(|line| format!("{n}.{line}\n")).collect();
+        harness.app.kernel.push(ContextItem::user(lines));
+    }
+    harness.drain();
+
+    let screen = harness.sized(100, 500);
+    assert!(
+        screen.contains("59.9"),
+        "the last row is on the screen:\n{screen}"
+    );
+}
+
 /// A transcript scrolled back stays where it is while the blocks above it are counted.
 ///
 /// note: after a resize every block off the screen is an estimate until a frame draws it, and a
