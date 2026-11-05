@@ -318,6 +318,40 @@ async fn a_hard_link_no_rule_covers_is_read_as_any_other() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A file with a name the walk did not find, in a tree too big to walk to the end, is refused as
+/// unchecked rather than read: a rule might cover the name it missed. One whose names were all
+/// found is read, though the walk did not end.
+///
+/// note: the tree is past what a walk looks at, all of it in a directory below the top, so the
+/// walk does not end but does look at everything at the top first. One file's other name is
+/// outside what the session reaches, so it is never found whatever order the walk takes; the
+/// other's two names are both at the top.
+#[tokio::test]
+async fn a_hard_link_whose_other_names_are_not_all_found_is_refused_as_unchecked() {
+    let dir = tree("hard-link-unchecked");
+    std::fs::create_dir(dir.join("bulk")).expect("a directory");
+    for n in 0..10_050 {
+        std::fs::write(dir.join(format!("bulk/f{n}")), "").expect("a file");
+    }
+    let elsewhere = scratch("hard-link-unchecked-elsewhere");
+    put(&elsewhere, "plan.txt", "TOKEN=Kernel-of-a-plan\n");
+    std::fs::hard_link(elsewhere.join("plan.txt"), dir.join("plan.txt")).expect("a hard link");
+    std::fs::hard_link(dir.join("notes.md"), dir.join("also.md")).expect("a hard link");
+
+    let read = ask(&dir, "read", json!({ "path": "plan.txt" })).await;
+    assert!(!read.contains("TOKEN="), "read unchecked: {read}");
+    assert!(
+        read.contains("one of 2 names for the same file") && read.contains("too much to look"),
+        "{read}"
+    );
+
+    let found = ask(&dir, "read", json!({ "path": "also.md" })).await;
+    assert!(found.contains("nothing to see"), "{found}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&elsewhere);
+}
+
 /// The rules are consulted refusals first, so a link that lands under two of them is reported by
 /// the one that refuses - and the refusal is the one a model must not be offered a way round.
 ///
