@@ -1740,6 +1740,56 @@ async fn a_transcript_at_its_top_is_counted_a_few_blocks_a_frame() {
     );
 }
 
+/// A view scrolled back stays on its line when an item above it is excluded and restored, which
+/// takes its block out of the transcript and puts it back.
+///
+/// note: the view is held by its block's place among the blocks and what the block says. A block
+/// taken out above moves it one place up and one put back one place down, and it is found again
+/// by what it says, nearest first.
+#[tokio::test]
+async fn a_view_scrolled_back_stays_put_when_an_item_above_it_comes_and_goes() {
+    let mut harness = Harness::new([]);
+    for n in 0..40 {
+        let lines: String = (0..4).map(|line| format!("{n}.{line}\n")).collect();
+        harness.app.kernel.push(ContextItem::user(lines));
+    }
+    harness.drain();
+    for _ in 0..3 {
+        harness.sized(100, 30);
+    }
+    for _ in 0..4 {
+        harness.press(KeyCode::PageUp).await;
+        harness.sized(100, 30);
+    }
+    let top = |screen: String| -> String {
+        screen
+            .lines()
+            .nth(1)
+            .map(|line| {
+                line.trim_matches(|c: char| !c.is_ascii_digit() && c != '.')
+                    .to_owned()
+            })
+            .unwrap_or_default()
+    };
+    let before = top(harness.sized(100, 30));
+
+    harness.send("/exclude 2").await;
+    harness.tab(kamchatka::app::Tab::Chat);
+    let excluded = top(harness.sized(100, 30));
+    harness.send("/restore 2").await;
+    harness.tab(kamchatka::app::Tab::Chat);
+    let restored = top(harness.sized(100, 30));
+
+    assert_eq!(
+        before, excluded,
+        "the view moved when an item above it went"
+    );
+    assert_eq!(
+        before, restored,
+        "the view moved when an item above it came back"
+    );
+}
+
 /// A transcript scrolled back stays where it is while the blocks above it are counted.
 ///
 /// note: after a resize every block off the screen is an estimate until a frame draws it, and a
