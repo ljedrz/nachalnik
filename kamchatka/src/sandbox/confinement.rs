@@ -580,6 +580,10 @@ fn empty(dir: OwnedFd, depth: usize) -> std::io::Result<()> {
     // else; `fchmod` takes no descriptor opened only to be held, and a directory nobody may read
     // can be opened no other way
     rustix::fs::chmod(fd_path(&dir), Mode::RWXU)?;
+    // this directory and the one above it, by device and inode, which a directory found in this
+    // one must be neither of; see the note at the descent
+    let here = rustix::fs::fstat(&dir)?;
+    let above = rustix::fs::statat(&dir, c"..", AtFlags::SYMLINK_NOFOLLOW)?;
     let mut entries = rustix::fs::Dir::new(rustix::fs::openat(
         &dir,
         c".",
@@ -603,7 +607,24 @@ fn empty(dir: OwnedFd, depth: usize) -> std::io::Result<()> {
                 Mode::empty(),
             )
             .map_err(std::io::Error::from)
-            .and_then(|inner| empty(inner, depth + 1))
+            .and_then(|inner| {
+                // note: the names above are not the only thing between this and the directories
+                // over the temporary one. A descent into `.` or `..` opens up and empties
+                // whatever is there, and the next `..` from there goes higher: with the names'
+                // check made to let them through, a mutation test's run of this climbed out of
+                // its worktree and unlinked every file at the top of the repository it was in. So
+                // a directory is also refused by what it is, which no one change to the names'
+                // check gets past
+                let found = rustix::fs::fstat(&inner)?;
+                let is =
+                    |it: &rustix::fs::Stat| (it.st_dev, it.st_ino) == (found.st_dev, found.st_ino);
+                match is(&here) || is(&above) {
+                    true => Err(std::io::Error::other(
+                        "a directory in it is the one being emptied or the one above it",
+                    )),
+                    false => empty(inner, depth + 1),
+                }
+            })
             .and_then(|()| Ok(rustix::fs::unlinkat(at, name, AtFlags::REMOVEDIR)?)),
             removed => removed.map_err(std::io::Error::from),
         };
