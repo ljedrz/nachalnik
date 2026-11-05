@@ -1596,6 +1596,41 @@ async fn a_long_transcript_at_first_draws_only_what_is_on_its_screen() {
     );
 }
 
+/// A tall screen scrolled back stays where it is through a resize, though more blocks are on it
+/// than a frame measures beyond it.
+///
+/// note: after a resize every height is an estimate, the last count scaled by the widths, and
+/// for ten short lines a wider window scales it far under. The blocks on a held screen are drawn
+/// first, so the bottom the view is held above is counted from what they really take. Left to the
+/// few a frame measures beyond the screen, the rest of it were estimates, the bottom came out
+/// above the view, and the view was moved up to it.
+#[tokio::test]
+async fn a_tall_screen_scrolled_back_stays_put_through_a_resize() {
+    let mut harness = Harness::new([]);
+    for n in 0..80 {
+        let lines: String = (0..10).map(|line| format!("{n}.{line}\n")).collect();
+        harness.app.kernel.push(ContextItem::user(lines));
+    }
+    harness.drain();
+    for _ in 0..3 {
+        harness.sized(100, 600);
+    }
+    harness.press(KeyCode::PageUp).await;
+    let top = |screen: String| -> String {
+        screen
+            .lines()
+            .skip(1)
+            .map(|line| line.trim_matches(|c: char| !c.is_ascii_digit() && c != '.'))
+            .find(|line| !line.is_empty())
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let before = top(harness.sized(100, 600));
+
+    let after = top(harness.sized(400, 600));
+    assert_eq!(before, after, "the view moved in the resize");
+}
+
 /// A transcript scrolled back near its end and then widened is drawn, though what is below the
 /// view no longer fills it.
 ///
