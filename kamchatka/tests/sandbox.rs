@@ -3295,3 +3295,42 @@ fn what_fits_a_command_start_is_counted_to_the_byte() {
     assert!(fits(&many(room / 2), "true"), "half the room, of {room}");
     assert!(!fits(&many(room + ONE), "true"), "past the room, of {room}");
 }
+
+/// A path given to `shell-read` is one a command can read, outside the working directory.
+///
+/// note: the shell builds each command's sandbox from its own settings, and this is the one it
+/// takes from the session alone: a sandbox built from the defaults reads only what every session
+/// does, whatever the session said.
+#[tokio::test]
+async fn a_path_given_to_shell_read_is_read_by_a_command() {
+    let dir = common::scratch("shell-read-given");
+    let elsewhere = common::scratch("shell-read-elsewhere");
+    std::fs::write(elsewhere.join("notes.txt"), "read from elsewhere\n").expect("a file");
+    let mut readable: Vec<PathBuf> = kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect();
+    readable.push(elsewhere.clone());
+    let shell = Shell {
+        limits: Limits::default(),
+        stragglers: Default::default(),
+        layout: kamchatka::tools::Layout::Wrapped,
+        policy: Arc::new(Careful::new()),
+        workdir: dir.clone(),
+        writable: Vec::new(),
+        readable: Vec::new(),
+        shell_readable: readable,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        confined: true,
+    };
+
+    let cmd = format!("cat {}", elsewhere.join("notes.txt").display());
+    let said = shell
+        .invoke(
+            &call("1", "shell", json!({ "cmd": cmd })),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the shell answers")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(said.contains("read from elsewhere"), "{said}");
+}
