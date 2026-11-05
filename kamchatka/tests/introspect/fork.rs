@@ -185,6 +185,65 @@ async fn a_note_left_out_of_a_fork_is_left_out_of_the_call_that_wrote_it() {
     assert!(here.contains("rewritten last week"), "{here}");
 }
 
+/// A revision left out of a fork is left out of the `revise` call that wrote it, and a note that
+/// was not left out stays in the call that wrote it.
+#[tokio::test]
+async fn a_revision_left_out_of_a_fork_is_left_out_of_the_call_that_wrote_it() {
+    let (kernel, provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call(
+                "c0",
+                "context",
+                json!({ "call": {
+                    "action": "note",
+                    "content": "the tests are under tests/",
+                    "reason": "for later",
+                } }),
+            ),
+            call(
+                "c1",
+                "context",
+                json!({ "call": {
+                    "action": "revise",
+                    "ids": [1],
+                    "content": "the parser is in src/parse.rs",
+                    "reason": "I wrote down the wrong path",
+                } }),
+            ),
+        ]),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "fork",
+            json!({
+                "action": "ask",
+                "question": "where is the parser?",
+                "without": [1],
+            }),
+        )]),
+        ModelResponse::text("I do not know"),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs",
+    ));
+    kernel.push(ContextItem::user("where is the parser?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let asked = format!("{:?}", provider.requests()[2].messages);
+    assert!(
+        !asked.contains("src/parse.rs"),
+        "the copy read the revision in the call that wrote it: {asked}"
+    );
+    // the note itself, and the call that wrote it
+    assert_eq!(
+        asked.matches("the tests are under tests/").count(),
+        2,
+        "a note that was not left out went out of its call with the one that was: {asked}"
+    );
+}
+
 /// Two forks asked in one turn are asked about the same context: the second is not handed what the
 /// first one said.
 ///
