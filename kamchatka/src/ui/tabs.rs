@@ -163,11 +163,17 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // note: `scroll` at zero is the top whatever moved it there, since that is what `ctrl+home`
     // asks for, and a top reached by counting from a block below it is off by every estimate in
     // between
+    //
+    // note: the block it was held in is drawn first, so that the offset into it is counted against
+    // what it takes. After a resize its height is the last count scaled by the widths, and for
+    // short lines in a wider window that is a fraction of it: an offset past the estimate was
+    // walked on into the blocks after it, and the view moved down by as many of them
     let held = match follow {
         true => None,
         false => {
             let top = match ANCHOR.take().and_then(|anchor| anchor.found(&keys)) {
                 Some((at, offset, was)) if scroll != 0 => {
+                    draw(at, &mut heights);
                     let anchored = start(at, &heights) + offset;
                     let moved = scroll as i128 - was as i128;
                     (anchored as i128 + moved).max(0) as usize
