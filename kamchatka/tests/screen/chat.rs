@@ -1701,6 +1701,45 @@ async fn a_transcript_that_follows_shows_its_end_however_many_blocks_fill_the_sc
     );
 }
 
+/// A transcript scrolled to the top is counted a few blocks a frame after a resize, from the view
+/// down, until every block is.
+///
+/// note: the frame measures the blocks it shows and a few dozen nearest them, so a resize costs
+/// a frame about what a screenful does. The line saying how much is below keeps its `~` while any
+/// block is an estimate, the ones below the view among them.
+#[tokio::test]
+async fn a_transcript_at_its_top_is_counted_a_few_blocks_a_frame() {
+    let mut harness = long_session(120);
+    for _ in 0..40 {
+        harness.sized(100, 30);
+    }
+    // at the top, where every block is below the view
+    harness.chord(KeyCode::Home).await;
+    harness.sized(100, 30);
+    let below = |screen: &str| -> Option<String> {
+        screen
+            .lines()
+            .find(|line| line.contains(" line(s) below"))
+            .map(str::to_owned)
+    };
+
+    // the line along the bottom is drawn before the chat, so it says what the frame before found
+    harness.sized(80, 30);
+    let first = harness.sized(80, 30);
+    assert!(
+        below(&first).is_some_and(|line| line.contains('~')),
+        "the frames after a resize still estimate: {first}"
+    );
+    let mut screen = first;
+    for _ in 0..60 {
+        screen = harness.sized(80, 30);
+    }
+    assert!(
+        below(&screen).is_some_and(|line| !line.contains('~')),
+        "every block is counted by now: {screen}"
+    );
+}
+
 /// A transcript scrolled back stays where it is while the blocks above it are counted.
 ///
 /// note: after a resize every block off the screen is an estimate until a frame draws it, and a
