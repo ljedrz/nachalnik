@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A reported request length too large for `usize` no longer wraps on a 32-bit target.** It went
+  to `TokenCounter::observe` as a small number `Calibrating` could believe. It is now passed as
+  `usize::MAX`, which `Calibrating` throws out.
+
 ## [0.11.0] - 2026-11-05
 
 ### breaking

@@ -102,9 +102,12 @@ impl Kernel {
         // estimate of prose would read high, and deleting the picture would not undo it. Respecting
         // what the counter declined is the kernel's half, and both figures below go through this
         // one door so neither can skip it.
-        let observe = |reported: usize| {
+        //
+        // note: a figure too large for `usize` is saturated rather than wrapped. Wrapped, it is a
+        // small number `Calibrating` may believe; saturated, it is outside its bounds and ignored.
+        let observe = |reported: u64| {
             if cost.uncounted == 0 {
-                counter.observe(cost.tokens, reported);
+                counter.observe(cost.tokens, usize::try_from(reported).unwrap_or(usize::MAX));
             }
         };
 
@@ -122,7 +125,7 @@ impl Kernel {
                 // door as reported usage.
                 let overrun = TooLong::of(&*e).map(|too_long| too_long.overrun);
                 if let Some(overrun) = overrun {
-                    observe(overrun.tokens as usize);
+                    observe(overrun.tokens);
                 }
 
                 self.emit(Event::ModelFailed {
@@ -139,7 +142,7 @@ impl Kernel {
         response.usage = response.usage.map(Usage::settled);
         // the provider has just said what the request it was handed actually cost
         if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens) {
-            observe(reported as usize);
+            observe(reported);
         }
 
         // a model's tool calls are only useful if their identifiers are, and in practice they
