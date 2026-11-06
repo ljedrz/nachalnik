@@ -647,7 +647,7 @@ impl OpenAiCompatible {
             .iter()
             .find(|entry| same_model(entry["name"].as_str().unwrap_or_default(), &model))
             .and_then(|entry| entry["context_length"].as_u64())
-            .map(|limit| limit as usize)
+            .map(crate::tokens)
     }
 
     /// Looks the model up in a listing and returns whatever context limit it advertises.
@@ -703,7 +703,7 @@ impl OpenAiCompatible {
         listed.max_output_tokens = entry["top_provider"]["max_completion_tokens"]
             .as_u64()
             .filter(|most| *most > 0)
-            .map(|most| most as usize);
+            .map(crate::tokens);
         drop(listed);
 
         // a limit of nothing is a listing that did not know, which the kernel already declines to
@@ -715,7 +715,7 @@ impl OpenAiCompatible {
         ]
         .into_iter()
         .find_map(|limit| limit.as_u64().filter(|limit| *limit > 0))
-        .map(|limit| limit as usize)
+        .map(crate::tokens)
     }
 }
 

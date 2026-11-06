@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A token count from a listing no longer wraps on a 32-bit target.** A context window or output
+  limit past `u32::MAX` became a small number, and a window read that way refused every request
+  as too long. Such a figure is now taken as `usize::MAX`.
+
 ## [0.11.0] - 2026-11-05
 
 ### changed

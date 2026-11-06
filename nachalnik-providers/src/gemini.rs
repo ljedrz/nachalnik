@@ -200,7 +200,9 @@ impl Gemini {
         };
 
         if let Some(limit) = body["inputTokenLimit"].as_u64() {
-            self.context_limit.lock().get_or_insert(limit as usize);
+            self.context_limit
+                .lock()
+                .get_or_insert(crate::tokens(limit));
         }
         *self.listed.lock() = Listed::read(&body);
     }
@@ -459,7 +461,7 @@ impl Provider for Gemini {
 
         ModelInfo::new("google", model)
             .with_context_limit(context_limit)
-            .with_max_output_tokens(most.map(|most| most as usize))
+            .with_max_output_tokens(most.map(crate::tokens))
             .with_parameters(parameters)
             .with_tool_calling(true)
             .with_reasoning(true)
