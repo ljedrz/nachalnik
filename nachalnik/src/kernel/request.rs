@@ -297,7 +297,7 @@ impl Kernel {
         built
     }
 
-    /// What a built request comes to as a [`Budget`], as [`Kernel::budget`] would count it.
+    /// What a built request comes to as a [`Budget`](crate::Budget), as [`Kernel::budget`] would count it.
     ///
     /// note: a request that could not be built has no figure of its own, and is counted afresh.
     /// That is a context that projects to nothing, so it is cheap.

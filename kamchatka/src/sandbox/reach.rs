@@ -71,7 +71,7 @@ impl Reach {
     /// in front of it says otherwise. [`Shell`](crate::tools::Shell) names them in its description
     /// for the same reason.
     ///
-    /// note: the spelling is [`Sandbox`]'s, down to the `read-write` after each path, because the
+    /// note: the spelling is [`Sandbox`](super::Sandbox)'s, down to the `read-write` after each path, because the
     /// two say the same thing about the same session and a reader should not have to notice which
     /// is talking.
     ///

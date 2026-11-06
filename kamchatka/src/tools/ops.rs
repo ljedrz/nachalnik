@@ -398,7 +398,7 @@ fn sentences(parts: &[String]) -> String {
 /// and a call recorded the old way is read back that way, so this key reaches a tool only where a
 /// model wrote it. A session whose history shows calls in that shape copies the shape, and goes on
 /// copying its own calls once one was read. If unread, the tool looks for `action`, does not find
-/// one, and answers `the \`action\` argument is required` about a call whose text holds an
+/// one, and answers ``the `action` argument is required`` about a call whose text holds an
 /// `action`.
 const UNPARSED: &str = "_unparsed";
 
@@ -599,7 +599,7 @@ fn around(written: &str, at: usize, width: usize) -> String {
 /// [`schema`] fixes; this is the backstop for a model that does it anyway, since nothing here can
 /// make a schema binding. One that parses to an object is as unambiguous as the flat shape and is
 /// taken for the same reason. One that does not is refused here, saying so, rather than falling
-/// through to `the \`action\` argument is required`, which is the [`UNPARSED`] failure: a model
+/// through to ``the `action` argument is required``, which is the [`UNPARSED`] failure: a model
 /// sent to fix an argument it did write.
 ///
 /// note: what is wrong comes back as a [`Misread`] rather than a sentence because the sentence
@@ -832,7 +832,7 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 ///
 /// note: read off the schema rather than a tool's capabilities, because the two are not one list:
 /// `fs` has five operations and judges them by two subjects. It is what a call can name, which is
-/// what [`unnamed_operation`] and a rule naming an operation are about.
+/// what [`unplaced`] and a rule naming an operation are about.
 pub(crate) fn offered(schema: &Value) -> Vec<&str> {
     let inside = match Layout::of(schema) {
         Layout::Flat => schema,

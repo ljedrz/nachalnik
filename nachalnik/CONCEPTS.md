@@ -183,15 +183,16 @@ had been streamed.
 ```text
 session.started    state.changed       model.changed      tool.requested
 session.resumed    context.added       model.params       tool.unknown
-session.finished   context.changed     model.requested    tool.repaired
-turn.interrupted   context.replaced    model.delta        tool.reserved
-turn.paused        context.undone      model.payload      tool.started
-turn.unfinished    context.redone      model.finished     tool.output
-tools.changed      context.annotated   model.failed       tool.finished
-policy.changed     context.recounted   step.failed        permission.requested
-projector.changed  context.compacted                      tool.panicked
-counter.changed    context.full                           permission.decided
-compactor.changed                                         policy.ruled
+session.finished   context.changed     model.requested    tool.unparsed
+turn.interrupted   context.replaced    model.delta        tool.repaired
+turn.paused        context.undone      model.payload      tool.reserved
+turn.unfinished    context.redone      model.finished     tool.started
+tools.changed      context.annotated   model.failed       tool.output
+policy.changed     context.recounted   step.failed        tool.finished
+projector.changed  context.compacted                      permission.requested
+counter.changed    context.full                           tool.panicked
+compactor.changed                                         permission.decided
+                                                          policy.ruled
 ```
 
 Every event carries what a client needs to display it without guessing. An undo names the items it
