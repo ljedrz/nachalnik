@@ -2272,6 +2272,86 @@ async fn a_command_coming_back_does_not_call_a_failed_turn_a_finished_one() {
     );
 }
 
+/// A turn still running when the session is left is the last turn, however the one before it
+/// went.
+///
+/// note: the turn waited for on the way out came back as nothing failed, and an earlier failure
+/// stood in for it, so a session whose second turn was stopped by `/quit` said its last turn had
+/// failed.
+#[tokio::test]
+async fn a_failed_turn_before_the_one_quit_stopped_is_not_the_last() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    /// Refuses the first request, and holds every later one until it is interrupted.
+    struct FailsThenWaits(Arc<AtomicUsize>);
+
+    #[nachalnik::async_trait]
+    impl nachalnik::Provider for FailsThenWaits {
+        fn info(&self) -> nachalnik::ModelInfo {
+            nachalnik::ModelInfo::new("waits", "waits").with_context_limit(128_000)
+        }
+
+        async fn respond(
+            &self,
+            _request: nachalnik::ModelRequest,
+            deltas: nachalnik::DeltaSink,
+        ) -> Result<ModelResponse, nachalnik::BoxError> {
+            if self.0.fetch_add(1, SeqCst) == 0 {
+                return Err("refused".into());
+            }
+            while !deltas.is_interrupted() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+
+            Ok(ModelResponse::text(""))
+        }
+    }
+
+    let asked = Arc::new(AtomicUsize::new(0));
+    let provider = FailsThenWaits(asked.clone());
+    let session = served_over_a_socket("running-after-failure", Vec::new(), move |app| {
+        app.kernel.set_provider(Arc::new(provider));
+    })
+    .await;
+    let mut socket = Socket::connect(&session.at).await;
+    socket.send(crate::attaching(None, None)).await;
+    while !matches!(socket.recv().await, Message::Attached(_)) {}
+
+    // the second line after the first turn has failed, since a line queued into a turn that
+    // fails waits for the next one
+    socket
+        .send(Command::Submit {
+            line: "one".to_owned(),
+        })
+        .await;
+    while !matches!(
+        socket.recv().await,
+        Message::Said { speaker, .. } if speaker == Speaker::Error
+    ) {}
+    socket
+        .send(Command::Submit {
+            line: "two".to_owned(),
+        })
+        .await;
+    let waited = std::time::Instant::now();
+    while asked.load(SeqCst) < 2 {
+        assert!(waited.elapsed() < PATIENCE, "the second turn never asked");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    socket
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    let (_, outcome) = session.ended().await;
+    assert_eq!(
+        outcome,
+        Ok(()),
+        "an earlier failure stood in for the last turn"
+    );
+}
+
 /// `/stop` is not held behind a command waiting on an endpoint: it is what ends the wait.
 ///
 /// note: found live. Every line was held while a command was out, `/stop` among them, so it

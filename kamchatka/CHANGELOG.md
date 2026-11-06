@@ -13,6 +13,9 @@ minor bump may break you.
   what it was by its path and then opened by its path again, so a pipe put in its place in between
   was opened, and the open waited for a writer. It is now opened without waiting and the open file
   is checked.
+- **A failed turn no longer stands in for a later turn that a signal or `/quit` stopped.** A
+  headless or served run left while its turn was running, after an earlier turn had failed,
+  reported that the last turn failed. The turn that was running is now the one reported.
 
 ## [0.23.0] - 2026-11-05
 

@@ -563,7 +563,13 @@ impl Server {
             released(app, Some(&mut serving)).await;
             // a second `ctrl+c` or a closed stream leaves at once; a `/quit` waits for the turn
             if app.leaving() && !leaving {
-                failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
+                // a turn still running is the last turn, so its outcome replaces an earlier one's
+                // whichever way it went
+                let running = app.busy;
+                let waited = app.wait_for_turn(events, finished, |_| {}).await;
+                if running {
+                    failed = waited;
+                }
                 break;
             }
             if leaving {
