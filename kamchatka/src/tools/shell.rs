@@ -1612,7 +1612,7 @@ fn scrub(
 /// note: an address is read as `endpoint::address_in` reads it, with what is not text replaced,
 /// since non-text is still in the environment the command inherits. Read with `env::var`, which
 /// answers such a value as no value, so its password went along with it.
-fn scrubbed(value: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<&'static str> {
+pub(crate) fn scrubbed(value: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<&'static str> {
     crate::endpoint::KEYS
         .iter()
         .copied()

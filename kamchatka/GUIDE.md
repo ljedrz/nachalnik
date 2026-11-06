@@ -219,9 +219,10 @@ are two lists, each with a heading: **the rules** and **the sandbox**.
 
 A fresh session has no rows: everything starts at `ask`, and rows are decisions added as you answer.
 What is not listed is counted at the bottom, and <kbd>s</kbd> lists it among the rules as `ask`
-rows, where it can be decided in advance; <kbd>s</kbd> again hides what is still `ask`. Setting a
-row back to `ask` removes it while they are hidden. The keys along the bottom are the ones the
-picked line takes. A rule for a whole domain is one row listing the actions it covers; an
+rows, where it can be decided in advance; <kbd>s</kbd> again hides what is still `ask`. On the
+`--web` page, the `toggle` button at the end of that line does the same. Setting a row back to
+`ask` removes it while they are hidden. The keys along the bottom are the ones the picked line
+takes. A rule for a whole domain is one row listing the actions it covers; an
 operation answered separately (`--auto-allow fs --auto-deny fs:write`) gets its own row. What it
 covers is never wider than the rule, and a rule that matches nothing says so. To decide in advance,
 answer the first question with <kbd>a</kbd> to allow it from then on, or use a flag. <kbd>n</kbd>
@@ -236,15 +237,17 @@ the heading). Unconfined, commands reach everything, and only the file tools are
 listed.
 
 Its parts are grouped by what they are about, and each group answers on its own scale. **files**
-are `read-write` or `read-only`: the working directory, the paths of `--sandbox-write` and
-`--sandbox-read`, the system paths only the shell reads, the devices under `/dev` and the temporary
-directory each command gets. **network** is `open`, `asks` or `blocked`: the connections a command
-may make, and the ports a served session closes. A network that `asks` asks when a command tries
-to use it, rather than judging the command by its name before it runs. **environment** is the
-variables a command isn't handed. It all describes the sandbox a command started now would get, so
-it follows the rules: deny `fs:write` and the working directory and the `--sandbox-write` paths
-become read-only. <kbd>enter</kbd> or <kbd>space</kbd> lists the paths in a part and closes the
-list again, and <kbd>right</kbd> and <kbd>left</kbd> open and close it.
+are `read-write` or `read-only`: the working directory, `sandbox-write` and `sandbox-read` (the
+paths you opened), `shell-read` (the system paths only the shell reads), `shell-devices` (the
+devices under `/dev`) and the temporary directory each command gets - each list named after the
+settings file's key that sets it. **network** is `open`, `asks` or `blocked`: the connections a
+command may make, and the ports a served session closes. A network that `asks` asks when a command
+tries to use it, rather than judging the command by its name before it runs. **environment** is
+the variables a command isn't handed: this program's API keys, and its base URLs while they hold a
+password. It all describes the sandbox a command started now would get, so it follows the rules:
+deny `fs:write` and the working directory and the `--sandbox-write` paths become read-only.
+<kbd>enter</kbd> or <kbd>space</kbd> lists the paths in a part and closes the list again, and
+<kbd>right</kbd> and <kbd>left</kbd> open and close it.
 
 The sandbox is read, not set: the rule keys do nothing on it. A part a rule decides names the
 rule, `fs:write` for the working directory and `net:reach` for the connections, and that rule's row

@@ -148,7 +148,15 @@
   /* the headings over the rules and the sandbox; the word for how open a part is, and the paths a
      part lists, folded away until somebody opens them as the tab's `enter` does */
   .section { margin: 18px 0 4px; font-weight: 600; }
+  /* the sandbox is a second list rather than more rules, and right under the last rule's line it
+     read as one more of them */
+  .section.apart { margin-top: 40px; }
   .section .says { font-weight: 400; color: var(--dim); }
+  /* the line along the bottom, with the toggle for what it asks about at its right-hand end */
+  .bottom { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .bottom .empty { flex: 1; margin: 0; }
+  .bottom button { flex: none; font-size: 12px; padding: 2px 8px; min-height: 0; }
+  .bottom button[aria-pressed="true"] { border-color: currentColor; }
   .kind { margin: 12px 0 0; font-style: italic; }
   .access { flex: none; font-size: 12px; margin-left: 8px; }
   .paths { font-size: 12px; color: var(--dim); margin-top: 4px; }
@@ -171,8 +179,10 @@
   .empty { color: var(--dim); white-space: pre-wrap; }
   .policy { margin: 0 0 10px; font-weight: 600; overflow-wrap: anywhere; }
   .detail { font-size: 12px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
-  /* the figure being looked for, so it keeps the right-hand edge and a colour of its own */
-  .allowed { color: var(--user); } .denied { color: var(--bad); } .asks { color: var(--call); }
+  /* the figure being looked for, so it keeps the right-hand edge and a colour of its own. The
+     verdicts are in the terminal's green, yellow and red, which are the advisor's bands here, so a
+     word on the tab and the same word on this page are one colour */
+  .allowed { color: var(--reads); } .asks { color: var(--changes); } .denied { color: var(--bad); }
   /* the three answers a row can be given, with the one it has pressed in. The words are the
      verdicts', since that is what the row reads back in */
   .rules { display: flex; flex: none; }
@@ -187,7 +197,8 @@
   .rules button[aria-pressed="true"] {
     opacity: 1; font-weight: 600; border-color: currentColor; position: relative; z-index: 1;
   }
-  .rules button.allowed[aria-pressed="true"] { color: var(--user); }
+  .rules button.allowed[aria-pressed="true"] { color: var(--reads); }
+  .rules button.asks[aria-pressed="true"] { color: var(--changes); }
   .rules button.denied[aria-pressed="true"] { color: var(--bad); }
   .line { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .line::before { color: var(--dim); }
@@ -1067,22 +1078,22 @@ function draw() {
   rules.textContent = "the rules";
   panel.append(rules);
 
-  if (!latest.permissions.length) {
+  // the decided rows, or every row once the footer's `toggle` lists what it asks about as well, as
+  // the tab's `s` does. A session older than the full list sends none, and gets no toggle
+  const listed = asksShown && latest.all_permissions?.length
+    ? latest.all_permissions
+    : latest.permissions;
+  if (!listed.length) {
     aside(
       panel,
-      "nothing has been decided yet, which is why this list is empty rather than permissive.\n\n" +
-        "Answer a question `always` and everything it was judged by arrives here, where it can " +
-        "be changed or made a question again, as on the terminal's permissions tab. A fresh policy also holds a rule " +
-        "for each of a handful of paths that are credentials by convention, and those are " +
-        "questions too, so they are not rows either - the line along the bottom is what counts " +
-        "them. They begin to earn their keep the moment a capability is answered `always`: the " +
-        "capability opens, the rules stay where they are, and the strictest thing consulted " +
-        "wins - so a rule can only ever tighten what a capability allows. Those rules bind " +
-        "`fs`, and deliberately not `shell`: a command names its files inside a string, so what " +
-        "holds a command to a boundary is the sandbox rather than a rule here.",
+      "nothing has been decided yet, so everything is asked about - an empty list does not " +
+        "mean anything is allowed.\n\nAnswer a question `always` to add a rule here, where it " +
+        "can be changed later. A few paths that usually hold credentials are always asked about " +
+        "by the file tools, even once their capability is allowed. Those don't apply to shell " +
+        "commands, which the sandbox below limits instead.",
     );
   }
-  for (const rule of latest.permissions) {
+  for (const rule of listed) {
     // note: `covers:` where the tab has a column header saying so. A rule about one tool is
     // usually named for it, and without the word the row read `fs:read` twice
     const covers = rule.tools.length
@@ -1116,7 +1127,7 @@ function draw() {
   const sandbox = latest.sandbox;
   if (sandbox) {
     const heading = document.createElement("p");
-    heading.className = "section";
+    heading.className = "section apart";
     heading.append(document.createTextNode("the sandbox · "));
     const status = document.createElement("span");
     status.className = verdicts[sandbox.tone] ?? "";
@@ -1178,9 +1189,37 @@ function draw() {
   const footer = latest.sandbox
     ? []
     : [latest.confinement ?? "no sandbox: a command reaches whatever this user can"];
-  if (latest.undecided) footer.push(`${latest.undecided} more it will ask about`);
-  if (footer.length) aside(panel, footer.join(" · "));
+  const toggles = latest.undecided > 0 && latest.all_permissions?.length > 0;
+  if (latest.undecided) {
+    footer.push(
+      toggles && asksShown
+        ? `listing the ${latest.undecided} it asks about`
+        : `${latest.undecided} more it will ask about`,
+    );
+  }
+  if (!footer.length) return;
+  // the line, with the toggle at its right-hand end where there is anything to list
+  const bottom = document.createElement("div");
+  bottom.className = "bottom";
+  aside(bottom, footer.join(" · "));
+  if (toggles) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = "toggle";
+    toggle.title = "show or hide what it asks about among the rules";
+    toggle.setAttribute("aria-pressed", String(asksShown));
+    toggle.onclick = () => {
+      asksShown = !asksShown;
+      draw();
+    };
+    bottom.append(toggle);
+  }
+  panel.append(bottom);
 }
+
+/** Whether the permissions list shows what it asks about beside what has been decided; off to
+ *  begin with, as on the tab, and kept across the redraw every projection makes. */
+let asksShown = false;
 
 /** The parts of the sandbox somebody opened to list their paths, by name. */
 const openedParts = new Set();

@@ -798,17 +798,12 @@ pub(super) const MID_TURN: &str = "not while a turn is running or a call is wait
 /// note: here rather than in the drawing pane, because `/permissions` is answered in a build with
 /// no screen. The tab reads this same string, so the two cannot disagree about what an empty policy
 /// means.
-pub(crate) const NOTHING_DECIDED: &str = "nothing has been decided yet, which is why this list is \
-     empty rather than permissive.\n\nAnswer a question with `a` and everything it was judged by \
-     arrives here, where it can be changed; `y` and `n` answer that one call and record nothing. \
-     A fresh policy also holds a rule for each of a handful of paths that are credentials by \
-     convention, and those are questions too, so they are not rows either - the line along the \
-     bottom is what counts them. They begin to earn their keep the moment a capability is answered \
-     `always`: the capability opens, the rules stay where they are, and the strictest thing \
-     consulted wins - so a rule can only ever tighten what a capability allows. Those rules bind \
-     every `fs` operation that is handed a path, and deliberately not `shell`: a command names its \
-     files inside a string, so what holds a command to a boundary is the sandbox rather than a \
-     rule here.";
+pub(crate) const NOTHING_DECIDED: &str = "nothing has been decided yet, so everything is asked \
+     about - an empty list does not mean anything is allowed.\n\nAnswer a question with `a` to add \
+     a rule here, where it can be changed later; `y` and `n` answer only that one call. A few paths \
+     that usually hold credentials are always asked about by the file tools, even once their \
+     capability is allowed. Those don't apply to shell commands, which the sandbox below limits \
+     instead.";
 
 /// The word a verdict is read back in, for a line a person reads.
 ///

@@ -562,11 +562,20 @@ pub struct Attached {
     pub trace: Vec<Tracing>,
     /// How many more it will ask about.
     ///
-    /// note: a count rather than rows, as the permissions tab gives: a row for a `.aws` rule nobody
-    /// has thought about is not information. The count is for the other half: a client listing two
-    /// decisions while standing for eighteen answers misleads too, and a client cannot work the
-    /// count out from the list above, because the list is what it leaves out.
+    /// note: a count beside the rows, as the permissions tab gives along its bottom: a client
+    /// listing two decisions while standing for eighteen answers misleads, and a client cannot work
+    /// the count out from the list above, because the list is what it leaves out. The rows
+    /// themselves are in [`Attached::all_permissions`], for a client that lists them on request.
     pub undecided: usize,
+    /// Every row the permissions tab can list: the decided ones and the ones it asks about, in the
+    /// order the tab lists them once `s` shows the latter.
+    ///
+    /// note: beside [`Attached::permissions`] rather than instead of it, so a client that draws
+    /// only the decisions goes on doing so; one that lets somebody decide a question in advance
+    /// needs the rows nobody has decided, and in the order that keeps a row where it was when it
+    /// is shown, hidden or decided. Empty from a session older than the field.
+    #[serde(default)]
+    pub all_permissions: Vec<Stanced>,
     /// The actions listed under several of [`Attached::permissions`]'s rows, which need every one
     /// of them, as the sentence `/permissions` puts under its rows. The permissions tab and the web
     /// page leave it to GUIDE.md.
@@ -911,7 +920,7 @@ impl Sandboxing {
 pub struct Sandboxed {
     /// What it is about, which is what it is listed under: `files`, `network`, `environment`.
     pub kind: String,
-    /// What the part is: `working directory`, `--sandbox-read`, `connections`.
+    /// What the part is: `working directory`, `sandbox-read`, `connections`.
     pub name: String,
     /// How open it is, in a word on its kind's scale - `read-write`, `asks`, `removed` - where
     /// there is anything in it.

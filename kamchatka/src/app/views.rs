@@ -558,9 +558,10 @@ impl App {
 
     /// How many subjects the policy will simply ask about, because nobody has told it otherwise.
     ///
-    /// note: the tab does not list them; a row for a `.aws` rule nobody has thought about is not
-    /// information. It says how many there are, because a screen showing two decisions and silently
-    /// standing for sixteen answers would be dishonest.
+    /// note: the tab lists them only once `s` asks it to; a row for a `.aws` rule nobody has
+    /// thought about is not information until somebody wants to decide it. It says how many there
+    /// are, because a screen showing two decisions and silently standing for sixteen answers would
+    /// be dishonest.
     pub fn undecided(&self) -> usize {
         self.all_stances()
             .iter()
@@ -576,7 +577,7 @@ impl App {
     /// the `fs:*` rows it answers for. A domain rule covers every tool with a capability in it; a
     /// server rule covers every tool from that server; a path rule covers every tool handed a path.
     /// One question per subject answers all four instead of one.
-    fn all_stances(&self) -> Vec<Stance> {
+    pub(crate) fn all_stances(&self) -> Vec<Stance> {
         let specs = self.kernel.tool_specs();
         let reaching = Subject::Capability(Capability::net("reach"));
 
@@ -797,23 +798,24 @@ impl App {
         let (status, says, note) = match (shell, self.confinement) {
             (false, _) => (
                 ("no shell", Verdict::Allow),
-                "nothing runs commands; the file tools are held to what is below",
+                "there is no shell tool; the file tools can reach only what is listed below",
                 None,
             ),
             (true, crate::sandbox::Confinement::Full) => (
                 ("confined", Verdict::Allow),
-                "commands and the file tools are held to what is below",
+                "shell commands and the file tools can reach only what is listed below",
                 None,
             ),
             (true, crate::sandbox::Confinement::Partial) => (
                 ("partly confined", Verdict::Ask),
-                "commands are held to what is below, as far as this kernel can",
+                "shell commands can reach only what is listed below, except where this kernel \
+                 cannot enforce it",
                 crate::sandbox::weaker_here(),
             ),
             (true, _) => (
                 ("unconfined", Verdict::Deny),
-                "the sandbox would not start, so commands reach everything; only the file tools \
-                 are held to what is below",
+                "the sandbox failed to start, so shell commands can reach anything; only the file \
+                 tools are limited to what is listed below",
                 self.unconfined_because.as_deref().map(super::one_line),
             ),
         };
@@ -835,19 +837,20 @@ impl App {
                     true => WRITES,
                     false => READS,
                 }),
-                match sandbox.workdir_writable {
-                    true => sandbox.workdir.display().to_string(),
-                    false => format!("{}, because fs:write is denied", sandbox.workdir.display()),
-                },
+                // whether it is writable is in the word beside it, and why in the rule named
+                // after it
+                sandbox.workdir.display().to_string(),
                 Vec::new(),
             )
         }];
         parts.push(part(
             PartKind::Files,
-            "--sandbox-write",
+            "sandbox-write",
             (!sandbox.writable.is_empty()).then_some(WRITES),
             match (sandbox.writable.len(), moved) {
-                (_, true) => "none while fs:write is denied; its paths are read-only".to_owned(),
+                (_, true) => {
+                    "read-only while fs:write is denied, so listed under sandbox-read".to_owned()
+                }
                 (0, false) => "none".to_owned(),
                 (n, false) => paths(n),
             },
@@ -855,14 +858,15 @@ impl App {
         ));
         parts.push(part(
             PartKind::Files,
-            "--sandbox-read",
+            "sandbox-read",
             (!sandbox.readable.is_empty()).then_some(READS),
             match (sandbox.readable.len(), moved) {
                 (0, _) => "none".to_owned(),
                 (n, false) => paths(n),
                 (n, true) => format!(
-                    "{}, with --sandbox-write's while fs:write is denied",
-                    paths(n)
+                    "{}, {} of them from sandbox-write while fs:write is denied",
+                    paths(n),
+                    roots.writable.len()
                 ),
             },
             shown(&sandbox.readable),
@@ -870,20 +874,20 @@ impl App {
         if shell && confined {
             parts.push(part(
                 PartKind::Files,
-                "system paths",
+                "shell-read",
                 Some(READS),
                 format!(
-                    "{} for the programs commands run; the file tools cannot read them",
+                    "{} that shell commands can read, but the file tools cannot",
                     paths(sandbox.shell_readable.len())
                 ),
                 shown(&sandbox.shell_readable),
             ));
             parts.push(part(
                 PartKind::Files,
-                "devices",
+                "shell-devices",
                 Some(WRITES),
                 format!(
-                    "{}; the rest of /dev is blocked",
+                    "{}; everything else in /dev is blocked",
                     super::text::plural(sandbox.devices.len(), "device")
                 ),
                 shown(&sandbox.devices),
@@ -897,18 +901,21 @@ impl App {
             ));
 
             let (access, says) = match sandbox.network {
-                Network::Open => (("open", Verdict::Allow), "commands can connect anywhere"),
+                Network::Open => (
+                    ("open", Verdict::Allow),
+                    "shell commands can connect anywhere",
+                ),
                 Network::Shut => (
                     ("blocked", Verdict::Deny),
-                    "commands cannot connect anywhere",
+                    "shell commands cannot connect anywhere",
                 ),
                 Network::Asked if self.policy.gates_the_network() => (
                     ("asks", Verdict::Ask),
-                    "you are asked the first time a command connects",
+                    "you are asked the first time a shell command connects",
                 ),
                 Network::Asked => (
                     ("asks", Verdict::Ask),
-                    "a command is asked about by name, before it runs",
+                    "you are asked before a command like curl runs",
                 ),
             };
             parts.push(SandboxPart {
@@ -926,7 +933,7 @@ impl App {
                     PartKind::Network,
                     "closed ports",
                     Some(("blocked", Verdict::Deny)),
-                    "this session is served on them, so no answer opens them".to_owned(),
+                    "this session is served on them, so commands can never connect".to_owned(),
                     sandbox.closed.iter().map(u16::to_string).collect(),
                 ));
             }
@@ -936,10 +943,12 @@ impl App {
                 PartKind::Environment,
                 "variables",
                 Some(("removed", Verdict::Deny)),
-                "API keys, and addresses with a password in them".to_owned(),
-                crate::endpoint::KEYS
-                    .iter()
-                    .map(|key| (*key).to_owned())
+                "API keys, and base URLs that hold a password".to_owned(),
+                // what a command started now loses, read as the shell reads it: the keys always, an
+                // address only while it holds a password
+                crate::tools::scrubbed(|name| std::env::var_os(name))
+                    .into_iter()
+                    .map(str::to_owned)
                     .collect(),
             ));
         }

@@ -3043,6 +3043,63 @@ async fn a_served_session_tells_its_clients_which_settings_it_read() {
     );
 }
 
+/// A client is sent every row the permissions tab can list, not only the decided ones, so it can
+/// show what the policy asks about and let somebody decide one before it is asked: the decided
+/// rows and as many more as it counts, each of those a question.
+#[tokio::test]
+async fn a_client_is_sent_what_the_policy_asks_about() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: None,
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "scripted", CLOSED, "",
+    )))
+    .expect("the wiring failed");
+    app.policy.set(
+        &kamchatka::tools::Subject::parse("fs:read"),
+        nachalnik::Verdict::Allow,
+    );
+    let mut server = Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("nothing would listen");
+    let at = server.address();
+    let loop_ = tokio::spawn(async move { server.run(&mut app, &mut events, &mut finished).await });
+
+    let (mut peer, attached) = Peer::attached(&at).await;
+    assert!(attached.undecided > 0, "nothing left to ask about");
+    assert_eq!(
+        attached.all_permissions.len(),
+        attached.permissions.len() + attached.undecided,
+        "{:?}",
+        attached.all_permissions
+    );
+    for decided in &attached.permissions {
+        assert!(attached.all_permissions.contains(decided), "{decided:?}");
+    }
+    let asked = attached
+        .all_permissions
+        .iter()
+        .filter(|row| !attached.permissions.contains(row));
+    for row in asked {
+        assert_eq!(row.verdict, nachalnik::Verdict::Ask, "{row:?}");
+    }
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    loop_
+        .await
+        .expect("the loop panicked")
+        .expect("the session failed");
+}
+
 /// A client is sent the sandbox part by part, as the permissions tab lists it under the rules.
 ///
 /// note: a session with the built-in tools, wired as the program wires one, since the parts are

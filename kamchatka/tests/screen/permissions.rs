@@ -967,7 +967,7 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
         "and says what it does with everything not listed: {empty}"
     );
     assert!(
-        empty.contains("empty rather than permissive"),
+        empty.contains("an empty list does not mean anything is allowed"),
         "an empty list is not an open one, and the tab has to say so: {empty}"
     );
 
@@ -3478,14 +3478,14 @@ async fn the_permissions_tab_lists_the_sandbox() {
     assert!(
         screen
             .lines()
-            .find(|line| line.contains("--sandbox-read"))
+            .find(|line| line.contains("sandbox-read"))
             .is_some_and(|line| line.contains("read-only   1 path")),
         "a path a command may read is said to be read-only, like the working directory: {screen}"
     );
     assert!(
         screen
             .lines()
-            .any(|line| line.contains("--sandbox-write") && line.contains("read-write  1 path")),
+            .any(|line| line.contains("sandbox-write") && line.contains("read-write  1 path")),
         "{screen}"
     );
     assert!(
@@ -3498,7 +3498,7 @@ async fn the_permissions_tab_lists_the_sandbox() {
     harness.press(KeyCode::Down).await;
     harness.press(KeyCode::Enter).await;
     let opened = harness.sized(110, 40);
-    assert!(opened.contains("▾ --sandbox-write"), "{opened}");
+    assert!(opened.contains("▾ sandbox-write"), "{opened}");
     assert!(opened.contains("    /opened/rw"), "{opened}");
 
     // on the path, left closes the part and goes back to its line
@@ -3506,7 +3506,7 @@ async fn the_permissions_tab_lists_the_sandbox() {
     harness.press(KeyCode::Left).await;
     let closed = harness.sized(110, 40);
     assert!(!closed.contains("    /opened/rw"), "{closed}");
-    assert!(closed.contains("▸ --sandbox-write"), "{closed}");
+    assert!(closed.contains("▸ sandbox-write"), "{closed}");
 
     // the sandbox is read, not set: the rule keys on a line of it change nothing, even on the
     // working directory, which names the rule that decides it
@@ -3534,11 +3534,11 @@ async fn the_permissions_tab_lists_the_sandbox() {
         .set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
     let refused = harness.sized(110, 40);
     assert!(
-        refused.contains("read-only   /work, because fs:write is denied"),
+        refused.contains("read-only   /work · set by fs:write"),
         "{refused}"
     );
     assert!(
-        refused.contains("2 paths, with --sandbox-write's while fs:write is denied"),
+        refused.contains("2 paths, 1 of them from sandbox-write while fs:write is denied"),
         "{refused}"
     );
 }
@@ -3577,7 +3577,7 @@ async fn an_unconfined_shell_is_said_in_the_sandboxs_heading() {
         .position(|line| line.contains("the sandbox · unconfined · "))
         .unwrap_or_else(|| panic!("nothing says the shell is unconfined: {screen}"));
     assert!(
-        lines[heading].contains("only the file tools are held to what is below"),
+        lines[heading].contains("only the file tools are limited to what is listed below"),
         "{screen}"
     );
     assert!(
@@ -3585,7 +3585,7 @@ async fn an_unconfined_shell_is_said_in_the_sandboxs_heading() {
         "and why, under it: {screen}"
     );
     // the parts only a confined shell is held to are not listed at all
-    assert!(!screen.contains("system paths"), "{screen}");
+    assert!(!screen.contains("shell-read"), "{screen}");
     assert!(!screen.contains("connections"), "{screen}");
 }
 

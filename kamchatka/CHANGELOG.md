@@ -16,8 +16,9 @@ minor bump may break you.
   description. Its heading now says whether it holds the shell - `confined`, `partly confined` or
   `unconfined`, with what the kernel left out or why the sandbox would not start under it - and
   its parts are listed under what they are about, each on its own scale: **files** are
-  `read-write` or `read-only` (the working directory, the `--sandbox-write` and `--sandbox-read`
-  paths, the system paths only the shell reads, the devices, the temporary directory), the
+  `read-write` or `read-only` (the working directory; `sandbox-write`, `sandbox-read`, `shell-read`
+  and `shell-devices`, named after the `kamchatka.json` keys that set them; and the temporary
+  directory), the
   **network** is `open`, `asks` or `blocked` (connections, and the ports a served session closes),
   and the **environment** lists the variables a command is not handed. That word replaces the
   answer of the rule behind a part, which is named after the line. <kbd>enter</kbd> lists the
@@ -36,6 +37,12 @@ minor bump may break you.
   and nothing on one without. A rule key that would leave a row's answer as it is - `r` on a row
   already asked about, `a` on one already allowed - does nothing, rather than recording a rule and
   saying so for no change.
+- **The `--web` page lists what the policy asks about, too.** A `toggle` button at the right-hand
+  end of the line along the bottom shows the `ask` rows among the rules and hides them again, as
+  `s` does on the tab; the line says `listing the 13 it asks about` while they are shown. A served
+  session sends every row for it as `Attached::all_permissions`, beside the decided ones in
+  `Attached::permissions`; it is empty from a session older than the field, and the page shows no
+  toggle then.
 - **A served session sends its sandbox, and the web page draws it.** `Attached::sandbox` carries it
   as a `Sandboxing`, with its parts as `Sandboxed` rows; it is `None` from a session older than the
   field. The `--web` page lists it under the rules, each part's paths folded until opened.
@@ -46,6 +53,9 @@ minor bump may break you.
   holding `*`, `?`, `[` or `{` is told that a pattern of names goes in `pattern` for `glob` and in
   `glob` for `grep`, and one holding commas that `path` names one directory or file. Told only that
   the path was not there, a model tried other spellings of the same mistake.
+- **The `--web` page draws the verdicts in the terminal's colours.** `allow` was blue and `ask`
+  brown, where the permissions tab has them green and yellow; they are now green, yellow and red on
+  both, and a row's pressed `ask` is yellow rather than grey.
 
 ### fixed
 
