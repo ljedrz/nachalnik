@@ -2,7 +2,7 @@
 //!
 //! note: the providers are [`nachalnik_providers`], a crate of their own, and they read no
 //! environment: where to send a request and what to measure it against are the caller's to decide.
-//! This module is that caller. It reads four variables, documented in `--help` and in the README,
+//! This module is that caller. It reads the variables documented in `--help` and in the README,
 //! and turns them into a provider. A dialect each, because the address they default to is the one
 //! thing the two do not share.
 //!
