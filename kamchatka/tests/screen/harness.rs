@@ -289,6 +289,16 @@ impl Harness {
             .collect()
     }
 
+    /// The background of the window's top-left corner.
+    pub(crate) fn backdrop(&mut self) -> Color {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| ui::draw(frame, &mut self.app))
+            .unwrap();
+
+        terminal.backend().buffer()[(0, 0)].bg
+    }
+
     /// Draws at a given size.
     pub(crate) fn sized(&mut self, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
