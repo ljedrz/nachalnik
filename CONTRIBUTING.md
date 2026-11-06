@@ -58,9 +58,10 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 
 - **`nachalnik`'s** read `OPENROUTER_API_KEY` (only when the base URL is OpenRouter's) or
   `NACHALNIK_API_KEY`, plus `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and
-  `NACHALNIK_CONTEXT_LIMIT`. `nachalnik-eval`'s and `nachalnik-mcp`'s read the same. The PDF and
-  picture tests also need `NACHALNIK_DOCUMENT_MODEL` and `NACHALNIK_VISION_MODEL`, a model that
-  reads each.
+  `NACHALNIK_CONTEXT_LIMIT`. `nachalnik-eval`'s and `nachalnik-mcp`'s read the same;
+  `nachalnik-mcp`'s is one test in `foreign` (`cargo test -p nachalnik-mcp --test foreign`), which
+  `--test live` does not run. The PDF and picture tests also need `NACHALNIK_DOCUMENT_MODEL` and
+  `NACHALNIK_VISION_MODEL`, a model that reads each.
 - **`kamchatka`'s** read `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL` and **`KAMCHATKA_TEST_MODEL`**,
   not the binary's `KAMCHATKA_MODEL`. Using the wrong one falls back to the default model, and the
   tests then fail on tool calls rather than on the model name. They also need
