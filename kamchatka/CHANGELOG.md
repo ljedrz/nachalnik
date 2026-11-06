@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **A `grep` or `glob` path that is not there says where a pattern or a list goes.** A path
+  holding `*`, `?`, `[` or `{` is told that a pattern of names goes in `pattern` for `glob` and in
+  `glob` for `grep`, and one holding commas that `path` names one directory or file. Told only that
+  the path was not there, a model tried other spellings of the same mistake.
+
 ### fixed
 
 - **`/attach` and `-f` refuse a file swapped for a pipe after it was checked.** The file was asked
