@@ -135,6 +135,17 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   nothing live, or fetching the history on every attach, which the client avoids on purpose for
   somebody watching. Unblocked by choosing which.
 
+- **An elided assistant turn goes back without its thinking, which some endpoints refuse.** With
+  `send_reasoning`, each assistant turn is sent back with its thinking, except one the projector
+  elided, which goes as its marker alone. An endpoint that requires the reasoning of every earlier
+  assistant message answers that request with a `400` naming the message, and every request after
+  it the same way until the turn is restored. A model that elides its own turns with the `context`
+  tool, or a compactor that elides them, has in effect ended its session there; a sweep's model
+  did, eliding "all explored reads" before its last answer. It waits on choosing between sending
+  the thinking beside the marker, which keeps part of what eliding took out, refusing to elide an
+  assistant turn while `send_reasoning` is on, and naming the turn to restore in the refusal.
+  Unblocked by that choice and a live test against such an endpoint.
+
 - **A step that compacts projects and prices the whole context four times.** A step with
   nothing to compact now projects once, and its compactor is shown the cost of the request about
   to go out. One that compacts builds that request, projects twice more in `apply_compaction` for
