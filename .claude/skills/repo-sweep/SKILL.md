@@ -292,10 +292,12 @@ A different sweep: not a model reading code, but a model *using* the program, an
 where the tools cost it a call. The answers are in the records rather than in anything it says.
 
 ```sh
-python3 $SKILL/friction.py $SWEEPS/tmp/kamchatka/*.json     # every snapshot a sweep left, for free
+python3 $SKILL/friction.py $TMPDIR/kamchatka/<the run's date>T*.json   # every snapshot a sweep left
 ```
 
-Every snapshot the other sweeps wrote is already a baseline: an error result, bucketed by its text
+`sweep.sh` leaves `TMPDIR` as it is, so the sweeps' snapshots are in `$TMPDIR/kamchatka` beside any
+other session's; name the run's by the time it started. Every snapshot the other sweeps wrote is
+already a baseline: an error result, bucketed by its text
 with the names and numbers taken out, how often, and what the model did next. The row to act on is
 one the model does not recover from - the same call again, or another tool, and the thing it was
 doing never done.
