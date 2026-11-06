@@ -18,36 +18,32 @@ use crate::{
     model::{Content, Message, ToolCall},
 };
 
-/// Returns the tokens a turn's tool calls cost: each call's tool, arguments and whatever else it
-/// carries, as [`TokenCounter::count_item`] and [`TokenCounter::count_message`] charge for them.
-fn count_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) -> usize {
-    calls
-        .iter()
-        .map(|call| {
-            counter.count(&Content::text(&*call.tool))
-                + counter.count(&Content::Json(call.args.clone()))
-                + match call.extra.is_null() {
-                    true => 0,
-                    false => counter.count(&Content::Json(call.extra.clone())),
-                }
-        })
-        .sum()
+/// The parts of a turn's tool calls a counter is asked about: each call's tool, arguments and
+/// whatever else it carries, as [`TokenCounter::count_item`] and [`TokenCounter::count_message`]
+/// charge for them.
+///
+/// note: one list for both of the functions below, so what is counted and what is asked whether it
+/// can be counted cannot come apart.
+fn call_parts(calls: &[ToolCall]) -> impl Iterator<Item = Content> + '_ {
+    calls.iter().flat_map(|call| {
+        [
+            Some(Content::text(&*call.tool)),
+            Some(Content::Json(call.args.clone())),
+            (!call.extra.is_null()).then(|| Content::Json(call.extra.clone())),
+        ]
+        .into_iter()
+        .flatten()
+    })
 }
 
-/// Returns how many pieces of a turn's tool calls `counter` would not count: the parts
-/// [`TokenCounter::count_item`] and [`TokenCounter::count_message`] charge for in each.
+/// Returns the tokens a turn's tool calls cost; see [`call_parts`].
+fn count_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) -> usize {
+    call_parts(calls).map(|part| counter.count(&part)).sum()
+}
+
+/// Returns how many pieces of a turn's tool calls `counter` would not count; see [`call_parts`].
 fn uncounted_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) -> usize {
-    calls
-        .iter()
-        .map(|call| {
-            counter.uncounted(&Content::text(&*call.tool))
-                + counter.uncounted(&Content::Json(call.args.clone()))
-                + match call.extra.is_null() {
-                    true => 0,
-                    false => counter.uncounted(&Content::Json(call.extra.clone())),
-                }
-        })
-        .sum()
+    call_parts(calls).map(|part| counter.uncounted(&part)).sum()
 }
 
 /// Turns content into a token count.
