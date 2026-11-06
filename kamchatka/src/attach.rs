@@ -111,10 +111,22 @@ pub fn attached(path: &str) -> Result<ContextItem> {
 ///
 /// note: read only up to [`MOST`] rather than trusting the reported length, because a file being
 /// written to while this reads it is longer by the end than it was at the start.
+///
+/// note: opened without blocking and then asked what it is, rather than asked by path and then
+/// opened, so a file swapped for a pipe in between is still refused. Opening a pipe with no
+/// writer would otherwise wait.
 fn contents(path: &str) -> Result<Vec<u8>> {
     use std::io::Read as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
 
-    let meta = std::fs::metadata(path).with_context(|| format!("could not read {path}"))?;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
+        .open(path)
+        .with_context(|| format!("could not read {path}"))?;
+    let meta = file
+        .metadata()
+        .with_context(|| format!("could not read {path}"))?;
     if !meta.is_file() {
         bail!(
             "{path} is not a file, and only a file can be attached: anything else is read until \
@@ -134,8 +146,8 @@ fn contents(path: &str) -> Result<Vec<u8>> {
     }
 
     let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .and_then(|file| file.take(MOST + 1).read_to_end(&mut bytes))
+    file.take(MOST + 1)
+        .read_to_end(&mut bytes)
         .with_context(|| format!("could not read {path}"))?;
     if bytes.len() as u64 > MOST {
         return Err(too_large(bytes.len() as u64));
