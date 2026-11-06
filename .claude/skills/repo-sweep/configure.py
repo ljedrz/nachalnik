@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Writes the kamchatka settings files a sweep runs under, for one model.
 
-usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEPS)
+usage: configure.py MODEL [--limit TOKENS] [--out DIR] [--send-reasoning]
+       (DIR defaults to $SWEEPS)
 
 Without --limit, the model's context length is read from the endpoint's `/models` listing
 (KAMCHATKA_BASE_URL, OpenRouter's shape). Where `drive.py` cuts a turn scales with it: half the
@@ -14,6 +15,11 @@ figure the settings came from.
 A listing can say more than an endpoint serves. Before taking a 400 for the window's edge, look
 for a larger request that went through: one 400 after a sweep's largest request so far once looked
 like the edge, and another sweep's next request was larger still and answered.
+
+--send-reasoning sets kamchatka's `send-reasoning`, for an endpoint that answers a sweep's second
+request with a 400 asking for an earlier assistant message's `reasoning_content`: it then gets
+each turn's thinking back with it. Try the 400 by hand first, since most endpoints reject the
+field instead.
 """
 
 import json
@@ -343,6 +349,8 @@ def main() -> None:
         "auto-deny": ["fs:write", "exec"],
         "on-ask": "deny",
     }
+    if "--send-reasoning" in args:
+        common["send-reasoning"] = True
     for kind, system in (
         ("audit", AUDIT),
         ("tests", TESTS),
