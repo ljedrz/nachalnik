@@ -825,6 +825,7 @@ impl Setup {
         // what the shell's commands leave running, which `App` holds for whoever ends the session
         let stragglers = tools::Stragglers::default();
         let mut unconfined_because = None;
+        let mut roots = None;
         let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
         let mut built: Vec<Arc<dyn nachalnik::Tool>> = Vec::new();
         if building {
@@ -866,6 +867,17 @@ impl Setup {
                 workdir,
                 confined: self.confine,
             };
+            // what the permissions tab lists, which only means something where the tools are held to
+            // it: `--no-sandbox` leaves `fs` reaching everything as well as the shell
+            if reach.confined {
+                roots = Some(sandbox::Roots {
+                    workdir: reach.workdir.clone(),
+                    writable: reach.writable.clone(),
+                    readable: reach.readable.clone(),
+                    shell_readable: reach.shell_readable.clone(),
+                    devices: self.devices.clone(),
+                });
+            }
             for tool in tools::builtin(
                 tools::Shell {
                     policy: policy.clone(),
@@ -944,6 +956,7 @@ impl Setup {
         app.confinement = confinement;
         app.stragglers = stragglers;
         app.unconfined_because = unconfined_because;
+        app.roots = roots;
         if let Some(installed) = &introspect {
             app.earlier = installed.earlier();
         }

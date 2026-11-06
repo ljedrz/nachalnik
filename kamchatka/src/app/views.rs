@@ -47,6 +47,90 @@ pub struct Stance {
     pub when: &'static str,
 }
 
+/// The sandbox as the permissions tab lists it under the rules: whether it holds the shell at all,
+/// and its parts.
+///
+/// note: whether the shell is confined is the sandbox's own state, said in its heading, and not a
+/// part beside the paths. As a line among them it read as one more thing a command may reach.
+#[non_exhaustive]
+pub struct SandboxView {
+    /// Whether it holds the shell, in a word - `confined`, `partly confined`, `unconfined` - and
+    /// the verdict that word amounts to, which picks its colour.
+    pub status: (&'static str, Verdict),
+    /// What that means for the parts, in a sentence.
+    pub says: String,
+    /// What this kernel leaves out, or why the sandbox would not start, where something said.
+    pub note: Option<String>,
+    /// The parts, grouped by [`SandboxPart::kind`] in the order the kinds are listed.
+    pub parts: Vec<SandboxPart>,
+}
+
+/// What a part of the sandbox is about, which is what it is listed under.
+///
+/// note: kinds rather than one list, because each answers on its own scale: a path is read-write
+/// or read-only, the network is open, asks or is blocked, and a variable is removed. Mixed in one
+/// list the words beside the names stopped being comparable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PartKind {
+    /// What a command and the file tools may read and write.
+    Files,
+    /// Where a command may connect.
+    Network,
+    /// What a command is not handed from this program's environment.
+    Environment,
+}
+
+impl PartKind {
+    /// The word the kind is listed under.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Files => "files",
+            Self::Network => "network",
+            Self::Environment => "environment",
+        }
+    }
+}
+
+/// One part of the sandbox: what it is, how open it is, and the paths in it.
+///
+/// note: read off [`crate::sandbox::Roots::sandbox`], the sandbox a command started now would run
+/// in, rather than off the flags. A refused `fs:write` makes the `--sandbox-write` paths read-only
+/// there, and a list of the flags would go on calling them writable.
+#[non_exhaustive]
+pub struct SandboxPart {
+    /// What it is about, which is what it is listed under.
+    pub kind: PartKind,
+    /// The name the tab gives it, which is also how it is remembered as opened.
+    pub name: &'static str,
+    /// How open it is, in a word on its kind's scale, and the verdict that word amounts to, which
+    /// picks its colour; `None` where there is nothing in it.
+    ///
+    /// note: the effect rather than the rule's answer. The working directory is decided by
+    /// `fs:write`, and `ask` beside it read as a question about the directory, when what a
+    /// command gets there is a directory it can write.
+    pub access: Option<(&'static str, Verdict)>,
+    /// What it comes to, in a sentence.
+    pub says: String,
+    /// The rule that decides it, where one does, which the line names; the rule's own row is where
+    /// it is changed.
+    pub rule: Option<Subject>,
+    /// What is in it, a line each, where it is a list.
+    pub paths: Vec<String>,
+}
+
+/// One line of the permissions tab that the keys can be on.
+#[cfg(feature = "tui")]
+#[non_exhaustive]
+pub enum Listed {
+    /// A rule somebody decided.
+    Rule(Stance),
+    /// A part of the sandbox, and whether it is open to show its paths.
+    Group(SandboxPart, bool),
+    /// One path in an opened part, and the name of that part.
+    Path(&'static str, String),
+}
+
 impl Stance {
     /// Whether somebody has actually answered about this, as opposed to it being the default.
     pub fn is_decided(&self) -> bool {
@@ -662,6 +746,220 @@ impl App {
             })
             .map(|it| it.sentence())
             .collect()
+    }
+
+    /// The sandbox a command started now would run in, and what holds the file tools; `None`
+    /// where nothing holds the tools to anything.
+    ///
+    /// note: the parts the shell alone is held to are left out where the shell is not confined:
+    /// listing the devices a command may use beside a shell that can use every one would be listing
+    /// a restriction that is not there. `fs` is held to the files either way, by its own code.
+    ///
+    /// note: no word for the network gate. The probe that confines a command is the one that gates
+    /// its network, so a confined shell in this program is always a gated one; the network's line
+    /// says what a command meets, and a `Careful` nobody told of a gate is said there.
+    ///
+    /// note: worded for a person reading a list, not for the model; the model's account is in the
+    /// shell's description and in its refusals.
+    pub fn sandbox_view(&self) -> Option<SandboxView> {
+        use crate::sandbox::Network;
+
+        let roots = self.roots.as_ref()?;
+        let sandbox = roots.sandbox(&self.policy);
+        let confined = self.confinement.is_confined();
+        let shell = self.shell_is_live();
+        let shown = |paths: &[std::path::PathBuf]| -> Vec<String> {
+            paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect()
+        };
+        let paths = |n: usize| super::text::plural(n, "path");
+        const WRITES: (&str, Verdict) = ("read-write", Verdict::Allow);
+        const READS: (&str, Verdict) = ("read-only", Verdict::Ask);
+        // a refused `fs:write` moves what `--sandbox-write` opened among the readable paths, and
+        // the line for each says so rather than leaving a path to change lists unexplained
+        let moved = !sandbox.workdir_writable && !roots.writable.is_empty();
+
+        let (status, says, note) = match (shell, self.confinement) {
+            (false, _) => (
+                ("no shell", Verdict::Allow),
+                "nothing runs commands; the file tools are held to what is below",
+                None,
+            ),
+            (true, crate::sandbox::Confinement::Full) => (
+                ("confined", Verdict::Allow),
+                "commands and the file tools are held to what is below",
+                None,
+            ),
+            (true, crate::sandbox::Confinement::Partial) => (
+                ("partly confined", Verdict::Ask),
+                "commands are held to what is below, as far as this kernel can",
+                crate::sandbox::weaker_here(),
+            ),
+            (true, _) => (
+                ("unconfined", Verdict::Deny),
+                "the sandbox would not start, so commands reach everything; only the file tools \
+                 are held to what is below",
+                self.unconfined_because.as_deref().map(super::one_line),
+            ),
+        };
+
+        let part = |kind, name, access, says: String, paths| SandboxPart {
+            kind,
+            name,
+            access,
+            says,
+            rule: None,
+            paths,
+        };
+        let mut parts = vec![SandboxPart {
+            rule: Some(Subject::Capability(Capability::fs("write"))),
+            ..part(
+                PartKind::Files,
+                "working directory",
+                Some(match sandbox.workdir_writable {
+                    true => WRITES,
+                    false => READS,
+                }),
+                match sandbox.workdir_writable {
+                    true => sandbox.workdir.display().to_string(),
+                    false => format!("{}, because fs:write is denied", sandbox.workdir.display()),
+                },
+                Vec::new(),
+            )
+        }];
+        parts.push(part(
+            PartKind::Files,
+            "--sandbox-write",
+            (!sandbox.writable.is_empty()).then_some(WRITES),
+            match (sandbox.writable.len(), moved) {
+                (_, true) => "none while fs:write is denied; its paths are read-only".to_owned(),
+                (0, false) => "none".to_owned(),
+                (n, false) => paths(n),
+            },
+            shown(&sandbox.writable),
+        ));
+        parts.push(part(
+            PartKind::Files,
+            "--sandbox-read",
+            (!sandbox.readable.is_empty()).then_some(READS),
+            match (sandbox.readable.len(), moved) {
+                (0, _) => "none".to_owned(),
+                (n, false) => paths(n),
+                (n, true) => format!(
+                    "{}, with --sandbox-write's while fs:write is denied",
+                    paths(n)
+                ),
+            },
+            shown(&sandbox.readable),
+        ));
+        if shell && confined {
+            parts.push(part(
+                PartKind::Files,
+                "system paths",
+                Some(READS),
+                format!(
+                    "{} for the programs commands run; the file tools cannot read them",
+                    paths(sandbox.shell_readable.len())
+                ),
+                shown(&sandbox.shell_readable),
+            ));
+            parts.push(part(
+                PartKind::Files,
+                "devices",
+                Some(WRITES),
+                format!(
+                    "{}; the rest of /dev is blocked",
+                    super::text::plural(sandbox.devices.len(), "device")
+                ),
+                shown(&sandbox.devices),
+            ));
+            parts.push(part(
+                PartKind::Files,
+                "temporary files",
+                Some(WRITES),
+                "each command gets its own $TMPDIR, deleted when it finishes".to_owned(),
+                Vec::new(),
+            ));
+
+            let (access, says) = match sandbox.network {
+                Network::Open => (("open", Verdict::Allow), "commands can connect anywhere"),
+                Network::Shut => (
+                    ("blocked", Verdict::Deny),
+                    "commands cannot connect anywhere",
+                ),
+                Network::Asked if self.policy.gates_the_network() => (
+                    ("asks", Verdict::Ask),
+                    "you are asked the first time a command connects",
+                ),
+                Network::Asked => (
+                    ("asks", Verdict::Ask),
+                    "a command is asked about by name, before it runs",
+                ),
+            };
+            parts.push(SandboxPart {
+                rule: Some(Subject::Capability(Capability::net("reach"))),
+                ..part(
+                    PartKind::Network,
+                    "connections",
+                    Some(access),
+                    says.to_owned(),
+                    Vec::new(),
+                )
+            });
+            if !sandbox.closed.is_empty() {
+                parts.push(part(
+                    PartKind::Network,
+                    "closed ports",
+                    Some(("blocked", Verdict::Deny)),
+                    "this session is served on them, so no answer opens them".to_owned(),
+                    sandbox.closed.iter().map(u16::to_string).collect(),
+                ));
+            }
+        }
+        if shell {
+            parts.push(part(
+                PartKind::Environment,
+                "variables",
+                Some(("removed", Verdict::Deny)),
+                "API keys, and addresses with a password in them".to_owned(),
+                crate::endpoint::KEYS
+                    .iter()
+                    .map(|key| (*key).to_owned())
+                    .collect(),
+            ));
+        }
+
+        Some(SandboxView {
+            status,
+            says: says.to_owned(),
+            note,
+            parts,
+        })
+    }
+
+    /// The lines of the permissions tab the keys can be on: the rules, then the sandbox's parts,
+    /// with the paths of each opened part under it.
+    #[cfg(feature = "tui")]
+    pub fn permission_lines(&self) -> Vec<Listed> {
+        let mut listed: Vec<Listed> = self.permissions().into_iter().map(Listed::Rule).collect();
+        let parts = self
+            .sandbox_view()
+            .map(|view| view.parts)
+            .unwrap_or_default();
+        for part in parts {
+            let open = !part.paths.is_empty() && self.opened.contains(part.name);
+            let name = part.name;
+            let paths = match open {
+                true => part.paths.clone(),
+                false => Vec::new(),
+            };
+            listed.push(Listed::Group(part, open));
+            listed.extend(paths.into_iter().map(|path| Listed::Path(name, path)));
+        }
+
+        listed
     }
 
     /// What the shell can reach, in one line, or `None` if nothing here runs commands.

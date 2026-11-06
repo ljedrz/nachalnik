@@ -8,7 +8,11 @@ use std::{sync::Arc, time::Duration};
 
 use kamchatka::{
     app::{Did, Speaker},
-    remote::protocol::{self, Address, Command, Message},
+    remote::{
+        Server,
+        protocol::{self, Address, Command, Message},
+    },
+    wiring::{Setup, Wired},
 };
 use nachalnik::{
     Capability, ContextId, ContextItem, Grant, ModelResponse,
@@ -3037,4 +3041,54 @@ async fn a_served_session_tells_its_clients_which_settings_it_read() {
         String::from_utf8_lossy(&host.stdout),
         String::from_utf8_lossy(&host.stderr)
     );
+}
+
+/// A client is sent the sandbox part by part, as the permissions tab lists it under the rules.
+///
+/// note: a session with the built-in tools, wired as the program wires one, since the parts are
+/// read off the paths the wiring gave them. Only the working directory is held to a word: the rest
+/// depends on whether this kernel starts a sandbox.
+#[tokio::test]
+async fn a_client_is_sent_the_sandbox() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: None,
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "scripted", CLOSED, "",
+    )))
+    .expect("the wiring failed");
+    let mut server = Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("nothing would listen");
+    let at = server.address();
+    let loop_ = tokio::spawn(async move { server.run(&mut app, &mut events, &mut finished).await });
+
+    let (mut peer, attached) = Peer::attached(&at).await;
+    let sandbox = attached
+        .sandbox
+        .expect("the session's tools are held to a sandbox");
+    let workdir = sandbox
+        .parts
+        .iter()
+        .find(|part| part.name == "working directory")
+        .unwrap_or_else(|| panic!("no working directory: {sandbox:?}"));
+    assert_eq!(workdir.kind, "files", "{workdir:?}");
+    assert_eq!(workdir.access.as_deref(), Some("read-write"), "{workdir:?}");
+    assert_eq!(workdir.tone, Some(nachalnik::Verdict::Allow), "{workdir:?}");
+    assert_eq!(workdir.rule.as_deref(), Some("fs:write"), "{workdir:?}");
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    loop_
+        .await
+        .expect("the loop panicked")
+        .expect("the session failed");
 }

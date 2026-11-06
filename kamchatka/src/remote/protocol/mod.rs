@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use crate::app::App;
-use crate::app::{Did, Going, Page, Said, Speaker, Stance};
+use crate::app::{Did, Going, Page, Said, SandboxPart, SandboxView, Speaker, Stance};
 pub use crate::tools::Reached;
 
 mod abridge;
@@ -591,6 +591,13 @@ pub struct Attached {
     pub queued_behind: Vec<String>,
     /// What the shell tool's sandbox came to, or nothing where there is none.
     pub confinement: Option<String>,
+    /// The sandbox, as the permissions tab lists it under the rules.
+    ///
+    /// note: what [`Attached::confinement`] says in a line, and what it holds a command to beside
+    /// it. `None` where nothing holds the tools to anything, and from a session older than the
+    /// field; the line is all a client has to draw then.
+    #[serde(default)]
+    pub sandbox: Option<Sandboxing>,
 }
 
 /// What the advisor made of the command the waiting question is about.
@@ -864,6 +871,72 @@ impl Stanced {
             verdict: stance.verdict,
             tools: stance.tools.clone(),
             sometimes: stance.sometimes.clone(),
+        }
+    }
+}
+
+/// The sandbox: whether it holds the shell, and its parts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Sandboxing {
+    /// Whether it holds the shell, in a word: `confined`, `partly confined`, `unconfined`.
+    pub status: String,
+    /// The verdict that word amounts to, which is the colour the terminal draws it in.
+    pub tone: nachalnik::Verdict,
+    /// What that means for the parts, in a sentence.
+    pub says: String,
+    /// What this kernel leaves out, or why the sandbox would not start, where something said.
+    pub note: Option<String>,
+    /// The parts, grouped by [`Sandboxed::kind`].
+    pub parts: Vec<Sandboxed>,
+}
+
+impl Sandboxing {
+    /// Copies one off the sandbox the permissions tab draws.
+    pub(super) fn of(view: &SandboxView) -> Self {
+        Self {
+            status: view.status.0.to_owned(),
+            tone: view.status.1,
+            says: view.says.clone(),
+            note: view.note.clone(),
+            parts: view.parts.iter().map(Sandboxed::of).collect(),
+        }
+    }
+}
+
+/// One part of the sandbox: the working directory, the connections a command may make, the
+/// variables it is not handed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Sandboxed {
+    /// What it is about, which is what it is listed under: `files`, `network`, `environment`.
+    pub kind: String,
+    /// What the part is: `working directory`, `--sandbox-read`, `connections`.
+    pub name: String,
+    /// How open it is, in a word on its kind's scale - `read-write`, `asks`, `removed` - where
+    /// there is anything in it.
+    pub access: Option<String>,
+    /// The verdict that word amounts to, which is the colour the terminal draws it in.
+    pub tone: Option<nachalnik::Verdict>,
+    /// What it comes to, in a sentence.
+    pub says: String,
+    /// The rule that decides it, spelled as [`Stanced::subject`] is, where one does.
+    pub rule: Option<String>,
+    /// What is in it, a line each, where it is a list.
+    pub paths: Vec<String>,
+}
+
+impl Sandboxed {
+    /// Copies one off the part the permissions tab draws.
+    fn of(part: &SandboxPart) -> Self {
+        Self {
+            kind: part.kind.name().to_owned(),
+            name: part.name.to_owned(),
+            access: part.access.map(|(word, _)| word.to_owned()),
+            tone: part.access.map(|(_, tone)| tone),
+            says: part.says.clone(),
+            rule: part.rule.as_ref().map(ToString::to_string),
+            paths: part.paths.clone(),
         }
     }
 }

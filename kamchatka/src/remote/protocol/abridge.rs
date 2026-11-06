@@ -462,6 +462,7 @@ mod tests {
             queued: waiting.first().cloned(),
             queued_behind: waiting.iter().skip(1).cloned().collect(),
             confinement: None,
+            sandbox: None,
         }
     }
 }
