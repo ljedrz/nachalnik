@@ -394,6 +394,13 @@ pub struct App {
     /// it gives each.
     #[cfg(feature = "tui")]
     pub opened: std::collections::BTreeSet<&'static str>,
+    /// Whether the permissions tab lists the subjects it asks about beside the decided ones.
+    ///
+    /// note: off to begin with. A fresh policy asks about everything, and a row per subject
+    /// nobody has thought about would bury the few that say what happens without a question; the
+    /// footer counts them, and `s` lists them where somebody wants to decide one in advance.
+    #[cfg(feature = "tui")]
+    pub asks_shown: bool,
     /// The address of the page `--web` serves, its key included, for `/web` to show again.
     ///
     /// note: the run's rather than the session's, set by whoever started the page because the page
@@ -766,6 +773,8 @@ impl App {
             roots: None,
             #[cfg(feature = "tui")]
             opened: Default::default(),
+            #[cfg(feature = "tui")]
+            asks_shown: false,
             web: None,
             stragglers: crate::tools::Stragglers::default(),
             anchor: None,

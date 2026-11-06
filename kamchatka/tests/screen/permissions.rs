@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
-    app::{Focus, Speaker, Tab},
+    app::{Focus, Listed, Speaker, Tab},
     sandbox::Confinement,
     tools::{Limits, Subject},
 };
@@ -328,7 +328,7 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         "`ask` is not a decision, and nobody has made one"
     );
     assert!(screen.contains("nothing has been decided"), "{screen}");
-    assert!(screen.contains("more it will ask about"), "{screen}");
+    assert!(screen.contains("it asks about"), "{screen}");
 
     // ... and deciding one puts it on the tab, naming what it covers
     harness
@@ -853,7 +853,7 @@ async fn the_permissions_footer_keeps_its_first_part_when_it_runs_out_of_room() 
         line.contains("─ shell: confined, network gated · "),
         "{screen}"
     );
-    assert!(line.contains("more it will ask about"), "{screen}");
+    assert!(line.contains("s shows the 13 it asks about"), "{screen}");
     assert!(!line.contains("space cycles"), "{screen}");
 
     // ... and with no room even for that, it is shortened from its end
@@ -863,15 +863,15 @@ async fn the_permissions_footer_keeps_its_first_part_when_it_runs_out_of_room() 
         "{screen}"
     );
 
-    // the keys exactly fill the border at 111 columns, with the space before them against the
-    // corner, and are one column short at 110, where the border shows before what is left
-    let screen = harness.sized(110, 20);
+    // the keys exactly fill the border at 114 columns, with the space before them against the
+    // corner, and are one column short at 113, where the border shows before what is left
+    let screen = harness.sized(113, 20);
     let line = footer(&screen);
-    assert!(line.contains("more it will ask about"), "{screen}");
+    assert!(line.contains("it asks about"), "{screen}");
     assert!(!line.contains("space cycles"), "{screen}");
     assert!(line.starts_with("└─"), "{screen}");
 
-    let screen = harness.sized(111, 20);
+    let screen = harness.sized(114, 20);
     let line = footer(&screen);
     assert!(line.contains("space cycles"), "{screen}");
     assert!(line.starts_with("└ "), "{screen}");
@@ -1090,7 +1090,7 @@ async fn the_permissions_tab_draws_the_path_rules_too() {
     let screen = harness.sized(120, 40);
     assert!(!screen.contains(".env*"), "{screen}");
     assert!(
-        screen.contains("more it will ask about"),
+        screen.contains("it asks about"),
         "what is not listed is still counted: {screen}"
     );
 
@@ -3587,4 +3587,132 @@ async fn an_unconfined_shell_is_said_in_the_sandboxs_heading() {
     // the parts only a confined shell is held to are not listed at all
     assert!(!screen.contains("system paths"), "{screen}");
     assert!(!screen.contains("connections"), "{screen}");
+}
+
+/// `s` lists what the policy asks about beside what has been decided, and hides it again.
+///
+/// note: the footer counted them - `13 more it will ask about` - with no way to see which, and
+/// deciding one in advance meant waiting for its question or knowing its spelling for a flag.
+#[tokio::test]
+async fn s_lists_what_it_asks_about_and_hides_it_again() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+    ));
+    harness.tab(Tab::Permissions);
+
+    let hidden = harness.sized(120, 40);
+    assert!(!hidden.contains("fs:read"), "{hidden}");
+    assert!(
+        hidden.contains(&format!(
+            "s shows the {} it asks about",
+            harness.app.undecided()
+        )),
+        "{hidden}"
+    );
+
+    harness.press(KeyCode::Char('s')).await;
+    let shown = harness.sized(120, 40);
+    let row = shown
+        .lines()
+        .find(|line| line.contains("fs:read"))
+        .unwrap_or_else(|| panic!("no row for what it asks about: {shown}"));
+    assert!(row.contains("ask"), "{row}");
+    assert!(
+        shown.contains("the rules · what has been decided, and what it asks about"),
+        "{shown}"
+    );
+    assert!(shown.contains("s hides what it asks about"), "{shown}");
+
+    // a row listed this way is decided like any other, and stays where it was
+    let at = harness
+        .app
+        .permission_lines()
+        .iter()
+        .position(|line| matches!(line, Listed::Rule(row) if row.subject.to_string() == "fs:read"))
+        .expect("the row is a line of the tab");
+    harness.app.chosen = at;
+    // `r` on it changes nothing, since it is already a question, so nothing is said or recorded
+    harness.press(KeyCode::Char('r')).await;
+    assert!(
+        !harness
+            .app
+            .notes(0)
+            .any(|entry| entry.text.contains("is a question again")),
+        "a rule for no change at all"
+    );
+    harness.press(KeyCode::Char('a')).await;
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::fs("read"))),
+        Verdict::Allow
+    );
+
+    // hidden again, what was decided stays, and what was not goes
+    harness.press(KeyCode::Char('s')).await;
+    let again = harness.sized(120, 40);
+    assert!(again.contains("fs:read"), "{again}");
+    assert!(!again.contains(".env*"), "{again}");
+}
+
+/// The footer names the keys the picked line takes and no others.
+///
+/// note: `space cycles` along the bottom while the keys were on a part of the sandbox, which is
+/// read and not set, named a key that did nothing there.
+#[tokio::test]
+async fn the_footer_names_only_the_keys_the_picked_line_takes() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "ran").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.confinement = Confinement::Full;
+    harness.app.roots = Some(kamchatka::sandbox::Roots {
+        workdir: "/work".into(),
+        writable: vec!["/opened/rw".into()],
+        ..Default::default()
+    });
+    harness.app.policy.set(
+        &Subject::Capability(Capability::exec("run")),
+        Verdict::Allow,
+    );
+    harness.tab(Tab::Permissions);
+    let footer = |harness: &mut Harness| {
+        let screen = harness.sized(160, 40);
+        screen
+            .lines()
+            .rev()
+            .find(|line| line.starts_with('└'))
+            .unwrap_or_else(|| panic!("the window has a bottom edge: {screen}"))
+            .to_owned()
+    };
+
+    // a rule: its keys
+    let line = footer(&mut harness);
+    assert!(line.contains("space cycles"), "{line}");
+    assert!(!line.contains("enter"), "{line}");
+
+    // the working directory, which has nothing to list: no keys at all
+    harness.press(KeyCode::Down).await;
+    let line = footer(&mut harness);
+    assert!(!line.contains("space cycles"), "{line}");
+    assert!(!line.contains("enter"), "{line}");
+    assert!(
+        line.contains("it asks about"),
+        "the rest of the line stays: {line}"
+    );
+
+    // a part with a list: `enter`, which then closes it
+    harness.press(KeyCode::Down).await;
+    let line = footer(&mut harness);
+    assert!(line.contains("enter lists paths"), "{line}");
+    assert!(!line.contains("space cycles"), "{line}");
+    harness.press(KeyCode::Enter).await;
+    assert!(footer(&mut harness).contains("enter closes"));
+    harness.press(KeyCode::Down).await;
+    assert!(
+        footer(&mut harness).contains("enter closes"),
+        "on a path of an opened part"
+    );
 }

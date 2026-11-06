@@ -218,8 +218,10 @@ The line at the top shows the policy in force and its answer for everything not 
 are two lists, each with a heading: **the rules** and **the sandbox**.
 
 A fresh session has no rows: everything starts at `ask`, and rows are decisions added as you answer.
-What is not listed is counted at the bottom as how many more it will ask about; setting a row back
-to `ask` removes it. A rule for a whole domain is one row listing the actions it covers; an
+What is not listed is counted at the bottom, and <kbd>s</kbd> lists it among the rules as `ask`
+rows, where it can be decided in advance; <kbd>s</kbd> again hides what is still `ask`. Setting a
+row back to `ask` removes it while they are hidden. The keys along the bottom are the ones the
+picked line takes. A rule for a whole domain is one row listing the actions it covers; an
 operation answered separately (`--auto-allow fs --auto-deny fs:write`) gets its own row. What it
 covers is never wider than the rule, and a rule that matches nothing says so. To decide in advance,
 answer the first question with <kbd>a</kbd> to allow it from then on, or use a flag. <kbd>n</kbd>

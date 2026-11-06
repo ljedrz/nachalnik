@@ -387,18 +387,29 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
             {
                 parts.push(line);
             }
-            match app.undecided() {
-                0 => {}
-                n => parts.push(format!("{n} more it will ask about")),
+            // what it asks about, and the key that lists it: a count alone was a figure about
+            // rows nobody could see
+            match (app.undecided(), app.asks_shown) {
+                (0, _) => {}
+                (n, false) => parts.push(format!("s shows the {n} it asks about")),
+                (_, true) => parts.push("s hides what it asks about".to_owned()),
             }
-            // note: the same keys whatever else is on the line, with or without a sandbox line
-            // beside them. Not named when there is no rule for them to act on; the sandbox is
-            // read, not set, and takes only `enter`
-            if !app.permissions().is_empty() {
-                parts.push("space cycles · a allow · n never · r ask again".to_owned());
-            }
-            if app.sandbox_view().is_some() {
-                parts.push("enter lists paths".to_owned());
+            // the keys the picked line takes, and only those: a rule takes the rule keys, and a
+            // part of the sandbox, which is read and not set, takes only `enter`, where it has a
+            // list to open. Keys named for a line they do nothing on are keys somebody tries
+            let lines = app.permission_lines();
+            let picked = lines.get(app.chosen.min(lines.len().saturating_sub(1)));
+            match picked {
+                Some(crate::app::Listed::Rule(_)) => {
+                    parts.push("space cycles · a allow · n never · r ask again".to_owned())
+                }
+                Some(crate::app::Listed::Group(part, false)) if !part.paths.is_empty() => {
+                    parts.push("enter lists paths".to_owned())
+                }
+                Some(crate::app::Listed::Group(_, true) | crate::app::Listed::Path(..)) => {
+                    parts.push("enter closes".to_owned())
+                }
+                _ => {}
             }
 
             parts

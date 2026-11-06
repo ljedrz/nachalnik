@@ -255,7 +255,10 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
     assert_eq!(harness.app.undecided(), before + operations);
     let screen = harness.screen();
     assert!(
-        screen.contains(&format!("{} more it will ask about", before + operations)),
+        screen.contains(&format!(
+            "s shows the {} it asks about",
+            before + operations
+        )),
         "{screen}"
     );
 
