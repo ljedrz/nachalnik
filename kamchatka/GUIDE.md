@@ -142,9 +142,8 @@ Every state machine transition is there, and each line shows the event's content
 name. It's the same stream `/save` writes to a `.jsonl` file, except for streamed output, which the
 log doesn't keep.
 
-There are two times on each line: when it happened (with a line across the pane when the date
-changes), and the time since the line above, left blank under a tenth of a second, so the slow steps
-stand out. Waits for *you* get no time. Streamed fragments don't get a line each: a tool's output is
+Each line shows the time of day it happened, with a line across the pane when the date changes;
+a narrow window leaves the times out. Streamed fragments don't get a line each: a tool's output is
 one `tool.output` line whose byte count grows, and the model's text is on the chat tab. The pane
 keeps the last few hundred lines; `/save` keeps every one the log has.
 
@@ -185,7 +184,7 @@ else on the screen is treated as markdown: a tool's output is shown exactly as t
 | <kbd>esc</kbd> | close an open search box; otherwise stop what's running and keep what arrived, or, when stopped in `ready`, drop the calls waiting to run |
 | <kbd>ctrl+c</kbd> | stop what's running, or quit when nothing is |
 | <kbd>ctrl+d</kbd> | quit, from anywhere, including a permission prompt, where <kbd>d</kbd> alone means something else |
-| <kbd>F1</kbd> | key help, opened at the current tab; also <kbd>?</kbd> on any tab except chat |
+| <kbd>F1</kbd> | key help, opened at the current tab; also <kbd>?</kbd> on any tab except chat, while nothing is being typed |
 
 **<kbd>F1</kbd> opens on the page for the current tab**, with separate pages for slash commands,
 keys that work everywhere, and the waiting tool call, if there is one.
@@ -374,11 +373,11 @@ prompt, headed `a command wants the network`, with the command below it:
 | <kbd>a</kbd> | always: `net:reach` is allowed from now on, including for commands already waiting |
 | <kbd>n</kbd> | this command may not, and every socket it opens is refused |
 
-It is asked once per command, and the command waits while the question is open; <kbd>esc</kbd> stops
-the turn, the command and the question. The model is told near the top of the result that the
-command tried to use the network and what you answered, because a refused lookup would otherwise
-look like a broken network. `deny` refuses every internet socket without asking, including UDP, and
-<kbd>a</kbd> also applies to other commands still running.
+It is asked once per command, and the command waits while the question is open; <kbd>s</kbd> or
+<kbd>esc</kbd> stops the turn, the command and the question. The model is told near the top of the
+result that the command tried to use the network and what you answered, because a refused lookup
+would otherwise look like a broken network. `deny` refuses every internet socket without asking,
+including UDP, and <kbd>a</kbd> also applies to other commands still running.
 
 ## 🔦 finding things without a shell
 
@@ -414,11 +413,12 @@ starts at 32,000 bytes, and at 8,000 for fixed-format reports rather than sessio
 `fs:write`, `context:note` and `context:revise`. On a small model each limit is lower still, a tenth
 of the context window at about four bytes a token, so one answer cannot fill it. A limit set with
 `/limit` is kept whatever the window. `/limit` lists the limits numbered and changes one from its
-next call on, e.g. `/limit fs:read 64000`. A cut result keeps the full version next to it, excluded;
-<kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` cut nothing: a read
-stops at a line and says where to read on from, and a `grep` too long for its limit says which files
-matched instead. The full version has its own limit, 8 MiB: beyond that, a command's extra output is
-discarded and the result says how much, and `fs` refuses to edit larger files.
+next call on, e.g. `/limit fs:read 64000`. A truncated result keeps the full version next to it,
+excluded; <kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` truncate
+nothing: a read stops at a line and says where to read on from, and a `grep` too long for its limit
+says which files matched instead. The full version has its own limit, 8 MiB: beyond that, a
+command's extra output is discarded and the result says how much, and `fs` refuses to edit larger
+files.
 
 ## 📎 putting something in, with or without a question
 
@@ -466,12 +466,12 @@ with. There are [write-ups](https://ljedrz.github.io/nachalnik/) of sessions usi
 and the refusal says which action it belongs to; otherwise a `read` given `old` would return the
 whole file in answer to a call nobody meant to make.
 
-**`context`** reads the context. `look` lists every item (what it is, what it adds to the next
-request, what it holds back and why) and reads any of them in full, block by block, including
-reasoning; a long item is shortened to its start and end unless `whole: true`, since reading it
-copies it into the context. `request` shows the request about to be sent, and for each item left
-out, whether its own state caused it (`restore` brings it back) or the projector removed it because
-of something else.
+**`context`** reads the context. `look` lists the items (what each is, what it adds to the next
+request, what it holds back and why), the hundred most recent of them and a line saying how to
+reach the rest, and reads any of them in full, block by block, including reasoning; a long item is
+shortened to its start and end unless `whole: true`, since reading it copies it into the context.
+`request` shows the request about to be sent, and for each item left out, whether its own state
+caused it (`restore` brings it back) or the projector removed it because of something else.
 
 `budget` is the one to make decisions from: the estimate against the limit, split between the
 context and the tool definitions, what's held back, what the last request really cost, and how much

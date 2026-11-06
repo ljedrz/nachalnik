@@ -62,7 +62,7 @@ why it is there.][shot-context]
 
 `/step` runs the loop one transition at a time, so you can stop in `Ready`, where the model has said
 which calls it wants to make and none have run yet. The model gets tools for its own session too, so
-it can read what it carries, drop what it no longer needs and correct what is wrong. The five
+it can read what it carries, exclude what it no longer needs and correct what is wrong. The five
 transcripts show what that looks like. [Its readme](kamchatka/README.md) has the sandbox, the keys
 and the rest.
 
