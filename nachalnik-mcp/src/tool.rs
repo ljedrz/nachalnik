@@ -242,9 +242,8 @@ impl Tool for McpTool {
                             Err(_) => "could not be told to stop",
                         };
                         return Ok(ToolOutput::error(format!(
-                            "the MCP server `{server}` did not answer within {}s, and {told}; \
-                             what it had done by then is not known",
-                            within.as_secs()
+                            "the MCP server `{server}` did not answer within {within:?}, and \
+                             {told}; what it had done by then is not known"
                         )));
                     }
                     if output.is_interrupted() {

@@ -465,11 +465,14 @@ impl ServerHandler for Hangs {
 ///
 /// note: a server that hangs, or a response `rmcp` drops because it carries neither a result nor
 /// an error, held the turn until somebody interrupted it.
+///
+/// note: a limit that is not whole seconds, which the message once rounded down: a second and a
+/// half was said as `1s`, and anything under a second as `0s`.
 #[tokio::test]
 async fn a_call_nobody_answers_is_given_up_on_within_its_limit() {
     let server = serve("slow", Hangs)
         .await
-        .answering_within(std::time::Duration::from_secs(1));
+        .answering_within(std::time::Duration::from_millis(1500));
     let tools = server.tools().await.expect("it lists its tools");
 
     let said = tokio::time::timeout(
@@ -481,7 +484,7 @@ async fn a_call_nobody_answers_is_given_up_on_within_its_limit() {
     assert!(said.is_error, "{:?}", said.content);
     let text = said.content.to_text().into_owned();
     assert!(
-        text.contains("`slow` did not answer within 1s"),
+        text.contains("`slow` did not answer within 1.5s"),
         "the server and the limit are named: {text}"
     );
 }
