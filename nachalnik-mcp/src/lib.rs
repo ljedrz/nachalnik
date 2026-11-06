@@ -39,7 +39,7 @@ println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
 //! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out and while the
 //! server has it, and the server is then sent MCP's cancellation. A structured result is
 //! [`Content::Json`](nachalnik::Content). A server's progress notifications are not forwarded yet:
-//! no progress token is sent, so none arrive.
+//! `rmcp` puts a progress token on every request, and what a server sends against it is dropped.
 //!
 //! # what it decides, and what it refuses to
 //!
