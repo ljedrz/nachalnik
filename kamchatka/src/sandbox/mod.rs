@@ -946,6 +946,32 @@ pub(crate) fn stopped_serving_on(port: u16) {
         .retain(|served| *served != port);
 }
 
+/// How many confined commands are between being released to run and being remembered by
+/// [`began`]; see [`Starting`].
+static STARTING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A confined command being started, from before it is released to run until it is remembered.
+///
+/// note: sandlock's `popen` releases the command before it returns, so its sandbox can only be
+/// remembered after the command has begun to run. While one is between the two, any process may be
+/// it, and [`from_a_command`] says so of every one. Dropped on every way out of the start, failed
+/// ones included.
+pub(crate) struct Starting(());
+
+impl Starting {
+    /// Counts a command as being started.
+    pub(crate) fn new() -> Self {
+        STARTING.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self(())
+    }
+}
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        STARTING.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Remembers the sandbox a confined command runs in; see [`from_a_command`].
 ///
 /// note: and lets go of the ones with nothing left in them. Each holds a descriptor for every
@@ -989,8 +1015,13 @@ fn live(sandboxes: &mut Vec<sandlock_core::Controller>) -> Vec<i32> {
 /// client in this process reaches a session served here without a socket - see
 /// `remote::server::door` - so the socket is not how anything else comes from here while a command
 /// could be the one.
+///
+/// note: every process, while a command is being started; see [`Starting`].
 pub(crate) fn from_a_command(pid: u32) -> bool {
     let live = live(&mut SANDBOXES.lock().unwrap_or_else(PoisonError::into_inner));
+    if STARTING.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+        return true;
+    }
     if pid == std::process::id() {
         return !live.is_empty();
     }
@@ -1024,5 +1055,26 @@ mod tests {
         assert_eq!(Network::of(true, true), Network::Open);
         assert_eq!(Network::of(false, true), Network::Shut);
         assert_eq!(Network::of(false, false), Network::Asked);
+    }
+
+    /// Any process may be a command's while a command is being started, since its sandbox is not
+    /// known until the command is already running.
+    #[test]
+    fn any_process_may_be_a_command_being_started() {
+        let mut other = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("`sleep` is on the path");
+
+        let starting = super::Starting::new();
+        let taken = super::from_a_command(other.id());
+        drop(starting);
+        let _ = other.kill();
+        let _ = other.wait();
+
+        assert!(
+            taken,
+            "a process was told from a command still being started"
+        );
     }
 }
