@@ -109,8 +109,9 @@ impl Looking {
     }
 
     /// Where a walk starts, as the call named it and as it resolved, once reach and path rules
-    /// allow it; or a refusal saying nothing was `doing`.
-    fn root(&self, args: &Value, doing: &str) -> Result<(String, PathBuf), String> {
+    /// allow it; or a refusal saying nothing was `doing`. `names` is the argument a pattern of
+    /// file names goes in, for a `path` that is one.
+    fn root(&self, args: &Value, doing: &str, names: &str) -> Result<(String, PathBuf), String> {
         let asked = words(args, "path")?.unwrap_or(".").to_owned();
         // the call's own path is exempt from what a walk bars because it was asked about by name. A
         // link's name is not where it leads
@@ -139,11 +140,31 @@ impl Looking {
                         "`{asked}` is a link to nothing - what it names is not there - so nothing \
                          was {doing}"
                     ),
-                    false => format!("`{asked}` is not there, so nothing was {doing}"),
+                    false => format!(
+                        "`{asked}` is not there, so nothing was {doing}{}",
+                        misnamed(&asked, names)
+                    ),
                 })
             }
             _ => Ok((asked, root)),
         }
+    }
+}
+
+/// What a `path` that is not there was meant to be, where it has the shape of something else.
+///
+/// note: a pattern and a list are what a model puts in `path` most often, and told only that the
+/// path is not there it tries other spellings of the same mistake.
+fn misnamed(asked: &str, names: &str) -> String {
+    if asked.contains(['*', '?', '[', '{']) {
+        format!(
+            ". `path` is the one directory or file to start from; a pattern of names goes in \
+             `{names}`"
+        )
+    } else if asked.contains(',') {
+        ". `path` is one directory or file, not a list; name a directory they are all in".to_owned()
+    } else {
+        String::new()
     }
 }
 
@@ -634,7 +655,7 @@ impl Grep {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let (asked, root) = match self.0.root(args, "searched") {
+        let (asked, root) = match self.0.root(args, "searched", "glob") {
             Ok(both) => both,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -931,7 +952,7 @@ impl Glob {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let (asked, root) = match self.0.root(args, "listed") {
+        let (asked, root) = match self.0.root(args, "listed", "pattern") {
             Ok(both) => both,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };

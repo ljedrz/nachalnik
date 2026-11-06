@@ -1390,6 +1390,51 @@ async fn an_argument_no_action_here_has_is_refused_with_the_ones_that_are() {
     );
 }
 
+/// A `path` that is not there and is shaped like a pattern or a list says where those go.
+///
+/// note: the two mistakes sweeps made most with these tools: `src/**/*.rs` as the path of a
+/// `glob`, and several files joined by commas as the path of a `grep`. Told only that the path was
+/// not there, a model tried other spellings of it.
+#[tokio::test]
+async fn a_path_shaped_like_a_pattern_or_a_list_says_where_those_go() {
+    let dir = tree("search-misnamed-path");
+
+    let said = ask(
+        &dir,
+        "glob",
+        json!({ "pattern": "*.rs", "path": "src/**/*.rs" }),
+    )
+    .await;
+    assert!(said.contains("is not there"), "{said}");
+    assert!(
+        said.contains("a pattern of names goes in `pattern`"),
+        "{said}"
+    );
+
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "path": "src/*.rs" }),
+    )
+    .await;
+    assert!(said.contains("a pattern of names goes in `glob`"), "{said}");
+
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "path": "a.rs,b.rs" }),
+    )
+    .await;
+    assert!(said.contains("not a list"), "{said}");
+
+    // and a path that is simply not there says nothing more
+    let said = ask(&dir, "glob", json!({ "pattern": "*", "path": "nowhere" })).await;
+    assert!(
+        said.ends_with("is not there, so nothing was listed"),
+        "{said}"
+    );
+}
+
 /// A root that is there but cannot be read is walked and counted, not called absent.
 ///
 /// note: the other half of the sentence above, and the one the guard in `Looking::root` draws: a
