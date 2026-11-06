@@ -2316,6 +2316,56 @@ async fn a_run_stopped_after_a_failed_turn_leaves_with_the_stop() {
     assert!(said.contains("the last turn failed"), "{said}");
 }
 
+/// A turn that was still running when a signal ended the run is the last turn, however the one
+/// before it went.
+///
+/// note: the turn waited for on the way out came back as nothing failed, and an earlier failure
+/// stood in for it, so a run whose second turn was interrupted said its last turn had failed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_turn_before_the_one_a_signal_stopped_is_not_the_last() {
+    use std::io::Write as _;
+
+    // the first request refused, and the second held open, so it is running when the signal lands
+    let (at, heard_by) = common::hearing(vec![
+        "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned(),
+    ])
+    .await;
+    let mut child = common::command()
+        .args(["--headless", "--no-record", "-m", "nothing"])
+        .env("KAMCHATKA_BASE_URL", &at)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    writeln!(stdin, "one\ntwo").expect("the lines go in");
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+
+    let waited = std::time::Instant::now();
+    while heard_by.lock().expect("not poisoned").len() < 2 {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(20),
+            "the second turn never asked: {}",
+            said.lock()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let sent = std::process::Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(sent.success());
+
+    let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
+    let said = heard(&said, "ended by a termination signal");
+    drop(stdin);
+
+    assert_eq!(status.code(), Some(143), "{said}");
+    assert!(!said.contains("the last turn failed"), "{said}");
+}
+
 /// `--max-run-seconds` ends a run held up by somebody else's program: a server that never answers
 /// its handshake, before the session starts, and an endpoint that never answers what it is asked
 /// about the model, which the session asks once it has started.

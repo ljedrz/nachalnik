@@ -567,13 +567,18 @@ impl<'a> Headless<'a> {
         // a failure to write the prose here is not a reason to leave a turn running: the records
         // are the part that is kept, and they are read out of the log below
         if !at_once {
+            // a turn still running is the last turn, so its outcome replaces an earlier one's
+            // whichever way it went
+            let running = app.busy;
             let kernel = app.kernel.clone();
             let waited = app
                 .wait_for_turn(events, finished, |event| {
                     let _ = self.say(&kernel, event);
                 })
                 .await;
-            failed = waited.or(failed);
+            if running {
+                failed = waited;
+            }
         }
         // and what never went in, which `wait_for_turn` says on the way past and a second
         // `ctrl+c` did not wait for
