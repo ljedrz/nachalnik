@@ -7,6 +7,31 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **The permissions tab lists the sandbox, under the rules, and each list has a heading.** The
+  rules are headed `the rules` and the sandbox `the sandbox`, on the tab, on the `/permissions`
+  page and on the `--web` page. The sandbox used to be one line along the bottom,
+  `shell: confined, network gated`, and the paths it is made of were only in the model's tool
+  description. Its heading now says whether it holds the shell - `confined`, `partly confined` or
+  `unconfined`, with what the kernel left out or why the sandbox would not start under it - and
+  its parts are listed under what they are about, each on its own scale: **files** are
+  `read-write` or `read-only` (the working directory, the `--sandbox-write` and `--sandbox-read`
+  paths, the system paths only the shell reads, the devices, the temporary directory), the
+  **network** is `open`, `asks` or `blocked` (connections, and the ports a served session closes),
+  and the **environment** lists the variables a command is not handed. That word replaces the
+  answer of the rule behind a part, which is named after the line. <kbd>enter</kbd> lists the
+  paths in a part. The parts describe the sandbox a command started now would get, so a denied
+  `fs:write` shows the working directory and the `--sandbox-write` paths as read-only. The line
+  along the bottom says whether the shell is confined only where there is no sandbox listed, under
+  `--no-sandbox`. The sandbox is read, not set: a part a rule decides names the rule -
+  `fs:write`, `net:reach` - and that rule's row is where it changes. `/permissions`
+  without a screen lists every part in full. `App::sandbox_view` gives the sandbox, and
+  `sandbox::Roots` is what it is read from.
+- **A served session sends its sandbox, and the web page draws it.** `Attached::sandbox` carries it
+  as a `Sandboxing`, with its parts as `Sandboxed` rows; it is `None` from a session older than the
+  field. The `--web` page lists it under the rules, each part's paths folded until opened.
+
 ### changed
 
 - **A `grep` or `glob` path that is not there says where a pattern or a list goes.** A path

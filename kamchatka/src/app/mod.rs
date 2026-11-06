@@ -45,7 +45,9 @@ pub(crate) use session::named_calls;
 pub use transcript::{Entry, Said, Speaker};
 use turn::Errand;
 pub use turn::{Outcome, Returned};
-pub use views::Stance;
+#[cfg(feature = "tui")]
+pub use views::Listed;
+pub use views::{PartKind, SandboxPart, SandboxView, Stance};
 #[cfg(feature = "tui")]
 mod keys;
 pub(crate) mod text;
@@ -384,6 +386,14 @@ pub struct App {
     /// Why the sandbox did not take, where it was requested but did not, with the reason; see
     /// [`crate::sandbox::Probed::why`].
     pub unconfined_because: Option<String>,
+    /// What the session opened to its tools, which the permissions tab lists as the sandbox;
+    /// `None` where nothing holds the tools to any of it, under `--no-sandbox` or with no built-in
+    /// tools.
+    pub roots: Option<crate::sandbox::Roots>,
+    /// Which parts of the sandbox the permissions tab has opened to list their paths, by the name
+    /// it gives each.
+    #[cfg(feature = "tui")]
+    pub opened: std::collections::BTreeSet<&'static str>,
     /// The address of the page `--web` serves, its key included, for `/web` to show again.
     ///
     /// note: the run's rather than the session's, set by whoever started the page because the page
@@ -753,6 +763,9 @@ impl App {
             // with what a child process actually reported
             confinement: Confinement::Off,
             unconfined_because: None,
+            roots: None,
+            #[cfg(feature = "tui")]
+            opened: Default::default(),
             web: None,
             stragglers: crate::tools::Stragglers::default(),
             anchor: None,

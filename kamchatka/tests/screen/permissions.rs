@@ -1018,16 +1018,20 @@ async fn the_policy_line_is_the_only_row_above_the_table() {
     let rows: Vec<&str> = screen.lines().collect();
 
     // the strip of tabs, then what is deciding - a line, or two in a build that can rate commands
-    // - then the one blank row that keeps the table off it, and the heading after that, which is
-    // where somebody looking for the answers looks
+    // - then the one blank row that keeps the table off it, and the table's heading after that,
+    // with its column heads right under it, which is where somebody looking for the answers looks
     assert!(
         rows[1].starts_with("│Careful"),
         "what is deciding is the first thing under the strip: {screen}"
     );
     let heading = rows
         .iter()
-        .position(|row| row.contains("capability or path"))
+        .position(|row| row.starts_with("│the rules"))
         .unwrap_or_else(|| panic!("the table has a heading: {screen}"));
+    assert!(
+        rows[heading + 1].contains("capability or path"),
+        "the column heads are under it: {screen}"
+    );
     let blank = |row: &str| row.replace('│', "").trim().is_empty();
     assert!(
         blank(rows[heading - 1]),
@@ -3408,4 +3412,179 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() 
         !screen.contains("`context`'s `undo` and `redo` need"),
         "{screen}"
     );
+}
+
+/// The permissions tab lists the sandbox under the rules, a part to a line, and opens a part to list
+/// its paths.
+///
+/// note: the confinement was one line along the bottom - `shell: confined` - and the paths it is
+/// made of were in the model's tool description and nowhere a person could read them. These check
+/// that the tab reads them off the sandbox a command would get rather than the flags: a refused
+/// `fs:write` moves `--sandbox-write` among the read-only paths there, and the tab follows it.
+#[tokio::test]
+async fn the_permissions_tab_lists_the_sandbox() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "ran").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.confinement = Confinement::Full;
+    harness.app.roots = Some(kamchatka::sandbox::Roots {
+        workdir: "/work".into(),
+        writable: vec!["/opened/rw".into()],
+        readable: vec!["/opened/ro".into()],
+        shell_readable: vec!["/usr".into()],
+        devices: vec!["/dev/null".into()],
+    });
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(110, 40);
+    assert!(screen.contains("the sandbox ·"), "{screen}");
+    // how open the working directory is, not the answer of the rule deciding it: `ask` there read
+    // as a question about the directory
+    let workdir = screen
+        .lines()
+        .find(|line| line.contains("working directory"))
+        .expect("a line for the working directory");
+    assert!(workdir.contains("read-write"), "{workdir}");
+    assert!(workdir.contains("/work · set by fs:write"), "{workdir}");
+    assert!(!workdir.contains(" ask "), "{workdir}");
+    // whether the shell is held to any of it is the sandbox's own state, in its heading - not a
+    // line among the parts, and not along the bottom, where it used to be
+    let heading = screen
+        .lines()
+        .find(|line| line.contains("the sandbox ·"))
+        .expect("a heading over the sandbox");
+    assert!(heading.contains("the sandbox · confined · "), "{heading}");
+    assert!(
+        !screen.lines().any(|line| line.contains("│  shell ")),
+        "the shell's state as one of the parts: {screen}"
+    );
+    assert!(
+        !screen.contains("shell: confined"),
+        "the footer says it a second time: {screen}"
+    );
+    // the parts under the kind each is about, in order, each on its own scale
+    let at = |text: &str| {
+        screen
+            .lines()
+            .position(|line| line.contains(text))
+            .unwrap_or_else(|| panic!("no `{text}`: {screen}"))
+    };
+    assert!(at("│files") < at("working directory"), "{screen}");
+    assert!(at("temporary files") < at("│network"), "{screen}");
+    assert!(at("│network") < at("connections"), "{screen}");
+    assert!(at("connections") < at("│environment"), "{screen}");
+    assert!(at("│environment") < at("variables"), "{screen}");
+    assert!(
+        screen
+            .lines()
+            .find(|line| line.contains("--sandbox-read"))
+            .is_some_and(|line| line.contains("read-only   1 path")),
+        "a path a command may read is said to be read-only, like the working directory: {screen}"
+    );
+    assert!(
+        screen
+            .lines()
+            .any(|line| line.contains("--sandbox-write") && line.contains("read-write  1 path")),
+        "{screen}"
+    );
+    assert!(
+        !screen.contains("/opened/rw"),
+        "a part lists its paths only once it is opened: {screen}"
+    );
+
+    // nothing is decided, so the keys start on the first part: the working directory. Down to
+    // `--sandbox-write`, and enter opens it
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Enter).await;
+    let opened = harness.sized(110, 40);
+    assert!(opened.contains("▾ --sandbox-write"), "{opened}");
+    assert!(opened.contains("    /opened/rw"), "{opened}");
+
+    // on the path, left closes the part and goes back to its line
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Left).await;
+    let closed = harness.sized(110, 40);
+    assert!(!closed.contains("    /opened/rw"), "{closed}");
+    assert!(closed.contains("▸ --sandbox-write"), "{closed}");
+
+    // the sandbox is read, not set: the rule keys on a line of it change nothing, even on the
+    // working directory, which names the rule that decides it
+    let writing = |harness: &Harness| {
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::fs("write")))
+    };
+    harness.press(KeyCode::Home).await;
+    for key in ['n', 'a', ' ', 'r'] {
+        harness.press(KeyCode::Char(key)).await;
+        assert_eq!(writing(&harness), Verdict::Ask, "`{key}` changed fs:write");
+    }
+    assert!(
+        harness.app.permissions().is_empty(),
+        "a rule appeared from the sandbox"
+    );
+
+    // and it follows the rules where they are changed: a denied `fs:write` makes the working
+    // directory read-only, and the opened path with it, in the sandbox a command would get
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
+    let refused = harness.sized(110, 40);
+    assert!(
+        refused.contains("read-only   /work, because fs:write is denied"),
+        "{refused}"
+    );
+    assert!(
+        refused.contains("2 paths, with --sandbox-write's while fs:write is denied"),
+        "{refused}"
+    );
+}
+
+/// With nothing confined there is no part to list, and the tab is what it was.
+#[tokio::test]
+async fn nothing_confined_lists_no_sandbox() {
+    let mut harness = Harness::new([]);
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(110, 30);
+    assert!(!screen.contains("the sandbox ·"), "{screen}");
+    assert!(screen.contains("nothing has been decided"), "{screen}");
+}
+
+/// A shell the sandbox would not start for is said to be unconfined in the sandbox's heading, with
+/// why under it, since the parts then hold only the file tools.
+#[tokio::test]
+async fn an_unconfined_shell_is_said_in_the_sandboxs_heading() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "ran").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.confinement = Confinement::Unavailable;
+    harness.app.unconfined_because = Some("Landlock is not enabled".to_owned());
+    harness.app.roots = Some(kamchatka::sandbox::Roots {
+        workdir: "/work".into(),
+        ..Default::default()
+    });
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(160, 30);
+    let lines: Vec<&str> = screen.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| line.contains("the sandbox · unconfined · "))
+        .unwrap_or_else(|| panic!("nothing says the shell is unconfined: {screen}"));
+    assert!(
+        lines[heading].contains("only the file tools are held to what is below"),
+        "{screen}"
+    );
+    assert!(
+        lines[heading + 1].contains("Landlock is not enabled"),
+        "and why, under it: {screen}"
+    );
+    // the parts only a confined shell is held to are not listed at all
+    assert!(!screen.contains("system paths"), "{screen}");
+    assert!(!screen.contains("connections"), "{screen}");
 }

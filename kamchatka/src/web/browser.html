@@ -145,6 +145,15 @@
      "this is not what the next request sends" */
   .versions.past { border-color: var(--call); color: var(--call); }
   .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  /* the headings over the rules and the sandbox; the word for how open a part is, and the paths a
+     part lists, folded away until somebody opens them as the tab's `enter` does */
+  .section { margin: 18px 0 4px; font-weight: 600; }
+  .section .says { font-weight: 400; color: var(--dim); }
+  .kind { margin: 12px 0 0; font-style: italic; }
+  .access { flex: none; font-size: 12px; margin-left: 8px; }
+  .paths { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .paths summary { cursor: pointer; }
+  .paths div { padding-left: 16px; overflow-wrap: anywhere; font-family: monospace; }
   .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
   /* note: a `textarea` rather than a `div`, which is all it takes to make an item editable: the
      box shows what the item says, reads as something you can type into, and has somewhere for the
@@ -1052,6 +1061,12 @@ function draw() {
   policy.append(untold);
   panel.append(policy);
 
+  // a heading over each of the two lists, as on the tab
+  const rules = document.createElement("p");
+  rules.className = "section";
+  rules.textContent = "the rules";
+  panel.append(rules);
+
   if (!latest.permissions.length) {
     aside(
       panel,
@@ -1094,15 +1109,81 @@ function draw() {
     el.querySelector(".head").append(answers);
   }
 
-  // and the footer the tab has, in the tab's order. The sandbox line comes first because it is the
-  // one thing here that is not negotiable: a registered shell that has not been refused can read,
-  // write and reach the network whatever the rows above say, so a list of verdicts with nothing
+  // the sandbox, under the rules as on the tab: whether it holds the shell in its heading, then
+  // its parts under the kind each is about. How open a part is goes where a rule's buttons go, in
+  // the same colours; the rule that decides it is named rather than given buttons of its own,
+  // since its own row is where it is changed
+  const sandbox = latest.sandbox;
+  if (sandbox) {
+    const heading = document.createElement("p");
+    heading.className = "section";
+    heading.append(document.createTextNode("the sandbox · "));
+    const status = document.createElement("span");
+    status.className = verdicts[sandbox.tone] ?? "";
+    status.textContent = sandbox.status;
+    heading.append(status);
+    const says = document.createElement("span");
+    says.className = "says";
+    says.textContent = ` · ${sandbox.says}`;
+    heading.append(says);
+    panel.append(heading);
+    if (sandbox.note) aside(panel, sandbox.note);
+
+    let kind = null;
+    for (const part of sandbox.parts) {
+      if (part.kind !== kind) {
+        kind = part.kind;
+        const label = document.createElement("p");
+        label.className = "kind";
+        label.textContent = kind;
+        panel.append(label);
+      }
+      const by = part.rule ? ` · set by ${part.rule}` : "";
+      const el = row(panel, part.name, `${part.says}${by}`);
+      if (part.access) {
+        const access = document.createElement("span");
+        access.className = `access ${verdicts[part.tone] ?? ""}`;
+        access.textContent = part.access;
+        el.querySelector(".head").append(access);
+      }
+      if (part.paths.length) {
+        const paths = document.createElement("details");
+        paths.className = "paths";
+        // kept open across the redraw every projection makes, or a list somebody opened would
+        // close again the moment anything in the session moved
+        paths.open = openedParts.has(part.name);
+        paths.ontoggle = () => {
+          if (paths.open) openedParts.add(part.name);
+          else openedParts.delete(part.name);
+        };
+        const summary = document.createElement("summary");
+        // the count is in the sentence above; this only says what opening it does
+        summary.textContent = "show";
+        paths.append(summary);
+        for (const path of part.paths) {
+          const line = document.createElement("div");
+          line.textContent = path;
+          paths.append(line);
+        }
+        el.append(paths);
+      }
+    }
+  }
+
+  // and the footer the tab has, in the tab's order. The sandbox line is there only where no sandbox
+  // is listed above to say it in its heading: a registered shell that has not been refused can
+  // read, write and reach the network whatever the rows say, so a list of verdicts with nothing
   // about it would be reporting restrictions that are not there. The count says that the rows are
   // the decisions rather than the whole policy
-  const footer = [latest.confinement ?? "no sandbox: a command reaches whatever this user can"];
+  const footer = latest.sandbox
+    ? []
+    : [latest.confinement ?? "no sandbox: a command reaches whatever this user can"];
   if (latest.undecided) footer.push(`${latest.undecided} more it will ask about`);
-  aside(panel, footer.join(" · "));
+  if (footer.length) aside(panel, footer.join(" · "));
 }
+
+/** The parts of the sandbox somebody opened to list their paths, by name. */
+const openedParts = new Set();
 
 /** The class each verdict is drawn in, so one word is one colour wherever it appears. */
 const verdicts = { allow: "allowed", deny: "denied", ask: "asks" };

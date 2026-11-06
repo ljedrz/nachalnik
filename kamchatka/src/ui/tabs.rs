@@ -22,7 +22,7 @@ use tui_markdown::StyleSheet as _;
 
 use crate::{
     app::when::read_off,
-    app::{App, Focus, Going, Said, Speaker},
+    app::{App, Focus, Going, Listed, Said, Speaker},
     tools::{Careful, Exit},
     ui::{
         markdown::{Chunk, Markdown, broken, chunks, highlighted, markdown, rule, separate},
@@ -933,6 +933,30 @@ fn highlight(app: &App) -> Style {
     }
 }
 
+/// The heading over one of the permissions tab's two lists: its name, and what is in it.
+struct Heading {
+    name: &'static str,
+    says: &'static str,
+}
+
+impl Heading {
+    fn line(&self) -> Line<'static> {
+        Line::from(vec![
+            Span::styled(self.name, Style::default().bold()),
+            Span::styled(format!(" · {}", self.says), quiet()),
+        ])
+    }
+}
+
+/// The heading over the rules.
+///
+/// note: the two lists answer different questions, and a heading over only the second made the
+/// first read as part of the policy's line above it rather than a list of its own.
+const RULES: Heading = Heading {
+    name: "the rules",
+    says: "what has been decided, by an answer or a flag",
+};
+
 /// What the policy will answer about each capability, and which tools that covers.
 ///
 /// note: the permission prompt is the policy's only other appearance, and it shows up one call at a
@@ -973,11 +997,15 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     .areas(area);
     frame.render_widget(Paragraph::new(said), stated);
 
-    if rows.is_empty() {
+    let listed = app.permission_lines();
+    if listed.is_empty() {
         // note: what is not here is a row per thing nobody has answered about yet. The policy asks
         // about everything by default, so listing the defaults is listing the absence of decisions,
         // and it would bury the one or two lines that say what this agent can do without stopping.
         // What arrives here is what somebody answered `a` to, or set here
+        let [title, area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+        frame.render_widget(Paragraph::new(RULES.line()), title);
         frame.render_widget(
             Paragraph::new(crate::app::text::NOTHING_DECIDED)
                 .style(quiet())
@@ -987,63 +1015,155 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
         return Scrolled::default();
     }
 
-    let [head, inner] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+    // the heading and the column heads, which stay put while the rows scroll under them; the
+    // column heads only over rules, since the prose that stands in for them has no columns, and
+    // the heading then goes above the prose, in the list
+    let [title, head, inner] = match rows.is_empty() {
+        true => [Rect::default(), Rect::default(), area],
+        false => Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(area),
+    };
     let width = inner.width as usize;
     let capability = 22.min(width / 3);
     let covers = width.saturating_sub(2 + capability + 1 + 10 + 2);
 
-    frame.render_widget(
-        Paragraph::new(Line::styled(
-            format!(
-                "  {:<capability$} {:<10}  {}",
-                "capability or path",
-                "answer",
-                match covers >= 8 {
-                    // note: not "the tools it covers". A row names the actions it lets run, and
-                    // only a tool with one action by its name
-                    true => "what it covers",
-                    false => "",
-                }
-            ),
-            quiet(),
-        )),
-        head,
-    );
-
-    let listed: Vec<ListItem> = rows
-        .iter()
-        .map(|row| {
-            let (answer, style) = verdict_word(row.verdict);
-            // a capability nothing declares is still worth a row, and should say so rather than
-            // look like an oversight. `network` is not one of them: no tool declares it, and the
-            // shell is judged against it anyway, on what the command says
-            let tools = row.covers();
-
-            ListItem::new(Line::from(vec![
-                Span::raw(format!("  {} ", pad(&row.subject.to_string(), capability))),
-                Span::styled(format!("{answer:<10}  "), style),
-                Span::styled(
-                    clip(&tools, covers),
-                    match row.tools.is_empty() && row.sometimes.is_empty() {
-                        true => quiet(),
-                        false => Style::default(),
-                    },
+    if !rows.is_empty() {
+        frame.render_widget(Paragraph::new(RULES.line()), title);
+        frame.render_widget(
+            Paragraph::new(Line::styled(
+                format!(
+                    "  {:<capability$} {:<10}  {}",
+                    "capability or path",
+                    "answer",
+                    match covers >= 8 {
+                        // note: not "the tools it covers". A row names the actions it lets run,
+                        // and only a tool with one action by its name
+                        true => "what it covers",
+                        false => "",
+                    }
                 ),
-            ]))
-        })
-        .collect();
+                quiet(),
+            )),
+            head,
+        );
+    }
 
-    app.chosen = app.chosen.min(rows.len() - 1);
-    app.grants.select(Some(app.chosen));
+    // every line drawn, and which of them each line the keys can be on is
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut at: Vec<usize> = Vec::new();
+    if rows.is_empty() {
+        items.push(ListItem::new(RULES.line()));
+        items.extend(
+            super::text::wrapped(crate::app::text::NOTHING_DECIDED, width, "")
+                .into_iter()
+                .map(|line| ListItem::new(Line::styled(line, quiet()))),
+        );
+    }
+    let view = app.sandbox_view();
+    let mut kind = None;
+    for row in &listed {
+        if let (Listed::Group(part, _), Some(view)) = (row, &view) {
+            if kind.is_none() {
+                // note: a heading of its own rather than more rows under the rules, because these
+                // are not answers anybody gave. They are what the answers and the flags come to
+                // for a command, which is the question the rules leave open. Whether it holds the
+                // shell at all is in the heading, since it is the sandbox's state and not a part
+                // of it
+                let (word, tone) = view.status;
+                items.push(ListItem::new(Line::raw("")));
+                items.push(ListItem::new(Line::from(vec![
+                    Span::styled("the sandbox", Style::default().bold()),
+                    Span::styled(" · ", quiet()),
+                    Span::styled(word, verdict_word(tone).1),
+                    Span::styled(format!(" · {}", view.says), quiet()),
+                ])));
+                if let Some(note) = &view.note {
+                    items.extend(
+                        super::text::wrapped(note, width, "  ")
+                            .into_iter()
+                            .map(|line| ListItem::new(Line::styled(line, quiet()))),
+                    );
+                }
+            }
+            // each kind under a word of its own, since each answers on its own scale
+            if kind != Some(part.kind) {
+                kind = Some(part.kind);
+                items.push(ListItem::new(Line::styled(
+                    part.kind.name(),
+                    Style::default().add_modifier(Modifier::ITALIC),
+                )));
+            }
+        }
+        at.push(items.len());
+        items.push(ListItem::new(match row {
+            Listed::Rule(row) => {
+                let (answer, style) = verdict_word(row.verdict);
+                // a capability nothing declares is still worth a row, and should say so rather
+                // than look like an oversight. `network` is not one of them: no tool declares it,
+                // and the shell is judged against it anyway, on what the command says
+                let tools = row.covers();
+
+                Line::from(vec![
+                    Span::raw(format!("  {} ", pad(&row.subject.to_string(), capability))),
+                    Span::styled(format!("{answer:<10}  "), style),
+                    Span::styled(
+                        clip(&tools, covers),
+                        match row.tools.is_empty() && row.sometimes.is_empty() {
+                            true => quiet(),
+                            false => Style::default(),
+                        },
+                    ),
+                ])
+            }
+            Listed::Group(part, open) => {
+                let marker = match (part.paths.is_empty(), open) {
+                    (true, _) => "  ",
+                    (false, false) => "▸ ",
+                    (false, true) => "▾ ",
+                };
+                // the answer column holds how open the part is rather than the answer of the
+                // rule that decides it, which is named after the sentence: `working directory ask`
+                // read as a question about the directory, when it is one a command can write
+                let (answer, style) = match part.access {
+                    Some((word, tone)) => (word, verdict_word(tone).1),
+                    None => ("", quiet()),
+                };
+                let by = match &part.rule {
+                    Some(subject) => format!(" · set by {subject}"),
+                    None => String::new(),
+                };
+                let says = clip(&part.says, covers);
+                let room = covers.saturating_sub(super::text::columns(&says));
+
+                Line::from(vec![
+                    Span::raw(format!("{marker}{} ", pad(part.name, capability))),
+                    Span::styled(format!("{answer:<10}  "), style),
+                    Span::raw(says),
+                    Span::styled(clip(&by, room), quiet()),
+                ])
+            }
+            Listed::Path(_, path) => {
+                Line::raw(format!("    {}", clip(path, width.saturating_sub(4))))
+            }
+        }));
+    }
+
+    let total = items.len();
+    app.chosen = app.chosen.min(listed.len() - 1);
+    app.grants.select(Some(at[app.chosen]));
     frame.render_stateful_widget(
-        List::new(listed).highlight_style(highlight(app)),
+        List::new(items).highlight_style(highlight(app)),
         inner,
         &mut app.grants,
     );
 
     Scrolled {
         position: app.grants.offset(),
-        total: rows.len(),
+        total,
         area: inner,
     }
 }

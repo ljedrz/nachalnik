@@ -609,6 +609,45 @@ impl Sandbox {
     }
 }
 
+/// Everything a session opened to its tools, as it was resolved when the session started; what a
+/// command's sandbox is built from beside the policy.
+///
+/// note: kept on [`crate::app::App`] so the permissions tab can list the sandbox a command would
+/// run in now. It hands over [`Roots::sandbox`] rather than these paths, so the tab reads what
+/// `fs:write` and `net:reach` make of them as the shell does, and cannot come to describe a
+/// sandbox the shell no longer builds.
+#[derive(Debug, Clone, Default)]
+pub struct Roots {
+    /// The directory a command may work in.
+    pub workdir: PathBuf,
+    /// Paths `--sandbox-write` opened, resolved.
+    pub writable: Vec<PathBuf>,
+    /// Paths `--sandbox-read` opened, resolved.
+    pub readable: Vec<PathBuf>,
+    /// Paths the shell reads and `fs` does not, as written; see [`SYSTEM`].
+    pub shell_readable: Vec<PathBuf>,
+    /// The devices a command may use; see [`DEVICES`].
+    pub devices: Vec<PathBuf>,
+}
+
+impl Roots {
+    /// The sandbox a command started now would run in, before anybody is asked about the network:
+    /// what [`crate::tools::Shell`] builds for one.
+    pub fn sandbox(&self, policy: &Careful) -> Sandbox {
+        Sandbox {
+            shell_readable: self.shell_readable.clone(),
+            devices: self.devices.clone(),
+            ..Sandbox::of(
+                policy,
+                self.workdir.clone(),
+                self.writable.clone(),
+                self.readable.clone(),
+                false,
+            )
+        }
+    }
+}
+
 /// Whether the policy leaves the reach writable. A `Deny` for `write` reaches the shell too; any
 /// other verdict leaves the working directory writable, because a shell that cannot write there is
 /// unusable.

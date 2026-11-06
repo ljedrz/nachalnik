@@ -114,8 +114,9 @@ impl App {
             self.policy_name(),
             verdict_word(crate::tools::Careful::untold()),
         )];
+        body.push(String::new());
+        body.push("the rules:".to_owned());
         if rows.is_empty() {
-            body.push(String::new());
             body.push(NOTHING_DECIDED.to_owned());
         } else {
             for row in rows {
@@ -141,6 +142,30 @@ impl App {
             "and {} it will ask about, which are not listed above",
             plural(undecided, "subject"),
         ));
+
+        // the sandbox, every part listed in full, since a page has nothing to open
+        if let Some(view) = self.sandbox_view() {
+            body.push(String::new());
+            body.push(format!("the sandbox: {} - {}", view.status.0, view.says));
+            body.extend(view.note.map(|note| format!("  {note}")));
+            let mut kind = None;
+            for part in view.parts {
+                if kind != Some(part.kind) {
+                    kind = Some(part.kind);
+                    body.push(format!("  {}", part.kind.name()));
+                }
+                let access = part
+                    .access
+                    .map(|(word, _)| format!("{word}, "))
+                    .unwrap_or_default();
+                let by = part
+                    .rule
+                    .map(|subject| format!(" (set by {subject})"))
+                    .unwrap_or_default();
+                body.push(format!("    {}: {access}{}{by}", part.name, part.says));
+                body.extend(part.paths.iter().map(|path| format!("      {path}")));
+            }
+        }
 
         self.preview("the policy", body.join("\n"));
     }

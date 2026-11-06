@@ -189,15 +189,21 @@ pub const TRACE: &str = "  THE TRACE TAB, which has the keys whenever it is open
 
 /// The permissions tab's own keys.
 pub const PERMISSIONS: &str = "  THE PERMISSIONS TAB, which has the keys whenever it is open
-    up / down, j / k    pick a capability, or one of the path rules under them
+    up / down, j / k    pick a capability, one of the path rules under them,
+                        or a part of the sandbox under those
     g / G, home / end   the first / the last
     space               cycle it: ask, then allow, then deny
     a / n / r           allow it / never allow it / ask about it again
-                        (backspace does what r does)
+                        (backspace does what r does). The sandbox is
+                        read, not set: a part a rule decides names the
+                        rule, and that rule's row is where it changes
+    enter, space        list the paths in a part of the sandbox, or close
+                        the list again
+    right / l, left / h open / close that list
     (the line along the top says which policy is in force and what it answers
-     about anything not listed; the one along the bottom says what a shell
-     command can reach, and how many subjects are not listed here because
-     nobody has answered about them)";
+     about anything not listed; the one along the bottom says how many subjects
+     are not listed here because nobody has answered about them, and whether a
+     shell command is confined where no sandbox is listed to say it)";
 
 /// The keys that answer a waiting tool, offered only while one is waiting.
 pub const QUESTION: &str =

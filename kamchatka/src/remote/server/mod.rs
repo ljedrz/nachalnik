@@ -34,8 +34,8 @@ use tokio::{
 use crate::{
     app::{App, NOTICES, Outcome, Overlay, Speaker},
     remote::protocol::{
-        self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
-        Unjudged,
+        self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Sandboxing,
+        Stanced, Tracing, Unjudged,
     },
 };
 
@@ -1519,6 +1519,7 @@ fn project(app: &App) -> Attached {
         queued: app.queued().next().map(str::to_owned),
         queued_behind: app.queued().skip(1).map(str::to_owned).collect(),
         confinement: app.confinement(),
+        sandbox: app.sandbox_view().as_ref().map(Sandboxing::of),
     };
     attached.abridge();
 

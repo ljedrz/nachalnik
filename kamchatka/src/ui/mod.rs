@@ -380,7 +380,11 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
         // policy
         Tab::Permissions => {
             let mut parts = Vec::new();
-            if let Some(line) = app.confinement() {
+            // only where there is no sandbox on the tab to say it, which is a session whose
+            // tools are held to nothing: the sandbox's own first line is this, with more room
+            if app.sandbox_view().is_none()
+                && let Some(line) = app.confinement()
+            {
                 parts.push(line);
             }
             match app.undecided() {
@@ -388,10 +392,13 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
                 n => parts.push(format!("{n} more it will ask about")),
             }
             // note: the same keys whatever else is on the line, with or without a sandbox line
-            // beside them. Not named when nothing is decided yet and there is no row for them to
-            // act on
+            // beside them. Not named when there is no rule for them to act on; the sandbox is
+            // read, not set, and takes only `enter`
             if !app.permissions().is_empty() {
                 parts.push("space cycles · a allow · n never · r ask again".to_owned());
+            }
+            if app.sandbox_view().is_some() {
+                parts.push("enter lists paths".to_owned());
             }
 
             parts

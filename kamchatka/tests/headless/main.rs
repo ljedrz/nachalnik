@@ -4645,3 +4645,48 @@ async fn the_deadline_ends_a_run_whose_turn_will_not_stop() {
     let prose = String::from_utf8(prose).expect("the prose is text");
     assert!(prose.contains("was left"), "{prose}");
 }
+
+/// `/permissions` without a screen lists the sandbox, from the paths the wiring
+/// resolved, and lists nothing of it under `--no-sandbox`, where the tools are held to none.
+///
+/// note: through `Setup::wire` rather than roots set by hand, because what is checked is that the
+/// session hands the tab the paths its tools were given. Only the working directory is asserted:
+/// the rest depends on whether this kernel starts a sandbox, and the screen tests cover it.
+#[tokio::test]
+async fn the_permissions_page_lists_the_sandbox() {
+    let page = |confine: bool| async move {
+        let mut app = Setup {
+            confine,
+            ..Default::default()
+        }
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed")
+        .app;
+        app.keys = false;
+        let reply = app.submit("/permissions").await;
+        let Some(Overlay::Text { pages, .. }) = reply.page else {
+            panic!("`/permissions` opened no page");
+        };
+
+        pages[0].body.clone()
+    };
+
+    let workdir = std::env::current_dir().expect("a working directory");
+    let workdir = workdir.canonicalize().unwrap_or(workdir);
+    let confined = page(true).await;
+    assert!(confined.contains("the sandbox:"), "{confined}");
+    assert!(
+        confined.contains(&format!(
+            "working directory: read-write, {} (set by fs:write)",
+            workdir.display()
+        )),
+        "{confined}"
+    );
+
+    let open = page(false).await;
+    assert!(!open.contains("the sandbox:"), "{open}");
+}

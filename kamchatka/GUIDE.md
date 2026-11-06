@@ -214,7 +214,8 @@ The permission prompt asks about one call at a time, at the moment you're least 
 about it. The **permissions** tab shows every answer in one place, where you can change them. Each
 row is a capability or a path, the answer for it, and what that answer covers.
 
-The line at the top shows the policy in force and its answer for everything not listed.
+The line at the top shows the policy in force and its answer for everything not listed. Under it
+are two lists, each with a heading: **the rules** and **the sandbox**.
 
 A fresh session has no rows: everything starts at `ask`, and rows are decisions added as you answer.
 What is not listed is counted at the bottom as how many more it will ask about; setting a row back
@@ -224,12 +225,32 @@ covers is never wider than the rule, and a rule that matches nothing says so. To
 answer the first question with <kbd>a</kbd> to allow it from then on, or use a flag. <kbd>n</kbd>
 refuses that one call, and a standing refusal is a row here or `--auto-deny`.
 
-The line at the bottom starts with the shell, because it's the one thing on this tab you can't
-negotiate with. A registered `shell` that isn't refused can read, write and use the network whatever
-the other rows say, so `shell: confined` (or `partly confined`, or `a command can do any of these`)
-is what makes the rest of the table meaningful. Where the shell is confined, after it comes
-`network gated`: a command is asked about when it tries to use the network, rather than judged by
-its name before it runs.
+Under the rules, **the sandbox** lists what a shell command and the file tools can reach. Its
+heading says whether it holds the shell at all, because that's the one thing on this tab you can't
+negotiate with: a registered `shell` that isn't refused can read, write and use the network
+whatever the rows above say. It's `confined`, `partly confined` (on a kernel too old for all of it,
+with what is missing under the heading) or `unconfined` (the sandbox couldn't start, with why under
+the heading). Unconfined, commands reach everything, and only the file tools are held to what's
+listed.
+
+Its parts are grouped by what they are about, and each group answers on its own scale. **files**
+are `read-write` or `read-only`: the working directory, the paths of `--sandbox-write` and
+`--sandbox-read`, the system paths only the shell reads, the devices under `/dev` and the temporary
+directory each command gets. **network** is `open`, `asks` or `blocked`: the connections a command
+may make, and the ports a served session closes. A network that `asks` asks when a command tries
+to use it, rather than judging the command by its name before it runs. **environment** is the
+variables a command isn't handed. It all describes the sandbox a command started now would get, so
+it follows the rules: deny `fs:write` and the working directory and the `--sandbox-write` paths
+become read-only. <kbd>enter</kbd> or <kbd>space</kbd> lists the paths in a part and closes the
+list again, and <kbd>right</kbd> and <kbd>left</kbd> open and close it.
+
+The sandbox is read, not set: the rule keys do nothing on it. A part a rule decides names the
+rule, `fs:write` for the working directory and `net:reach` for the connections, and that rule's row
+above is where it changes. `/permissions` without a screen lists every part in full, and the
+`--web` page lists them too.
+
+Where nothing is confined at all, under `--no-sandbox`, there is no sandbox list, and the line at
+the bottom says so instead: `shell: a command can do any of these`.
 
 There are four kinds of rows, and the first two are the same thing at different levels of detail. A
 **domain** is what a tool acts on (`fs`, `exec`, `context`), and an answer for a domain covers

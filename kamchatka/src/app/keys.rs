@@ -442,15 +442,22 @@ impl App {
     }
 
     /// Keys that belong to the permissions tab.
+    ///
+    /// note: the rules take the keys that change them, and the sandbox under them only the keys
+    /// that open and close a part's list. The sandbox is what the rules and the flags come to,
+    /// read rather than set: a line that changed the rule behind it beside lines that changed
+    /// nothing was a list of two kinds of line that looked alike. A part decided by a rule names
+    /// it, and the rule's own row is where it is changed.
     pub(super) fn permissions_key(&mut self, key: KeyEvent) {
-        let rows = self.permissions();
+        use super::Listed;
+
+        let rows = self.permission_lines();
         if rows.is_empty() {
             return;
         }
         self.chosen = self.chosen.min(rows.len() - 1);
-        let subject = rows[self.chosen].subject.clone();
 
-        let decided = match key.code {
+        match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.chosen = self.chosen.saturating_sub(1);
                 return;
@@ -467,6 +474,46 @@ impl App {
                 self.chosen = rows.len() - 1;
                 return;
             }
+            _ => {}
+        }
+
+        let subject = match &rows[self.chosen] {
+            Listed::Rule(row) => row.subject.clone(),
+            // closing from anywhere inside a part goes back to its line, so the keys are not left
+            // on whatever comes to stand where the path was
+            Listed::Path(name, _) => {
+                if matches!(
+                    key.code,
+                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Enter
+                ) {
+                    let name = *name;
+                    self.opened.remove(name);
+                    self.chosen = rows
+                        .iter()
+                        .position(|row| matches!(row, Listed::Group(part, _) if part.name == name))
+                        .unwrap_or(0);
+                }
+                return;
+            }
+            Listed::Group(part, open) => {
+                if !part.paths.is_empty() {
+                    match (key.code, open) {
+                        (KeyCode::Enter | KeyCode::Char(' '), true)
+                        | (KeyCode::Left | KeyCode::Char('h'), _) => {
+                            self.opened.remove(part.name);
+                        }
+                        (KeyCode::Enter | KeyCode::Char(' '), false)
+                        | (KeyCode::Right | KeyCode::Char('l'), _) => {
+                            self.opened.insert(part.name);
+                        }
+                        _ => {}
+                    }
+                }
+                return;
+            }
+        };
+
+        let decided = match key.code {
             KeyCode::Char(' ') => self.policy.cycle(&subject),
             KeyCode::Char('a') => {
                 self.policy.set(&subject, Verdict::Allow);
