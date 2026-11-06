@@ -16,6 +16,10 @@ minor bump may break you.
 - **A failed turn no longer stands in for a later turn that a signal or `/quit` stopped.** A
   headless or served run left while its turn was running, after an earlier turn had failed,
   reported that the last turn failed. The turn that was running is now the one reported.
+- **A served session refuses a client while a confined command is being started.** sandlock lets
+  a command run before it hands back what names its process groups, so a command that reached a
+  served socket at once was not yet known as one, and was let in. While a command is between the
+  two, every client is taken for a command's.
 
 ## [0.23.0] - 2026-11-05
 

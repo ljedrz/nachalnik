@@ -1086,6 +1086,8 @@ impl Confined {
         crate::sandbox::fits(&env, cmd)?;
         let (builder, argv) = crate::sandbox::command(builder, env, cmd);
         let mut confined = builder.build().map_err(std::io::Error::other)?;
+        // until `began` below, since the command may be running before `popen` returns
+        let starting = crate::sandbox::Starting::new();
         let mut process = confined
             .popen(
                 &argv,
@@ -1109,6 +1111,7 @@ impl Confined {
         let controller = confined.controller().map_err(std::io::Error::other)?;
         // a served session refuses anything in it; see `sandbox::from_a_command`
         crate::sandbox::began(controller.clone());
+        drop(starting);
 
         Ok(Started {
             stdout,
