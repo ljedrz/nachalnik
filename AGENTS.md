@@ -24,12 +24,13 @@ Two rules settle most questions:
 
 1. **Anything that can be built on top stays out of the core.** The runtime has six traits and only
    minimal implementations (`AskAlways`, `LinearProjector` and `BytesPerToken`, just enough for a
-   kernel to exist). Providers, tools, a CLI, a `/context` renderer, a permission table, MCP,
-   subagents and stats all live in `examples/`, in the off-by-default `test` and `selectors`
-   features, or in other crates, and so would an editor protocol, which nothing here builds yet.
-   There is no prompt text in `nachalnik/src`, and model parameters are an opaque `serde_json` map
-   passed to the provider unchanged. Before adding to `nachalnik/src`, ask: *could this be an
-   optional capability instead of core behaviour?* If so, it doesn't go in.
+   kernel to exist, and `Calibrating`, which corrects a counter by what providers report).
+   Providers, tools, a CLI, a `/context` renderer, a permission table, MCP, subagents and stats all
+   live in `examples/`, in the off-by-default `test` and `selectors` features, or in other crates,
+   and so would an editor protocol, which nothing here builds yet. There is no prompt text in
+   `nachalnik/src`, and model parameters are an opaque `serde_json` map passed to the provider
+   unchanged. Before adding to `nachalnik/src`, ask: *could this be an optional capability instead
+   of core behaviour?* If so, it doesn't go in.
 2. **The loop is an explicit state machine**, one transition per `Kernel::step`. That is what makes
    a second concurrent step return `Error::Busy` instead of sending a duplicate request, what makes
    a dropped step future return to `Idle` instead of getting stuck, and what gives a client one
