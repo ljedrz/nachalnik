@@ -2385,6 +2385,24 @@ fn a_file_named_on_the_command_line_says_why_it_could_not_be_read() {
     );
     assert!(said.contains("is not a file"), "{said}");
 
+    // and a pipe nobody writes to is refused rather than waited on; on a thread, so that a
+    // program stuck opening it fails this test rather than hanging the suite
+    let made = std::process::Command::new("mkfifo")
+        .arg(dir.join("apipe"))
+        .status()
+        .expect("`mkfifo` is on the path");
+    assert!(made.success());
+    let (sent, heard) = std::sync::mpsc::channel();
+    let at = dir.clone();
+    std::thread::spawn(move || {
+        let _ = sent.send(run_from(&at, &["-f", "apipe"], ""));
+    });
+    let (ok, said) = heard
+        .recv_timeout(std::time::Duration::from_secs(30))
+        .expect("`-f` waited on the pipe");
+    assert!(!ok, "{said}");
+    assert!(said.contains("is not a file"), "{said}");
+
     // and one that is there goes in
     let (ok, said) = run_from(&dir, &["-f", "notes.md"], "/budget\n");
     assert!(ok, "{said}");

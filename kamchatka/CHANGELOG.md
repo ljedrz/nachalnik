@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **`/attach` and `-f` refuse a file swapped for a pipe after it was checked.** The file was asked
+  what it was by its path and then opened by its path again, so a pipe put in its place in between
+  was opened, and the open waited for a writer. It is now opened without waiting and the open file
+  is checked.
+
 ## [0.23.0] - 2026-11-05
 
 ### breaking
