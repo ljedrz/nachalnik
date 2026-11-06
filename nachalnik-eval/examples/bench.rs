@@ -54,6 +54,7 @@ environment:
   NACHALNIK_API_KEY / OPENROUTER_API_KEY
   NACHALNIK_BASE_URL     e.g. http://localhost:11434/v1  (ollama; any key will do)
   NACHALNIK_TEST_MODEL   the model, if -m is not given
+  NACHALNIK_CONTEXT_LIMIT  the model's window, where the endpoint does not say
   NACHALNIK_APP_URL      name the app the run is on behalf of, where the endpoint ranks
   NACHALNIK_APP_TITLE    apps; no claim is made unless both are set";
 
