@@ -87,7 +87,7 @@ impl App {
     /// What the policy will answer about, and where the tab is to change any of it.
     ///
     /// note: the same rows the permissions tab draws, out of the same [`App::permissions`], and the
-    /// same [`text::NOTHING_DECIDED`] where there are none. A headless run gets this page rather
+    /// same [`NOTHING_DECIDED`](crate::app::text::NOTHING_DECIDED) where there are none. A headless run gets this page rather
     /// than the tab: a tab is where somebody changes a rule, and a caller with no keys changes
     /// nothing, but it may ask what the rules are, and silence answers like a policy that allows
     /// nothing.

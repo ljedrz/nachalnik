@@ -202,7 +202,7 @@ impl App {
     }
 
     /// Whether a turn is running or a call is waiting to be answered: what
-    /// [`text::MID_TURN`] says.
+    /// [`MID_TURN`](super::text::MID_TURN) says.
     ///
     /// note: a turn resting on a question is not `busy`, and it is still mid-turn: the call it is
     /// waiting on has a result to come, and anything put in the context now lands between the

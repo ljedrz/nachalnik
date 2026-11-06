@@ -132,7 +132,7 @@ pub(super) fn is_delimiter(line: &str) -> bool {
 /// table would come apart. A table is a fixed shape; when it does not fit, the columns give way,
 /// and only this end knows what they have to fit into.
 ///
-/// note: the cells go through the markdown renderer first, so `\`Tool\`` is measured and drawn as
+/// note: the cells go through the markdown renderer first, so ``` `Tool` ``` is measured and drawn as
 /// `Tool` in the inline-code colour. Measuring the raw text would spend two columns per cell on
 /// punctuation that is never drawn.
 pub(super) fn draw_table(table: &Table, width: usize) -> Vec<Line<'static>> {

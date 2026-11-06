@@ -30,7 +30,7 @@ const POINT: &str =
 
 /// Characters a markdown line may begin with.
 ///
-/// note: models emphasise and bullet, so `- **ANSWER:** \`kirov\`` is the same answer as
+/// note: models emphasise and bullet, so ``- **ANSWER:** `kirov` `` is the same answer as
 /// `ANSWER: kirov`. Scoring one and not the other measures formatting.
 const LEADING: [char; 6] = ['*', '`', '#', '-', '>', ' '];
 
