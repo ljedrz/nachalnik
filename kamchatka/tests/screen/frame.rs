@@ -1247,3 +1247,25 @@ async fn a_box_folds_again_when_the_window_narrows() {
     // and back at the first width, the first folding again
     assert_eq!(lines(&harness.sized(140, 40)), wide);
 }
+
+/// `ctrl+alt+r` draws the window in Midnight Commander's colours, and again puts them back. It does
+/// not reach `ctrl+r`, which would carry on a conversation nobody asked to carry on.
+#[tokio::test]
+async fn ctrl_alt_r_turns_the_window_blue_and_back() {
+    let mut harness = Harness::new([]);
+    let window = harness.corners()[0];
+    let retro = KeyEvent::new(
+        KeyCode::Char('r'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    );
+
+    harness.app.on_key(retro).await;
+    assert!(harness.app.retro);
+    assert_eq!(harness.corners()[0], Color::White);
+    assert_eq!(harness.backdrop(), Color::Blue);
+
+    harness.app.on_key(retro).await;
+    assert!(!harness.app.retro);
+    assert_eq!(harness.corners()[0], window);
+    assert_eq!(harness.backdrop(), Color::Reset);
+}

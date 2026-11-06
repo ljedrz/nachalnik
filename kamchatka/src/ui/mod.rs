@@ -160,6 +160,44 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             *scroll = at;
         }
     }
+
+    if app.retro {
+        retro(frame);
+    }
+}
+
+/// Repaints a drawn frame in Midnight Commander's colours.
+///
+/// note: over the finished buffer rather than through every style, because every colour here is
+/// a named one drawn on the terminal's own background. Swapping them cell by cell is the whole
+/// palette, and nothing that draws has to know there is a second one.
+fn retro(frame: &mut Frame) {
+    for cell in frame.buffer_mut().content.iter_mut() {
+        // the picked row: MC's black-on-cyan bar rather than the terminal's own inverse
+        if cell.modifier.contains(Modifier::REVERSED) {
+            cell.modifier.remove(Modifier::REVERSED);
+            cell.fg = Color::Black;
+            cell.bg = Color::Cyan;
+            continue;
+        }
+        if cell.bg == Color::Reset {
+            cell.bg = Color::Blue;
+        }
+        cell.fg = match cell.fg {
+            Color::Reset if cell.modifier.contains(Modifier::BOLD) => Color::White,
+            // MC's text is light grey, and so are its frames; white is what stands out
+            Color::Reset | Color::DarkGray => Color::Gray,
+            // the accent, which is a colour of its own rather than a name: the open tab, and the
+            // box with the keys
+            Color::Rgb(..) => Color::White,
+            // blue on blue is not there at all
+            Color::Blue | Color::Cyan => Color::LightCyan,
+            Color::Red => Color::LightRed,
+            Color::Green => Color::LightGreen,
+            Color::Magenta => Color::LightMagenta,
+            other => other,
+        };
+    }
 }
 
 // ----------------------------------------------------------------------------------- the frame

@@ -450,6 +450,10 @@ pub struct App {
     /// and they stay yellow against a frame of any colour.
     #[cfg(feature = "tui")]
     pub accent: ratatui::style::Color,
+    /// Whether the window is drawn in Midnight Commander's colours: grey and white on blue, with a cyan bar
+    /// for whatever is picked out. `ctrl+alt+r` turns it on and off; nothing else mentions it.
+    #[cfg(feature = "tui")]
+    pub retro: bool,
     /// Which pane the keys go to.
     pub focus: Focus,
     /// Which of the listed context items is picked out; an index into [`App::listed`], which is
@@ -796,6 +800,8 @@ impl App {
                     .expect("the default border colour is a colour");
                 ratatui::style::Color::Rgb(r, g, b)
             },
+            #[cfg(feature = "tui")]
+            retro: false,
             focus: Focus::Input,
             selected: 0,
             sending_only: false,
@@ -1374,8 +1380,16 @@ impl App {
             return;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
         // taken by every key, whichever handler it reaches; see the field
         let drawn = self.drawn.take();
+
+        // ahead of everything, overlays included, because it changes how the window looks and not
+        // what is in it. Ahead of `ctrl+r` too, which does not look at alt and would carry on
+        if ctrl && alt && key.code == KeyCode::Char('r') {
+            self.retro = !self.retro;
+            return;
+        }
 
         // ctrl+c and ctrl+d are handled before anything else, including whatever is on top, and
         // mean the same thing wherever pressed. An overlay taking them would answer a question
@@ -1401,7 +1415,6 @@ impl App {
             return;
         }
 
-        let alt = key.modifiers.contains(KeyModifiers::ALT);
         // taken rather than read, so that a count lives for exactly one key wherever that key is
         // handled: only the digit arm below puts it back. Cleared at the end of `context_key`
         // instead, a `4` followed by `tab` or `F1` - neither of which gets that far - would survive
