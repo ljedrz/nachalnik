@@ -620,12 +620,20 @@ fn guarded<T>(asked: impl FnOnce() -> T) -> std::thread::Result<T> {
     std::panic::catch_unwind(AssertUnwindSafe(asked))
 }
 
-/// What a call is answered with when its tool panicked saying what the call needs.
-fn panicked_needing(payload: &(dyn std::any::Any + Send)) -> String {
-    let said = payload
+/// What a panic said, where it said it in words.
+///
+/// note: a payload that is not a string (`panic_any` with anything else) said nothing, rather than
+/// being rendered as a type name.
+fn said_by(payload: &(dyn std::any::Any + Send)) -> Option<&str> {
+    payload
         .downcast_ref::<&str>()
         .copied()
-        .or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+}
+
+/// What a call is answered with when its tool panicked saying what the call needs.
+fn panicked_needing(payload: &(dyn std::any::Any + Send)) -> String {
+    let said = said_by(payload);
 
     match said {
         Some(said) => {
@@ -640,13 +648,9 @@ fn panicked_needing(payload: &(dyn std::any::Any + Send)) -> String {
 /// What a call whose tool panicked is told: that it crashed, and what the panic said.
 ///
 /// note: "crashed" rather than "panicked", for the same reason [`refusal`] avoids a codebase's
-/// idiom. A payload that is not a string (`panic_any` with anything else) is said to have said
-/// nothing, not rendered as a type name.
+/// idiom.
 fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
-    let said = payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+    let said = said_by(payload);
 
     match said {
         Some(said) => format!("the tool crashed while making this call: {said}"),
