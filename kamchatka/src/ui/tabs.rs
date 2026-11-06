@@ -957,6 +957,20 @@ const RULES: Heading = Heading {
     says: "what has been decided, by an answer or a flag",
 };
 
+/// The heading over the rules while the subjects it asks about are listed with them.
+const EVERY_RULE: Heading = Heading {
+    name: "the rules",
+    says: "what has been decided, and what it asks about",
+};
+
+/// The heading over the rules, as they are listed now.
+fn rules_heading(app: &App) -> Heading {
+    match app.asks_shown {
+        true => EVERY_RULE,
+        false => RULES,
+    }
+}
+
 /// What the policy will answer about each capability, and which tools that covers.
 ///
 /// note: the permission prompt is the policy's only other appearance, and it shows up one call at a
@@ -964,7 +978,7 @@ const RULES: Heading = Heading {
 /// and changeable, which is what a replaceable `PermissionPolicy` buys: a policy is an object with
 /// state, not a callback you can only learn about by triggering it.
 pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
-    let rows = app.permissions();
+    let rows = app.rule_rows();
 
     // which policy is in force and what it does with everything the list does not mention, above
     // the list, always
@@ -1032,7 +1046,7 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     let covers = width.saturating_sub(2 + capability + 1 + 10 + 2);
 
     if !rows.is_empty() {
-        frame.render_widget(Paragraph::new(RULES.line()), title);
+        frame.render_widget(Paragraph::new(rules_heading(app).line()), title);
         frame.render_widget(
             Paragraph::new(Line::styled(
                 format!(

@@ -200,10 +200,12 @@ pub const PERMISSIONS: &str = "  THE PERMISSIONS TAB, which has the keys wheneve
     enter, space        list the paths in a part of the sandbox, or close
                         the list again
     right / l, left / h open / close that list
+    s                   show / hide the subjects it asks about, which
+                        nobody has decided, among the rules
     (the line along the top says which policy is in force and what it answers
      about anything not listed; the one along the bottom says how many subjects
-     are not listed here because nobody has answered about them, and whether a
-     shell command is confined where no sandbox is listed to say it)";
+     it asks about, the keys the picked line takes, and whether a shell command
+     is confined where no sandbox is listed to say it)";
 
 /// The keys that answer a waiting tool, offered only while one is waiting.
 pub const QUESTION: &str =

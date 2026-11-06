@@ -451,6 +451,13 @@ impl App {
     pub(super) fn permissions_key(&mut self, key: KeyEvent) {
         use super::Listed;
 
+        // the subjects it asks about, listed or not, before anything about rows: with nothing
+        // decided and nothing confined there may be none until this lists some
+        if key.code == KeyCode::Char('s') {
+            self.asks_shown = !self.asks_shown;
+            return;
+        }
+
         let rows = self.permission_lines();
         if rows.is_empty() {
             return;
@@ -477,8 +484,8 @@ impl App {
             _ => {}
         }
 
-        let subject = match &rows[self.chosen] {
-            Listed::Rule(row) => row.subject.clone(),
+        let (subject, was) = match &rows[self.chosen] {
+            Listed::Rule(row) => (row.subject.clone(), row.verdict),
             // closing from anywhere inside a part goes back to its line, so the keys are not left
             // on whatever comes to stand where the path was
             Listed::Path(name, _) => {
@@ -515,17 +522,20 @@ impl App {
 
         let decided = match key.code {
             KeyCode::Char(' ') => self.policy.cycle(&subject),
-            KeyCode::Char('a') => {
-                self.policy.set(&subject, Verdict::Allow);
-                Verdict::Allow
-            }
-            KeyCode::Char('n') => {
-                self.policy.set(&subject, Verdict::Deny);
-                Verdict::Deny
-            }
-            KeyCode::Char('r') | KeyCode::Backspace => {
-                self.policy.set(&subject, Verdict::Ask);
-                Verdict::Ask
+            KeyCode::Char('a' | 'n' | 'r') | KeyCode::Backspace => {
+                let verdict = match key.code {
+                    KeyCode::Char('a') => Verdict::Allow,
+                    KeyCode::Char('n') => Verdict::Deny,
+                    _ => Verdict::Ask,
+                };
+                // an answer that changes nothing is not a rule: `r` on a row `s` listed, which is
+                // already a question, would put a rule in the record and a line in the chat for no
+                // change at all
+                if verdict == was {
+                    return;
+                }
+                self.policy.set(&subject, verdict);
+                verdict
             }
             _ => return,
         };

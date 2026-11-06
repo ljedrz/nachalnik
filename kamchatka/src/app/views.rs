@@ -123,7 +123,7 @@ pub struct SandboxPart {
 #[cfg(feature = "tui")]
 #[non_exhaustive]
 pub enum Listed {
-    /// A rule somebody decided.
+    /// A rule's row: one somebody decided, or one it asks about, while `s` lists those.
     Rule(Stance),
     /// A part of the sandbox, and whether it is open to show its paths.
     Group(SandboxPart, bool),
@@ -543,6 +543,19 @@ impl App {
             .collect()
     }
 
+    /// The rows of the permissions tab's rules: what has been decided, and what it asks about too
+    /// where somebody has asked to see that.
+    ///
+    /// note: in the order the subjects are kept in either way, so a subject shown or hidden does
+    /// not move the rest. A decision made on an `ask` row leaves it where it was.
+    #[cfg(feature = "tui")]
+    pub fn rule_rows(&self) -> Vec<Stance> {
+        match self.asks_shown {
+            true => self.all_stances(),
+            false => self.permissions(),
+        }
+    }
+
     /// How many subjects the policy will simply ask about, because nobody has told it otherwise.
     ///
     /// note: the tab does not list them; a row for a `.aws` rule nobody has thought about is not
@@ -943,7 +956,7 @@ impl App {
     /// with the paths of each opened part under it.
     #[cfg(feature = "tui")]
     pub fn permission_lines(&self) -> Vec<Listed> {
-        let mut listed: Vec<Listed> = self.permissions().into_iter().map(Listed::Rule).collect();
+        let mut listed: Vec<Listed> = self.rule_rows().into_iter().map(Listed::Rule).collect();
         let parts = self
             .sandbox_view()
             .map(|view| view.parts)

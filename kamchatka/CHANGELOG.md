@@ -28,6 +28,14 @@ minor bump may break you.
   `fs:write`, `net:reach` - and that rule's row is where it changes. `/permissions`
   without a screen lists every part in full. `App::sandbox_view` gives the sandbox, and
   `sandbox::Roots` is what it is read from.
+- **`s` on the permissions tab lists what the policy asks about.** The subjects nobody has decided
+  were a count along the bottom, `13 more it will ask about`, with no way to see which. `s` lists
+  them among the rules as `ask` rows, where the rule keys decide them in advance, and hides them
+  again; the bottom line says `s shows the 13 it asks about`. It names only the keys the picked
+  line takes, too: the rule keys on a rule, `enter` on a part of the sandbox with paths to list,
+  and nothing on one without. A rule key that would leave a row's answer as it is - `r` on a row
+  already asked about, `a` on one already allowed - does nothing, rather than recording a rule and
+  saying so for no change.
 - **A served session sends its sandbox, and the web page draws it.** `Attached::sandbox` carries it
   as a `Sandboxing`, with its parts as `Sandboxed` rows; it is `None` from a session older than the
   field. The `--web` page lists it under the rules, each part's paths folded until opened.
