@@ -227,7 +227,7 @@ impl Anthropic {
 
         let (context, output) = entry.as_ref().map(limits).unwrap_or_default();
         if self.context_limit.lock().is_none() {
-            *self.context_limit.lock() = context.map(|limit| limit as usize);
+            *self.context_limit.lock() = context.map(crate::tokens);
         }
         *self.output_limit.lock() = output;
         *self.capabilities.lock() = entry

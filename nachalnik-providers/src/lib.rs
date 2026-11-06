@@ -254,6 +254,15 @@ pub(crate) fn refused(said: String, limit: Option<usize>) -> BoxError {
     }
 }
 
+/// A count of tokens an endpoint published, as a `usize`.
+///
+/// note: saturated rather than cast. On a 32-bit target a figure past `u32::MAX` wraps to a small
+/// one, and a listing's window read that way refuses every request as too long.
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
+pub(crate) fn tokens(count: u64) -> usize {
+    usize::try_from(count).unwrap_or(usize::MAX)
+}
+
 /// A call, from the text the model wrote for its arguments.
 ///
 /// note: nothing written means no arguments, which is how a server spells a call to a tool that
