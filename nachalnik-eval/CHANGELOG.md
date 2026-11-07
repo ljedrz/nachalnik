@@ -12,6 +12,10 @@ minor bump may break you.
 - **`conflict` on a dossier its rift was not written for fails to set up rather than panicking.**
   `Conflict::on` takes any dossier with any `Rift`, and a rift naming a note the dossier lacks
   panicked partway through the run. It is now an `Error::Setup`.
+- **`feedback` between two dossiers written under different briefs fails to set up.** The second
+  round plants its dossier under the brief the first one installed, so a `Dossier` of a caller's
+  own with a brief of its own was run under the wrong one, and the run said nothing. It is now an
+  `Error::Setup`.
 - **Every claim names the material it was made on, so a pooled figure is clustered again.**
   `lie`'s claims and `recursion`'s recursive ones named none, and one such claim in a pooled set
   leaves the whole set without a design effect: a report holding either quoted the unadjusted

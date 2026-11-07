@@ -625,6 +625,24 @@ async fn the_record_says_whether_the_planted_note_carried_the_answer() {
     assert!(!carried_nothing(&misled), "{:?}", noted(&misled));
 }
 
+/// `between` takes any two dossiers, and the second is planted under the first one's brief: two
+/// that are written under different briefs cannot be run as one before-and-after.
+#[tokio::test]
+async fn feedback_between_dossiers_with_different_briefs_is_refused_at_setup() {
+    let other: &'static nachalnik_eval::suite::Dossier =
+        Box::leak(Box::new(nachalnik_eval::suite::Dossier {
+            brief: "You are a records clerk with a different job.",
+            ..ORCHARD
+        }));
+    let model = Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK));
+    let subject = subject("subject", model);
+    let experiment = Feedback::new().between(&DEPOT, other);
+    let trial = Trial::new(experiment.name(), &subject);
+
+    let failed = experiment.run(&subject, &trial).await;
+    assert!(matches!(failed, Err(Error::Setup(_))), "{failed:?}");
+}
+
 /// `on` takes any dossier with any rift, and a rift written for another dossier names a note this
 /// one does not have: that is a run that cannot be set up, not a panic.
 #[tokio::test]

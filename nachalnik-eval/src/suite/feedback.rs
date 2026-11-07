@@ -91,7 +91,7 @@ impl Feedback {
     ) -> Result<(Vec<Labelled>, Vec<Verdict>)> {
         let notes = match informed {
             false => dossier.install(subject),
-            // the brief is already in the context and is the same sentence
+            // the brief is already in the context, and `run` holds the two to the same sentence
             true => dossier.plant(subject),
         };
         trial.record(Step::Briefed {
@@ -236,6 +236,14 @@ impl Experiment for Feedback {
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {
+        // the second dossier is planted under the first one's brief, and two briefs would be a
+        // difference between the rounds that nothing in the scores shows
+        if self.first.brief != self.second.brief {
+            return Err(crate::Error::Setup(format!(
+                "`{}` and `{}` are written under different briefs, and both rounds run under one",
+                self.first.name, self.second.name
+            )));
+        }
         let (planted, verdicts) = self.round(subject, trial, self.first, false).await?;
 
         // -------------------------------------------------------------------------------- tell
