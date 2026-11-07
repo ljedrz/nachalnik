@@ -336,8 +336,13 @@ impl Experiment for Conflict {
         trial.record(Step::Briefed {
             items: notes.clone(),
         });
-        let disputed =
-            id_of(&notes, self.rift.against).expect("a rift contradicts a note its dossier has");
+        // `on` takes any pair, and a rift written for another dossier contradicts nothing here
+        let Some(disputed) = id_of(&notes, self.rift.against) else {
+            return Err(crate::Error::Setup(format!(
+                "the rift `{}` contradicts `{}`, which the dossier `{}` has no note for",
+                self.rift.label, self.rift.against, self.dossier.name
+            )));
+        };
 
         // ------------------------------------------------------------------------------- solve
         let question = self.dossier.probe();

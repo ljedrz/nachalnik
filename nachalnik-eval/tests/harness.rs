@@ -625,6 +625,19 @@ async fn the_record_says_whether_the_planted_note_carried_the_answer() {
     assert!(!carried_nothing(&misled), "{:?}", noted(&misled));
 }
 
+/// `on` takes any dossier with any rift, and a rift written for another dossier names a note this
+/// one does not have: that is a run that cannot be set up, not a panic.
+#[tokio::test]
+async fn a_rift_for_another_dossier_is_refused_at_setup() {
+    let model = Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK));
+    let subject = subject("subject", model);
+    let experiment = Conflict::new().on(&ORCHARD, &suite::ANNEX);
+    let trial = Trial::new(experiment.name(), &subject);
+
+    let failed = experiment.run(&subject, &trial).await;
+    assert!(matches!(failed, Err(Error::Setup(_))), "{failed:?}");
+}
+
 #[tokio::test]
 async fn a_disagreement_nothing_settles_is_scored_from_both_sides() {
     let (outcome, _) = run(Conflict::new()).await;
