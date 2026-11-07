@@ -133,6 +133,10 @@ fn contents(path: &str) -> Result<Vec<u8>> {
              it ends, which a pipe or a device may never do"
         );
     }
+    // a read of a regular file is meant to block, and a filesystem may honour the flag for one
+    let flags = rustix::fs::fcntl_getfl(&file).with_context(|| format!("could not read {path}"))?;
+    rustix::fs::fcntl_setfl(&file, flags - rustix::fs::OFlags::NONBLOCK)
+        .with_context(|| format!("could not read {path}"))?;
     let too_large = |size: u64| {
         anyhow::anyhow!(
             "{path} is {} MB, and this will not attach anything over {} MB: what goes on the wire \
