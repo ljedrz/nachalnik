@@ -232,7 +232,8 @@ fn right(scores: &Scores) -> String {
     if scores.is_empty() {
         return "-".to_owned();
     }
-    match scores.interval {
+    // the clustered interval where there is one, as `Scores` says to quote
+    match scores.clustered.or(scores.interval) {
         Some(interval) => format!(
             "{}/{} ({:.0}-{:.0})",
             scores.correct,
