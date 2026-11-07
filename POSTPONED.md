@@ -109,11 +109,19 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   is asked for every counter written against them. Unblocked by a counter that abstains on JSON, and
   deciding whether the trait splits blocks or documents that a counter must.
 
-- **What the copies of a failed observation had cost is lost.** `Ablation::observe` returns the
-  first failed copy's error and nothing else, so the spend of the copies beside it that answered
-  never reaches the run's total. A run that fails reports less than it spent. Carrying it needs an
-  error that holds a `Spend`, which changes `nachalnik-eval`'s error type. Unblocked by a run whose
-  reported cost has to match the bill.
+- **What the copies of a failed observation said and cost is lost.** `Ablation::observe` returns
+  the first failed copy's error and nothing else, so the answers and the spend of the copies beside
+  it that answered never reach the record or the run's total. A run that fails reports less than it
+  spent. Carrying them needs an error that holds a `Spend` and the answers, or `observe` returning
+  them beside the error, either of which changes `nachalnik-eval`'s public API. Unblocked by a run
+  whose reported cost has to match the bill.
+
+- **`provenance`'s digest leaves out the call's identifier.** `Errand::call` is fixed in the
+  material because the copies read it and it goes out on the wire, but `Errand::text` omits it, so
+  two errands that differ only in their call identifier have the same digest and `compare` treats
+  their runs as comparable. Adding it moves the `provenance` fingerprint, so every run taken so far
+  stops being comparable with later ones although none of them read different material. It waits
+  on choosing between that break and leaving it until the material changes for another reason.
 
 - **A call whose arguments are exactly `{"_unparsed": "..."}` reads back as an unparsed call.**
   `ToolCall` reads a call recorded before `unparsed` existed by recognising the old wrapper: an
