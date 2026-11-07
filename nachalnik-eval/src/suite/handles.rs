@@ -118,8 +118,9 @@ pub struct Inspect {
     blind: Vec<ContextId>,
     /// How many tests are left.
     budget: AtomicUsize,
-    /// What the untouched copy answered, once, because it is the same copy every time.
-    control: Mutex<Option<String>>,
+    /// What the untouched copy answered, once, because it is the same copy every time; `Some(None)`
+    /// for an answer that could not be read, which is kept like any other.
+    control: Mutex<Option<Option<String>>>,
     journal: Journal,
 }
 
@@ -160,12 +161,12 @@ impl Inspect {
         // the untouched copy is the same copy every time, so it is run once and kept
         let cached = self.control.lock().clone();
         let before = match cached {
-            Some(answered) => Some(answered),
+            Some(answered) => answered,
             None => match ablation.observe(&self.origin, Intervention::Nothing).await {
                 Ok(control) => {
                     *spend += control.spend;
                     let answered = control.majority();
-                    *self.control.lock() = answered.clone();
+                    *self.control.lock() = Some(answered.clone());
                     answered
                 }
                 Err(e) => return (None, Err(e)),
@@ -719,6 +720,55 @@ mod tests {
         );
         assert!(failed.is_some());
         assert_eq!(inspect.remaining(), 1);
+    }
+
+    /// An untouched copy whose answer could not be read is kept like one that could.
+    ///
+    /// note: the cache held what the copy answered, so an unreadable answer left it empty, and every
+    /// later test ran the untouched copy again and paid for it again.
+    #[tokio::test]
+    async fn an_unreadable_untouched_copy_is_run_once() {
+        let kernel = Kernel::new(nachalnik::Config::default());
+        let provider = Arc::new(ScriptedProvider::new([
+            ModelResponse::text("no idea"),
+            ModelResponse::text("omsk"),
+            ModelResponse::text("omsk"),
+            ModelResponse::text("omsk"),
+        ]));
+        kernel.set_provider(provider.clone());
+        kernel.push(ContextItem::memory("records/capacity", "3,593 tonnes"));
+        let origin = Arc::new(Origin::of(&Subject::new(kernel.clone())).expect("a provider"));
+        let anchor = Arc::new(kernel);
+        let inspect = Inspect::new(
+            &anchor,
+            origin,
+            Probe::new(
+                "which?",
+                Reading::Choice(vec!["kirov".to_owned(), "omsk".to_owned()]),
+            ),
+            [],
+            3,
+            Journal::default(),
+        );
+
+        for _ in 0..2 {
+            inspect
+                .invoke(
+                    &call(
+                        "1",
+                        "inspect",
+                        json!({ "action": "test", "without": ["records/capacity"] }),
+                    ),
+                    OutputSink::disconnected(),
+                )
+                .await
+                .expect("the copies ran");
+        }
+        assert_eq!(
+            provider.remaining(),
+            1,
+            "one untouched copy and two treated ones"
+        );
     }
 
     /// A spent test is counted in what the subject is told and in what the handle says.
