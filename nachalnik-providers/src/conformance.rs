@@ -1134,7 +1134,8 @@ impl Conformance {
         delivery: Delivery,
     ) -> Result<Arc<ModelResponse>, String> {
         let kernel = Kernel::new(Config::default());
-        kernel.set_provider((self.build)(server(body, delivery).await));
+        let (url, _serving) = server(body, delivery).await;
+        kernel.set_provider((self.build)(url));
         kernel.push(ContextItem::user("go"));
         kernel.step().await.map_err(|e| e.to_string())?;
 
@@ -1176,11 +1177,14 @@ enum Delivery {
 ///
 /// note: `Content-Length` rather than a chunked body, so the server says nothing about framing that
 /// the provider might lean on. The test is what the provider does with the bytes.
-async fn server(body: &'static str, delivery: Delivery) -> String {
+///
+/// note: the server stops when the [`Serving`] is dropped. A caller's runtime can outlive `check`,
+/// and each case would otherwise leave a task and a listening socket in it.
+async fn server(body: &'static str, delivery: Delivery) -> (String, Serving) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
 
-    tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
             let mut discard = [0u8; 16384];
             let _ = socket.read(&mut discard).await;
@@ -1218,5 +1222,39 @@ async fn server(body: &'static str, delivery: Delivery) -> String {
         }
     });
 
-    format!("http://{address}")
+    (format!("http://{address}"), Serving(task))
+}
+
+/// A running [`server`], stopped when this is dropped.
+struct Serving(tokio::task::JoinHandle<()>);
+
+impl Drop for Serving {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::net::TcpStream;
+
+    use super::{Delivery, server};
+
+    #[tokio::test]
+    async fn a_server_stops_listening_once_its_case_is_done() {
+        let (url, serving) = server("", Delivery::Whole).await;
+        let address = url.trim_start_matches("http://").to_owned();
+        drop(serving);
+
+        // the abort lands when the runtime next polls the task, so give it a moment
+        for _ in 0..100 {
+            if TcpStream::connect(&address).await.is_err() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("{address} still takes connections after its server was dropped");
+    }
 }
