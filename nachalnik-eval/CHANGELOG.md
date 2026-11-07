@@ -16,6 +16,9 @@ minor bump may break you.
   round plants its dossier under the brief the first one installed, so a `Dossier` of a caller's
   own with a brief of its own was run under the wrong one, and the run said nothing. It is now an
   `Error::Setup`.
+- **`inspect`'s untouched copy runs once even when its answer cannot be read.** The answer was
+  kept only when it was readable, so after one that was not, every later `test` ran and paid for
+  the untouched copy again.
 - **Every claim names the material it was made on, so a pooled figure is clustered again.**
   `lie`'s claims and `recursion`'s recursive ones named none, and one such claim in a pooled set
   leaves the whole set without a design effect: a report holding either quoted the unadjusted
