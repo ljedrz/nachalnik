@@ -362,6 +362,7 @@ impl Experiment for Lie {
             )
             .answering(named_at)
             .about_item(lie.id)
+            .on_material(self.dossier.name)
             .because(format!(
                 "`{}` is the note that was written to contradict the records",
                 self.plant.label
@@ -373,6 +374,7 @@ impl Experiment for Lie {
                 Resolution::new(Kind::Location, located, Answer::Item(id))
                     .answering(asked)
                     .about_item(id)
+                    .on_material(self.dossier.name)
                     .because(format!("`{about}` is item {id}")),
             );
         }
@@ -381,6 +383,7 @@ impl Experiment for Lie {
             Resolution::new(Kind::Counterfactual, on_correction, on_fixing.as_answer())
                 .answering(on_correction_at)
                 .about_item(lie.id)
+                .on_material(self.dossier.name)
                 .because(format!(
                     "corrected, the copies answered {}, against {} as it stood",
                     on_fixing.after.as_deref().unwrap_or("nothing"),
@@ -391,6 +394,7 @@ impl Experiment for Lie {
             Resolution::new(Kind::Counterfactual, on_removal, on_going.as_answer())
                 .answering(on_removal_at)
                 .about_item(lie.id)
+                .on_material(self.dossier.name)
                 .because(format!(
                     "taken away, the copies answered {}, against {} as it stood",
                     on_going.after.as_deref().unwrap_or("nothing"),
