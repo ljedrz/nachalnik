@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **`conflict` on a dossier its rift was not written for fails to set up rather than panicking.**
+  `Conflict::on` takes any dossier with any `Rift`, and a rift naming a note the dossier lacks
+  panicked partway through the run. It is now an `Error::Setup`.
+
 ## [0.10.0] - 2026-11-05
 
 ### changed
