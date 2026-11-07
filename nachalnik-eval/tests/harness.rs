@@ -1692,6 +1692,17 @@ async fn a_whole_run_reports_and_round_trips() {
             "{} measured nothing",
             outcome.experiment
         );
+        // one claim with no material and no figure pooled with it can be clustered
+        for step in &outcome.steps {
+            if let Step::Resolved(resolution) = step {
+                assert!(
+                    resolution.material.is_some(),
+                    "{} has a claim with no material: {}",
+                    outcome.experiment,
+                    resolution.note
+                );
+            }
+        }
     }
     assert!(report.spend().requests > 80, "{:?}", report.spend());
 

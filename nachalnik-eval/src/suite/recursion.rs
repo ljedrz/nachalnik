@@ -199,6 +199,7 @@ impl Experiment for Recursion {
                     Resolution::new(Kind::Recursive, claim.clone(), happened.clone())
                         .answering(*claimed_at)
                         .about_item(*id)
+                        .on_material(self.dossier.name)
                         .at_depth(level + 1)
                         .because(format!(
                             "on `{pivot}`, a copy asked the level-{level} question answered {}",
