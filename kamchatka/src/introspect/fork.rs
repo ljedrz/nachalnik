@@ -359,6 +359,9 @@ async fn branch(
                 // and nothing after the first request for a second one to build on
                 context_undo_depth: 0,
                 max_requests_per_turn: Some(1),
+                // the session's word on what is too large to send, since a fork has no compactor to
+                // make room and asks the endpoint the session already chose to let answer
+                refuse_oversized_requests: kernel.config().refuse_oversized_requests,
                 ..Config::default()
             },
             snapshot,
