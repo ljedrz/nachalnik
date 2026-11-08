@@ -624,8 +624,9 @@ pub mod advise {
         // the first command, not a session without an advisor. Checked here, before anything runs
         if system1::is_workers_ai(advisor_endpoint) {
             return Err(format!(
-                "--rate-shell-commands needs a Cloudflare API token for {advisor_endpoint}: set \
-                 KAMCHATKA_SYSTEM1_API_KEY to one that may use Workers AI"
+                "--rate-shell-commands needs a Cloudflare API token for {}: set \
+                 KAMCHATKA_SYSTEM1_API_KEY to one that may use Workers AI",
+                shown(advisor_endpoint)
             )
             .into());
         }
@@ -642,8 +643,9 @@ pub mod advise {
             .ok_or_else(|| {
                 format!(
                     "--rate-shell-commands needs an OpenRouter key: set OPENROUTER_API_KEY, or \
-                     KAMCHATKA_SYSTEM1_API_KEY. This session talks to {session_endpoint}, so its \
-                     own key is not OpenRouter's to borrow"
+                     KAMCHATKA_SYSTEM1_API_KEY. This session talks to {}, so its own key is not \
+                     OpenRouter's to borrow",
+                    shown(session_endpoint)
                 )
                 .into()
             })
@@ -760,6 +762,18 @@ pub mod advise {
             let held = chosen(dedicated(), own(), named(), openrouter, workers)
                 .expect("a token held for the advisor pays there");
             assert!(matches!(&held, Account::Dedicated(_)));
+
+            // and neither refusal says a password an address carries, as no line here does
+            let workers = "https://user:hunter2@api.cloudflare.com/client/v4/accounts/abc/ai/run";
+            let said = chosen(None, own(), named(), openrouter, workers)
+                .expect_err("Workers AI checks a key")
+                .to_string();
+            assert!(!said.contains("hunter2"), "{said}");
+            let elsewhere = "http://user:hunter2@localhost:11434/v1";
+            let said = chosen(None, None, None, elsewhere, openrouter)
+                .expect_err("OpenRouter checks a key")
+                .to_string();
+            assert!(!said.contains("hunter2"), "{said}");
         }
 
         /// A key set to nothing is a key not set, the advisor's as much as the session's.
