@@ -1130,6 +1130,13 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         None
     );
 
+    // and another process's environment is the boundary, though `/proc` is readable: the sandbox
+    // refuses inspecting a process outside it
+    let note = confined
+        .note_for("cat: /proc/1/environ: Permission denied\n")
+        .expect("another process is outside the sandbox");
+    assert!(note.contains("/proc/1/environ is outside"), "{note}");
+
     // nothing refused, nothing to say
     assert_eq!(confined.note_for("ls: no such file\n"), None);
 
