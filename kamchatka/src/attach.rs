@@ -184,8 +184,8 @@ pub fn describe(item: &ContextItem) -> Option<String> {
 /// note: a picture that does not start the way its type does is said for the same reason: the
 /// endpoint refuses what it cannot read, every request after it as well, and names no item. It is
 /// said rather than refused because the type is the person's claim and INVARIANTS.md keeps it
-/// theirs; the claim is checked against the few bytes each type this program names begins with, and
-/// nothing is chosen in its place.
+/// theirs; the claim is checked against the few bytes each picture type this program names begins
+/// with, and nothing is chosen in its place. A document, a sound or a video is not checked.
 pub fn caution(item: &ContextItem) -> Option<String> {
     let blobs = item.content.blobs();
     if let Some(empty) = blobs.iter().find(|blob| blob.byte_len() == 0) {
