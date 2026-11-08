@@ -726,7 +726,8 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
         "\nthe counter is `{}`, and it is an estimate rather than the model's own tokenizer.\n",
         short(kernel.counter().name()),
     ));
-    if let Some(limit) = budget.limit {
+    // `0` is what an endpoint that does not know says, as in `model`
+    if let Some(limit) = budget.limit.filter(|limit| *limit != 0) {
         out.push_str(&format!(
             "the budget it is measured against is {} tokens{}.\n",
             thousands(limit),
