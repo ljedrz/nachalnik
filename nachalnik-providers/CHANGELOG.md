@@ -22,6 +22,9 @@ minor bump may break you.
 - **`Conformance::check` stops the servers it starts.** Each case left its server task and
   listening socket running after it was done, so a caller whose runtime outlived the check kept
   a few dozen of them per call.
+- **`is_openrouter` and `is_workers_ai` read a host in any case.** A host name is not
+  case-sensitive, but `https://OpenRouter.AI/api/v1` was not taken for OpenRouter, so a client
+  choosing a key by it, as `kamchatka` does, sent none.
 - **Two whole tool calls under one index are two calls.** A server that sends every call whole in a
   chunk of its own, each at index zero, had them merged into one call with both names joined and
   the arguments unreadable. A whole call under an index a whole call already has, with an

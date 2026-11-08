@@ -355,6 +355,9 @@ pub fn is_openrouter(address: &str) -> bool {
             .unwrap_or_default(),
     );
 
+    // a host name is not case-sensitive, and an address typed as `OpenRouter.AI` is OpenRouter's
+    let host = host.to_ascii_lowercase();
+
     host == "openrouter.ai" || host.ends_with(".openrouter.ai")
 }
 
@@ -562,6 +565,8 @@ mod tests {
             "https://openrouter.ai/api/alpha",
             "https://openrouter.ai",
             "https://user:secret@openrouter.ai/api/v1",
+            "https://OpenRouter.AI/api/v1",
+            "API.OPENROUTER.AI",
         ] {
             assert!(is_openrouter(theirs), "{theirs}");
         }

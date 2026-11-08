@@ -164,7 +164,7 @@ pub fn is_workers_ai(address: &str) -> bool {
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
     let host = crate::host_of(authority);
 
-    host == "api.cloudflare.com" && path.contains("/ai/run")
+    host.eq_ignore_ascii_case("api.cloudflare.com") && path.contains("/ai/run")
 }
 
 /// Returns the last part of the model name, as Workers AI's body wants it: `clef` from
@@ -1264,6 +1264,7 @@ mod tests {
             "https://api.cloudflare.com/client/v4/accounts/abc/ai/run",
             "https://api.cloudflare.com/client/v4/accounts/abc/ai/run/@cf/cloudflare/clef",
             "http://api.cloudflare.com:8080/client/v4/accounts/abc/ai/run",
+            "https://API.Cloudflare.com/client/v4/accounts/abc/ai/run",
         ] {
             assert!(is_workers_ai(theirs), "{theirs}");
         }
