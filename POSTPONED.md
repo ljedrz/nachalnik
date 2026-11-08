@@ -177,11 +177,3 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   changed while the plan was awaited, the compaction's two figures are the costs of the requests
   built either side of it, so two of those projections are redundant. Each is linear in the context and milliseconds against a
   request, and a step compacts rarely, which is why it has not been done.
-
-- **The sweep runner counts a resumed sweep's old 429s as new failures.** `run.py` counts failures
-  as the growth in turns failed on a 429 across the running sweeps, from a baseline taken at its
-  first look. A sweep resumed after that look brings the 429s its carried-over log already held,
-  so after an outage the runner saw a hundred failures in its first minute, stepped its width
-  below the number running, and, since it measures only while exactly its width run, never widened
-  again. Restarting it at the number running clears it. It waits on taking each sweep's own count
-  at the moment it starts or is adopted as that sweep's baseline.

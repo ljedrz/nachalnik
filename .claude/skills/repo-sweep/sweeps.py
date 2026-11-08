@@ -169,6 +169,10 @@ class Records:
         self.ended = False  # whether the last message has had an answer that ended
         self.skipped = 0  # messages sent before the one ahead of them had such an answer
         self.throttled = 0  # turns that failed on a 429 kamchatka's own retries did not outlast
+        # the same two, from the part under way: a resumed log begins with a copy of the one before
+        # it, and `run.py` taking those for new had a resume's old 429s read as a burst of failures
+        self.requests_here = 0
+        self.throttled_here = 0
         self.answered = 0  # answers in the turn under way
         # calls the policy refused, read off the records: the prose holds what a sweep read and
         # grepped as well, and one that searched for a refusal's wording counted as refused
@@ -212,8 +216,11 @@ class Records:
                     if to.get("state") == "finished" and isinstance(to.get("stop"), str) \
                             and to["stop"] in ANSWERED:
                         self.ended = True
+                elif kind == "session.resumed":
+                    self.requests_here = self.throttled_here = 0
                 elif kind == "model.finished":
                     self.requests += 1
+                    self.requests_here += 1
                     self.answered += 1
                     used = (event.get("usage") or {}).get("input_tokens")
                     if used:
@@ -227,6 +234,7 @@ class Records:
                 elif kind in ("model.failed", "step.failed"):
                     self.failed.append(str(event.get("error", ""))[:160])
                     self.throttled += "429" in self.failed[-1]
+                    self.throttled_here += "429" in self.failed[-1]
 
 
 _records = {}
@@ -278,6 +286,8 @@ def state(name, now=None):
         largest=max(records.inputs, default=0),
         failed=len(records.failed),
         throttled=records.throttled,
+        requests_here=records.requests_here,
+        throttled_here=records.throttled_here,
         turn=records.answered,
         retrying=len(RETRYING.findall(prose)),
         refused=records.refused,
