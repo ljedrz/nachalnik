@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A settings file beside `--connect` is refused by name.** The file was read first, and one
+  saying `on-ask: leave` was refused as something only `--connect` can do, on a run that was
+  `--connect`.
 - **`--check` reads the session `/load` would open from a path that is only a suffix.** `--check
   .jsonl` read the dotfiles `.jsonl` and `.json`, while `/load .jsonl` opens `session.json`.
 - **`context look` says that `whole` reads nothing beside a `select`.** A class is listed rather

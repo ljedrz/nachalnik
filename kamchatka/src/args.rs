@@ -479,8 +479,14 @@ impl Args {
         // note: before anything is looked for, because `--print-config > kamchatka.json` means the
         // shell has emptied that file before this runs, so reading it first is a parse error about
         // the file this was about to write. `--check` and a command run no session for a file's
-        // settings to be about
-        if args.print_config || args.check.is_some() || args.command.is_some() {
+        // settings to be about. Nor does `--connect`: a file named beside it is refused by name
+        // later, and read here first, its `on-ask: leave` was refused as something only
+        // `--connect` can do
+        if args.print_config
+            || args.check.is_some()
+            || args.command.is_some()
+            || args.connect.is_some()
+        {
             return Ok(Given {
                 args,
                 matches,
