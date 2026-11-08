@@ -36,7 +36,8 @@ model wrote stays. Over the limit, kamchatka passes messages over, so the result
 first with `/exclude tool_results` and the message is `OVERRUN`. After `DRIVE_CUTS` (3) cuts it is
 wrapped up instead: taken as answered, so that the next line - a sweep's request for its
 findings - goes. Each cut and each wrap-up is a line, `carry` or `wrap`, in NAME.carried, since
-the records cannot tell such a message from one in INFILE.
+the records cannot tell such a message from one in INFILE. A session resumed from a snapshot
+(`RESUME`) starts with the cuts that snapshot already holds.
 
 A message with another after it whose turns ended in an answer without a single tool call is sent
 `IDLE`, up to `DRIVE_NUDGES` (3) times, before the next line goes: some models end a turn on the
@@ -106,6 +107,26 @@ ENDED = {"end_turn", "refusal"}
 SNAPSHOT = re.compile(r"`kamchatka -r ([^`]+)` carries on")
 
 
+def cuts_before():
+    """How many cuts the session this one resumes (`RESUME`, set by `run.py`) had already made.
+
+    note: counted in the snapshot rather than in NAME.carried, which a resume moves aside with the
+    rest of the part. Counted from nothing, a resumed sweep got a whole new set of cuts: one stopped
+    at its last cut, when the next was to wrap it up, read for as long again before it reported."""
+    snapshot = os.environ.get("RESUME")
+    if not snapshot:
+        return 0
+    try:
+        items = json.load(open(snapshot))["items"]
+    except (OSError, ValueError, KeyError):
+        return 0
+    # `OVERRUN` starts as `CARRY` does, so one prefix finds both
+    start = CARRY.split(",")[0]
+    return sum(1 for item in items
+               if item["kind"].get("kind") == "user_message" and item.get("source") == "user"
+               and start in json.dumps(item.get("content")))
+
+
 def command(line):
     return line.startswith("/") and line.split()[0] != "/continue"
 
@@ -141,7 +162,7 @@ class Session:
         out = open(os.path.join(OUT, name + ".jsonl"), "a")
         self.records = Records(out.name)
         self.name = name
-        self.cuts = 0
+        self.cuts = cuts_before()
         self.calls = 0  # tool calls in the turns of the message being delivered
         self.last_input = 0  # how large the latest request was, in tokens
         self.overrun = False  # whether the latest turn failed for a request over the limit
