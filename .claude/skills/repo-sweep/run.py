@@ -405,12 +405,13 @@ def main():
                 log(f"{name}: given up after {tries} tries")
 
         # every answer the endpoint has given this run, counted as each sweep's records grow; a
-        # sweep resumed into a new log, or moved aside to run again, starts its count again
+        # sweep resumed into a new log, or moved aside to run again, starts its count again. Only
+        # the part under way counts: a resumed log carries the one before it, answers and 429s
         for name, s in states.items():
-            now_seen = s.get("requests", 0)
+            now_seen = s.get("requests_here", 0)
             answered += now_seen - seen[name] if now_seen >= seen[name] else now_seen
             seen[name] = now_seen
-            now_seen = s.get("throttled", 0)
+            now_seen = s.get("throttled_here", 0)
             throttled += now_seen - seen_throttled[name] if now_seen >= seen_throttled[name] \
                 else now_seen
             seen_throttled[name] = now_seen
