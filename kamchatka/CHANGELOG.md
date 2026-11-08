@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A fork sends what its session sends under `--send-oversized-requests`.** A fork was built
+  with the default configuration, so it refused every request the counter called too large while
+  the session it was forked from sent its own, and it has no compactor to make room.
 - **`log` with `since` at the largest number no longer overflows.** In a resumed session it
   panicked a debug build and, in a release one, wrapped round and said records were skipped that
   were not.

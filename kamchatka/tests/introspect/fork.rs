@@ -53,6 +53,43 @@ async fn draft_answers_on_a_fork_and_leaves_the_context_alone() {
 /// against the answer's 30% - so with the thinking first the limit ate the answer and left the
 /// deliberation about how to answer. One session asked a copy of itself three questions, and what
 /// came back was the copy working out how to reply, with all three answers cut off the end.
+/// A session told to send what its counter calls too large sends its forks too.
+///
+/// note: a fork is built from a fresh configuration, and it refused every request the session
+/// itself was sending under `--send-oversized-requests`. It has no compactor, so the refusal was
+/// final.
+#[tokio::test]
+async fn a_fork_sends_what_its_session_sends_however_large() {
+    let kernel = Kernel::new(Config {
+        refuse_oversized_requests: false,
+        ..Config::default()
+    });
+    let provider = Arc::new(
+        ScriptedProvider::new([
+            ModelResponse::tool_calls(vec![call("c1", "fork", json!({ "action": "draft" }))]),
+            ModelResponse::text("I would say the parser is fine"),
+            ModelResponse::text("done"),
+        ])
+        .with_info(nachalnik::ModelInfo::new("test", "m").with_context_limit(1)),
+    );
+    kernel.set_provider(provider.clone());
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("fork"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(
+        &kernel,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+
+    kernel.push(ContextItem::user("is the parser fine?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("the parser is fine"), "{said}");
+}
+
 #[tokio::test]
 async fn a_fork_leads_with_the_answer_so_a_limit_cuts_the_thinking_instead() {
     let (kernel, _provider, _anchor) = agent([
