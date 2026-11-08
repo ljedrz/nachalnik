@@ -500,12 +500,13 @@ impl Answer {
     ///
     /// note: also `None` for an answer that did not say. It is held as `NaN`, and handed out as
     /// `NaN` it was a figure between 0 and 1 by type but none by value, which a caller would print
-    /// as "NaN% sure".
+    /// as "NaN% sure". A figure outside 0 to 1 is no confidence either, and is `None` for the same
+    /// reason: handed out, it was "300% sure".
     pub fn confidence(&self) -> Option<f64> {
         match self {
             Self::Noul { .. } => None,
             Self::Choice { confidence, .. } | Self::Score { confidence, .. } => {
-                Some(*confidence).filter(|it| !it.is_nan())
+                Some(*confidence).filter(|it| (0.0..=1.0).contains(it))
             }
         }
     }
@@ -1122,6 +1123,16 @@ mod tests {
         assert_eq!(read.confidence("verdict"), None);
         assert_eq!(read.score("risk"), Some(1.0));
         assert_eq!(read.confidence("risk"), None);
+
+        // and one outside 0 to 1 is not a confidence either
+        let read = Answers::read(serde_json::json!({"model": "jev", "answers": {
+            "verdict": {"type": "choice", "choice": "deny", "confidence": 3.0},
+            "risk": {"type": "score", "score": 1.0, "confidence": -0.5},
+            "sure": {"type": "score", "score": 1.0, "confidence": 1.0},
+        }}));
+        assert_eq!(read.confidence("verdict"), None);
+        assert_eq!(read.confidence("risk"), None);
+        assert_eq!(read.confidence("sure"), Some(1.0));
     }
 
     /// One recorded response, read back into the three answer types.
