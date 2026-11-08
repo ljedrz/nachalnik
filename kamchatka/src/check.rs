@@ -23,7 +23,7 @@ use serde_json::Value;
 ///
 /// note: the spellings `/load` takes, so a path that loads is a path that checks.
 pub fn pair(path: &str) -> (PathBuf, PathBuf) {
-    let stem = crate::app::without_suffix(path);
+    let stem = crate::app::stem(path);
 
     (
         PathBuf::from(format!("{stem}.jsonl")),
@@ -385,5 +385,31 @@ fn agrees(records: &[(usize, Record)], snapshot: &Snapshot, findings: &mut Vec<S
             "the log leaves {counted} items in the context, and the snapshot has {}",
             snapshot.items.len()
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::pair;
+
+    /// A path that is only a suffix names the session `/load` would open, not two dotfiles.
+    #[test]
+    fn a_bare_suffix_names_the_session_load_opens() {
+        for path in [".jsonl", ".json"] {
+            assert_eq!(
+                pair(path),
+                (
+                    PathBuf::from("session.jsonl"),
+                    PathBuf::from("session.json")
+                ),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            pair("notes.jsonl"),
+            (PathBuf::from("notes.jsonl"), PathBuf::from("notes.json"))
+        );
     }
 }

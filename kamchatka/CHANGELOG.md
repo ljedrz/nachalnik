@@ -63,6 +63,8 @@ minor bump may break you.
 
 ### fixed
 
+- **`--check` reads the session `/load` would open from a path that is only a suffix.** `--check
+  .jsonl` read the dotfiles `.jsonl` and `.json`, while `/load .jsonl` opens `session.json`.
 - **`context look` says that `whole` reads nothing beside a `select`.** A class is listed rather
   than read, and the flag was passed over without a word, so a model took the rows for the
   contents it asked for. The answer now says to name the items by `ids` to read them entire.
