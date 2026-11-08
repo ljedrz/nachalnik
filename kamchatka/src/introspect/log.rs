@@ -238,6 +238,7 @@ impl Tool for Log {
 }
 
 /// Everything one pass over the log produced, so the pass happens once.
+#[cfg_attr(test, derive(Default))]
 struct Read {
     /// How many records there are, whatever matched.
     total: usize,
@@ -289,8 +290,28 @@ struct Read {
 
 impl Read {
     /// Whether a `since` below the oldest record held asked for records this log has not got.
+    ///
+    /// note: `since` against one below the oldest rather than one past `since` against the oldest,
+    /// since `since` is the model's number and can be `u64::MAX`, past which there is no `+ 1`.
     fn skipped(&self, since: u64) -> bool {
-        self.first_seq > 0 && since + 1 < self.first_seq
+        self.first_seq > 0 && since < self.first_seq - 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Read;
+
+    /// A `since` as large as a number goes skips nothing, and says so without overflowing.
+    #[test]
+    fn the_largest_since_skips_nothing() {
+        let read = Read {
+            first_seq: 5,
+            ..Read::default()
+        };
+        assert!(!read.skipped(u64::MAX));
+        assert!(read.skipped(3), "record 4 is not here");
+        assert!(!read.skipped(4), "and after 4 is 5, the oldest here");
     }
 }
 

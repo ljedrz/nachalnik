@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`log` with `since` at the largest number no longer overflows.** In a resumed session it
+  panicked a debug build and, in a release one, wrapped round and said records were skipped that
+  were not.
 - **`setup policy` names no budget against a context limit of `0`.** An endpoint that does not
   know its limit says `0`, which `setup model` and `context` already read as no limit, but `policy`
   said the model was measured against 0 tokens.
