@@ -490,6 +490,15 @@ impl Sandbox {
             // of them calls a readable path "outside what this session reaches", and a model takes
             // that for the whole rule and never reads it
             (false, _) => {
+                // a path held for reading is the confinement only for a write, as its own
+                // sentence above says: a read refused there is the file's own mode
+                let but = match read_only.is_empty() {
+                    true => "",
+                    false => {
+                        ", except a read refused where this session may read, which is the \
+                              file's own"
+                    }
+                };
                 let said = [
                     (outside, "is", "are", "outside what this session reaches"),
                     (
@@ -515,8 +524,8 @@ impl Sandbox {
                 .join("; ");
                 Some(format!(
                     "[{said}. So the permission errors below are the confinement rather than the \
-                     files' own permissions. This command runs with {self}. Say what you need \
-                     these paths for and ask for them to be opened up.]"
+                     files' own permissions{but}. This command runs with {self}. Say what you \
+                     need these paths for and ask for them to be opened up.]"
                 ))
             }
         }
