@@ -131,6 +131,15 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   text, and what Google accepts back beside a joined run is unknown. Unblocked by a live run that
   returns citations in a streamed, multi-part answer.
 
+- **Two sessions in different pid namespaces sharing `/tmp` can take each other's `$TMPDIR`.**
+  `scratch_path` names a command's directory after this process's pid and a counter, and
+  `make_scratch` removes and remakes a directory of that name that is already there and the same
+  account's, on the grounds that pids come round again. Two `kamchatka` processes in different
+  pid namespaces - two containers sharing one `/tmp` under one account - can hold the same pid
+  at once, and then one removes the other's directory under a running command. Nothing here has
+  been seen to do it. Unblocked by naming the directory with something no other process can
+  share, such as a random part, at the cost of the name no longer saying whose it was.
+
 - **A headless run with `--rate-shell-commands` pays for ratings it never shows.** `Advised`
   rates every shell command its policy would ask about, and a headless run answers those
   questions with `--on-ask`, so each command is sent to the advisor and paid for, and nothing a
