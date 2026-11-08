@@ -260,9 +260,12 @@ fn checked(path: &str) -> Result<()> {
     }
 
     let checked = kamchatka::check::check(logged.as_deref(), snapshot.as_deref());
+    // the report is what the check is for, so a write that fails fails the check: dropped, a clean
+    // session left with status 0 and nothing said, and a broken one with its findings unsaid
     let mut out = stdout();
+    let unwritten = |e: std::io::Error| anyhow::anyhow!("could not write the report: {e}");
     for finding in &checked.findings {
-        let _ = writeln!(out, "{finding}");
+        writeln!(out, "{finding}").map_err(unwritten)?;
     }
     let read = [
         logged
@@ -278,8 +281,8 @@ fn checked(path: &str) -> Result<()> {
     .join(" and ");
     match checked.findings.len() {
         0 => {
-            let _ = writeln!(out, "read {read}: nothing that does not add up");
-            Ok(())
+            writeln!(out, "read {read}: nothing that does not add up").map_err(unwritten)?;
+            out.flush().map_err(unwritten)
         }
         found => Err(anyhow::anyhow!(
             "read {read}: {found} thing(s) that do not add up"
