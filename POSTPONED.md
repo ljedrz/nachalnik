@@ -131,6 +131,15 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   text, and what Google accepts back beside a joined run is unknown. Unblocked by a live run that
   returns citations in a streamed, multi-part answer.
 
+- **A person's pin or edit can land between the `context` tool's check and its change.** `moved`
+  reads whether the person pinned an item, then calls `set_states`; `revise` reads the item, then
+  calls `replace`; `Undoing::apply` does the same. The terminal's `p` and `e` act during a turn,
+  so a pin or an edit made in that gap is overwritten, and the model is told its change went
+  through. The gap is the time between two calls on the same task, but it is there. Closing it
+  needs the kernel to check and change under one lock, a conditional `set_states` or `replace`,
+  which is a core change for one client's sake. Unblocked by deciding whether the runtime should
+  offer one.
+
 - **`provenance`'s digest leaves out the call's identifier.** `Errand::call` is fixed in the
   material because the copies read it and it goes out on the wire, but `Errand::text` omits it, so
   two errands that differ only in their call identifier have the same digest and `compare` treats
