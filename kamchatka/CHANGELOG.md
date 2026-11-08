@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A note about refusals for several reasons keeps the read-only hedge.** Said for one path held
+  for reading, the note says a refusal there is the confinement only if it was a write; said beside
+  a path out of reach, it called every refusal the confinement, a read at the readable path too.
 - **A sandboxed command refused another process's `/proc` entry is told that was the sandbox.**
   `/proc` is readable as a whole, so a refusal naming `/proc/PID/environ` was taken for the file's
   own permissions and the note saying it was the boundary was left out, for the one refusal

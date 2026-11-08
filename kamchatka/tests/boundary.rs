@@ -1212,6 +1212,11 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         note.contains("/elsewhere/in.txt is outside what this session reaches"),
         "{note}"
     );
+    // and the one held for reading keeps its hedge: a read refused there is its own mode
+    assert!(
+        note.contains("except a read refused where this session may read"),
+        "{note}"
+    );
 }
 
 /// The punctuation a message wraps a path in is not part of it: neither the full stop that ends
