@@ -2138,6 +2138,23 @@ fn a_typed_advise_beats_the_file() {
     );
 }
 
+/// An advisor model set to nothing is refused at startup, as one not set is.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn an_advisor_model_set_to_nothing_is_not_a_model() {
+    let (ok, said) = run_with(
+        &["--rate-shell-commands"],
+        "",
+        &[("KAMCHATKA_SYSTEM1_MODEL", "")],
+    );
+
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("--rate-shell-commands needs a model"),
+        "{said}"
+    );
+}
+
 /// `--rate-shell-commands` puts the advisor in front of the standing rules, and a session that did
 /// not ask for it has the rules alone.
 ///

@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`KAMCHATKA_SYSTEM1_MODEL` set to nothing is refused at startup, as one not set is.** Taken as
+  a model with no name, it passed the check that the model is served and every question was then
+  refused.
 - **`--rate-shell-commands`' refusals no longer print a password from an address.** Refusing to
   start for want of a key, they named the session's or the advisor's base URL as given, so a
   `user:password@` in it went to standard error. They now name it as every other line does.
