@@ -22,6 +22,8 @@ minor bump may break you.
 - **`Conformance::check` stops the servers it starts.** Each case left its server task and
   listening socket running after it was done, so a caller whose runtime outlived the check kept
   a few dozen of them per call.
+- **`Answer::confidence` is `None` for a figure outside 0 to 1.** Only a missing one was, so an
+  answer reporting a confidence of 3 was handed out as one, and drawn as 300% sure.
 - **`is_openrouter` and `is_workers_ai` read a host in any case.** A host name is not
   case-sensitive, but `https://OpenRouter.AI/api/v1` was not taken for OpenRouter, so a client
   choosing a key by it, as `kamchatka` does, sent none.
