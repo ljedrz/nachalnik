@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--rate-shell-commands`' refusals no longer print a password from an address.** Refusing to
+  start for want of a key, they named the session's or the advisor's base URL as given, so a
+  `user:password@` in it went to standard error. They now name it as every other line does.
 - **`--check` fails when its report cannot be written.** Each line went out with its error
   dropped, so a clean session left with status 0 having said nothing, and a broken one's findings
   were lost.
