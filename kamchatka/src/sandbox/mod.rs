@@ -311,6 +311,23 @@ impl Sandbox {
         {
             return false;
         }
+        // note: a process's own directory under `/proc` is out of reach unless it is the command's,
+        // which is never refused. `/proc` is readable as a whole, but the sandbox refuses inspecting
+        // a process outside it - SECURITY.md's reason a command cannot read `kamchatka`'s
+        // `environ` - so a refusal naming one is the boundary, and judged by `/proc` alone it was
+        // taken for the file's own permissions and the note was not said
+        let mut parts = resolved.components().skip(1);
+        if parts
+            .next()
+            .is_some_and(|first| first.as_os_str() == "proc")
+            && parts.next().is_some_and(|pid| {
+                pid.as_os_str()
+                    .to_str()
+                    .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+            })
+        {
+            return false;
+        }
         // note: a named device was reached, so refusing it is its own permissions. Anything else
         // under `/dev` is the boundary unless a root the person named covers it: `--sandbox-write`
         // and `--sandbox-read` are granted under `/dev` as anywhere else, so answering `false` for

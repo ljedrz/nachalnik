@@ -63,6 +63,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A sandboxed command refused another process's `/proc` entry is told that was the sandbox.**
+  `/proc` is readable as a whole, so a refusal naming `/proc/PID/environ` was taken for the file's
+  own permissions and the note saying it was the boundary was left out, for the one refusal
+  SECURITY.md names.
 - **`KAMCHATKA_SYSTEM1_MODEL` set to nothing is refused at startup, as one not set is.** Taken as
   a model with no name, it passed the check that the model is served and every question was then
   refused.
