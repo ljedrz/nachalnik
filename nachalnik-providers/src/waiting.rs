@@ -188,16 +188,17 @@ impl Unsent {
         }
     }
 
-    /// The error to end the turn with, once there is no patience left to spend, `tried` times.
+    /// The error to end the turn with, once there is no patience left to spend, on try `tried`.
     ///
-    /// note: the count is said because the wait is each try's. Four tries of a stream that never
-    /// started are ten minutes, and a sentence naming one try's two and a half reads as a clock
-    /// that is wrong.
+    /// note: silence is never asked again, since the server may be working on the request (see
+    /// `may_have_been_heard`), so the wait it names is the last try's alone. Earlier tries were
+    /// refused or never connected, and a sentence multiplying the wait by them names a time
+    /// nobody waited.
     pub(crate) fn giving_up(self, model: &str, tried: usize) -> BoxError {
         match self {
             Self::Transport(e) => crate::with_causes(&e).into(),
             Self::Silent(waited) if tried > 1 => format!(
-                "{model} never answered, asked {tried} times and given {}s each; giving up",
+                "{model} never answered try {tried}; giving up after {}s",
                 waited.as_secs()
             )
             .into(),
@@ -877,14 +878,14 @@ mod tests {
         assert_ne!(hung_up, never_spoke);
     }
 
-    /// The error for a request nobody answered says how many tries it was given, and only once
-    /// there has been more than one.
+    /// The error for a request nobody answered names the one wait it gave up after, and which try
+    /// that was once there has been more than one.
     ///
-    /// note: the count is in the sentence because the wait is each try's - four tries of a stream
-    /// that never started are ten minutes, and a sentence naming one try's two and a half reads
-    /// as a clock that is wrong. A first try has no count worth naming: there was one.
+    /// note: a silent try is the last one, since silence is never asked again, so the tries before
+    /// it did not wait: a sentence giving every one of them the whole patience names a time nobody
+    /// waited. A first try has no number worth naming: there was one.
     #[test]
-    fn giving_up_says_how_many_tries_there_were() {
+    fn giving_up_names_the_one_wait_it_gave_up_after() {
         let once = Unsent::Silent(PATIENCE).giving_up("a-model", 1).to_string();
         assert!(
             once.contains("a-model") && once.contains(&format!("{}s", PATIENCE.as_secs())),
@@ -895,18 +896,15 @@ mod tests {
             "one try is not a number of tries: {once}"
         );
 
-        // and once there were several, the sentence says how many and what each of them waited
+        // and after earlier tries were refused, it says which try went quiet and the one wait
         for tried in 2..=crate::RETRIES {
             let said = Unsent::Silent(PATIENCE)
                 .giving_up("a-model", tried)
                 .to_string();
+            assert!(said.contains(&format!("try {tried}")), "{said}");
             assert!(
-                said.contains(&format!("asked {tried} times")),
-                "the count is what says the wait was more than one try's: {said}"
-            );
-            assert!(
-                said.contains(&format!("given {}s each", PATIENCE.as_secs())),
-                "each try waited the whole patience, so each try's wait is the number: {said}"
+                said.contains(&format!("after {}s", PATIENCE.as_secs())) && !said.contains("each"),
+                "only the last try waited: {said}"
             );
             assert!(said.contains("a-model"), "{said}");
         }
