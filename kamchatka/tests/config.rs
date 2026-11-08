@@ -1302,6 +1302,26 @@ fn a_run_that_assembles_nothing_names_the_flags_it_was_given_besides_its_own() {
     );
 }
 
+/// A settings file named beside `--connect` is refused by name, whatever it holds.
+///
+/// note: the file was read before the refusal, and one saying `on-ask: leave` was refused as
+/// something only `--connect` can do, on a run that was `--connect`.
+#[test]
+fn a_settings_file_beside_connect_is_refused_by_name() {
+    let path = settings("connect-leave", r#"{ "on-ask": "leave" }"#);
+    let (ok, said) = run(
+        &["--connect", "unix:nowhere.sock", "--config-file", &path],
+        "",
+    );
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("`--connect` takes nothing else but `--on-ask`")
+            && said.contains("`--config-file`"),
+        "{said}"
+    );
+    assert!(!said.contains("only `--connect` can do"), "{said}");
+}
+
 /// `--print-config` hands over the file this crate ships, and it is a file this program accepts.
 ///
 /// note: the round trip rather than a byte comparison alone, because what makes the flag worth
