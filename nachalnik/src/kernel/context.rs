@@ -1,7 +1,10 @@
 //! What a caller can do to the context the kernel owns: add to it, change an item's state or
 //! its content, undo and redo, count it, project it, and compact it.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use serde_json::Value;
 
@@ -180,13 +183,25 @@ impl Kernel {
             // context the changes are applied to
             let mut context = self.0.context.write();
             let mut targets = Vec::new();
+            // where each item named so far will be by the time its next change is applied, so a
+            // second change is weighed against what the first one leaves rather than against the
+            // context as it stands
+            let mut moved = HashMap::new();
             for (id, state, note) in changes {
-                match context.item(id) {
-                    None => outcome.unknown.push(id),
-                    Some(_) if context.would_change(id, state, &note) => {
-                        targets.push((id, state, note))
+                let Some(item) = context.item(id) else {
+                    outcome.unknown.push(id);
+                    continue;
+                };
+                let (now, now_note) = moved
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| (item.state, item.note.clone()));
+                match now != state || now_note != note {
+                    true => {
+                        moved.insert(id, (state, note.clone()));
+                        targets.push((id, state, note));
                     }
-                    Some(_) => outcome.unchanged.push(id),
+                    false => outcome.unchanged.push(id),
                 }
             }
 

@@ -94,6 +94,23 @@ fn a_move_into_several_states_is_one_undo() {
     assert_eq!(kernel.item(c).unwrap().state, ContextState::Active);
 }
 
+/// An item named twice in one move is moved twice, and ends where the second change puts it, even
+/// when that is where it started.
+#[test]
+fn an_item_named_twice_ends_in_the_second_state() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+
+    let change = kernel.set_states([
+        (a, ContextState::Pinned, Some("for now".to_owned())),
+        (a, ContextState::Active, None),
+    ]);
+    assert_eq!(change.changed, [a, a]);
+    assert!(change.unchanged.is_empty(), "{:?}", change.unchanged);
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
+    assert_eq!(kernel.item(a).unwrap().note, None);
+}
+
 /// What a kernel is built with is where its undo history starts, and is announced all the same.
 #[test]
 fn a_kernel_built_with_items_has_nothing_to_undo() {

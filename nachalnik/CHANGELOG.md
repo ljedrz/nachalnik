@@ -12,6 +12,10 @@ minor bump may break you.
 - **A reported request length too large for `usize` no longer wraps on a 32-bit target.** It went
   to `TokenCounter::observe` as a small number `Calibrating` could believe. It is now passed as
   `usize::MAX`, which `Calibrating` throws out.
+- **`Kernel::set_states` with an item named twice ends it in the second state, as documented.**
+  Each change was weighed against the context before the operation, so a second change back to
+  where the item started counted as unchanged and was dropped, and the item stayed where the first
+  change put it. Each is now weighed against what the changes before it leave.
 
 ## [0.11.0] - 2026-11-05
 
