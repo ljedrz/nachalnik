@@ -116,6 +116,21 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   them beside the error, either of which changes `nachalnik-eval`'s public API. Unblocked by a run
   whose reported cost has to match the bill.
 
+- **A streamed answer can keep both the thinking and a summary of it; a whole one keeps one.**
+  `summarised` appends a chat-completions `reasoning_summary` to the reasoning a stream already
+  carried, on purpose, since a summary is not the thinking repeated. A whole body takes the summary
+  only where the message has no reasoning. An endpoint that sends both would get the two paths
+  disagreeing, and send the summary back as thinking with `send_reasoning` on. Whether any endpoint
+  sends both is unknown: Inception's, the one that sends summaries, was not seen streaming
+  `reasoning` beside them. Unblocked by a live run against it with `reasoning_summary: true`.
+
+- **A Gemini text run keeps only the last part's attached fields.** Parts of one kind are joined
+  into one block, and each later part with fields beside its text replaces the earlier part's, so
+  a field attached to a middle part, such as citation metadata, is lost when a `thoughtSignature`
+  follows. Merging them is not clearly right either: a citation's offsets are about its own part's
+  text, and what Google accepts back beside a joined run is unknown. Unblocked by a live run that
+  returns citations in a streamed, multi-part answer.
+
 - **`provenance`'s digest leaves out the call's identifier.** `Errand::call` is fixed in the
   material because the copies read it and it goes out on the wire, but `Errand::text` omits it, so
   two errands that differ only in their call identifier have the same digest and `compare` treats
