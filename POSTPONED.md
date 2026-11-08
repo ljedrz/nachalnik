@@ -131,6 +131,16 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   text, and what Google accepts back beside a joined run is unknown. Unblocked by a live run that
   returns citations in a streamed, multi-part answer.
 
+- **A sandbox whose process groups cannot be read is let go of as an empty one.** `live` keeps a
+  confined command's sandbox only while `Controller::process_groups` returns groups, so an error
+  drops it like a sandbox with nothing left in it. `from_a_command` decides from that list whether
+  a client connecting to a served session is a confined command, so while such a sandbox's
+  processes are alive they are no longer told apart from anyone else - the open way to fail.
+  Keeping it on an error and answering "cannot be distinguished" fails closed, but a sandbox that
+  errors for good would then refuse every client for the rest of the session. When sandlock
+  returns that error is not known here. Unblocked by finding out, from sandlock's source or a test
+  that makes it fail.
+
 - **Two sessions in different pid namespaces sharing `/tmp` can take each other's `$TMPDIR`.**
   `scratch_path` names a command's directory after this process's pid and a counter, and
   `make_scratch` removes and remakes a directory of that name that is already there and the same
