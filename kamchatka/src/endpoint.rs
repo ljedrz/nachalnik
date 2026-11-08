@@ -566,8 +566,15 @@ pub mod advise {
     /// note: no default, because a default would pick one vendor's model for everyone. A session
     /// with `--rate-shell-commands` and no model is refused at startup, with the listing to pick
     /// one from.
+    ///
+    /// note: a model set to nothing is not set, as a key set to nothing is not: taken as a name, it
+    /// passed the check that the model is served, which says nothing of a model with no name, and
+    /// every question was then refused.
     pub fn model() -> Result<String, BoxError> {
-        env::var("KAMCHATKA_SYSTEM1_MODEL").map_err(|_| {
+        let set = env::var("KAMCHATKA_SYSTEM1_MODEL")
+            .ok()
+            .filter(|model| !model.is_empty());
+        set.ok_or_else(|| {
             format!(
                 "--rate-shell-commands needs a model: set KAMCHATKA_SYSTEM1_MODEL to one of the \
                  System One models at {LISTING}"
