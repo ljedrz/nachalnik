@@ -593,6 +593,35 @@ fn the_program_writes_a_pair_that_checks_clean_and_writes_over_nothing() {
     );
 }
 
+/// A check whose report cannot be written fails, rather than leaving with a clean session's status
+/// and nothing said.
+#[test]
+fn a_check_whose_report_cannot_be_written_fails() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("where should the annex go?"));
+    let log: String = kernel
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).unwrap() + "\n")
+        .collect();
+    let dir = common::scratch("check-unwritten");
+    std::fs::write(dir.join("lone.jsonl"), &log).expect("written");
+    let full = std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/full")
+        .expect("/dev/full is there to write to");
+
+    let out = common::command()
+        .current_dir(&dir)
+        .args(["--check", "lone"])
+        .stdout(full)
+        .output()
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{said}");
+    assert!(said.contains("could not write the report"), "{said}");
+}
+
 /// One of the pair on its own is a session, and `--check` reads whichever of the two is there.
 ///
 /// note: a session is two files, and either can be missing: a log with no snapshot beside it is

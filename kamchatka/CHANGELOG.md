@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--check` fails when its report cannot be written.** Each line went out with its error
+  dropped, so a clean session left with status 0 having said nothing, and a broken one's findings
+  were lost.
 - **A settings file beside `--connect` is refused by name.** The file was read first, and one
   saying `on-ask: leave` was refused as something only `--connect` can do, on a run that was
   `--connect`.
