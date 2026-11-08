@@ -385,6 +385,11 @@ impl Sandbox {
     /// the command knows which directory it was given, and it must still be there to compare.
     pub(crate) fn note_for_in(&self, stderr: &str, scratch: Option<&Path>) -> Option<String> {
         let refusals: Vec<&str> = stderr.lines().filter(|line| refused(line)).collect();
+        // the sandbox as this command had it: without a scratch it was given no `TMPDIR`
+        let runs = Described {
+            sandbox: self,
+            scratch: scratch.is_some(),
+        };
         if refusals.is_empty() {
             return None;
         }
@@ -449,7 +454,7 @@ impl Sandbox {
             // every path it named is one this reaches, so the refusal is the file's own
             (true, false) => None,
             (true, true) => Some(format!(
-                "[this command ran confined - {self} - so a permission error below may be that \
+                "[this command ran confined - {runs} - so a permission error below may be that \
                  boundary rather than the file's own permissions.]"
             )),
             // a socket whose path the command can read but not connect to; "outside what this
@@ -458,7 +463,7 @@ impl Sandbox {
                 "[{} {} outside what this session may write, and a confined command may \
                  connect only to a socket it could have written, so the permission error below \
                  is the confinement rather than the socket's own permissions. This command runs \
-                 with {self}. Say what you need the socket for and ask for it to be opened up.]",
+                 with {runs}. Say what you need the socket for and ask for it to be opened up.]",
                 sockets.join(", "),
                 match sockets.len() {
                     1 => "is a socket",
@@ -473,7 +478,7 @@ impl Sandbox {
             (false, _) if read_only.len() == named.len() => Some(format!(
                 "[{} {} where this session may read and not write, so if the permission error \
                  below is a write, it is the confinement rather than the file's own \
-                 permissions. This command runs with {self}. Say what you need to write there \
+                 permissions. This command runs with {runs}. Say what you need to write there \
                  and ask for it to be opened up.]",
                 read_only.join(", "),
                 are(&read_only),
@@ -481,7 +486,7 @@ impl Sandbox {
             (false, _) if outside.len() == named.len() => Some(format!(
                 "[{} {} outside what this session reaches, so the permission error below is \
                  the confinement rather than the file's own permissions. This command runs with \
-                 {self}. Work inside the working directory, or say what you need the path for \
+                 {runs}. Work inside the working directory, or say what you need the path for \
                  and ask for it to be opened up.]",
                 outside.join(", "),
                 are(&outside),
@@ -524,7 +529,7 @@ impl Sandbox {
                 .join("; ");
                 Some(format!(
                     "[{said}. So the permission errors below are the confinement rather than the \
-                     files' own permissions{but}. This command runs with {self}. Say what you \
+                     files' own permissions{but}. This command runs with {runs}. Say what you \
                      need these paths for and ask for them to be opened up.]"
                 ))
             }
@@ -894,32 +899,55 @@ fn global_git_config() -> Vec<PathBuf> {
 
 impl fmt::Display for Sandbox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Described {
+            sandbox: self,
+            scratch: true,
+        }
+        .fmt(f)
+    }
+}
+
+/// A sandbox as one command had it, which is without a `$TMPDIR` where none could be made for it.
+///
+/// note: `make_scratch` can fail - a leftover directory of another account, a temporary directory
+/// that is full or read-only - and the command then runs with no `TMPDIR`. A note naming one would
+/// send a model to write somewhere that is not there.
+struct Described<'a> {
+    sandbox: &'a Sandbox,
+    scratch: bool,
+}
+
+impl fmt::Display for Described<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { sandbox: this, .. } = self;
         write!(
             f,
             "{} {}",
-            self.workdir.display(),
-            match self.workdir_writable {
+            this.workdir.display(),
+            match this.workdir_writable {
                 true => "read-write",
                 false => "read-only",
             }
         )?;
-        for path in &self.writable {
+        for path in &this.writable {
             write!(f, ", {} read-write", path.display())?;
         }
-        for path in &self.readable {
+        for path in &this.readable {
             write!(f, ", {} read-only", path.display())?;
         }
         // its own temporary directory, writable even where the working directory is not
-        write!(f, ", its own `$TMPDIR` read-write")?;
-        for path in &self.shell_readable {
+        if self.scratch {
+            write!(f, ", its own `$TMPDIR` read-write")?;
+        }
+        for path in &this.shell_readable {
             write!(f, ", {} read-only", path.display())?;
         }
-        write!(f, ", {}", self.network)?;
+        write!(f, ", {}", this.network)?;
         // note: said wherever the network is not refused outright, since a closed port is the one
         // connection refused there. A command refused it was told only that the network was
         // reachable, with nothing to say why this address was not
-        if self.network != Network::Shut && !self.closed.is_empty() {
-            let ports: Vec<String> = self.closed.iter().map(u16::to_string).collect();
+        if this.network != Network::Shut && !this.closed.is_empty() {
+            let ports: Vec<String> = this.closed.iter().map(u16::to_string).collect();
             write!(
                 f,
                 " but for {} {} on this machine, where this session is served",
@@ -1110,7 +1138,32 @@ pub(crate) fn environment() -> impl Iterator<Item = (String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::Network;
+    use std::path::{Path, PathBuf};
+
+    use super::{DEVICES, Network, SYSTEM, Sandbox};
+
+    /// A note names a `$TMPDIR` only where the command was given one.
+    #[test]
+    fn a_note_names_a_tmpdir_only_where_there_was_one() {
+        let confined = Sandbox {
+            workdir: PathBuf::from("/w"),
+            writable: Vec::new(),
+            readable: Vec::new(),
+            workdir_writable: true,
+            network: Network::Shut,
+            shell_readable: SYSTEM.iter().map(Into::into).collect(),
+            devices: DEVICES.iter().map(Into::into).collect(),
+            closed: Vec::new(),
+        };
+        let refused = "cat: /elsewhere/in.txt: Permission denied\n";
+
+        let given = confined
+            .note_for_in(refused, Some(Path::new("/tmp/given")))
+            .expect("out of reach");
+        assert!(given.contains("`$TMPDIR` read-write"), "{given}");
+        let none = confined.note_for_in(refused, None).expect("out of reach");
+        assert!(!none.contains("TMPDIR"), "{none}");
+    }
 
     /// The network is open where it was allowed, shut where it is refused, and asked about
     /// otherwise.

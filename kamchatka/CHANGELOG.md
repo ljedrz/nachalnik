@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A refusal's note names a `$TMPDIR` only where the command was given one.** When no temporary
+  directory could be made for a command it runs without `TMPDIR`, but the note told the model it
+  had one, read-write.
 - **A note about refusals for several reasons keeps the read-only hedge.** Said for one path held
   for reading, the note says a refusal there is the confinement only if it was a write; said beside
   a path out of reach, it called every refusal the confinement, a read at the readable path too.
