@@ -368,14 +368,26 @@ impl Tool for Context {
                     Err(refusal) => return Ok(ToolOutput::error(refusal)),
                 };
                 Ok(ToolOutput::new(match named.select {
-                    Some(select) => matched(
-                        &kernel,
-                        select,
-                        &named.ids,
-                        &self.pinned.lock(),
-                        own_turn(&kernel, &call.id),
-                        self.reach.policy(),
-                    ),
+                    // `whole` reads items named by `ids`, and a class is listed rather than read:
+                    // said rather than passed over, or the model takes the rows for what it asked
+                    Some(select) => {
+                        let mut listed = matched(
+                            &kernel,
+                            select,
+                            &named.ids,
+                            &self.pinned.lock(),
+                            own_turn(&kernel, &call.id),
+                            self.reach.policy(),
+                        );
+                        if whole {
+                            listed.push_str(
+                                "`whole` reads the items `ids` names, and a `select` lists a \
+                                 class rather than reading it: `look` with their numbers as \
+                                 `ids` and `whole` reads them entire.\n",
+                            );
+                        }
+                        listed
+                    }
                     None => look(
                         &kernel,
                         &named.ids,

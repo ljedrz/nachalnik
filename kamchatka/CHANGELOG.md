@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`context look` says that `whole` reads nothing beside a `select`.** A class is listed rather
+  than read, and the flag was passed over without a word, so a model took the rows for the
+  contents it asked for. The answer now says to name the items by `ids` to read them entire.
 - **A fork sends what its session sends under `--send-oversized-requests`.** A fork was built
   with the default configuration, so it refused every request the counter called too large while
   the session it was forked from sent its own, and it has no compactor to make room.

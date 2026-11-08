@@ -363,6 +363,29 @@ async fn a_turn_read_back_shows_its_calls_among_its_blocks() {
     );
 }
 
+/// `whole` beside a `select` is said to read nothing, rather than passed over: a class is listed,
+/// and the rows are not the contents it asked for.
+#[tokio::test]
+async fn whole_beside_a_select_says_how_to_read_the_items_entire() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look", "select": "user", "whole": true }),
+    )]));
+    kernel.push(ContextItem::user("a message"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("matches"),
+        "the class is still listed: {said}"
+    );
+    assert!(
+        said.contains("`whole` reads the items `ids` names"),
+        "{said}"
+    );
+}
+
 /// A long context is listed as its most recent hundred rows, with the count of the rest and a range
 /// that lists them, and a class is capped the same way without changing what a change would take.
 #[tokio::test]
