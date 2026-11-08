@@ -162,6 +162,37 @@ async fn setup_tools_says_whether_what_is_cut_is_kept() {
     }
 }
 
+/// A context limit of `0` is one the endpoint did not know, so `policy` names no budget, as `model`
+/// does not.
+#[tokio::test]
+async fn setup_policy_names_no_budget_against_a_limit_of_nothing() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        ScriptedProvider::new(one_turn(vec![call(
+            "c1",
+            "setup",
+            json!({ "action": "policy" }),
+        )]))
+        .with_info(nachalnik::ModelInfo::new("test", "m").with_context_limit(0)),
+    ));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(
+        &kernel,
+        policy,
+        Limits::default(),
+        kamchatka::tools::Layout::Wrapped,
+    );
+
+    kernel.push(ContextItem::user("what are you measured against?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("the counter is"), "{said}");
+    assert!(!said.contains("measured against is 0 tokens"), "{said}");
+}
+
 /// A tool taken away mid-session is not on the list, which is the point of there being a list.
 ///
 /// note: the shape this exists for. Nothing anywhere let an agent enumerate its own tools, so a
