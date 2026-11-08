@@ -54,7 +54,7 @@ pub(crate) mod text;
 #[cfg(feature = "tui")]
 pub mod when;
 
-pub(crate) use session::{beside, without_suffix};
+pub(crate) use session::{beside, stem};
 
 use text::{one_line, plural};
 // only the key that prints a request without a command: `/request` imports its own

@@ -514,7 +514,7 @@ fn rename_taken_calls(snapshot: &mut nachalnik::Snapshot, taken: &HashSet<ToolCa
 ///
 /// note: nothing is left by no argument or by an argument that was only a suffix, and the second
 /// would otherwise be the stem of `.json` and `.jsonl` - two dotfiles `ls` does not show.
-fn stem(path: &str) -> &str {
+pub(crate) fn stem(path: &str) -> &str {
     match without_suffix(path) {
         "" => "session",
         stem => stem,
