@@ -22,6 +22,10 @@ minor bump may break you.
 - **`Conformance::check` stops the servers it starts.** Each case left its server task and
   listening socket running after it was done, so a caller whose runtime outlived the check kept
   a few dozen of them per call.
+- **A request that went quiet after earlier tries were refused no longer says every try waited.**
+  Silence is never asked again, so only the last try waited out the patience, but the error said
+  the request was asked that many times and given the whole wait each time. It now names the try
+  that went quiet and the one wait.
 - **A token count from a listing no longer wraps on a 32-bit target.** A context window or output
   limit past `u32::MAX` became a small number, and a window read that way refused every request
   as too long. Such a figure is now taken as `usize::MAX`.
