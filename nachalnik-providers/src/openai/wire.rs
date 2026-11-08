@@ -437,9 +437,23 @@ impl Gathering {
             // repaired identifier and a nameless tool, costing a round trip and an error the model
             // must read. So an index is looked up, and one never seen before starts a new call at
             // the end
-            Some(index) => match self.calls.iter().position(|call| call.slot == Some(index)) {
-                Some(at) => at,
-                None => {
+            //
+            // note: and a whole call under an index a whole call already has is a new call when
+            // it names an identifier of its own: a server that sends every call whole at index
+            // zero otherwise had them merged into one. Under the same identifier it is a fragment,
+            // since a server that repeats the name and identifier on every fragment can send one
+            // that parses alone, such as `42`. The latest call under the index is the one
+            // continued, so fragments after it are not filed under the first
+            Some(index) => match self.calls.iter().rposition(|call| call.slot == Some(index)) {
+                Some(at)
+                    if !(whole_again(&self.calls[at], requested)
+                        && requested["id"]
+                            .as_str()
+                            .is_some_and(|id| !id.is_empty() && id != self.calls[at].id)) =>
+                {
+                    at
+                }
+                _ => {
                     self.calls.push(PartialCall {
                         slot: Some(index),
                         ..PartialCall::default()
@@ -1472,8 +1486,8 @@ mod tests {
         );
     }
 
-    /// A name repeated on every fragment is written once. Two whole calls sharing an identifier
-    /// with no index are two calls, and so are two with neither.
+    /// A name repeated on every fragment is written once. Two whole calls sharing an index are two
+    /// calls, and so are two sharing an identifier with no index, and two with neither.
     ///
     /// note: the name was appended to at every fragment, so a repeating server made `fsfs`. Two
     /// calls under one identifier folded into one call with both sets of arguments run together as
@@ -1508,6 +1522,29 @@ mod tests {
         assert_eq!(
             arguments_of(&unindexed.calls[0].args),
             json!({ "path": "a.txt" })
+        );
+
+        // and two whole calls a server filed under one index
+        let mut indexed = Gathering::default();
+        for (id, path) in [("c1", "a.txt"), ("c2", "b.txt")] {
+            indexed.fold(
+                &json!({ "index": 0, "id": id, "function": {
+                    "name": "fs", "arguments": format!("{{\"path\":\"{path}\"}}")
+                } }),
+                &deltas,
+            );
+        }
+        let calls: Vec<_> = indexed
+            .calls
+            .iter()
+            .map(|call| (call.id.as_str(), arguments_of(&call.args)))
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                ("c1", json!({ "path": "a.txt" })),
+                ("c2", json!({ "path": "b.txt" }))
+            ]
         );
 
         let mut shared = Gathering::default();

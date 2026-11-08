@@ -22,6 +22,10 @@ minor bump may break you.
 - **`Conformance::check` stops the servers it starts.** Each case left its server task and
   listening socket running after it was done, so a caller whose runtime outlived the check kept
   a few dozen of them per call.
+- **Two whole tool calls under one index are two calls.** A server that sends every call whole in a
+  chunk of its own, each at index zero, had them merged into one call with both names joined and
+  the arguments unreadable. A whole call under an index a whole call already has, with an
+  identifier of its own, now starts a call of its own.
 - **A request that went quiet after earlier tries were refused no longer says every try waited.**
   Silence is never asked again, so only the last try waited out the patience, but the error said
   the request was asked that many times and given the whole wait each time. It now names the try
