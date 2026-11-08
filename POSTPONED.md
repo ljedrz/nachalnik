@@ -131,6 +131,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   text, and what Google accepts back beside a joined run is unknown. Unblocked by a live run that
   returns citations in a streamed, multi-part answer.
 
+- **The conformance suite's server reads a request once, sixteen KiB at most.** A socket closed
+  with bytes still unread is reset rather than closed, and a reset can throw away an answer the
+  client has not read yet, so a provider whose request is larger, or arrives in two pieces, could
+  see a case fail for the fixture's sake. Every case's request here is far smaller, and a 256 KiB
+  request against a loopback server got its whole answer, so it could not be shown failing.
+  Unblocked by a provider under test whose requests are that large failing a case this way.
+
 - **A person's pin or edit can land between the `context` tool's check and its change.** `moved`
   reads whether the person pinned an item, then calls `set_states`; `revise` reads the item, then
   calls `replace`; `Undoing::apply` does the same. The terminal's `p` and `e` act during a turn,
