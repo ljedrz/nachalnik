@@ -227,3 +227,12 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   changed while the plan was awaited, the compaction's two figures are the costs of the requests
   built either side of it, so two of those projections are redundant. Each is linear in the context and milliseconds against a
   request, and a step compacts rarely, which is why it has not been done.
+
+- **The repo-sweep status counts a resumed sweep's earlier cuts as messages passed over.** A
+  resumed session's log begins with the records of the part before it, cuts `drive.py` sent
+  included, but `sweeps.py` discounts only the cuts in the current part's `NAME.carried`; the
+  earlier part's is in `old/parts/`. Such a sweep shows `2/1 sent` and `status.py` warns that a
+  message was passed over when none was. Whether it is complete is unaffected, since that also
+  needs the session to end on its own after its last message. Adding up every part's `.carried`,
+  or counting only the records after the last `session.resumed`, would settle it; it waits for
+  the next change to the skill's scripts.
