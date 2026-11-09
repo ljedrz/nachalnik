@@ -236,3 +236,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   needs the session to end on its own after its last message. Adding up every part's `.carried`,
   or counting only the records after the last `session.resumed`, would settle it; it waits for
   the next change to the skill's scripts.
+
+- **`ANTHROPIC_API_KEY` is read only under `--api anthropic`, even at Anthropic's own address.**
+  Anthropic also serves an OpenAI-compatible API at `https://api.anthropic.com/v1`. A session
+  pointed there in the default dialect, with only `ANTHROPIC_API_KEY` set, is refused at startup
+  with "set KAMCHATKA_API_KEY", although the key is set and the address is its issuer's: `keyed`
+  names `OPENROUTER_API_KEY` and `OPENAI_API_KEY` for their hosts but not this one, and only
+  `anthropic::key` reads it. `--help` says so ("with --api anthropic, and only there"), while
+  RUNNING.md says only "for Anthropic's own API". Naming it in `keyed` for Anthropic's host would
+  keep the rule that a key goes only to whoever issued it. It waits on whether that dialect at
+  that address is something to support, and then the two documents are made to agree either way.
