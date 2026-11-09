@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--max-spend-tokens` says when a stop leaves the shell advisor's cost uncounted.** A `ctrl+c`
+  while the advisor was being asked gave up on the request, which may already have been billed,
+  and counted nothing for it without a word. It is said, once, as an answer with no usage is.
 - **A refusal's note names a `$TMPDIR` only where the command was given one.** When no temporary
   directory could be made for a command it runs without `TMPDIR`, but the note told the model it
   had one, read-write.

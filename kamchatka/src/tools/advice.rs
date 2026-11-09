@@ -422,8 +422,9 @@ impl Advised {
         self.spent.load(Ordering::Relaxed)
     }
 
-    /// Whether the engine has answered without saying all of what the answer cost, so that
-    /// [`Advised::spent`] is less than was spent.
+    /// Whether the engine has answered without saying all of what the answer cost, or a stop gave
+    /// up on a request it may have been billed for, so that [`Advised::spent`] can be less than was
+    /// spent.
     ///
     /// note: for the ceiling to say so, as it does for an endpoint that reports no usage. A ceiling
     /// that cannot count the advisor and says nothing reads as bounding a session it does not.
@@ -518,13 +519,20 @@ impl Advised {
 
         // note: the answer first. One already in hand when the stop lands is kept, because what
         // it cost was spent either way; a stop picked over it left `spent` short by that much
+        //
+        // note: one given up on is said to be unreported, since the request may have gone out and
+        // been billed with nothing coming back to say for how much. Said nothing of, a ceiling would
+        // read as bounding the advisor while a stop could leave any of its cost uncounted
         let mut stopped = self.stopped.subscribe();
         let answers = tokio::select! {
             biased;
             asked = self.engine.ask(state(request), questions) => {
                 asked.map_err(|e| cut(&e.to_string()))?
             }
-            _ = stopped.wait_for(|stopped| *stopped) => return Err(NOT_WAITED.to_owned()),
+            _ = stopped.wait_for(|stopped| *stopped) => {
+                self.unreported.store(true, Ordering::Relaxed);
+                return Err(NOT_WAITED.to_owned());
+            }
         };
         if let Some(usage) = &answers.usage {
             let tokens = usage
@@ -1288,6 +1296,10 @@ mod tests {
         assert_eq!(
             advised.why_unrated(&request.call).as_deref(),
             Some(NOT_WAITED)
+        );
+        assert!(
+            advised.unreported(),
+            "what the request given up on cost is not known"
         );
 
         // and stopped before it was asked, which is the order the kernel can put the two in
