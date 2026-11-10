@@ -363,3 +363,21 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   wrappers. And `scripts/windows.sh` copies CI's feature configurations by hand; they match today,
   and nothing would say when one is added to CI alone. A refactor for the next change to any of
   them.
+
+- **The `context` tool's undo journal has no depth, and goes into every snapshot.** Each change it
+  makes is an entry holding the items as they were, old content included, and nothing drops the
+  oldest; `History::saved` writes the whole journal into the snapshot at the end of every turn. The
+  kernel's own undo stops at `Config::context_undo_depth` (16). A session that revises large items
+  many times writes all their old versions into every snapshot after. Holding the journal to the
+  kernel's depth would bound it, at the cost of the model undoing a change further back than that;
+  nothing documents how far back it may now. It waits on choosing the depth, and saying it.
+
+- **An `fs` read, write or edit can walk ten thousand entries on the runtime's thread.** Where a
+  path rule exists and the file has more than one name, `allowed` builds `Names::of`, a synchronous
+  walk of what the session reaches with a stat per entry, up to `LOOKED`, before the read itself
+  goes to `spawn_blocking`; nothing caches it between calls. A search builds it once per call. The
+  screen and every served client wait while it runs. Moving the judging behind the same
+  `spawn_blocking` as the read, or keeping the names for a call's length, would end that; it waits
+  for the next change to how `fs` judges a path. The `context` tool's reads and changes likewise
+  project and price the whole context two or three times per call, which wants the same single
+  reading the frame wants.
