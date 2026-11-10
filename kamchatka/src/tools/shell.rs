@@ -694,7 +694,7 @@ impl Tool for Shell {
             stdout,
             mut stderr,
             said,
-            mut child,
+            child,
             scratch,
         } = match started {
             Ok(started) => started,
@@ -717,6 +717,11 @@ impl Tool for Shell {
             },
             scratch: scratch.as_ref().map(|scratch| scratch.path().to_path_buf()),
         };
+        // note: bound again after `running`, so that a call dropped part-way drops the sandbox - which
+        // kills the command - before `running` removes the temporary directory. Locals go in the
+        // reverse of the order they were bound, and the other way round a command still writing
+        // could put a file back between the emptying and the removal, leaving the directory behind
+        let mut child = child;
 
         // note: this end keeps a buffer rather than one the task hands back when done, because the
         // task may never be done; see below. What arrived by then is still worth telling the model.
