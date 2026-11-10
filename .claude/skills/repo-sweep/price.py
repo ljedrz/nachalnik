@@ -64,8 +64,9 @@ def priced(pricing):
 def stop(why):
     print(time.strftime("%H:%M"), "stopping the run:", why, flush=True)
     try:
-        pid = int(open(os.path.join(sweeps.SWEEPS, "run.pid")).read())
-        if sweeps.alive(pid):
+        lock = os.path.join(sweeps.SWEEPS, "run.pid")
+        pid = int(open(lock).read())
+        if sweeps.alive(pid, os.path.getmtime(lock)):
             os.kill(pid, signal.SIGTERM)
     except (OSError, ValueError):
         pass
@@ -76,9 +77,10 @@ def stop(why):
             continue
         try:
             pid = int(open(path).read())
+            since = os.path.getmtime(path)
         except (OSError, ValueError):
             continue
-        if sweeps.alive(pid):
+        if sweeps.alive(pid, since):
             os.kill(pid, signal.SIGTERM)
             stopped.append(name)
     print(time.strftime("%H:%M"), f"stopped {len(stopped)}:", " ".join(stopped), flush=True)
