@@ -267,7 +267,7 @@ fn draw_body(
         .title(Line::from(strip))
         .title_bottom(
             Line::styled(
-                fitted(
+                joined_to_fit(
                     &footer(app, going, budget),
                     area.width.saturating_sub(2).into(),
                 ),
@@ -460,7 +460,7 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
 /// note: whole parts are dropped from the end because the line is right-aligned. A title too wide
 /// for its border is cut from the left, where the part that matters most is. A first part that does
 /// not fit by itself is shortened from its end.
-fn fitted(parts: &[String], width: usize) -> String {
+fn joined_to_fit(parts: &[String], width: usize) -> String {
     let mut line = String::new();
     for part in parts {
         let longer = match line.is_empty() {
