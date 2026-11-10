@@ -110,23 +110,7 @@ async fn run(input: &str, script: Vec<ModelResponse>, setup: impl FnOnce(&App)) 
 /// The same, for a run whose turn was refused for length: that turn fails, and the exit code is
 /// not what this is about.
 async fn tolerate(input: &str, script: Vec<ModelResponse>, setup: impl FnOnce(&App)) -> Run {
-    let Wired {
-        mut app,
-        mut events,
-        mut finished,
-    } = capped(script, None);
-    setup(&app);
-
-    let (mut records, mut prose) = (Vec::new(), Vec::new());
-    let _ = Headless::new(Grant::Deny, &mut records, &mut prose)
-        .run(&mut app, &mut events, &mut finished, input.as_bytes())
-        .await;
-
-    Run {
-        app,
-        records: String::from_utf8(records).expect("the records are text"),
-        prose: String::from_utf8(prose).expect("the prose is text"),
-    }
+    attempted(input, script, Grant::Deny, None, setup).await.1
 }
 
 /// The same, saying what an unanswerable question is answered with.
@@ -232,6 +216,20 @@ async fn driven(
     spend: Option<u64>,
     setup: impl FnOnce(&App),
 ) -> Run {
+    let (ran, run) = attempted(input, script, on_ask, spend, setup).await;
+    ran.expect("the run failed");
+    run
+}
+
+/// Runs a headless session over `input`, and hands back how the run ended beside what it left; the
+/// one way both [`driven`] and [`tolerate`] drive a run, so a change to it is made once.
+async fn attempted(
+    input: &str,
+    script: Vec<ModelResponse>,
+    on_ask: Grant,
+    spend: Option<u64>,
+    setup: impl FnOnce(&App),
+) -> (Result<(), String>, Run) {
     let Wired {
         mut app,
         mut events,
@@ -240,16 +238,16 @@ async fn driven(
     setup(&app);
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    Headless::new(on_ask, &mut records, &mut prose)
+    let ran = Headless::new(on_ask, &mut records, &mut prose)
         .run(&mut app, &mut events, &mut finished, input.as_bytes())
-        .await
-        .expect("the run failed");
+        .await;
 
-    Run {
+    let run = Run {
         app,
         records: String::from_utf8(records).expect("the records are text"),
         prose: String::from_utf8(prose).expect("the prose is text"),
-    }
+    };
+    (ran, run)
 }
 
 /// A message goes in as a message, and what the model says comes back out.

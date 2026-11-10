@@ -1244,8 +1244,12 @@ fn scratch(name: &str) -> std::path::PathBuf {
     dir
 }
 
-/// A directory of its own, so that a `read` cannot wander into the repository.
-fn workdir(name: &str) -> std::path::PathBuf {
+/// A directory of its own, so that a `read` cannot wander into the repository, resolved and
+/// empty.
+///
+/// note: not `common::workdir`, which writes a file into the directory it makes; a test moved
+/// between the two suites would otherwise change what it starts with without a word.
+fn resolved(name: &str) -> std::path::PathBuf {
     let dir = scratch(name);
 
     // resolved, because `Reach` canonicalises what it is handed and compares: on a machine whose
@@ -1329,7 +1333,7 @@ fn flat(app: &mut App) -> String {
 #[tokio::test]
 async fn a_tilde_comes_back_as_a_sentence_about_tildes() {
     let _serial = SERIAL.lock().await;
-    let dir = workdir("tilde");
+    let dir = resolved("tilde");
     std::fs::write(dir.join("notes.txt"), "the first line says PELICAN\n").expect("a file");
     let (mut app, _limits, mut finished) = agent!(&dir);
 
@@ -1381,7 +1385,7 @@ async fn a_tilde_comes_back_as_a_sentence_about_tildes() {
 #[tokio::test]
 async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
     let _serial = SERIAL.lock().await;
-    let dir = workdir("limit");
+    let dir = resolved("limit");
     let mut big = String::from("FIRST LINE: OSPREY\n");
     for i in 0..200 {
         big.push_str(&format!(
@@ -1481,7 +1485,7 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
 #[tokio::test]
 async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
     let _serial = SERIAL.lock().await;
-    let dir = workdir("going");
+    let dir = resolved("going");
     std::fs::write(
         dir.join("big.txt"),
         "OSPREY\n".repeat(400) + "LAST LINE: PELICAN\n",
@@ -1550,7 +1554,7 @@ async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
 #[tokio::test]
 async fn the_question_about_a_real_change_names_the_item() {
     let _serial = SERIAL.lock().await;
-    let dir = workdir("about");
+    let dir = resolved("about");
     let (mut app, _limits, mut finished) = introspecting!(&dir, true);
     app.kernel.push(
         ContextItem::file(
@@ -1614,7 +1618,7 @@ async fn the_question_about_a_real_change_names_the_item() {
 #[tokio::test]
 async fn a_real_model_asks_for_the_moves_by_name() {
     let _serial = SERIAL.lock().await;
-    let dir = workdir("actions");
+    let dir = resolved("actions");
     let (mut app, _limits, mut finished) = introspecting!(&dir, false);
     app.kernel.push(ContextItem::file(
         "notes.txt",
@@ -1666,7 +1670,7 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
         eprintln!("no context limit set; skipping");
         return;
     }
-    let dir = workdir("trim");
+    let dir = resolved("trim");
     // note: sized to breach the threshold on the file alone, which it was not. At `repeat(600)`
     // two reads came to about 5,800 tokens against a 12,288-token limit - 47% of it, under a
     // threshold of 50% - so whether the compactor fired was decided by how many tokens the
