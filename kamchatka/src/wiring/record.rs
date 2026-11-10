@@ -136,11 +136,16 @@ impl Recorder {
         };
         // writes earlier records first, so the record is the whole session rather than only the
         // part this process saw. See `Earlier`
-        {
-            let mut kept = recorder.kept.lock();
-            Self::write_all(&mut kept, app.earlier.records().iter())?;
+        let earlier = Self::write_all(&mut recorder.kept.lock(), app.earlier.records().iter());
+        let started = earlier.and_then(|()| recorder.checkpoint(&app.kernel));
+        // note: the names were this record's alone - the snapshot was not there and the log was
+        // made new - so a start that failed takes both away, as `App::save` does its claim. Left,
+        // the log held the name, and the record at the end of the run went under a `-2`
+        if let Err(e) = started {
+            let _ = std::fs::remove_file(&recorder.log);
+            let _ = std::fs::remove_file(&recorder.state);
+            return Err(e);
         }
-        recorder.checkpoint(&app.kernel)?;
 
         Ok(recorder)
     }
