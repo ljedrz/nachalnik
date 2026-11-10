@@ -281,3 +281,15 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   files named `*CHANGELOG.md`, so an archive named that way would have its old item names checked
   against today's code; its pattern would widen with the move. It waits on whether the history is
   read in the file at all, or only through the release tags.
+
+- **kamchatka's three documents say some things twice, and RUNNING.md holds two pages of its own.**
+  The `/compact` confirmation (the list, <kbd>y</kbd> or <kbd>n</kbd> in place of the prompt,
+  pinning while it waits) is described in both GUIDE.md and RUNNING.md, the status line's estimate
+  and its 70% and 90% colours in GUIDE.md, RUNNING.md and README.md, and which rule wins in
+  GUIDE.md and RUNNING.md's headless table; a change to any of them has to find every copy. Saying
+  each once - the screen's behaviour in GUIDE.md, the mechanics in RUNNING.md - and linking from
+  the rest would make one place to change. RUNNING.md's last three sections (what a command can
+  read, a toolchain in the home directory, the network when a command tries) are the sandbox
+  from end to end and could be a page of their own that GUIDE.md and README.md link to; the
+  advisor's section, behind a feature that is off by default, could join it or stand alone. It
+  waits for the next change to any of these passages.
