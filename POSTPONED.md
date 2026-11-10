@@ -246,3 +246,16 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   RUNNING.md says only "for Anthropic's own API". Naming it in `keyed` for Anthropic's host would
   keep the rule that a key goes only to whoever issued it. It waits on whether that dialect at
   that address is something to support, and then the two documents are made to agree either way.
+
+- **A command can print a permission error and get the sandbox's note for it.** `refused`
+  (`sandbox/mod.rs`) takes any line of a command's standard error that says `Permission denied`,
+  `os error 13` or `EACCES`, so a line a command only prints - a script's `echo`, a log it replays -
+  naming a path outside the reach gets the note that says "the permission error below is the
+  confinement rather than the file's own permissions" and to ask for the path to be opened up,
+  though nothing was refused. SECURITY.md says to say nothing when the refusal wasn't the
+  sandbox's. Output can already tell a model anything, and opening a path is the person's
+  decision, so this puts the program's voice behind words it did not check rather than opening
+  anything. The output cannot tell a printed refusal from a real one; hedging the named-path notes
+  as the pathless one is hedged would make them true either way, at the cost of the plain wording
+  that stops a model trying `sudo`. It waits on that choice, or on a way to learn which calls the
+  confinement refused (a Landlock audit log, or sandlock reporting it).
