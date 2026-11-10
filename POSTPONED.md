@@ -423,3 +423,16 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   answer in one long body, `ops.rs` is the operation table and the reading of a call's arguments in
   one file, and three argument readers used only by searching sit in the module every tool shares.
   A refactor for the next change to any of them.
+
+- **`shell.rs`, `advice.rs` and `policy.rs` each hold a self-contained piece beside their main
+  type.** `tools/shell.rs` (about 2,600 lines) holds the pure parsing of a command's exit and joints,
+  which `advice.rs` and the screen use too, the stragglers' bookkeeping and the network
+  gatekeeper beside the tool; each could be a module, the gatekeeper beside `reaching.rs`, whose
+  queue it answers. `advice.rs`'s rating algebra is pure and tested on its own, apart from the
+  questions it sends; `policy.rs`'s path-pattern language and its network heuristic sit beside
+  `Careful`. `shedder.rs`'s `plan` works out its sets of items and runs both rules in one body.
+  Small repeats: `Sandbox { shell_readable, devices, ..Sandbox::of(..) }` is written twice because
+  `Sandbox::of` defaults those two fields, so a field added to `Sandbox` would keep its default at
+  both without a word, and `Sandbox::of` taking them would end that; reading the arguments as the
+  tool reads them (`inner(..).unwrap_or(..)`) is written four times, and walking back to a
+  character boundary three. A refactor for the next change to any of them.
