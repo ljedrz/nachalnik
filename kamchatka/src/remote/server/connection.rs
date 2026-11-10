@@ -111,14 +111,7 @@ where
             () = replaced.notified() => {
                 flush(kernel, &mut last, write).await?;
 
-                return refuse(
-                    write,
-                    "replaced",
-                    "another client has attached to this session, and it serves one at a time; \
-                     attaching again takes it back"
-                        .to_owned(),
-                )
-                .await;
+                return refuse(write, protocol::REPLACED, protocol::REPLACED_WHY.to_owned()).await;
             }
             command = protocol::read::<Command>(frames) => match command? {
                 None => return Ok(()),
