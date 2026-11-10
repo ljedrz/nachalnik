@@ -314,19 +314,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   the other would show. One copy means public API somewhere: in nachalnik, which takes nothing that
   can live outside it, or in a crate both already depend on. It waits on where that should be.
 
-- **A frame works out the next request several times over, and two of its readings can
-  disagree.** `ui::draw` takes one `Going` and one `Budget` a frame so that what it reports comes
-  from one reading of the request, but `App::about`, which names the items a question is about and
-  whether each is left out, takes a `Going` of its own, so the question's "not in the next request"
-  and the status line beside it are two readings moments apart. Each of those readings projects
-  every item and counts every message again, serialising every tool call's arguments; the chat
-  tab rebuilds the whole conversation, call arguments as JSON, on every frame; a question is
-  rendered two or three times a frame while it is asked; and the permissions tab builds its rows
-  four times. A frame is drawn only when something changed, but a model streaming and a question
-  being asked both change something many times a second. Passing the frame's reading into
-  `about` and the question's drawing would make them agree, and a reading kept until the log's
-  sequence or the counter moves would make the rest cheap; it waits on measuring a long session
-  first, since the cache is what could go stale.
+- **A frame works out the next request more than once, and redraws what has not changed.** A frame
+  takes one `Going` and one `Budget`, and each projects every item and counts every message again,
+  serialising every tool call's arguments; the chat tab rebuilds the whole conversation, call
+  arguments as JSON, on every frame; a question is rendered two or three times a frame while it is
+  asked; and the permissions tab builds its rows four times. A frame is drawn only when something
+  changed, but a model streaming and a question being asked both change something many times a
+  second. A reading kept until the log's sequence or the counter moves would make it cheap; it
+  waits on measuring a long session first, since the cache is what could go stale.
 
 - **`kamchatka/src/app/mod.rs` is the `App` struct and five groups of methods in one file, and some
   of its state is kept in step by hand.** The answer types, the keys and help, waiting and leaving,

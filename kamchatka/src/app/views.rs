@@ -360,6 +360,14 @@ impl App {
     /// confident description of the wrong thing in front of a decision. Nothing here reaches the
     /// policy: it is the same arguments, read out.
     pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
+        self.about_in(request, &self.going())
+    }
+
+    /// [`App::about`], against a reading of the next request the caller already took.
+    ///
+    /// note: what a frame uses, so that a question's "not in the next request" and the status
+    /// line beside it are one reading rather than two taken moments apart.
+    pub fn about_in(&self, request: &PermissionRequest, going: &Going) -> Vec<String> {
         if !matches!(request.tool.as_str(), "context" | "log") {
             return Vec::new();
         }
@@ -382,7 +390,6 @@ impl App {
             return Vec::new();
         }
 
-        let going = self.going();
         named
             .iter()
             .take(8)

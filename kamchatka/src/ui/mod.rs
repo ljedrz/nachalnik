@@ -100,9 +100,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // in the prompt's place rather than laid over the middle of the screen, so that everything the
     // question is about stays reachable while it waits: a question covering the context tab is a
     // question about item 22 asked with the list of items underneath it
+    // one projection a frame, shared by every place that reports on it - the question as well as
+    // the corner and the tabs. Each asking for its own would be several walks of the context per
+    // redraw, and answers that could disagree about the same request
+    let going = app.going();
     let height = frame.area().height;
     let wanted = match app.tab == Tab::Chat {
-        true => question_rows(app, inner),
+        true => question_rows(app, &going, inner),
         false => 0,
     };
     // the question may have everything except the status line and enough of the conversation to see
@@ -124,10 +128,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
-    // one projection a frame, shared by the three places that report on it. Each asking for its own
-    // would be three walks of the context per redraw, and three answers that could disagree about
-    // the same request
-    let going = app.going();
     // One budget a frame, for the same reason: the corner and the context tab's own line are two
     // readings of the request that is about to go, and two walks could disagree about it
     let budget = app.kernel.budget();
@@ -135,7 +135,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if question != 0 {
         // what the frame could really scroll to is what the keys work against from here on, the
         // same write-back the overlay does
-        app.question_scroll = draw_question(frame, app, asked);
+        app.question_scroll = draw_question(frame, app, &going, asked);
     }
     match (searching, prompted) {
         // the rows the context tab just drew are the ones the search found. Filtering the whole
