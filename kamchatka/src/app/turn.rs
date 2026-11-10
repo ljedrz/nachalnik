@@ -313,9 +313,19 @@ impl App {
             let finish: Box<dyn FnOnce(&mut App) + Send> = match inner.await {
                 Ok(got) => Box::new(move |app: &mut App| then(app, got)),
                 Err(e) if e.is_cancelled() => return,
-                Err(_) => Box::new(move |app: &mut App| {
-                    app.say(Speaker::Error, format!("{what} failed before it came back"))
-                }),
+                // with what it said, as a panicking turn is; see `Outcome::Failed`'s
+                Err(e) => {
+                    let why = match e.try_into_panic() {
+                        Ok(panic) => format!(": it panicked: {}", super::text::panicked(&*panic)),
+                        Err(_) => String::new(),
+                    };
+                    Box::new(move |app: &mut App| {
+                        app.say(
+                            Speaker::Error,
+                            format!("{what} failed before it came back{why}"),
+                        )
+                    })
+                }
             };
             let _ = outcomes.send(Outcome::Returned(Returned { errand, finish }));
         });
