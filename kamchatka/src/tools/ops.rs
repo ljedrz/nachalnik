@@ -586,6 +586,17 @@ fn around(written: &str, at: usize, width: usize) -> String {
     )
 }
 
+/// The arguments as the tool will read them, or as they were written where it cannot read them:
+/// [`inner`] with its failure set aside, for a caller that only looks at them - the policy judging
+/// a path, the advisor and the screen showing a command.
+///
+/// note: one place for the fallback, so that what is judged, what is rated and what is drawn are
+/// read the same way. Each wrote it out, and a call the tool reads through a wrapper would be shown
+/// one command and judged on another the moment one of them changed.
+pub(crate) fn as_read(args: &Value) -> Cow<'_, Value> {
+    inner(args).unwrap_or(Cow::Borrowed(args))
+}
+
 /// The object a call's arguments are really in, or what is wrong with where they are.
 ///
 /// note: arguments under [`WRAPPER`] are what the schema asks for. Flat arguments are unambiguous,

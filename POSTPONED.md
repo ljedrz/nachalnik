@@ -421,11 +421,10 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   queue it answers. `advice.rs`'s rating algebra is pure and tested on its own, apart from the
   questions it sends; `policy.rs`'s path-pattern language and its network heuristic sit beside
   `Careful`. `shedder.rs`'s `plan` works out its sets of items and runs both rules in one body.
-  Small repeats: `Sandbox { shell_readable, devices, ..Sandbox::of(..) }` is written twice because
+  And `Sandbox { shell_readable, devices, ..Sandbox::of(..) }` is written twice because
   `Sandbox::of` defaults those two fields, so a field added to `Sandbox` would keep its default at
-  both without a word, and `Sandbox::of` taking them would end that; reading the arguments as the
-  tool reads them (`inner(..).unwrap_or(..)`) is written four times, and walking back to a
-  character boundary three. A refactor for the next change to any of them.
+  both without a word; `Sandbox::of` taking them would end that, at the cost of its signature. A
+  refactor for the next change to any of them.
 
 - **nachalnik's `model/mod.rs` holds a tool call beside the messages, and its selectors keep their
   own copies of three vocabularies.** `ToolCallId`, `ToolCall`, `StoredCall` and the measuring

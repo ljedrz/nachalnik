@@ -130,8 +130,7 @@ fn question_parts(
     // is exactly what this panel is for: `old` in red and `new` in green, one argument to a line
     let mut shown = readable(
         &request.tool,
-        &crate::tools::ops::inner(&request.args)
-            .unwrap_or(std::borrow::Cow::Borrowed(&request.args)),
+        &crate::tools::ops::as_read(&request.args),
         columns,
         worst(app, &request),
     );
