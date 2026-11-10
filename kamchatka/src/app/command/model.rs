@@ -1,13 +1,37 @@
 //! The commands about the model a session talks to and how: `/endpoint`, `/model`, `/models`,
 //! `/params` and `/limit`.
 
-use nachalnik::{Calibration, Params};
+use std::sync::Arc;
+
+use nachalnik::{Calibration, Kernel, Params};
+use nachalnik_providers::Dialect;
 use serde_json::Value;
 
 use crate::{
     app::{App, Speaker, text::thousands},
     tools::Limits,
 };
+
+/// Tells the kernel about a switch that has settled: handed the provider where it held none and the
+/// switch `named` a model, told its provider changed otherwise. The end of `/model`, `/endpoint`
+/// and the look at the model a session starts with.
+///
+/// note: after the switch rather than before it, so nothing reads a model whose name is still
+/// empty. A session started without `-m` holds no provider until a model is named, and told that
+/// its provider changed, a kernel holding none has nothing to have changed - the switch was
+/// announced and the session went on with no model. Where the kernel has one already, it is this
+/// same object, switched in place, so it is told rather than handed it again: setting it would ask
+/// what it was after the switch and record the change as from the new model to itself.
+pub(super) fn hand_over(kernel: &Kernel, provider: Arc<dyn Dialect>, named: bool) {
+    match kernel.model_info() {
+        None if named => {
+            kernel.set_provider(provider);
+        }
+        _ => {
+            kernel.provider_changed();
+        }
+    }
+}
 
 /// Parameters that shape how an answer is delivered rather than what the model does. Every endpoint
 /// of the dialect reads them; no model lists them.
@@ -101,17 +125,7 @@ impl App {
         let named = model.as_deref().is_some_and(|model| !model.is_empty());
         self.switch(async move {
             provider.set_endpoint(url, model).await;
-            // as `/model` does: a session started without one holds no provider until a model
-            // is named, and told that its provider changed, a kernel holding none has nothing
-            // to have changed - the switch was announced and the session went on with no model
-            match kernel.model_info() {
-                None if named => {
-                    kernel.set_provider(provider);
-                }
-                _ => {
-                    kernel.provider_changed();
-                }
-            }
+            hand_over(&kernel, provider, named);
         });
     }
 
@@ -135,7 +149,7 @@ impl App {
         let (provider, kernel) = (self.provider.clone(), self.kernel.clone());
         self.switch(async move {
             provider.set_model(model).await;
-            kernel.provider_changed();
+            hand_over(&kernel, provider, true);
         });
     }
 

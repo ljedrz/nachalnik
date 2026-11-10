@@ -41,13 +41,14 @@ impl App {
     /// waited its turn in the queue, and is not held behind what is still in it.
     pub(super) async fn submitted(&mut self, line: &str, released: bool) -> Reply {
         let (from, pages) = (self.loose.len(), self.previews);
+        let stopping = line.trim() == "/stop";
         // a command still out at the endpoint finishes before this line is read, so nothing acts on
         // a session part-way through changing model, or on a list nobody has been shown yet. Held
         // rather than waited for, so the loop goes on; see `App::in_flight` and `App::release`.
         //
         // note: except `/stop`, which ends the wait. Held, it stopped a turn only once the listing
         // it was held behind came back, which is what it was typed to avoid
-        if self.in_flight() && line.trim() != "/stop" {
+        if self.in_flight() && !stopping {
             self.held
                 .push_back((line.to_owned(), self.keys, self.remote));
             self.say(
@@ -64,9 +65,7 @@ impl App {
         // under it. Held with the lines that wait for a command, and released by the same loop once
         // the turn is over; see `App::release`. What is typed after it waits behind it, so a
         // message sent after a switch is answered by the model switched to
-        if !released
-            && line.trim() != "/stop"
-            && (self.held_switch() || self.mid_turn() && switches(line))
+        if !released && !stopping && (self.held_switch() || self.mid_turn() && switches(line))
         {
             self.held
                 .push_back((line.to_owned(), self.keys, self.remote));
@@ -422,20 +421,7 @@ impl App {
                     let kernel = self.kernel.clone();
                     self.switch(async move {
                         provider.set_model(model).await;
-                        // a session started without `-m` has held no provider until now, and this
-                        // ends that - after the switch rather than before it, so nothing reads a
-                        // model whose name is still empty. Where the kernel has one already, it is
-                        // this same object, switched in place, so the kernel is told rather than
-                        // handed it again: setting it would ask what it was after the switch and
-                        // record the change as from the new model to itself
-                        match kernel.model_info() {
-                            None => {
-                                kernel.set_provider(provider);
-                            }
-                            Some(_) => {
-                                kernel.provider_changed();
-                            }
-                        }
+                        model::hand_over(&kernel, provider, true);
                     });
 
                     return;
