@@ -17,7 +17,7 @@ use ratatui::{
 
 use crate::{
     app::{
-        App, Focus, Overlay, Page, Tab,
+        App, Focus, Going, Overlay, Page, Tab,
         text::{plural, thousands},
     },
     tools::Subject,
@@ -53,6 +53,7 @@ pub(super) fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
 /// rating has to be: a warning that can be scrolled out of view may never be seen.
 fn question_parts(
     app: &App,
+    going: &Going,
     columns: usize,
     cut: bool,
 ) -> Option<(Vec<Line<'static>>, Vec<Line<'static>>, Vec<String>)> {
@@ -134,7 +135,7 @@ fn question_parts(
         columns,
         worst(app, &request),
     );
-    let about = app.about(&request);
+    let about = app.about_in(&request, going);
     if !about.is_empty() {
         shown.extend(
             about
@@ -358,8 +359,9 @@ pub(super) const MIN_CHAT: u16 = 5;
 /// How many rows the pinned question would like, or `0` when nothing is being asked.
 /// [`draw`](super::draw) decides what it actually gets, and gives it less on a screen with no room
 /// for it.
-pub(super) fn question_rows(app: &App, columns: usize) -> u16 {
-    let Some((head, args, foot)) = question_parts(app, columns.saturating_sub(2), false) else {
+pub(super) fn question_rows(app: &App, going: &Going, columns: usize) -> u16 {
+    let Some((head, args, foot)) = question_parts(app, going, columns.saturating_sub(2), false)
+    else {
         return 0;
     };
 
@@ -386,9 +388,9 @@ fn until_keys(app: &App) -> &'static str {
 /// A tool is waiting to be told whether it may run, in the prompt's place.
 ///
 /// Returns the offset the arguments were really drawn at.
-pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
+pub(super) fn draw_question(frame: &mut Frame, app: &App, going: &Going, area: Rect) -> usize {
     let columns = area.width.saturating_sub(4) as usize;
-    let Some((head, args, foot)) = question_parts(app, columns, false) else {
+    let Some((head, args, foot)) = question_parts(app, going, columns, false) else {
         return 0;
     };
 
@@ -423,7 +425,7 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     // and are the only region that can be asked to show less than it holds
     let cut = (head.len() + args.len() + foot.len()) as u16 + BORDERS_AND_GAP > area.height;
     let foot = match cut {
-        true => question_parts(app, columns, true).map_or(foot, |(_, _, it)| it),
+        true => question_parts(app, going, columns, true).map_or(foot, |(_, _, it)| it),
         false => foot,
     };
     let bottom = (foot.len() as u16).min(inner.height);
