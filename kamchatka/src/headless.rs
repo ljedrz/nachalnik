@@ -397,14 +397,8 @@ impl<'a> Headless<'a> {
                                 // page. A page opened by `App::preview` is nameless because there
                                 // is one of it, and a rule saying nothing over `/budget` would be
                                 // clutter
-                                for page in &pages {
-                                    if pages.len() > 1 {
-                                        writeln!(self.prose, "-- {} --", page.name)
-                                            .map_err(|e| e.to_string())?;
-                                    }
-                                    writeln!(self.prose, "{}", page.body)
-                                        .map_err(|e| e.to_string())?;
-                                }
+                                writeln!(self.prose, "{}", crate::app::Page::printed(&pages))
+                                    .map_err(|e| e.to_string())?;
                             }
                             // `/copy` down a pipe is still worth answering: stdout is the session log
                             // and stderr may well be somebody's terminal, which is where the sequence
