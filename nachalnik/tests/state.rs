@@ -865,6 +865,9 @@ async fn an_interrupt_does_not_abort_a_request_already_in_flight() {
         }
         tokio::time::sleep(Duration::from_millis(1)).await;
     }
+    // an interrupt that landed before the request would be a different test, of one that stops a
+    // step before it asks
+    assert_eq!(kernel.state(), State::Requesting);
     kernel.interrupt();
 
     // the answer still arrives and is still recorded: stopping is not the same as pulling the
