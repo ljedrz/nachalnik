@@ -515,3 +515,18 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   serve both. `Reach::range` and `Described` render the same roots, kept alike by a note; and the
   two-press `ctrl+c` is written three times around `Stopping`. A refactor for the next change to
   any of them.
+
+- **The screen's tabs live in one file, and some of what they decide belongs to the app.**
+  `ui/tabs.rs` holds the conversation, context, permissions and trace tabs, already divided by its
+  section comments, and each could be a file. `draw_chat` builds the blocks, resolves the scroll
+  anchor, measures what is off screen and writes five fields back in one body. Some decisions are
+  made in the drawing layer or twice: whether an item is mid-flight is worked out from the pending
+  permissions in `tabs.rs` while its sibling `sends_content` is in `Going`; which question is open -
+  a tool's, then the network's, then a compaction's - is written once for drawing, once for the
+  panel's title and once for the keys, so a new kind of question must land in three places; a
+  selection is clamped by the keys and again by the drawing; and what the policy will consult is
+  worked out in `overlay.rs` beside `App::about`, which has the rest of the question. The
+  permissions tab draws its empty state two ways, the context and trace tabs their "nothing here"
+  lines each in their own words, and the faint bar down a code block is built three times. One
+  `App` method returning the open question first, since it is the one with three copies. A
+  refactor for the next change to the screen.
