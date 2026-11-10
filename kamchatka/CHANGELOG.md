@@ -63,6 +63,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A session record that fails to start leaves no file behind.** The log's name was claimed
+  first, and a start that then failed - a full disk, a snapshot that would not write - left the
+  empty log in the temporary directory, and the record at the end of the run went under a `-2`
+  name beside it. Both files are now removed, as `/save` already removes a claim it could not fill.
 - **`/stop` while a `/model` or `/endpoint` switch settles says the switch is out.** It is the one
   line not held behind a switch, and it answered "nothing is running" about a session with the
   switch's requests still out. It now says the switch finishes on its own.
