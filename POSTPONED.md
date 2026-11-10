@@ -377,15 +377,15 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   project and price the whole context two or three times per call, which wants the same single
   reading the frame wants.
 
-- **The libraries' longest test files hold several subjects each.** `nachalnik-eval/tests/harness.rs`
-  (about 2,500 lines, no section markers), nachalnik's `live.rs` (five sets of environment
-  variables), `concurrency.rs` (four stories under a header naming three), `tokens.rs`
-  (calibration is half of it, and the context-limit refusals an unmarked fourth part), `state.rs`
-  (the request budget and interrupts beside the transitions), `kernel/running.rs` (output limits
-  are 400 of its lines), and nachalnik-providers' `reading.rs` and `anthropic.rs` (each two halves
-  its own markers name). Each could be a directory, as `tests/kernel/` already is, with the shared
-  fixtures in its `main.rs` and a module per subject. It is a move of whole tests, with nothing to
-  change in them, for the next time one of these files is worked on.
+- **The libraries' longest test files hold several subjects each.**
+  `nachalnik-eval/tests/harness.rs` (about 2,500 lines, no section markers), nachalnik's `live.rs`
+  (five sets of environment variables), `concurrency.rs` (four stories under a header naming three),
+  `tokens.rs` (calibration is half of it, and the context-limit refusals an unmarked fourth part),
+  `state.rs` (the request budget and interrupts beside the transitions), `kernel/running.rs` (output
+  limits are 400 of its lines), and nachalnik-providers' `reading.rs` and `anthropic.rs` (each two
+  halves its own markers name). Each could be a directory, as `tests/kernel/` already is, with the
+  shared fixtures in its `main.rs` and a module per subject. It is a move of whole tests, with
+  nothing to change in them, for the next time one of these files is worked on.
 
 - **The served session's three files each hold more than one concern.** `remote/server/mod.rs` is
   the listener (binding, accepting, dropping), the coordinator sharing the session between clients,
@@ -420,8 +420,8 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   A refactor for the next change to any of them.
 
 - **`shell.rs`, `advice.rs` and `policy.rs` each hold a self-contained piece beside their main
-  type.** `tools/shell.rs` (about 2,600 lines) holds the pure parsing of a command's exit and joints,
-  which `advice.rs` and the screen use too, the stragglers' bookkeeping and the network
+  type.** `tools/shell.rs` (about 2,600 lines) holds the pure parsing of a command's exit and
+  joints, which `advice.rs` and the screen use too, the stragglers' bookkeeping and the network
   gatekeeper beside the tool; each could be a module, the gatekeeper beside `reaching.rs`, whose
   queue it answers. `advice.rs`'s rating algebra is pure and tested on its own, apart from the
   questions it sends; `policy.rs`'s path-pattern language and its network heuristic sit beside
