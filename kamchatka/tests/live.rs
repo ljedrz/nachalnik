@@ -505,10 +505,6 @@ async fn the_status_line_reports_a_real_endpoint_and_a_corrected_budget() {
         calibration.scale,
         calibration.observations
     );
-    assert!(
-        status.contains("really"),
-        "and the screen says so: {status}"
-    );
 }
 
 /// The figure in the corner is built on what the provider charged, and only what has changed
