@@ -761,14 +761,12 @@ impl Tool for Shell {
         if held {
             collecting_stderr.abort();
         }
-        let (mut errors, mut dropped, read) = {
-            let heard = heard.lock().expect("nothing panics holding it");
-            (
-                String::from_utf8_lossy(&heard.0).into_owned(),
-                dropped + heard.1,
-                heard.0.clone(),
-            )
+        // note: taken rather than copied: nothing reads it after this, and it can be all of `KEPT`
+        let (read, mut dropped) = {
+            let mut heard = heard.lock().expect("nothing panics holding it");
+            (std::mem::take(&mut heard.0), dropped + heard.1)
         };
+        let mut errors = String::from_utf8_lossy(&read).into_owned();
         // held to the ceiling as it is kept, for the reason standard output is: the bytes were
         // counted as they arrived, and what is not UTF-8 grows on the way to text
         if errors.len() > KEPT {
