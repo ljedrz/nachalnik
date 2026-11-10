@@ -993,10 +993,8 @@ impl Serving {
                 if !matches!(command, Command::Attach { .. }) && self.seated != Some(client) {
                     let _ = answer.send(Answered {
                         message: Some(Message::Failed {
-                            about: "replaced".to_owned(),
-                            error: "another client has attached to this session, and it serves \
-                                    one at a time; attaching again takes it back"
-                                .to_owned(),
+                            about: protocol::REPLACED.to_owned(),
+                            error: protocol::REPLACED_WHY.to_owned(),
                         }),
                         voice: None,
                         standing: Vec::new(),

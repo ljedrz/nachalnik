@@ -695,7 +695,7 @@ impl<'a> Client<'a> {
                 // being replaced is the end of this client by design: the session serves one client
                 // at a time, so coming back by itself would take it from whoever just did, and two
                 // clients each reconnecting would trade it back and forth for a minute
-                if matches!(about.as_str(), "version" | "projection" | "replaced") {
+                if matches!(about.as_str(), "version" | "projection" | protocol::REPLACED) {
                     self.prose.fresh_line()?;
 
                     return Err(format!("{about}: {error}"));

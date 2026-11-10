@@ -40,6 +40,15 @@ pub use frames::{
 /// unrecognised message something a client survives rather than something that ends it.
 pub const VERSION: u32 = 2;
 
+/// What a [`Message::Failed`] is `about` when its client has been let go of for a newer one. A
+/// client takes it as the end rather than as a drop to come back from: coming back would take the
+/// session from whoever has just taken it.
+pub(crate) const REPLACED: &str = "replaced";
+
+/// Why, as a [`REPLACED`] refusal says it.
+pub(crate) const REPLACED_WHY: &str = "another client has attached to this session, and it serves \
+                                       one at a time; attaching again takes it back";
+
 /// What a client asks a session to do.
 ///
 /// note: ten, and the set is meant to stay about this size. Eight of them are things a person at
