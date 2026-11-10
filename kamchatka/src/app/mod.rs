@@ -179,6 +179,25 @@ pub struct Page {
     pub body: String,
 }
 
+impl Page {
+    /// Pages as text, one after another, for somewhere that has no strip to turn them on: each
+    /// under its name where there is more than one, and the bodies alone where there is one.
+    ///
+    /// note: one rule for every loop that prints a page, which were three copies that had come to
+    /// disagree about a page with a name and no sibling. A page opened by `App::preview` is
+    /// nameless because there is one of it, and a rule saying nothing over `/budget` is clutter.
+    pub fn printed(pages: &[Page]) -> String {
+        pages
+            .iter()
+            .map(|page| match pages.len() > 1 && !page.name.is_empty() {
+                true => format!("-- {} --\n{}", page.name, page.body),
+                false => page.body.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 /// A compaction pass, listed and waiting to be told whether to take what it listed.
 ///
 /// note: it holds the *list*, not the plan. Answering `y` works the pass out again, so a pin made

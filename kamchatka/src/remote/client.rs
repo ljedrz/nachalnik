@@ -596,12 +596,8 @@ impl<'a> Client<'a> {
                 // note: print every page, not just the one it opened at. `--headless` gives all
                 // pages because a screen turns them with arrow keys and there is no key to press
                 // down a socket; a caller handed one page has no way to ask for the others
-                for face in &page.pages {
-                    if page.pages.len() > 1 {
-                        writeln!(self.prose, "-- {} --", face.name).map_err(|e| e.to_string())?;
-                    }
-                    writeln!(self.prose, "{}", face.body).map_err(|e| e.to_string())?;
-                }
+                writeln!(self.prose, "{}", crate::app::Page::printed(&page.pages))
+                    .map_err(|e| e.to_string())?;
                 self.prose.flush().map_err(|e| e.to_string())
             }
             // the words of a turn that was never streamed; only this client asks for raw, and `?N`

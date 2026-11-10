@@ -262,16 +262,9 @@ impl App {
                 );
             }
             if !keys && let Some(Overlay::Text { title, pages, .. }) = reply.page {
-                let pages: Vec<String> = pages
-                    .iter()
-                    .map(|page| match page.name.is_empty() {
-                        true => page.body.clone(),
-                        false => format!("-- {} --\n{}", page.name, page.body),
-                    })
-                    .collect();
                 self.say(
                     Speaker::Note,
-                    format!("--- {} ---\n{}", title.trim(), pages.join("\n")),
+                    format!("--- {} ---\n{}", title.trim(), super::Page::printed(&pages)),
                 );
             }
             released = true;
