@@ -27,12 +27,8 @@ use super::{
 impl Kernel {
     /// Adds an item to the context, returning its identifier.
     pub fn push(&self, item: ContextItem) -> ContextId {
-        let held = self.0.counter.read();
-        let counter = &**held;
-        let mut context = self.0.context.write();
-        context.checkpoint();
-
-        self.added(&mut context, item, counter)
+        // a batch of one, so the lock order and the checkpoint are `add_in`'s and live in one place
+        self.add_in(item, &mut super::Batch::default())
     }
 
     /// Adds several items as one undoable operation, returning their identifiers.
