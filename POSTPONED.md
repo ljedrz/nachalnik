@@ -402,3 +402,24 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   phase and a question-answering policy would each be a type. `remote/protocol/mod.rs` keeps the
   payload types beside the verbs; they could be a module of their own, re-exported. A refactor for
   the next change to any of them.
+
+- **A confined `shell` call does blocking work on the runtime's threads.** Before the command
+  starts, the scratch directory is made and opened, the environment rebuilt, the git
+  configuration and each allowed root resolved, and sandlock holds each root, all on one of the two
+  runtime workers; while it is quiet, `stopped_itself` reads `/proc/<pid>/stat` with a blocking
+  read every 120 ms; and standard error, up to `KEPT`, is copied whole on every call although the
+  copy is used only when it is cut. `note_for_in` and the scratch's removal already go to
+  `spawn_blocking`; the preamble and the heartbeat's read could too. Separately, a command's
+  stragglers are kept running after the call, and the scratch is removed while they may still
+  write to it, which can leave the directory behind; removing it once the kept sandbox ends would
+  close that. It waits for the next change to how `shell` starts and ends a command.
+
+- **`fs`'s files and search modules share their path-rule machinery across each other.** `search.rs`
+  takes `files::allowed`, `files.rs` takes `search::{barred, led_past, climbing}`, and each resolves
+  the working directory with the same fallback; one module both import would hold the cluster. The
+  path-rule refusal for a link and for a hard link's other name is written out twice in
+  `files.rs`, the glob refusal and its matcher twice in `search.rs`, and an operating-system error
+  on the resolved path four times. `Grep::invoke`, `read` and `Edit::invoke` each parse, work and
+  answer in one long body, `ops.rs` is the operation table and the reading of a call's arguments in
+  one file, and three argument readers used only by searching sit in the module every tool shares.
+  A refactor for the next change to any of them.
