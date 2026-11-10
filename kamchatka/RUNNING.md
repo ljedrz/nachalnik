@@ -821,7 +821,8 @@ it sends to an internet address until `kamchatka` answers: from `net:reach` if i
 `deny`, or by asking you if it says `ask`, once per command. Sockets of other families that reach
 beyond the machine (`AF_SMC`, `AF_RDS`, `AF_VSOCK` and the like) are refused outright. So with `--auto-allow exec:run`, `git status` runs without a question,
 while `python3 fetch.py` is asked about as soon as it does a DNS lookup, which couldn't be told
-apart from the command alone.
+apart from the command alone. The question at the screen and its keys are in
+[GUIDE.md](GUIDE.md#a-command-that-reaches-for-the-network).
 
 An unattended run has nobody to ask. Under `--on-ask allow` it answers at once, while the turn is
 still running, since the command is waiting on the answer and waiting for the turn to end would wait
