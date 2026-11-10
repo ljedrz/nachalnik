@@ -1661,6 +1661,35 @@ fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
     );
 }
 
+/// `-r` from a snapshot whose log names an identifier with no room after it is refused, as the
+/// same number in the snapshot itself is.
+///
+/// note: the log was read in after the snapshot was checked, and `id + 1` on its numbers wrapped in
+/// a release build and panicked in a debug one.
+#[test]
+fn a_resume_whose_log_leaves_no_room_to_number_is_refused() {
+    let dir = common::scratch("resumed-past-room");
+    let (ok, said) = run_from(&dir, &[], "remember 4817\n/save first.json\n");
+    assert!(ok, "{said}");
+
+    let first: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("first.json")).expect("saved"))
+            .expect("a snapshot");
+    let record = serde_json::json!({ "seq": first.last_seq + 1, "at": 0, "event": {
+        "event": "context.added", "id": u64::MAX, "kind": "user_message", "source": "user",
+        "label": "user", "tokens": 1, "because": null } });
+    let mut log = std::fs::read_to_string(dir.join("first.jsonl")).expect("saved");
+    log.push_str(&format!("{record}\n"));
+    std::fs::write(dir.join("first.jsonl"), log).expect("written");
+
+    let (ok, said) = run_from(&dir, &["-r", "first.json"], "");
+    assert!(!ok, "a log with no room after it was carried on from: {said}");
+    assert!(
+        said.contains("will not carry on from") && said.contains("no room"),
+        "{said}"
+    );
+}
+
 /// `-r` from a snapshot its log runs past numbers nothing again that the log already numbered,
 /// and says the records are there.
 ///
