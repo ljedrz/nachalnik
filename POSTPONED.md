@@ -492,3 +492,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   and converts results beside `Trust` and `McpTool`, and its `invoke` stops a call two ways in one
   loop. A refactor for the next change to any of them; the grant rule first, since two scans of
   one rule are what a scoring change would miss.
+
+- **kamchatka's longest test files hold several subjects, with their helpers between the tests.**
+  `tests/headless/main.rs` (about 4,700 lines) keeps the recorder's tests, the slash commands and
+  the endpoint switches beside each other, and helpers such as `said`, `OneEach`, `FailsToFlush`,
+  `Watchful` and `answering` thousands of lines from the harness at its top; `program.rs`,
+  `sandbox.rs`, `config.rs` and `live.rs` each mix three or four subjects the same way. In
+  `sandbox.rs` a `Shell { .. }` is built inline eleven times, each spelling every field, so a new
+  field means eleven edits where a `shell(dir, confined)` beside `gated_shell` would mean one. Each
+  file could be a directory of subjects, as `tests/headless/` already is in part, with its helpers
+  together. A refactor for the next time one of them is worked on.
