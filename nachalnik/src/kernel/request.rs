@@ -129,7 +129,8 @@ impl Kernel {
                 }
 
                 self.emit(Event::ModelFailed {
-                    error: e.to_string(),
+                    // with its causes, for the reason a tool's failure is told with them
+                    error: super::calls::described(&*e),
                     overrun,
                 });
                 return Err(Error::Provider(e));
