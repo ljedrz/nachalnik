@@ -391,3 +391,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   its own markers name). Each could be a directory, as `tests/kernel/` already is, with the shared
   fixtures in its `main.rs` and a module per subject. It is a move of whole tests, with nothing to
   change in them, for the next time one of these files is worked on.
+
+- **The served session's three files each hold more than one concern.** `remote/server/mod.rs` is
+  the listener (binding, accepting, dropping), the coordinator sharing the session between clients,
+  and the application of each command, fifteen hundred lines before its tests; `listener.rs`,
+  `serving.rs` and `apply.rs` would hold one each, and `apply` spells each command's name again in
+  its refusals where `name()` already has it. `remote/client.rs` drives the connection and renders
+  prose in one file, its renderers could be `client/draw.rs`, and its `Client` carries a dozen
+  booleans recombined differently by `resting`, `reads`, `ready` and `idle`, where a connection
+  phase and a question-answering policy would each be a type. `remote/protocol/mod.rs` keeps the
+  payload types beside the verbs; they could be a module of their own, re-exported. A refactor for
+  the next change to any of them.
