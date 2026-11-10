@@ -33,7 +33,7 @@ use crate::{
     sandbox::{Access, Reach},
     tools::{
         Careful, Limits, arg,
-        files::allowed,
+        files::judged_off,
         names::{self, Names, Other},
         path_matches, truth, whole, words,
     },
@@ -111,11 +111,16 @@ impl Looking {
     /// Where a walk starts, as the call named it and as it resolved, once reach and path rules
     /// allow it; or a refusal saying nothing was `doing`. `names` is the argument a pattern of
     /// file names goes in, for a `path` that is one.
-    fn root(&self, args: &Value, doing: &str, names: &str) -> Result<(String, PathBuf), String> {
+    async fn root(
+        &self,
+        args: &Value,
+        doing: &'static str,
+        names: &str,
+    ) -> Result<(String, PathBuf), String> {
         let asked = words(args, "path")?.unwrap_or(".").to_owned();
         // the call's own path is exempt from what a walk bars because it was asked about by name. A
         // link's name is not where it leads
-        let root = allowed(&asked, Access::Reading, &self.reach, &self.policy, doing)?;
+        let root = judged_off(&asked, Access::Reading, &self.reach, &self.policy, doing).await?;
         // note: a root that is not there is said to be, where a walk of it would count it as "a
         // file that could not be read" - present and unreadable, which an absent path is not. After
         // the path rules, so that whether a refused path exists is not said in place of the
@@ -655,7 +660,7 @@ impl Grep {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let (asked, root) = match self.0.root(args, "searched", "glob") {
+        let (asked, root) = match self.0.root(args, "searched", "glob").await {
             Ok(both) => both,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -952,7 +957,7 @@ impl Glob {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let (asked, root) = match self.0.root(args, "listed", "pattern") {
+        let (asked, root) = match self.0.root(args, "listed", "pattern").await {
             Ok(both) => both,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };

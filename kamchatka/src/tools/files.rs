@@ -61,7 +61,7 @@ impl Read {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let named = arg(args, "path")?;
-        let path = match allowed(named, Access::Reading, &self.0, &self.2, "read") {
+        let path = match judged_off(named, Access::Reading, &self.0, &self.2, "read").await {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -103,6 +103,29 @@ pub(super) fn allowed(
         Some(refusal) => Err(refusal),
         None => Ok(path),
     }
+}
+
+/// [`allowed`], on a thread that may block.
+///
+/// note: where a path rule exists and the file has another name, judging it walks what the session
+/// reaches for that name - up to `LOOKED` entries, each a `stat` - which on the runtime's thread
+/// would hold the screen and every served client while it ran. The read or write that follows is
+/// already on one; the judging before it is now as well.
+pub(super) async fn judged_off(
+    named: &str,
+    access: Access,
+    reach: &Arc<Reach>,
+    policy: &Arc<Careful>,
+    doing: &'static str,
+) -> Result<PathBuf, String> {
+    let (owned, reach, policy) = (named.to_owned(), reach.clone(), policy.clone());
+    tokio::task::spawn_blocking(move || allowed(&owned, access, &reach, &policy, doing))
+        .await
+        .unwrap_or_else(|e| {
+            Err(format!(
+                "{named}: could not be judged, so nothing was {doing}: {e}"
+            ))
+        })
 }
 
 /// Why a path is refused for leading, through a link, to a file a path rule has not allowed; see
@@ -546,7 +569,7 @@ impl Write {
         if let Some(refusal) = dir(named, "written", &self.1) {
             return Ok(ToolOutput::error(refusal));
         }
-        let path = match allowed(named, Access::Writing, &self.0, &self.1, "written") {
+        let path = match judged_off(named, Access::Writing, &self.0, &self.1, "written").await {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -638,7 +661,7 @@ impl Edit {
         if let Some(refusal) = dir(named, "changed", &self.1) {
             return Ok(ToolOutput::error(refusal));
         }
-        let path = match allowed(named, Access::Writing, &self.0, &self.1, "changed") {
+        let path = match judged_off(named, Access::Writing, &self.0, &self.1, "changed").await {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
