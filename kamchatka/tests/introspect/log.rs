@@ -715,6 +715,8 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
             "log",
             json!({ "action": "read", "kinds": ["context.added", 3] }),
         ),
+        // an argument run into the action, as a call format of keys and values writes one
+        call("c5", "log", json!({ "action": "read<arg_key>whole" })),
     ]));
     kernel.push(ContextItem::user("carry on"));
     kernel.turn().await.expect("the turn failed");
@@ -738,6 +740,12 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
         said[3]
     );
     assert!(!said[3].contains("match"), "{}", said[3]);
+    // and said the way the other tools say it, with what to send instead
+    assert!(
+        said[4].contains("It is `read` with") && said[4].contains("send `action` as `read` alone"),
+        "{}",
+        said[4]
+    );
 }
 
 /// An item with no beginning in this log is said to have none, which is what `ids` really asks.

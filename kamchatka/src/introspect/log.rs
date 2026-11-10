@@ -31,7 +31,7 @@ use crate::{
     app::text::{thousands, trace_line},
     tools::{
         Limits, domains, number,
-        ops::{Arg, Layout, Op, actions, inner, schema, unread},
+        ops::{Arg, Layout, Op, actions, inner, schema, unplaced, unread},
         yes_or_no,
     },
     wiring::Earlier,
@@ -128,7 +128,13 @@ impl Log {
             let named = named
                 .as_str()
                 .map_or_else(|| named.to_string(), str::to_owned);
-            return Err(unknown(&named, &actions(&self.ops)));
+            // with what the call held instead, as the other tools say it; see `super::malformed`
+            let known = actions(&self.ops);
+            let (said, more) = (unknown(&named, &known), unplaced(&call.args, &args, &known));
+            return Err(match more.is_empty() {
+                true => said,
+                false => format!("{said}.{more}"),
+            });
         }
 
         Query::read(&args, &self.ops)
