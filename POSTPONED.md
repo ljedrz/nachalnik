@@ -259,3 +259,16 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   as the pathless one is hedged would make them true either way, at the cost of the plain wording
   that stops a model trying `sudo`. It waits on that choice, or on a way to learn which calls the
   confinement refused (a Landlock audit log, or sandlock reporting it).
+
+- **Three files under `kamchatka/src/app/` hold more than their own concern.** `transcript.rs` is
+  about entries and where they anchor, but also holds `overran` and `remedy`, which read the budget
+  and price turns to say what to do about a request over the limit, and `recall` and `replay`, which
+  read the record beside a snapshot; the first pair could be `app/overrun.rs` and the second could
+  join `session.rs`. `text.rs` holds `trace_line` and its tests, a third of the file, beside the
+  views and figures it is named for; `trace.rs` could take them. And `submitted`
+  (`app/command/mod.rs`) decides whether a line waits in two blocks that each push onto `held` with
+  their own note, beside a third queue for messages typed into a turn, and asks `switches` - a
+  second list of the commands that switch, beside the dispatch, that nothing checks - whether a
+  line is one; one function saying why a line waits, and the dispatch declaring which commands
+  switch, would make it one place. None of it is wrong today. It is a refactor worth doing with the
+  next change to any of them.
