@@ -458,3 +458,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   (`past_the_snapshot`, `last_talked_to`, `Earlier::read`), each skipping what it skips; and
   `endpoint.rs` holds the advisor's account rules beside the endpoint. A refactor for the next
   change to any of them.
+
+- **Five of SECURITY.md's claims about the network gate have no test.** That `io_uring` is refused
+  outright (with `ENOSYS`, so a confined command cannot reach the network around the gate), that a
+  raw inet socket is refused, that an inet `bind` is held like a `connect`, that a ping socket is
+  judged by `net:reach`, and that `sendmsg` and `sendmmsg` are held as `sendto` is: each rests on
+  sandlock's filter, and `tests/sandbox.rs` exercises `connect`, `sendto` and the socket families
+  but none of these. Each would be a confined command in the shape of
+  `a_socket_that_can_leave_the_machine_is_refused_by_a_shut_gate`, with the same unconfined control
+  so a machine that refuses the call anyway skips rather than passes. They wait on a machine that
+  can run them: the session these were found in refuses `io_uring` unconfined and fails the gate's
+  own tests, so nothing written here could be seen to pass, or to catch anything.
