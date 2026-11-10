@@ -199,6 +199,11 @@ async fn main() -> Result<(), String> {
                 refuse_reaching(&mut write, &waiting, &mut refused).await?
             }
             Message::Said { text, .. } => println!("\n· {text}"),
+            // a submit refused, or this client replaced by another that attached, is all the answer
+            // there will be: no turn is coming to end the wait
+            Message::Failed { about, error } if about == "submit" || about == "replaced" => {
+                return Err(format!("the session refused the message: {error}"));
+            }
             Message::Failed { about, error } => println!("\n· {about}: {error}"),
             _ => {}
         }
@@ -218,15 +223,20 @@ async fn main() -> Result<(), String> {
             },
         )
         .await?;
-        if let Some(Message::Item { body, .. }) = next(&mut lines).await? {
-            // note: the same words twice, on purpose. Above they were fragments of a model still
-            // writing, in no log and gone once past. This is the item they were recorded as, which
-            // is what a client that missed them would ask for
-            println!(
-                "\n--- the turn ended; {records} records arrived, and item {item} is where those \
-                 fragments ended up ---"
-            );
-            println!("{body}");
+        match next(&mut lines).await? {
+            Some(Message::Item { body, .. }) => {
+                // note: the same words twice, on purpose. Above they were fragments of a model
+                // still writing, in no log and gone once past. This is the item they were recorded
+                // as, which is what a client that missed them would ask for
+                println!(
+                    "\n--- the turn ended; {records} records arrived, and item {item} is where \
+                     those fragments ended up ---"
+                );
+                println!("{body}");
+            }
+            // an item that is gone, or one too large for a line, is answered with why
+            Some(Message::Failed { about, error }) => println!("\n· {about}: {error}"),
+            _ => {}
         }
     }
 
