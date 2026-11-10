@@ -403,7 +403,9 @@ It is asked once per command, and the command waits while the question is open; 
 <kbd>esc</kbd> stops the turn, the command and the question. The model is told near the top of the
 result that the command tried to use the network and what you answered, because a refused lookup
 would otherwise look like a broken network. `deny` refuses every internet socket without asking,
-including UDP, and <kbd>a</kbd> also applies to other commands still running.
+including UDP, and <kbd>a</kbd> also applies to other commands still running. How the sandbox holds
+the socket, and what a run with nobody to ask answers, is in
+[RUNNING.md](RUNNING.md#-the-network-when-a-command-tries).
 
 ## 🔦 finding things without a shell
 
