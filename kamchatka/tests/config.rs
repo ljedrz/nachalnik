@@ -1683,7 +1683,10 @@ fn a_resume_whose_log_leaves_no_room_to_number_is_refused() {
     std::fs::write(dir.join("first.jsonl"), log).expect("written");
 
     let (ok, said) = run_from(&dir, &["-r", "first.json"], "");
-    assert!(!ok, "a log with no room after it was carried on from: {said}");
+    assert!(
+        !ok,
+        "a log with no room after it was carried on from: {said}"
+    );
     assert!(
         said.contains("will not carry on from") && said.contains("no room"),
         "{said}"

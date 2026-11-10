@@ -403,7 +403,9 @@ async fn a_root_a_link_was_put_at_is_not_walked_for_other_names() {
     let outside = scratch("hard-link-swapped-root-outside");
     let root = beside.join("root");
     std::fs::create_dir(&root).expect("a directory to open up");
-    let root = root.canonicalize().expect("resolved, as the roots are given");
+    let root = root
+        .canonicalize()
+        .expect("resolved, as the roots are given");
     std::fs::hard_link(dir.join("notes.md"), outside.join(".env")).expect("a hard link");
     let tools = common::builtin_reaching(
         &dir,
