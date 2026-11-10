@@ -118,10 +118,7 @@ fn bounded(text: &mut String) {
     // note: in bytes, like the bound it answers. A character count taken from a byte length goes
     // below zero in three-byte text: a panic in the event handler in a debug build, and in release
     // a cut at nothing with another marker on the front of every fragment
-    let mut cut = text.len() - LIVE_OUTPUT / 2;
-    while !text.is_char_boundary(cut) {
-        cut += 1;
-    }
+    let cut = text.ceil_char_boundary(text.len() - LIVE_OUTPUT / 2);
     *text = format!(
         "[... the earlier output is not repeated here; the whole of it is in the context ...]\n{}",
         &text[cut..]

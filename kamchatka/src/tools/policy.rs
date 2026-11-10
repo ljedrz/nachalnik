@@ -472,8 +472,7 @@ impl Careful {
         // question nobody needed, where skipping it makes a rule stop being one. `inner` only reads
         // through a `call` that is the whole of the arguments, so nothing outside one is passed
         // over for it
-        let args =
-            super::ops::inner(&request.args).unwrap_or(std::borrow::Cow::Borrowed(&request.args));
+        let args = super::ops::as_read(&request.args);
 
         let mut judged: Vec<Subject> = request
             .capabilities

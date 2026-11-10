@@ -497,8 +497,7 @@ impl Advised {
         // unwraps one before drawing it. Reading the command from a different place than the screen
         // does would take spans into a string nobody is looking at, so the underlined stage would
         // be the wrong run of the right command
-        let args = crate::tools::ops::inner(&request.args)
-            .unwrap_or(std::borrow::Cow::Borrowed(&request.args));
+        let args = crate::tools::ops::as_read(&request.args);
         let cmd = args.get("cmd").and_then(Value::as_str).unwrap_or_default();
         let stages = stages(cmd);
 
@@ -702,8 +701,7 @@ fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
 /// against `arguments.cmd`. Sent wrapped, it was at `arguments.call.cmd`, a different question from
 /// the one measured.
 pub(crate) fn state(request: &PermissionRequest) -> Value {
-    let args = crate::tools::ops::inner(&request.args)
-        .unwrap_or(std::borrow::Cow::Borrowed(&request.args));
+    let args = crate::tools::ops::as_read(&request.args);
 
     json!({
         "tool": request.tool,
@@ -727,10 +725,7 @@ fn capped(value: &Value) -> Value {
             // note: cut on a character boundary, since this is arbitrary text and `ROOM` is a
             // byte count. A `String` sliced through a multi-byte character panics, and the one
             // place that would happen is a file whose contents are not ASCII
-            let mut room = ROOM;
-            while room > 0 && !text.is_char_boundary(room) {
-                room -= 1;
-            }
+            let room = text.floor_char_boundary(ROOM);
 
             Value::String(format!(
                 "{}… (cut; {} bytes in all)",

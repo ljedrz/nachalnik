@@ -770,10 +770,7 @@ impl Tool for Shell {
         // held to the ceiling as it is kept, for the reason standard output is: the bytes were
         // counted as they arrived, and what is not UTF-8 grows on the way to text
         if errors.len() > KEPT {
-            let mut cut = KEPT;
-            while !errors.is_char_boundary(cut) {
-                cut -= 1;
-            }
+            let cut = errors.floor_char_boundary(KEPT);
             dropped += read.len() - read_into(&read, cut);
             errors.truncate(cut);
         }
@@ -1555,10 +1552,7 @@ fn keep(
     let room = KEPT.saturating_sub(collected.len() + 1);
     // against the newline too, which an empty line is all of
     if collected.len() + 1 + text.len() > KEPT {
-        let mut cut = room;
-        while !text.is_char_boundary(cut) {
-            cut -= 1;
-        }
+        let cut = text.floor_char_boundary(room);
         *full = true;
         *dropped += line.len() - read_into(line, cut);
         if cut == 0 {

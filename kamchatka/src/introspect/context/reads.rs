@@ -471,14 +471,8 @@ fn sampled(text: &str, whole: bool) -> String {
     }
 
     // on a character boundary, so that a cut through a multi-byte character does not panic
-    let mut head = SAMPLE;
-    while !text.is_char_boundary(head) {
-        head -= 1;
-    }
-    let mut tail = text.len() - SAMPLE;
-    while !text.is_char_boundary(tail) {
-        tail += 1;
-    }
+    let head = text.floor_char_boundary(SAMPLE);
+    let tail = text.ceil_char_boundary(text.len() - SAMPLE);
 
     format!(
         "{}\n[... {} bytes not shown. Asking for an item copies it into your context, so reading \
