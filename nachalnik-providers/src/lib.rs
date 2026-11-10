@@ -320,7 +320,7 @@ pub(crate) fn some_of(listed: &[String]) -> String {
 /// on every `/restart` and `/endpoint` such a session made.
 #[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
-    if model.is_empty() || listed.is_empty() || listed.iter().any(|name| same_model(name, model)) {
+    if !missing(model, listed) {
         return None;
     }
 
@@ -329,6 +329,19 @@ pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
         listed.len(),
         some_of(listed)
     ))
+}
+
+/// Whether `listed` is evidence that `model` is not served: a model is named, the list says
+/// something, and none of it is the model. The rule [`unlisted`] says in its words and System One's
+/// client in its own, which names the host.
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
+pub(crate) fn missing(model: &str, listed: &[String]) -> bool {
+    !model.is_empty() && !listed.is_empty() && !listed.iter().any(|name| same_model(name, model))
 }
 
 /// Whether an address is OpenRouter's. Takes a whole URL or a bare authority.
