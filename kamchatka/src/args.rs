@@ -683,17 +683,20 @@ impl Args {
                     &std::fs::read(path).with_context(|| format!("could not read {path}"))?,
                 )
                 .with_context(|| format!("{path} is not a session"))?;
+                let mut snapshot = snapshot;
+                past_the_snapshot(&mut snapshot, std::path::Path::new(path));
                 // refused rather than repaired. The runtime would renumber or reserve its way
                 // around most of these, and a session carried on from a record that had to be
                 // changed to be read no longer has a record that says what happened
+                //
+                // note: asked after the log beside it is read in, so a number the log carries is
+                // held to the same room as one the snapshot does
                 let problems = snapshot.problems();
                 anyhow::ensure!(
                     problems.is_empty(),
                     "{path} is a session this will not carry on from: {}",
                     problems.join("; ")
                 );
-                let mut snapshot = snapshot;
-                past_the_snapshot(&mut snapshot, std::path::Path::new(path));
 
                 Some(snapshot)
             }
@@ -958,7 +961,7 @@ fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path)
         snapshot.last_seq = snapshot.last_seq.max(record.seq);
         let permission = match record.event {
             Event::ContextAdded { id, .. } => {
-                snapshot.next_item = snapshot.next_item.max(id.0 + 1);
+                snapshot.next_item = snapshot.next_item.max(id.0.saturating_add(1));
                 None
             }
             // note: every event that names a call, not only the one that runs it. A call to a tool
@@ -980,7 +983,7 @@ fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path)
             _ => None,
         };
         if let Some(id) = permission {
-            snapshot.next_permission = snapshot.next_permission.max(id.0 + 1);
+            snapshot.next_permission = snapshot.next_permission.max(id.0.saturating_add(1));
         }
     }
     snapshot.used_calls.sort();

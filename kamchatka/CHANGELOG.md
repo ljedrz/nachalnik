@@ -63,6 +63,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`-r` holds the log beside a snapshot to the same rule as the snapshot.** A number in the log
+  past the snapshot - an item or permission identifier with no room after it - was read in after
+  the snapshot was checked, and the next one after it overflowed: a panic in a debug build and a
+  wrapped identifier in a release one. The log is read in first now, so such a session is refused
+  with the snapshot's own reason.
 - **A `/models` listing or a compaction pass that panics says what it said.** It was reported as
   "the compaction pass failed before it came back" and nothing more, though a turn that panics
   says why; it now ends with the panic's message.
