@@ -16,3 +16,7 @@ kamchatka/tests/introspect/context.rs big.rs
 # files POSTPONED.md proposes making
 POSTPONED.md app/overrun.rs
 POSTPONED.md CHANGELOG-0.1-0.19.md
+POSTPONED.md listener.rs
+POSTPONED.md serving.rs
+POSTPONED.md apply.rs
+POSTPONED.md client/draw.rs
