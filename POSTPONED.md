@@ -327,3 +327,27 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   `about` and the question's drawing would make them agree, and a reading kept until the log's
   sequence or the counter moves would make the rest cheap; it waits on measuring a long session
   first, since the cache is what could go stale.
+
+- **`kamchatka/src/app/mod.rs` is the `App` struct and five groups of methods in one file, and some
+  of its state is kept in step by hand.** The answer types, the keys and help, waiting and leaving,
+  the item operations and the notices each have a sibling module they could move to, leaving `App`
+  and its construction. Inside it, `held` is a queue of `(String, bool, bool)` whose two flags are
+  the caller's `keys` and `remote`, unnamed wherever they are pushed or swapped back in; seven
+  fields of the spend ceiling must move together, which a note says and no type does; three scroll
+  positions are clamped by hand beside the overlay's own; `question_key` answers three kinds of
+  question in turn, each with its own copy of the scrolling keys; and the compaction pass is started
+  in two places with guards of their own. Named structs - a held line, a ceiling, a scroll - and a
+  match on the open question's kind would make each one place. A refactor for the next change to
+  any of them.
+
+- **The crates' READMEs and crate docs say the same things in two or three places.** nachalnik's
+  loop diagram, trait table, protection model and features list are in its README, its `lib.rs` and
+  partly in `kernel/mod.rs` and AGENTS.md; nachalnik-eval's scoring decisions and claim families in
+  its README and `lib.rs`; kamchatka's `lib.rs` retells the tabs, the dialects and served sessions
+  that GUIDE.md and RUNNING.md describe; nachalnik-mcp's trust default is argued in its README,
+  `lib.rs` and `Trust`'s docs; nachalnik-providers' dialects and its "reads no environment" promise
+  in its README and `lib.rs`; and the workspace's crates are listed in the root README, AGENTS.md
+  and nachalnik's README in three wordings. CONCEPTS.md's table of event names matches the 41 in
+  `event.rs` today, but nothing checks it does. Keeping each fact where it is normative - the type's
+  docs - and having the rest summarise and link would make a change land once. It waits for the
+  next change to one of these facts.
