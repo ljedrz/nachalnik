@@ -502,3 +502,16 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   field means eleven edits where a `shell(dir, confined)` beside `gated_shell` would mean one. Each
   file could be a directory of subjects, as `tests/headless/` already is in part, with its helpers
   together. A refactor for the next time one of them is worked on.
+
+- **`sandbox/mod.rs` holds the refusal notes and the served sandboxes beside the sandbox, and a
+  confined command's environment is built in two places.** The notes (`note_for_in`, `reads_only`,
+  `connecting`, `refused`, `paths_in`, `Described`) and the bookkeeping of sandboxes a served
+  session started (`SERVED`, `SANDBOXES`, `Starting`) are each a module's worth, and `argv` and
+  `EXEC_FLAG` are read only by `confinement.rs`. `note_for_in` grew a branch per cause and picks
+  between "is" and "are" three ways; one sentence builder over the groups would hold it.
+  `run_if_asked` (`--confine-and-run`) and `shell`'s `spawn` each set `TMPDIR` and
+  `GIT_CONFIG_GLOBAL` with near-identical notes, and only `spawn` asks `fits`, which matters for a
+  model and less for a person reading sandlock's own error; one `Sandbox::environment_for` would
+  serve both. `Reach::range` and `Described` render the same roots, kept alike by a note; and the
+  two-press `ctrl+c` is written three times around `Stopping`. A refactor for the next change to
+  any of them.
