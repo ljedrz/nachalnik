@@ -436,3 +436,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   both without a word, and `Sandbox::of` taking them would end that; reading the arguments as the
   tool reads them (`inner(..).unwrap_or(..)`) is written four times, and walking back to a
   character boundary three. A refactor for the next change to any of them.
+
+- **nachalnik's `model/mod.rs` holds a tool call beside the messages, and its selectors keep their
+  own copies of three vocabularies.** `ToolCallId`, `ToolCall`, `StoredCall` and the measuring
+  helpers around `json_len` are a unit of their own in `model/mod.rs` and could be `model/call.rs`,
+  re-exported so no path moves; and the tests of `truncate_to`, `sized` and `Blob` sit there, six
+  hundred lines from `content.rs`, which they test and which has none of its own. `selectors.rs`
+  lists the item kinds, states and sources by hand beside `ContextKind::name`, `ContextState`'s
+  `Display` and the item constructors that define them; all three match today, and a new kind,
+  state or source would be refused by selectors until somebody added it there too. Deriving the
+  kinds and states from the types, and keeping only the plural aliases by hand, would make each
+  list one. A refactor for the next change to either.
