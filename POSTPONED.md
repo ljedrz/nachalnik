@@ -293,3 +293,16 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   from end to end and could be a page of their own that GUIDE.md and README.md link to; the
   advisor's section, behind a feature that is off by default, could join it or stand alone. It
   waits for the next change to any of these passages.
+
+- **The introspection tools have grown past what their files can hold at a read.**
+  `introspect/context/changes.rs` keeps the undo journal and the eight operations that write to it,
+  over a thousand lines; the journal (`Journal`, `Entry`, `Left`, `Undoing`, `Applied`,
+  `moved_since`, `hold`) is a file of its own. `introspect/context/reads.rs` keeps five renderers
+  that share little: the list, search, budget and request answers could each be one under a
+  `reads/` directory. The four tools (`context`, `fork`, `log`, `setup`) each write the same
+  `limit`, `unparsed` and `malformed` over the same fields, and `log`'s has gone its own way - an
+  absent `action` is `read`, and an unknown one is refused without the `unplaced` hint the others
+  give. One struct holding the shared fields, with those methods, would keep them alike. Inside the
+  files, `fork`'s `branch`, `changes.rs`'s `moved` and `setup`'s `permissions` each do several
+  things in one body and could hand the parts to functions. None of it is wrong today; it is a
+  refactor for the next change to these tools.
