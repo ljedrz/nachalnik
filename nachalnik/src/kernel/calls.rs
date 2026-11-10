@@ -505,12 +505,13 @@ fn refusal(source: GrantSource, why: Option<String>) -> String {
     }
 }
 
-/// What a call whose tool failed is told: the error, and each cause beneath it.
+/// What a call whose tool failed is told, and what a failed request is recorded with: the error,
+/// and each cause beneath it.
 ///
 /// note: the causes, because the top of a wrapped error is often only what was being done ("reading
 /// the config") and the reason is the error it wraps, which `to_string` leaves out. A cause already
 /// in the message is not repeated, for errors that print their cause as well as returning it.
-fn described(error: &(dyn std::error::Error + 'static)) -> String {
+pub(super) fn described(error: &(dyn std::error::Error + 'static)) -> String {
     let mut said = error.to_string();
     let mut cause = error.source();
     while let Some(error) = cause {

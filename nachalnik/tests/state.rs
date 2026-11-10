@@ -359,6 +359,63 @@ impl Provider for GivesUp {
     }
 }
 
+/// A provider whose failure is a wrapper, with the reason under it.
+struct Wrapped;
+
+#[async_trait]
+impl Provider for Wrapped {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("wrapped", "wrapped")
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        #[derive(Debug)]
+        struct Sending(std::io::Error);
+        impl std::fmt::Display for Sending {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("could not send the request")
+            }
+        }
+        impl std::error::Error for Sending {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        Err(Box::new(Sending(std::io::Error::other("connection reset by peer"))))
+    }
+}
+
+/// A failed request is recorded with what caused it, not only with what was being done.
+///
+/// note: the top of a wrapped error is often only the doing, and the reason is beneath it. A tool's
+/// failure was told with its causes and a request's was recorded with its first line, so the log
+/// of a request that failed said "could not send the request" and nothing about why.
+#[tokio::test]
+async fn a_failed_request_is_recorded_with_its_cause() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Wrapped));
+    kernel.push(ContextItem::user("hi"));
+    let mut events = kernel.subscribe();
+
+    assert!(matches!(kernel.turn().await, Err(Error::Provider(_))));
+    let failed = drain(&mut events)
+        .into_iter()
+        .find_map(|event| match event {
+            Event::ModelFailed { error, .. } => Some(error),
+            _ => None,
+        })
+        .expect("the failure was recorded");
+    assert_eq!(
+        failed,
+        "could not send the request: connection reset by peer"
+    );
+}
+
 /// An interrupt is for the request in flight, and a request that failed is over. Left set, the
 /// flag was spent on the next turn instead: that turn transitioned nothing, and the message
 /// somebody typed after the failure went unanswered.

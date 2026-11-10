@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`Event::ModelFailed` carries the error's causes, not only its first line.** A provider's error
+  is often a wrapper saying what was being done, with the reason beneath it, and the event recorded
+  only the wrapper. It is now said as a tool's failure is told to the model: the error, then each
+  cause it does not already contain.
 - **A reported request length too large for `usize` no longer wraps on a 32-bit target.** It went
   to `TokenCounter::observe` as a small number `Calibrating` could believe. It is now passed as
   `usize::MAX`, which `Calibrating` throws out.
