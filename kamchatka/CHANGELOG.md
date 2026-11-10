@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`/stop` while a `/model` or `/endpoint` switch settles says the switch is out.** It is the one
+  line not held behind a switch, and it answered "nothing is running" about a session with the
+  switch's requests still out. It now says the switch finishes on its own.
 - **`fs` looks for a file's other names only in what the session reaches.** A `--sandbox-read` or
   `--sandbox-write` path renamed away with a link left at its name - which a confined command can
   do beside a path it may write - was followed by the walk for a file's hard links, which listed
