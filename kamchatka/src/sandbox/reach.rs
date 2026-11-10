@@ -538,7 +538,7 @@ impl Reach {
     /// note: compared with its resolution rather than opened, because a root is asked about on
     /// every call and opened only by the call that goes ahead. The open refuses a link put there
     /// in between; see `opened_beneath`.
-    fn unlinked(&self, root: &Path) -> Option<PathBuf> {
+    pub(crate) fn unlinked(&self, root: &Path) -> Option<PathBuf> {
         let absolute = lexical(&self.workdir.join(root));
         resolve(&absolute).filter(|resolved| *resolved == absolute)
     }

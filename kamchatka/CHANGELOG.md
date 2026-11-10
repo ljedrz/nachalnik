@@ -63,6 +63,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs` looks for a file's other names only in what the session reaches.** A `--sandbox-read` or
+  `--sandbox-write` path renamed away with a link left at its name - which a confined command can
+  do beside a path it may write - was followed by the walk for a file's hard links, which listed
+  directories outside the reach and named a file found there in the refusal. Such a path is now
+  left out of the walk, as every `fs` call already leaves it out.
 - **`--max-spend-tokens` says when a stop leaves the shell advisor's cost uncounted.** A `ctrl+c`
   while the advisor was being asked gave up on the request, which may already have been billed,
   and counted nothing for it without a word. It is said, once, as an answer with no usage is.

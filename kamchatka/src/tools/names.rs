@@ -46,6 +46,11 @@ impl Names {
     /// note: a name outside them is not looked for. A confined command cannot link a file into its
     /// directories from outside them, since Landlock refuses that, so such a name was made by
     /// somebody outside the session; and `fs` cannot read the file under it.
+    ///
+    /// note: the roots are taken as [`Reach`] takes them, and one a link now stands on the way to is
+    /// not walked. Resolved again, a root renamed away with a link left at its name led wherever
+    /// the link pointed, and the walk listed directories outside the reach and named a file it
+    /// found there in a refusal.
     pub(super) fn of(reach: &Reach) -> Self {
         let mut names = Self {
             by_file: HashMap::new(),
@@ -57,7 +62,7 @@ impl Names {
         let mut pending: Vec<PathBuf> = std::iter::once(&reach.workdir)
             .chain(&reach.writable)
             .chain(&reach.readable)
-            .filter_map(|root| root.canonicalize().ok())
+            .filter_map(|root| reach.unlinked(root))
             .filter(|root| {
                 std::fs::metadata(root).is_ok_and(|meta| seen.insert((meta.dev(), meta.ino())))
             })

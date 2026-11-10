@@ -118,6 +118,18 @@ pub fn builtin_under(
     limits: kamchatka::tools::Limits,
     policy: std::sync::Arc<kamchatka::tools::Careful>,
 ) -> Vec<std::sync::Arc<dyn nachalnik::Tool>> {
+    builtin_reaching(dir, confined, limits, policy, Vec::new())
+}
+
+/// [`builtin_under`], with `readable` opened up for reading beside `dir`, as `--sandbox-read`
+/// opens a path up: resolved already, as `Setup::wire` gives the roots.
+pub fn builtin_reaching(
+    dir: &std::path::Path,
+    confined: bool,
+    limits: kamchatka::tools::Limits,
+    policy: std::sync::Arc<kamchatka::tools::Careful>,
+    readable: Vec<std::path::PathBuf>,
+) -> Vec<std::sync::Arc<dyn nachalnik::Tool>> {
     use kamchatka::{
         sandbox::Reach,
         tools::{Limits, Shell},
@@ -139,7 +151,7 @@ pub fn builtin_under(
         Reach {
             workdir: dir.to_path_buf(),
             writable: Vec::new(),
-            readable: Vec::new(),
+            readable,
             shell_readable: kamchatka::sandbox::SYSTEM.iter().map(Into::into).collect(),
             confined,
         },

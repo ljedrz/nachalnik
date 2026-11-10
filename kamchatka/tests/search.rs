@@ -390,6 +390,43 @@ async fn a_hard_link_whose_other_names_are_not_all_found_is_refused_as_unchecked
     let _ = std::fs::remove_dir_all(&elsewhere);
 }
 
+/// A path opened up beside the working directory that a link now stands at is not walked for a
+/// file's other names: the walk stays in what the session reaches, as every call does.
+///
+/// note: the root is renamed away and a link to a directory outside left at its name, which a
+/// confined command can do beside a path it may write. Resolved again, the root led outside, the
+/// walk listed it, and a name found there was put in the refusal.
+#[tokio::test]
+async fn a_root_a_link_was_put_at_is_not_walked_for_other_names() {
+    let dir = tree("hard-link-swapped-root");
+    let beside = scratch("hard-link-swapped-root-beside");
+    let outside = scratch("hard-link-swapped-root-outside");
+    let root = beside.join("root");
+    std::fs::create_dir(&root).expect("a directory to open up");
+    let root = root.canonicalize().expect("resolved, as the roots are given");
+    std::fs::hard_link(dir.join("notes.md"), outside.join(".env")).expect("a hard link");
+    let tools = common::builtin_reaching(
+        &dir,
+        true,
+        Limits::default(),
+        Arc::new(Careful::new()),
+        vec![root.clone()],
+    );
+    std::fs::rename(&root, beside.join("moved")).expect("the root renamed away");
+    std::os::unix::fs::symlink(&outside, &root).expect("a link at its name");
+
+    let read = called_in(tools, "read", json!({ "path": "notes.md" })).await;
+    assert!(
+        !read.contains(&*outside.to_string_lossy()) && !read.contains("another name for"),
+        "the walk left the reach: {read}"
+    );
+    assert!(read.contains("nothing to see"), "{read}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&beside);
+    let _ = std::fs::remove_dir_all(&outside);
+}
+
 /// The rules are consulted refusals first, so a link that lands under two of them is reported by
 /// the one that refuses - and the refusal is the one a model must not be offered a way round.
 ///
