@@ -351,3 +351,15 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   `event.rs` today, but nothing checks it does. Keeping each fact where it is normative - the type's
   docs - and having the rest summarise and link would make a change land once. It waits for the
   next change to one of these facts.
+
+- **The browser page, the web module and the examples each carry what a split or a shared piece
+  would hold once.** `kamchatka/src/web/browser.html` is styles, markup and script in one file of
+  seventeen hundred lines; the styles and its markdown renderer are self-contained and could be
+  pieces `web/mod.rs` joins with `include_str!`, and its `draw()` is three views in one function.
+  `web/mod.rs` keeps generic HTTP parsing (`Request`, `head`, `body`, `reply`, `param`) beside the
+  relay, and five hundred lines of tests. Among nachalnik's examples, `compare_models` and `panel`
+  each write the same flag loop and the same run-every-task harness, `compaction` and
+  `transparency` each a scripted provider that has come to differ, and `examples/common` two word
+  wrappers. And `scripts/windows.sh` copies CI's feature configurations by hand; they match today,
+  and nothing would say when one is added to CI alone. A refactor for the next change to any of
+  them.
