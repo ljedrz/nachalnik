@@ -367,15 +367,10 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   kernel's depth would bound it, at the cost of the model undoing a change further back than that;
   nothing documents how far back it may now. It waits on choosing the depth, and saying it.
 
-- **An `fs` read, write or edit can walk ten thousand entries on the runtime's thread.** Where a
-  path rule exists and the file has more than one name, `allowed` builds `Names::of`, a synchronous
-  walk of what the session reaches with a stat per entry, up to `LOOKED`, before the read itself
-  goes to `spawn_blocking`; nothing caches it between calls. A search builds it once per call. The
-  screen and every served client wait while it runs. Moving the judging behind the same
-  `spawn_blocking` as the read, or keeping the names for a call's length, would end that; it waits
-  for the next change to how `fs` judges a path. The `context` tool's reads and changes likewise
-  project and price the whole context two or three times per call, which wants the same single
-  reading the frame wants.
+- **The `context` tool works out the next request two or three times a call.** Its reads (`look`,
+  `matched`, `budget`, `request`) and its changes each project and price the whole context more than
+  once - before and after a change, or once for the answer and once for the budget - which is the
+  single reading a frame wants too. Milliseconds a call; it waits with the frame's.
 
 - **The libraries' longest test files hold several subjects each.**
   `nachalnik-eval/tests/harness.rs` (about 2,500 lines, no section markers), nachalnik's `live.rs`
