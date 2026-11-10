@@ -69,14 +69,42 @@ def path(name, suffix):
     return os.path.join(SWEEPS, name + suffix)
 
 
-def alive(pid):
+def alive(pid, since=None):
+    """Whether the process `pid` names is running, and when `since` is given - the time the pid was
+    written down, a pid file's mtime - whether it is the process that was written down.
+
+    note: a pid outlives its process in a file, and a reboot or a wrap hands it to another: after a
+    reboot `run.pid` named a browser's tab, `run.py` refused to start because of it, and
+    `price.py`'s stop would have sent that tab SIGTERM. A process started after its pid was
+    written down is not the one written down."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
+        pass
+    if since is not None:
+        start = started(pid)
+        if start is not None and start > since + 1:
+            return False
     return True
+
+
+def started(pid):
+    """When the process `pid` started, as a time like `time.time()`'s, or None where /proc does not
+    say."""
+    try:
+        stat = open(f"/proc/{pid}/stat").read()
+        boot = next(int(line.split()[1]) for line in open("/proc/stat") if line.startswith("btime "))
+    except (OSError, StopIteration, ValueError):
+        return None
+    # the command's name is in parentheses and may hold spaces; `starttime` is the 22nd field, the
+    # 20th after the name, in clock ticks since boot
+    try:
+        ticks = int(stat[stat.rindex(")") + 2:].split()[19])
+    except (ValueError, IndexError):
+        return None
+    return boot + ticks / os.sysconf("SC_CLK_TCK")
 
 
 def session(name):
@@ -299,13 +327,14 @@ def state(name, now=None):
     )
     try:
         pid = int(open(path(name, ".pid")).read())
+        since = os.path.getmtime(path(name, ".pid"))
     except (FileNotFoundError, ValueError):
-        pid = None
+        pid = since = None
     s["pid"] = pid
     s["finished"] = records.finished
     if exits:
         s["exit"] = int(exits[-1])
-    if pid and alive(pid):
+    if pid and alive(pid, since):
         s["status"] = "running"
         return s
     if not exits and not records.finished:

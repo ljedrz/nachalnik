@@ -61,7 +61,7 @@ def run_state():
         run = json.load(open(os.path.join(sweeps.SWEEPS, "run.json")))
     except (FileNotFoundError, ValueError):
         return None
-    run["alive"] = sweeps.alive(run["pid"])
+    run["alive"] = sweeps.alive(run["pid"], os.path.getmtime(os.path.join(sweeps.SWEEPS, "run.json")))
     return run
 
 

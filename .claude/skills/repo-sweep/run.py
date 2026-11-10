@@ -280,7 +280,7 @@ def main():
     lock = os.path.join(sweeps.SWEEPS, "run.pid")
     try:
         other = int(open(lock).read())
-        if other != os.getpid() and sweeps.alive(other):
+        if other != os.getpid() and sweeps.alive(other, os.path.getmtime(lock)):
             sys.exit(f"run.py is already running as {other}")
     except (FileNotFoundError, ValueError):
         pass
