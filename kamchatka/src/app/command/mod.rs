@@ -65,8 +65,7 @@ impl App {
         // under it. Held with the lines that wait for a command, and released by the same loop once
         // the turn is over; see `App::release`. What is typed after it waits behind it, so a
         // message sent after a switch is answered by the model switched to
-        if !released && !stopping && (self.held_switch() || self.mid_turn() && switches(line))
-        {
+        if !released && !stopping && (self.held_switch() || self.mid_turn() && switches(line)) {
             self.held
                 .push_back((line.to_owned(), self.keys, self.remote));
             self.say(

@@ -1906,7 +1906,10 @@ async fn stopping_while_a_switch_settles_says_the_switch_is_out() {
     let mut harness = Harness::new([]);
 
     harness.send("/model something-else").await;
-    assert!(harness.app.settling.is_some(), "the switch is still settling");
+    assert!(
+        harness.app.settling.is_some(),
+        "the switch is still settling"
+    );
     harness.send("/stop").await;
 
     let screen = harness.flat();

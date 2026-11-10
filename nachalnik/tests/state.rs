@@ -386,7 +386,9 @@ impl Provider for Wrapped {
             }
         }
 
-        Err(Box::new(Sending(std::io::Error::other("connection reset by peer"))))
+        Err(Box::new(Sending(std::io::Error::other(
+            "connection reset by peer",
+        ))))
     }
 }
 
