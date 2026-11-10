@@ -186,7 +186,7 @@ impl Tool for Log {
         // note: filtering and rendering both happen under the lock because it is cheaper than
         // `Kernel::history` cloning every record out. Formatting does not call back into the
         // kernel; the warning on `with_history` is about that
-        let read = kernel.with_history(|session| {
+        let mut read = kernel.with_history(|session| {
             let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
             let mut every = String::new();
             let mut matched: Vec<String> = Vec::new();
@@ -230,7 +230,7 @@ impl Tool for Log {
 
         Ok(ToolOutput::new(query.report(
             &kernel,
-            &read,
+            &mut read,
             &*counter,
             self.reach.policy(),
         )))
@@ -434,11 +434,13 @@ impl Query {
     fn report(
         &self,
         kernel: &Kernel,
-        read: &Read,
+        read: &mut Read,
         counter: &dyn nachalnik::TokenCounter,
         policy: &Careful,
     ) -> String {
-        let all = counter.count(&Content::text(read.every.clone()));
+        // taken rather than copied: the whole log rendered can be megabytes, and the price is all
+        // that is wanted of it
+        let all = counter.count(&Content::text(std::mem::take(&mut read.every)));
 
         if read.total == 0 {
             // note: an empty log has two causes, opposite answers to the question being asked:
