@@ -22,6 +22,14 @@ use crate::{
 use super::{Batch, Kernel, PreparedCall, Restore, State};
 
 impl Kernel {
+    /// Says that a tool panicked over `call`, for every place a tool is asked something and can.
+    fn tool_panicked(&self, call: &ToolCall) {
+        self.emit(Event::ToolPanicked {
+            call: call.id.clone(),
+            tool: call.tool.clone(),
+        });
+    }
+
     /// Matches the model's calls to tools, asks the policy about each, and queues them.
     ///
     /// note: no permission is announced until every call is queued; [`Kernel::settle`] then
@@ -85,10 +93,7 @@ impl Kernel {
                     error: error.said.clone(),
                 });
                 let advice = guarded(|| tool.unparsed(written)).unwrap_or_else(|_| {
-                    self.emit(Event::ToolPanicked {
-                        call: call.id.clone(),
-                        tool: call.tool.clone(),
-                    });
+                    self.tool_panicked(call);
                     None
                 });
                 let said = unparsed_answer(call, written, &error, advice);
@@ -107,10 +112,7 @@ impl Kernel {
                     continue;
                 }
                 Err(panic) => {
-                    self.emit(Event::ToolPanicked {
-                        call: call.id.clone(),
-                        tool: call.tool.clone(),
-                    });
+                    self.tool_panicked(call);
                     self.refuse(call, None, panicked_needing(&*panic), &mut turn);
                     continue;
                 }
@@ -124,10 +126,7 @@ impl Kernel {
             let needs = match guarded(|| tool.needs(call)) {
                 Ok(needs) => needs,
                 Err(panic) => {
-                    self.emit(Event::ToolPanicked {
-                        call: call.id.clone(),
-                        tool: call.tool.clone(),
-                    });
+                    self.tool_panicked(call);
                     self.refuse(call, None, panicked_needing(&*panic), &mut turn);
                     continue;
                 }
@@ -314,10 +313,7 @@ impl Kernel {
             Ok(Ok(output)) => output,
             Ok(Err(e)) => ToolOutput::error(described(&*e)),
             Err(panic) => {
-                self.emit(Event::ToolPanicked {
-                    call: call.id.clone(),
-                    tool: call.tool.clone(),
-                });
+                self.tool_panicked(&call);
                 ToolOutput::error(panicked(&*panic))
             }
         }
@@ -337,10 +333,7 @@ impl Kernel {
         // held to the session's own limit; the call has run and its result is still its answer
         let limit = guarded(|| prepared.tool.limit(&prepared.call))
             .unwrap_or_else(|_| {
-                self.emit(Event::ToolPanicked {
-                    call: prepared.call.id.clone(),
-                    tool: prepared.call.tool.clone(),
-                });
+                self.tool_panicked(&prepared.call);
                 None
             })
             .or(self.default_tool_output_limit());
