@@ -38,6 +38,10 @@ What it decides on its own:
   $SWEEPS/old/parts/ and is not a try; a resume is, once it ends, like any other run. One resumed
   `PARTS` times and still not done is given up with its parts kept, for a person to look at,
   rather than run again from nothing.
+- **A conversation the endpoint will not answer.** A resume that ends without a single answer,
+  while the endpoint answered `STUCK` others in the meantime, is not resumed again: the endpoint is
+  up, and what it will not take is that conversation. Its parts are kept in
+  $SWEEPS/old/stuck/NAME.N/, and it runs again from its first message, as a try.
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
   running from before rather than starting them twice.
 """
@@ -70,6 +74,9 @@ BURST, BURST_WINDOW = 3, 600
 # how many times one sweep is resumed before it is given up: each resume was answered, so this
 # only stops a turn that fails the same way every time from being carried on for ever
 PARTS = 8
+# how many answers the endpoint gave the other sweeps while a resume got none, for that resume to
+# count as stuck rather than as having run through an outage
+STUCK = 50
 
 
 class Climb:
@@ -183,9 +190,32 @@ def log(line):
 
 
 def earlier(name):
-    """How many tries of this sweep there have been: the one in place, and those kept in old/."""
-    kept = len(glob.glob(os.path.join(sweeps.SWEEPS, "old", f"{name}.*.in")))
-    return kept + os.path.exists(sweeps.path(name, ".in"))
+    """How many tries of this sweep there have been: the one in place, and those kept in old/ and
+    old/stuck/."""
+    kept = len(glob.glob(os.path.join(sweeps.SWEEPS, "old", f"{glob.escape(name)}.*.in")))
+    stuck = len(glob.glob(os.path.join(sweeps.SWEEPS, "old", "stuck", f"{glob.escape(name)}.*")))
+    return kept + stuck + os.path.exists(sweeps.path(name, ".in"))
+
+
+def unstick(name):
+    """Moves a sweep's parts, and the one it was in, to old/stuck/NAME.N/, so that it starts again
+    from its first message; says N.
+
+    note: a part kept in old/parts/ counts towards `PARTS` and is what a resume carries on from, so
+    they all go, and together, which is how a person reads them."""
+    stuck = os.path.join(sweeps.SWEEPS, "old", "stuck")
+    n = 1
+    while os.path.exists(os.path.join(stuck, f"{name}.{n}")):
+        n += 1
+    into = os.path.join(stuck, f"{name}.{n}")
+    os.makedirs(into)
+    for p in glob.glob(os.path.join(sweeps.SWEEPS, "old", "parts", f"{glob.escape(name)}.*")):
+        os.rename(p, os.path.join(into, os.path.basename(p)))
+    for suffix in (".in", ".jsonl", ".err", ".pid", ".session", ".carried", ".resume"):
+        p = sweeps.path(name, suffix)
+        if os.path.exists(p):
+            os.rename(p, os.path.join(into, f"{name}.last{suffix}"))
+    return n
 
 
 def aside(name, under="old"):
@@ -315,6 +345,7 @@ def main():
 
     queue = collections.deque()
     running = {}  # name -> when it was started, or adopted
+    began = {}  # name -> the answers counted over every sweep when it was started, or adopted
     done, given_up = [], []
     for name, _, _ in plan:
         s = sweeps.state(name)
@@ -322,6 +353,7 @@ def main():
             continue
         if s["status"] == "running":
             running[name] = time.time()
+            began[name] = 0
             log(f"adopted {name}, still running from before")
         elif exhausted(name) or \
                 s["status"] != "queued" and earlier(name) >= tries and not resumable(name):
@@ -378,10 +410,22 @@ def main():
                 log(f"{name}: complete, {s['requests']} requests")
                 continue
             log(f"{name}: incomplete ({s['why']})")
+            # note: a resume the endpoint answered nothing in while it answered the others is a
+            # conversation it will not take - `503 No compatible route` to every request of one
+            # sweep for hours, while sweeps with larger requests were answered. Its log grew with
+            # each failure, so it never stalled, and resumed it failed the same way for as many
+            # parts as it was allowed, pausing every new start each time it ended
+            stuck = (not s.get("requests_here")
+                     and os.path.exists(sweeps.path(name, ".resume"))
+                     and answered - began.get(name, answered) >= STUCK)
+            if stuck:
+                n = unstick(name)
+                log(f"{name}: answered nothing while the others had {answered - began[name]}; "
+                    f"its parts are kept in old/stuck/{name}.{n}/, and it starts again")
             # what says the endpoint is not serving now: a last message it never answered, or a
             # session that ended on an error. Not a turn it failed to answer hours before, which
             # makes the sweep incomplete but says nothing of the endpoint as it is
-            if s.get("turn") == 0 or not s.get("finished") and s.get("exit") not in (124, 143):
+            elif s.get("turn") == 0 or not s.get("finished") and s.get("exit") not in (124, 143):
                 streak += 1
                 pause = min(3600, 300 * 2 ** (streak - 1))
                 paused_until = now + pause
@@ -392,7 +436,8 @@ def main():
             # note: a try the endpoint never answered once did no work, and counting it would let
             # an endpoint failing every new connection use up every sweep's tries in a few
             # pauses. It is kept apart, in old/void/, where `earlier` does not count it
-            if not s.get("requests") and not os.path.exists(sweeps.path(name, ".resume")):
+            if not stuck and not s.get("requests") \
+                    and not os.path.exists(sweeps.path(name, ".resume")):
                 aside(name, os.path.join("old", "void"))
                 log(f"{name}: nothing was answered, so the try is not counted")
             if exhausted(name):
@@ -431,7 +476,8 @@ def main():
                     (", with /continue" if carry["CONTINUE"] else "")
             else:
                 # the tries so far are what is kept in old/, so a restarted run counts them too
-                how = f"try {aside(name) + 1}"
+                aside(name)
+                how = f"try {earlier(name) + 1}"
                 carry = {}
             if carry:
                 with open(sweeps.path(name, ".resume"), "w") as f:
@@ -444,6 +490,7 @@ def main():
                              stderr=subprocess.DEVNULL, start_new_session=True,
                              env={**os.environ, "TREE": tree, "BIN": binary, **carry})
             running[name] = time.time()
+            began[name] = answered
             log(f"started {name} ({how}), {len(running)} running")
             time.sleep(5)  # so a batch does not arrive at the endpoint in one burst
 
