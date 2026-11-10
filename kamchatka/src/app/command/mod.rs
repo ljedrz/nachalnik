@@ -270,7 +270,7 @@ impl App {
             // button nothing was obliged to draw. Two loops here have a line and nothing else, and
             // `/step` points at this name when it declines.
             //
-            // note: four answers, because a session has four states here and two of them have
+            // note: five answers, because a session has five states here and two of them have
             // something to stop. A turn resting in `Ready` has calls decided and nothing running to
             // interrupt, and stopping it drops them; see `App::drop_decided`. A turn resting on a
             // question is not `busy` - resting is what lets anybody answer it - and an interrupt
@@ -291,6 +291,12 @@ impl App {
                 _ if self.errand.is_some() => self.interrupt(),
                 (false, true) => self.stop_pending(),
                 (false, false) if self.ready() => self.drop_decided(),
+                // a `/model` or `/endpoint` still settling is two requests nothing interrupts, and
+                // the next line waits for it; something is out, and it is not this to stop
+                (false, false) if self.settling.is_some() => self.say(
+                    Speaker::Note,
+                    "nothing is running to stop; the switch still settling finishes on its own",
+                ),
                 (false, false) => self.say(Speaker::Note, "nothing is running"),
             },
             // note: a command as well as `ctrl+l`, because two of the three loops have no keys to

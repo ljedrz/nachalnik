@@ -1897,6 +1897,27 @@ async fn a_line_after_a_switch_waits_for_the_switch() {
     );
 }
 
+/// `/stop` while a switch is settling says the switch is out, rather than that nothing is.
+///
+/// note: `/stop` is the one line not held behind a switch, so it arrives while one settles, and it
+/// was answered "nothing is running" about a session with two requests out.
+#[tokio::test]
+async fn stopping_while_a_switch_settles_says_the_switch_is_out() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/model something-else").await;
+    assert!(harness.app.settling.is_some(), "the switch is still settling");
+    harness.send("/stop").await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("the switch still settling finishes on its own"),
+        "{screen}"
+    );
+    harness.settle().await;
+    assert_eq!(harness.app.provider.model(), "something-else");
+}
+
 /// A switch typed into a running turn waits for the end of it, and what is typed after the switch
 /// waits behind it.
 ///
