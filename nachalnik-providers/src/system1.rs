@@ -144,7 +144,7 @@ use nachalnik::{BoxError, Usage, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Attribution, Endpoint, Keyed, RETRIES, install_crypto, same_model};
+use crate::{Attribution, Endpoint, Keyed, RETRIES, install_crypto};
 
 /// Where the questions go unless a caller says otherwise: OpenRouter, which serves every System
 /// One model on its list from the same `/api/v1` its chat completions are on.
@@ -905,8 +905,8 @@ impl Client {
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model();
         let listed = self.models().await;
-        // no model is not a model the endpoint lacks; see `crate::unlisted`
-        if model.is_empty() || listed.is_empty() || listed.iter().any(|it| same_model(it, &model)) {
+        // the rule `crate::unlisted` follows, in this client's words
+        if !crate::missing(&model, &listed) {
             *self.notice.lock() = None;
             return;
         }
