@@ -306,3 +306,10 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   files, `fork`'s `branch`, `changes.rs`'s `moved` and `setup`'s `permissions` each do several
   things in one body and could hand the parts to functions. None of it is wrong today; it is a
   refactor for the next change to these tools.
+
+- **An error and its causes are written out by two copies of one function.** `described` in
+  nachalnik's kernel and `with_causes` in nachalnik-providers each join an error and the causes
+  under it, skipping a cause the message already holds. The two crates ship together and their
+  output reads side by side - a tool's failure and a request's - so a change to one rule and not
+  the other would show. One copy means public API somewhere: in nachalnik, which takes nothing that
+  can live outside it, or in a crate both already depend on. It waits on where that should be.
