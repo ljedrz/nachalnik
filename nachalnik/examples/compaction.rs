@@ -58,9 +58,13 @@ struct Summarizer {
 #[async_trait]
 impl Compactor for Summarizer {
     fn should_compact(&self, budget: &Budget) -> bool {
-        budget
-            .fraction_used()
-            .is_some_and(|used| used >= self.threshold)
+        // note: asked first, as `Budget::fully_counted` says to. With something in the request the
+        // counter could not price, `fraction_used` is a floor, and a context under the threshold by
+        // that figure can be over the limit by the real one
+        budget.limit.is_some() && !budget.fully_counted()
+            || budget
+                .fraction_used()
+                .is_some_and(|used| used >= self.threshold)
     }
 
     async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan> {
