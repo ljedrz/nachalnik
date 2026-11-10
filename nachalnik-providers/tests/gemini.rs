@@ -143,11 +143,6 @@ async fn a_streamed_turn_keeps_the_order_it_arrived_in() {
     assert_eq!(usage.input_tokens, Some(67));
     assert_eq!(usage.output_tokens, Some(52));
     assert_eq!(usage.reasoning_tokens, Some(12));
-    assert_eq!(
-        usage.output_tokens.unwrap() - usage.reasoning_tokens.unwrap(),
-        40,
-        "and the answer's own cost is still recoverable, by subtraction"
-    );
 }
 
 /// A prompt the API blocked outright is a refusal, not an empty turn nobody explained.

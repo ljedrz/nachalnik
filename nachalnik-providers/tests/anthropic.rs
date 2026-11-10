@@ -651,6 +651,9 @@ async fn a_provider_moved_says_where_it_is_and_whether_its_model_is_there() {
 async fn the_requests_for_an_answer_are_counted() {
     let provider = Anthropic::new("claude-test", "http://127.0.0.1:1", "no key needed");
     assert_eq!(provider.attempts(), 0);
+    // a probe asks for the listing and the model's entry, which are not answers
+    provider.probe().await;
+    assert_eq!(provider.attempts(), 0, "a probe was counted as a request");
 
     let (_, provider, _) = answered(THOUGHT_THEN_CALLED).await;
     assert_eq!(provider.attempts(), 1);

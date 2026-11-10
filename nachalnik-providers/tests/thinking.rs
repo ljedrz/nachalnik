@@ -67,11 +67,8 @@ async fn a_streamed_answer_gives_up_the_thinking_written_into_it() {
         thought.as_deref(),
         Some("I should look at the budget first.")
     );
+    // both halves exactly, so the tag split across three fragments is in neither
     assert_eq!(said.as_deref(), Some("Let me check the budget:"));
-    assert!(
-        !said.unwrap_or_default().contains("think"),
-        "and the tag is in neither half"
-    );
 }
 
 #[tokio::test]
