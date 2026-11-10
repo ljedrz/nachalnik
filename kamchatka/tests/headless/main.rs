@@ -4491,8 +4491,10 @@ async fn a_compaction_pass_that_fell_over_is_said_and_the_session_carries_on() {
     let said: Vec<String> = app.notes(0).map(|entry| entry.text.clone()).collect();
     assert!(
         said.iter()
-            .any(|text| text == "the compaction pass failed before it came back"),
-        "the session is not told the pass failed: {said:?}"
+            .any(|text| text
+                == "the compaction pass failed before it came back: it panicked: the compactor \
+                    fell over"),
+        "the session is not told the pass failed, and why: {said:?}"
     );
 
     // and a line after it is read at all, rather than queued behind a pass that is never coming

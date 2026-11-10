@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A `/models` listing or a compaction pass that panics says what it said.** It was reported as
+  "the compaction pass failed before it came back" and nothing more, though a turn that panics
+  says why; it now ends with the panic's message.
 - **A shell call stopped part-way kills the confined command before removing its `$TMPDIR`.** The
   temporary directory was removed first and the sandbox dropped after, so a command still writing
   could put a file back between the emptying and the removal, and the directory stayed in `/tmp`.
