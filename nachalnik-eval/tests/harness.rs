@@ -741,12 +741,17 @@ async fn a_disagreement_nothing_settles_is_scored_from_both_sides() {
 #[tokio::test]
 async fn the_answer_is_filed_under_the_side_it_belongs_to() {
     // the depot, the disputed annex memo and the return planted against it: `kirov` is what the
-    // notes support with the memo in, `omsk` what they support with it out, and `tara` is on
-    // neither side
+    // notes support with the memo in, `omsk` what they support with it out, `tara` is on neither
+    // side, and an answer that names no depot cannot be read as one
+    const UNREADABLE: &str = "I would rather not say.";
     let filed = |answer: &str, notes: Vec<String>| {
+        let opening = match answer {
+            UNREADABLE => "it did not answer".to_owned(),
+            _ => format!("it answered `{answer}`"),
+        };
         notes
             .into_iter()
-            .find(|note| note.starts_with(&format!("it answered `{answer}`")))
+            .find(|note| note.starts_with(&opening))
             .unwrap_or_else(|| panic!("the record does not say which side `{answer}` is on"))
     };
 
@@ -754,6 +759,7 @@ async fn the_answer_is_filed_under_the_side_it_belongs_to() {
         ("kirov", common::depot_answering("kirov")),
         ("omsk", common::depot_answering("omsk")),
         ("tara", common::depot_answering("tara")),
+        (UNREADABLE, common::depot_answering(UNREADABLE)),
     ] {
         let model = Arc::new(Rulebook::new(rules, FALLBACK));
         let subject = subject("subject", model);
@@ -778,7 +784,8 @@ async fn the_answer_is_filed_under_the_side_it_belongs_to() {
             match answer {
                 "kirov" => "it answered `kirov`, which is the side `records/omsk-annex` is on",
                 "omsk" => "it answered `omsk`, which is the side `records/omsk-return` is on",
-                _ => "it answered `tara`, which is neither side of the disagreement",
+                "tara" => "it answered `tara`, which is neither side of the disagreement",
+                _ => "it did not answer the question readably",
             },
             "`{answer}` was filed under the wrong side of the disagreement"
         );
