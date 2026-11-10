@@ -200,7 +200,7 @@ impl Kernel {
         // another, a client that added a tool and then set parameters could have a request go out
         // with the parameters but not the tool, which no prefix of the log describes. The order is
         // the one on `InnerKernel`
-        let (tools, projection, params) = {
+        let (tools, mut projection, params) = {
             let tools = self.0.tools.read();
             let projector = self.0.projector.read();
             let params = self.0.params.read();
@@ -216,8 +216,10 @@ impl Kernel {
             return Err(Error::EmptyProjection);
         }
 
+        // moved rather than copied: what is read of the projection after this is which items went
+        // in and what was skipped or repaired, not the messages
         let request = ModelRequest {
-            messages: projection.messages.clone(),
+            messages: std::mem::take(&mut projection.messages),
             tools,
             params,
         };
@@ -521,7 +523,7 @@ impl Kernel {
 pub(super) struct Built {
     /// The request.
     pub request: ModelRequest,
-    /// The projection its messages came from.
+    /// The projection its messages came from, with the messages moved out into the request.
     pub projection: Projection,
     /// What the messages cost.
     pub context: Cost,
