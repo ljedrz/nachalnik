@@ -298,13 +298,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   `introspect/context/changes.rs` keeps the undo journal and the eight operations that write to it,
   over a thousand lines; the journal (`Journal`, `Entry`, `Left`, `Undoing`, `Applied`,
   `moved_since`, `hold`) is a file of its own. `introspect/context/reads.rs` keeps five renderers
-  that share little: the list, search, budget and request answers could each be one under a
-  `reads/` directory. The four tools (`context`, `fork`, `log`, `setup`) each write the same
-  `limit`, `unparsed` and `malformed` over the same fields, and `log`'s has gone its own way, an
-  absent `action` being `read`. One struct holding the shared fields, with those methods, would keep them alike. Inside the
-  files, `fork`'s `branch`, `changes.rs`'s `moved` and `setup`'s `permissions` each do several
-  things in one body and could hand the parts to functions. None of it is wrong today; it is a
-  refactor for the next change to these tools.
+  that share little: the list, search, budget and request answers could each be one under a `reads/`
+  directory. The four tools (`context`, `fork`, `log`, `setup`) each write the same `limit`,
+  `unparsed` and `malformed` over the same fields, and `log`'s has gone its own way, an absent
+  `action` being `read`. One struct holding the shared fields, with those methods, would keep them
+  alike. Inside the files, `fork`'s `branch`, `changes.rs`'s `moved` and `setup`'s `permissions`
+  each do several things in one body and could hand the parts to functions. None of it is wrong
+  today; it is a refactor for the next change to these tools.
 
 - **An error and its causes are written out by two copies of one function.** `described` in
   nachalnik's kernel and `with_causes` in nachalnik-providers each join an error and the causes
