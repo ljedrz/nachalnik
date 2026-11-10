@@ -208,7 +208,11 @@ bump and release commits; **`pre-push`** reviews a branch against the convention
 - **Property tests keep no seed file.** Turn a failure into a named test case with a note; a file
   of opaque hashes is a regression suite nobody can read.
 - **Changelogs** are per crate, follow Keep a Changelog, and are kept up to date before a release
-  rather than reconstructed after.
+  rather than reconstructed after. The headings are lowercase, and beside Keep a Changelog's own
+  (`added`, `changed`, `deprecated`, `removed`, `fixed`, `security`) there is `breaking`, first
+  under a version, for what can break a caller's build or behaviour. It is read by tools, not only
+  people: the pre-push check looks for it beside an API break, and a release moves the minor
+  version for anything in it.
 - **Which version number changes depends on the public API.** In `0.x.y`, `x` is the compatibility
   boundary: a change that can break a caller's build bumps `x`, everything else (including new API)
   bumps `y`. Breaking changes are: removing an item, changing a signature or public field, adding a
