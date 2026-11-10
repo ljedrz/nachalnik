@@ -447,3 +447,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   state or source would be refused by selectors until somebody added it there too. Deriving the
   kinds and states from the types, and keeping only the plural aliases by hand, would make each
   list one. A refactor for the next change to either.
+
+- **The wiring's preflight, `main`'s `session` and a few readers are each written more than once
+  or in one body.** `wiring/mod.rs` holds the check that refuses a rule naming nothing (`offered`,
+  `built`, `judged_as`, `unreached`, `named`, `Refused`, `Setup::check`), which `wire` touches only
+  through `check()`, and it could be a module of its own. `main.rs`'s `session` dispatches four
+  one-shot modes before a 560-line body that opens each session. `mcp.rs`'s `attach_within` and
+  `reinstall` each claim, partition and install with only their sentences apart; `headless.rs`
+  drains queued events three times inside `run`; the log beside a snapshot is read three ways
+  (`past_the_snapshot`, `last_talked_to`, `Earlier::read`), each skipping what it skips; and
+  `endpoint.rs` holds the advisor's account rules beside the endpoint. A refactor for the next
+  change to any of them.
