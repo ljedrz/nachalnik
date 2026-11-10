@@ -63,6 +63,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A shell call stopped part-way kills the confined command before removing its `$TMPDIR`.** The
+  temporary directory was removed first and the sandbox dropped after, so a command still writing
+  could put a file back between the emptying and the removal, and the directory stayed in `/tmp`.
 - **A session record that fails to start leaves no file behind.** The log's name was claimed
   first, and a start that then failed - a full disk, a snapshot that would not write - left the
   empty log in the temporary directory, and the record at the end of the run went under a `-2`
