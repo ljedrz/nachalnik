@@ -128,11 +128,19 @@ impl Tool for Ballot {
             // for it, and nothing is invented on its behalf
             return Ok(ToolOutput::error("`verdict` is required, and was missing"));
         };
+        // the same for the reason: the tally and the chair read it, and a position recorded without
+        // one would have it vanish from both in silence
+        let Some(because) = call.args["because"]
+            .as_str()
+            .filter(|b| !b.trim().is_empty())
+        else {
+            return Ok(ToolOutput::error("`because` is required, and was missing"));
+        };
 
         *self.slot.lock() = Some(Position {
             verdict: verdict.trim().to_owned(),
             confidence: call.args["confidence"].as_f64().unwrap_or(f64::NAN),
-            because: call.args["because"].as_str().unwrap_or_default().to_owned(),
+            because: because.trim().to_owned(),
         });
 
         Ok(ToolOutput::new("position recorded"))
@@ -457,9 +465,17 @@ fn circulate(panel: &[Panelist], previous: usize) -> usize {
                 Some(old) => panelist.kernel.supersede(old, item),
                 None => Ok(panelist.kernel.push(item)),
             };
-            if let Ok(id) = id {
-                panelist.peers.lock().insert(peer.model.clone(), id);
-                carried += 1;
+            match id {
+                Ok(id) => {
+                    panelist.peers.lock().insert(peer.model.clone(), id);
+                    carried += 1;
+                }
+                // what each panelist was shown is the point of the transcript, so one it was not
+                // shown is said rather than missing from the count unexplained
+                Err(e) => eprintln!(
+                    "{} was not shown what {} said in round {previous}: {e}",
+                    panelist.model, peer.model
+                ),
             }
         }
     }

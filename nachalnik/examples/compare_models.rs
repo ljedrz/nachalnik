@@ -230,17 +230,31 @@ async fn ask(contenders: &[Contender], sequential: bool) -> Vec<Answer> {
     // example spawns the tasks, not the kernel; a kernel spawns none unless
     // `Config::parallel_tool_calls` says so.
     let mut running = tokio::task::JoinSet::new();
+    let mut spawned = HashMap::new();
     for (index, contender) in contenders.iter().enumerate() {
         let kernel = contender.kernel.clone();
-        running.spawn(async move { (index, one(kernel).await) });
+        let task = running.spawn(async move { (index, one(kernel).await) });
+        spawned.insert(task.id(), index);
     }
 
     // every task is waited for. Stopping at a panic would drop the set and abort the remaining
-    // tasks, which would then be reported as not finished
+    // tasks, which would then be reported as not finished; a task that panicked is reported with
+    // what it said
     let mut answers: HashMap<usize, Answer> = HashMap::new();
     while let Some(joined) = running.join_next().await {
-        if let Ok((index, answer)) = joined {
-            answers.insert(index, answer);
+        match joined {
+            Ok((index, answer)) => {
+                answers.insert(index, answer);
+            }
+            Err(e) => {
+                answers.insert(
+                    spawned[&e.id()],
+                    Answer {
+                        elapsed: Duration::ZERO,
+                        outcome: Err(e.to_string()),
+                    },
+                );
+            }
         }
     }
 
