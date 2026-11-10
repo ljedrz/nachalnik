@@ -469,3 +469,12 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   so a machine that refuses the call anyway skips rather than passes. They wait on a machine that
   can run them: the session these were found in refuses `io_uring` unconfined and fails the gate's
   own tests, so nothing written here could be seen to pass, or to catch anything.
+
+- **Two of nachalnik-providers' files are as much tests as code, and `Gathering::fold` does three
+  things in one body.** `openai/wire.rs` is about 1,900 lines, half of them its test module, and
+  `system1.rs` about the same, its wire types, its client and its tests; each test module could be a
+  child module of its own, which keeps the access to private items it needs, and System One's types
+  could leave its client. `Gathering::fold` works out which call a fragment continues - by index,
+  by identifier or neither, each with a carve-out for a server that sends the whole call again -
+  then parses and merges it in the same body; the first part as a function of its own would let
+  each be read alone. A refactor for the next change to either.
