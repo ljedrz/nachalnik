@@ -63,6 +63,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`log` refuses an action it does not have the way the other tools do.** An argument run into
+  the action - `read<arg_key>whole` - was refused with only "there is no `read<arg_key>whole`"; it
+  now says it is `read` with something after it, and to send `action` as `read` alone, as
+  `context`, `fork` and `setup` say it.
 - **`-r` holds the log beside a snapshot to the same rule as the snapshot.** A number in the log
   past the snapshot - an item or permission identifier with no room after it - was read in after
   the snapshot was checked, and the next one after it overflowed: a panic in a debug build and a
