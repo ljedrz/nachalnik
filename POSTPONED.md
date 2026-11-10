@@ -272,3 +272,12 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   line is one; one function saying why a line waits, and the dispatch declaring which commands
   switch, would make it one place. None of it is wrong today. It is a refactor worth doing with the
   next change to any of them.
+
+- **`kamchatka/CHANGELOG.md` is over six thousand lines, nearly all of them released.** The
+  `[unreleased]` section is the first hundred or so, and each release adds hundreds more below it,
+  so nobody reads the file whole. Keep a Changelog allows moving released sections, unchanged, to an
+  archive file beside it (`CHANGELOG-0.1-0.19.md`, say) with a line pointing there, so the main
+  file holds the working end and the recent releases. `scripts/references.sh` leaves out only
+  files named `*CHANGELOG.md`, so an archive named that way would have its old item names checked
+  against today's code; its pattern would widen with the move. It waits on whether the history is
+  read in the file at all, or only through the release tags.
