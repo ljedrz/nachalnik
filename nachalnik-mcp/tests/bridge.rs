@@ -775,6 +775,8 @@ async fn a_denied_call_can_still_be_allowed_by_the_person_watching() {
 #[tokio::test]
 async fn resources_arrive_as_items_to_push_or_not() {
     let (server, _) = bench("files").await;
+    // installed first, so that there is a kernel the listing could have pushed into
+    let kernel = installed(&server).await;
 
     let items = server.resources().await.unwrap();
 
@@ -808,9 +810,9 @@ async fn resources_arrive_as_items_to_push_or_not() {
         "[a resource with no text (image/png), not carried into the context]"
     );
 
-    // and nothing was pushed anywhere: a server offering documents is not an argument
-    let kernel = kernel();
-    assert!(kernel.items().is_empty());
+    // and nothing was pushed into the kernel it is installed in: a server offering documents is
+    // not an argument
+    assert!(kernel.items().is_empty(), "{:?}", kernel.items());
 }
 
 #[tokio::test]
