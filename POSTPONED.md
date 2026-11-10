@@ -478,15 +478,13 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   ask-then-sweep of `attribution`, `feedback` and `instrumented`, recording what each copy did
   before it fails, is written three times, and asking one probe per label four times; "what the
   copies answered" is said through `said_or_nothing` in one suite and with an inline
-  `unwrap_or("nothing")` in seven; and the rule for when a grant holds (a `Briefed` ends it, a
-  `Granted` opens it) is scanned for twice in `score/reports.rs`, by `unaided` and `Reached::over`,
-  which agree today. `score/reports.rs` holds twelve figure types, `trial.rs` the recorder beside
-  `Resolution` and `Step`, `suite/handles.rs` two tools and their policy, `experiment.rs` the
-  runners beside the report types, `fork.rs` the result types every suite reads beside the copying,
+  `unwrap_or("nothing")` in seven. `score/reports.rs` holds twelve figure types, `trial.rs` the
+  recorder beside `Resolution` and `Step`, `suite/handles.rs` two tools and their policy,
+  `experiment.rs` the runners beside the report types, `fork.rs` the result types every suite reads
+  beside the copying,
   and `instrumented`'s `ladder` three stages in one body. In nachalnik-mcp, `tool.rs` names tools
   and converts results beside `Trust` and `McpTool`, and its `invoke` stops a call two ways in one
-  loop. A refactor for the next change to any of them; the grant rule first, since two scans of
-  one rule are what a scoring change would miss.
+  loop. A refactor for the next change to any of them.
 
 - **kamchatka's longest test files hold several subjects, with their helpers between the tests.**
   `tests/headless/main.rs` (about 4,700 lines) keeps the recorder's tests, the slash commands and

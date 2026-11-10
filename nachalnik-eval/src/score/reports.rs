@@ -783,17 +783,13 @@ pub struct Reached {
 /// no stage was made outside any ladder and is kept.
 pub(crate) fn unaided(steps: &[Step]) -> impl Iterator<Item = &Resolution> {
     let mut in_reach = std::collections::BTreeSet::new();
-    let mut granted = false;
-    for step in steps {
-        match step {
-            Step::Briefed { .. } => granted = false,
-            Step::Granted { .. } => granted = true,
-            Step::Asked {
-                stage: Some(stage), ..
-            } if granted => {
-                in_reach.insert(stage.as_str());
-            }
-            _ => {}
+    for (step, granted) in under_grant(steps) {
+        if let Step::Asked {
+            stage: Some(stage), ..
+        } = step
+            && granted
+        {
+            in_reach.insert(stage.as_str());
         }
     }
 
@@ -807,6 +803,23 @@ pub(crate) fn unaided(steps: &[Step]) -> impl Iterator<Item = &Resolution> {
             Some(resolution)
         }
         _ => None,
+    })
+}
+
+/// Each step, with whether a grant of handles holds at it: one does from a [`Step::Granted`] until
+/// the next session is briefed.
+///
+/// note: the one rule [`unaided`] and [`Reached::over`] both read the record by. Written out in
+/// each, a change to when a grant ends made in one would score the endpoint and the gate under
+/// two different rules.
+fn under_grant(steps: &[Step]) -> impl Iterator<Item = (&Step, bool)> {
+    steps.iter().scan(false, |granted, step| {
+        match step {
+            Step::Briefed { .. } => *granted = false,
+            Step::Granted { .. } => *granted = true,
+            _ => {}
+        }
+        Some((step, *granted))
     })
 }
 
@@ -825,16 +838,11 @@ impl Reached {
     /// preregistered gate is read off.
     pub fn over(steps: &[Step]) -> Self {
         let mut reached = Self::default();
-        let mut granted = false;
         let mut open = false;
 
-        for step in steps {
+        for (step, granted) in under_grant(steps) {
             match step {
-                Step::Briefed { .. } => {
-                    granted = false;
-                    open = false;
-                }
-                Step::Granted { .. } => granted = true,
+                Step::Briefed { .. } => open = false,
                 Step::Asked { stage, .. } => {
                     open = granted && stage.is_some();
                     if open {
