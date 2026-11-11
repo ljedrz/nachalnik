@@ -1087,6 +1087,41 @@ async fn cancelling_is_logged_as_refusing_and_then_running() {
     assert!(finished.iter().all(|at| *at < idle[0]), "{said:?}");
 }
 
+/// A call already decided keeps its one decision when the batch is cancelled: only the call still
+/// waiting is announced as refused by cancelling, and both are answered as cancelled.
+///
+/// note: every pending call used to be announced, so a call allowed and then cancelled had two
+/// decisions on record for one request - which `decide` itself refuses to make.
+#[tokio::test]
+async fn cancelling_does_not_decide_a_decided_call_again() {
+    let kernel = two_calls_waiting().await;
+    let first = kernel.pending_permissions()[0].id;
+    assert!(matches!(
+        kernel.decide(first, nachalnik::Grant::Allow).unwrap(),
+        State::Deciding { .. }
+    ));
+    let before = kernel.history().len();
+
+    assert_eq!(kernel.cancel_pending_calls("changed my mind"), 2);
+
+    let decided: Vec<_> = kernel.history()[before..]
+        .iter()
+        .filter_map(|record| match &record.event {
+            Event::PermissionDecided { id, source, .. } => Some((*id, *source)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(decided.len(), 1, "{decided:?}");
+    assert_ne!(decided[0].0, first, "{decided:?}");
+    assert_eq!(decided[0].1, nachalnik::GrantSource::Cancellation);
+
+    let finished = kernel.history()[before..]
+        .iter()
+        .filter(|record| record.event.name() == "tool.finished")
+        .count();
+    assert_eq!(finished, 2);
+}
+
 /// No step begins while cancelled calls are still being answered.
 ///
 /// note: the counter stops the kernel inside recording the first refusal, which is where a step

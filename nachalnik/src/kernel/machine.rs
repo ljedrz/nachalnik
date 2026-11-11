@@ -216,6 +216,10 @@ impl Kernel {
 
     /// Drops every prepared tool call, recording each as refused, and returns how many there were.
     ///
+    /// note: a refusal is announced only for a call nobody had decided yet. One already allowed or
+    /// refused keeps that one decision, as [`Kernel::decide`] keeps one per request; its result says
+    /// it was cancelled, which is what tells a reader that an allowed call never ran.
+    ///
     /// note: the model is told the calls were refused, because most providers do not accept a call
     /// without a result. Whether it sees that is up to the [`Projector`]; the record is kept either
     /// way.
@@ -240,13 +244,16 @@ impl Kernel {
                 return 0;
             }
 
-            let refusals = prepared.iter().map(|call| Event::PermissionDecided {
-                id: call.request.id,
-                call: call.call.id.clone(),
-                tool: call.call.tool.clone(),
-                grant: Grant::Deny,
-                source: GrantSource::Cancellation,
-            });
+            let refusals = prepared
+                .iter()
+                .filter(|call| call.grant.is_none())
+                .map(|call| Event::PermissionDecided {
+                    id: call.request.id,
+                    call: call.call.id.clone(),
+                    tool: call.call.tool.clone(),
+                    grant: Grant::Deny,
+                    source: GrantSource::Cancellation,
+                });
             let calls = prepared.iter().map(|p| p.call.id.clone()).collect();
             self.settle(&mut machine, refusals, State::Executing { calls });
 
