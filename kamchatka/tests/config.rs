@@ -2133,9 +2133,8 @@ fn a_typed_mcp_beats_the_file() {
 
 /// A file saying `advise: true` asks for the advisor, as a typed `--rate-shell-commands` does.
 ///
-/// note: read off the policy the record names at startup, as the run beside it does: a rating is
-/// only ever drawn beside a question, so which policy a session starts under is the only thing
-/// that says whether the advisor was reached for at all.
+/// note: read off what a headless run says about the advisor it reached and let go of, as the run
+/// beside it does: a rating is only ever drawn beside a question, and this run draws none.
 #[cfg(feature = "shell-advisor")]
 #[test]
 fn a_file_asks_for_the_advisor_as_a_flag_does() {
@@ -2149,7 +2148,7 @@ fn a_file_asks_for_the_advisor_as_a_flag_does() {
 
     let (ok, said) = run_with(&["--config-file", &path], "", &local);
     assert!(ok, "{said}");
-    assert!(said.contains("tools::advice::Advised"), "{said}");
+    assert!(said.contains("rates nothing in a headless run"), "{said}");
 }
 
 /// A typed `--rate-shell-commands` is not turned off by a file saying `false`.
@@ -2187,15 +2186,17 @@ fn an_advisor_model_set_to_nothing_is_not_a_model() {
     );
 }
 
-/// `--rate-shell-commands` puts the advisor in front of the standing rules, and a session that did
-/// not ask for it has the rules alone.
+/// A headless run reaches the advisor `--rate-shell-commands` asks for, so a flag that cannot work
+/// is still refused, and then runs under the standing rules alone and says so: it answers its
+/// questions with `--on-ask` and draws none, so each rating would be paid for and seen by nobody.
 ///
 /// note: an advisor at a closed port on this machine, so that nothing leaves it: a session that
 /// asks nothing never finds out that nobody answers there. What is read is the policy the record
-/// names when the session starts, since a rating is only ever drawn beside a question.
+/// names when the session starts. Wiring the advisor in front of the rules is tested with a
+/// `Setup` in `tests/headless`.
 #[cfg(feature = "shell-advisor")]
 #[test]
-fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
+fn a_headless_run_lets_go_of_the_advisor_and_says_so() {
     let local = [
         ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
         ("KAMCHATKA_SYSTEM1_BASE_URL", "http://127.0.0.1:1/v1"),
@@ -2204,11 +2205,13 @@ fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
 
     let (ok, said) = run_with(&["--rate-shell-commands"], "", &local);
     assert!(ok, "{said}");
-    assert!(said.contains("tools::advice::Advised"), "{said}");
+    assert!(said.contains("rates nothing in a headless run"), "{said}");
+    assert!(!said.contains("tools::advice::Advised"), "{said}");
+    assert!(said.contains("tools::policy::Careful"), "{said}");
 
     let (ok, said) = run_with(&[], "", &local);
     assert!(ok, "{said}");
-    assert!(!said.contains("tools::advice::Advised"), "{said}");
+    assert!(!said.contains("rates nothing"), "{said}");
 }
 
 /// `--rate-shell-commands` with no model named is refused, and says where to pick one.

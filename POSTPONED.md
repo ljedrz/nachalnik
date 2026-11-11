@@ -141,14 +141,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   returns that error is not known here. Unblocked by finding out, from sandlock's source or a test
   that makes it fail.
 
-- **A headless run with `--rate-shell-commands` pays for ratings it never shows.** `Advised`
-  rates every shell command its policy would ask about, and a headless run answers those
-  questions with `--on-ask`, so each command is sent to the advisor and paid for, and nothing a
-  headless run prints or records carries the band. The note on `Advised::evaluate` gives exactly
-  that as the reason not to rate an `Allow` or a `Deny`. It waits on choosing between printing the
-  band beside the answer, not rating where nothing draws it, and refusing the flag in a headless
-  run.
-
 - **A granted call that is cancelled is decided a second time.** `cancel_pending_calls` announces
   `permission.decided` with `deny` and `cancellation` for every pending call, including those
   already granted and waiting in `Ready`, so the log holds two decisions for one permission id,

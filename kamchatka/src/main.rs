@@ -549,7 +549,19 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     }
 
     #[cfg(feature = "shell-advisor")]
-    let setup = starting(ends, "reaching the advisor", args.advised(setup)).await?;
+    let mut setup = starting(ends, "reaching the advisor", args.advised(setup)).await?;
+    // note: reached and then let go of. A rating is drawn beside a question, and a run nobody is
+    // attached to answers its questions with `--on-ask` and draws nothing, so each rating would be
+    // a paid request nobody sees. Reaching it first still refuses a flag that cannot work, as an
+    // attended run would
+    #[cfg(feature = "shell-advisor")]
+    if unattended && setup.advisor.take().is_some() {
+        let _ = writeln!(
+            std::io::stderr(),
+            "· --rate-shell-commands rates nothing in a headless run: nothing would show a \
+             rating, and each one is a request paid for"
+        );
+    }
 
     let provider = starting(ends, "reaching the model", args.provider()).await?;
     // note: a run nobody watches waits out a busy endpoint for about five minutes rather than
