@@ -56,12 +56,18 @@ IDLED = "Your turn ended without a single tool call"
 
 
 def carried(name):
-    """How many messages `drive.py` sent of its own in this part, cuts and nudges, and how many
-    messages it sent early: `(cuts, nudges, wrap-ups)`."""
-    try:
-        lines = open(path(name, ".carried")).read().split()
-    except FileNotFoundError:
-        return 0, 0, 0
+    """How many messages `drive.py` sent of its own, cuts and nudges, and how many messages it sent
+    early: `(cuts, nudges, wrap-ups)`.
+
+    note: in every part, not only this one: a resumed session's log begins with the records of the
+    parts before it, their cuts included, and each part's NAME.carried is in old/parts/"""
+    lines = []
+    earlier = glob.glob(os.path.join(SWEEPS, "old", "parts", f"{glob.escape(name)}.*.carried"))
+    for p in earlier + [path(name, ".carried")]:
+        try:
+            lines += open(p).read().split()
+        except FileNotFoundError:
+            pass
     return lines.count("carry"), lines.count("idle"), lines.count("wrap")
 
 

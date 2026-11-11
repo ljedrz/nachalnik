@@ -141,15 +141,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   returns that error is not known here. Unblocked by finding out, from sandlock's source or a test
   that makes it fail.
 
-- **Two sessions in different pid namespaces sharing `/tmp` can take each other's `$TMPDIR`.**
-  `scratch_path` names a command's directory after this process's pid and a counter, and
-  `make_scratch` removes and remakes a directory of that name that is already there and the same
-  account's, on the grounds that pids come round again. Two `kamchatka` processes in different
-  pid namespaces - two containers sharing one `/tmp` under one account - can hold the same pid
-  at once, and then one removes the other's directory under a running command. Nothing here has
-  been seen to do it. Unblocked by naming the directory with something no other process can
-  share, such as a random part, at the cost of the name no longer saying whose it was.
-
 - **A headless run with `--rate-shell-commands` pays for ratings it never shows.** `Advised`
   rates every shell command its policy would ask about, and a headless run answers those
   questions with `--on-ask`, so each command is sent to the advisor and paid for, and nothing a
@@ -227,15 +218,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   changed while the plan was awaited, the compaction's two figures are the costs of the requests
   built either side of it, so two of those projections are redundant. Each is linear in the context and milliseconds against a
   request, and a step compacts rarely, which is why it has not been done.
-
-- **The repo-sweep status counts a resumed sweep's earlier cuts as messages passed over.** A
-  resumed session's log begins with the records of the part before it, cuts `drive.py` sent
-  included, but `sweeps.py` discounts only the cuts in the current part's `NAME.carried`; the
-  earlier part's is in `old/parts/`. Such a sweep shows `2/1 sent` and `status.py` warns that a
-  message was passed over when none was. Whether it is complete is unaffected, since that also
-  needs the session to end on its own after its last message. Adding up every part's `.carried`,
-  or counting only the records after the last `session.resumed`, would settle it; it waits for
-  the next change to the skill's scripts.
 
 - **`ANTHROPIC_API_KEY` is read only under `--api anthropic`, even at Anthropic's own address.**
   Anthropic also serves an OpenAI-compatible API at `https://api.anthropic.com/v1`. A session
