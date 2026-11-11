@@ -73,6 +73,14 @@ impl Changes {
     }
 }
 
+/// How many of its own changes [`Changes`] keeps to walk back; the oldest go first.
+///
+/// note: the kernel's own undo depth, `Config::context_undo_depth`'s default. Each entry holds the
+/// items as they were, old content included, and the journal goes into every snapshot, so without
+/// a limit a session that revises large items writes every old version at the end of every turn.
+/// `undo`'s description in `context/mod.rs` gives the number.
+const DEPTH: usize = 16;
+
 /// What [`Changes`] has made, and what it has walked back.
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct Journal {
@@ -928,6 +936,8 @@ impl Changes {
         let mut journal = self.journal.lock();
         journal.undone.clear();
         journal.done.push(entry);
+        let over = journal.done.len().saturating_sub(DEPTH);
+        journal.done.drain(..over);
     }
 
     /// Remembers whether this tool holds an item pinned, and with what note.

@@ -75,6 +75,10 @@ minor bump may break you.
 - **A `/models` listing or a compaction pass that panics says what it said.** It was reported as
   "the compaction pass failed before it came back" and nothing more, though a turn that panics
   says why; it now ends with the panic's message.
+- **The `context` tool keeps only its last 16 changes to undo.** Each change it made was kept with
+  the items as they were, old content included, and the whole list went into the snapshot at the
+  end of every turn, so a session that revised large items many times wrote every old version
+  again each turn. It now keeps as many as the kernel's own undo, and `undo`'s description says so.
 - **A confined command's `$TMPDIR` is named with a random part beside the pid.** It was named
   after the pid and a counter, and a directory of that name that already belonged to the same
   account was removed and made again. Two sessions in different pid namespaces sharing `/tmp`, such

@@ -696,6 +696,50 @@ async fn revise_refuses_what_text_cannot_stand_for() {
     assert!(said[1].contains("tool call"), "{}", said[1]);
 }
 
+/// The journal keeps the last 16 changes, since it goes into every snapshot with each item's old
+/// content; an undo asking for more walks back those and says nothing is left.
+#[tokio::test]
+async fn undo_walks_back_only_the_last_sixteen_changes() {
+    let mut calls: Vec<_> = (0..20)
+        .map(|n| {
+            call(
+                &format!("c{n}"),
+                "context",
+                json!({
+                    "action": "revise",
+                    "ids": [1],
+                    "content": format!("version {n}"),
+                    "reason": "shorter",
+                }),
+            )
+        })
+        .collect();
+    calls.push(call(
+        "back",
+        "context",
+        json!({ "action": "undo", "steps": 64, "reason": "all of it" }),
+    ));
+    let (kernel, _provider, _anchor) = agent(one_turn(calls));
+    kernel.push(ContextItem::memory("notes", "the original"));
+    kernel.push(ContextItem::user("tidy up"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    let walked = said.last().unwrap();
+    assert!(
+        walked.contains("walked 16 of your own change(s) back"),
+        "{walked}"
+    );
+    assert!(
+        walked.contains("0 change(s) of yours can still be undone"),
+        "{walked}"
+    );
+    // back to what the fourth revision left, not to the original
+    let notes = kernel.item(nachalnik::ContextId(1)).unwrap();
+    assert_eq!(notes.content.to_text(), "version 3");
+}
+
 #[tokio::test]
 async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
