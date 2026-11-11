@@ -46,8 +46,9 @@ required-features = ["child-process"]
 nachalnik.workspace = true
 serde_json.workspace = true
 # the official MCP SDK. `default-features = false` because its defaults build a server, and this
-# crate is only a client
-rmcp = { version = "3.1", default-features = false, features = ["client"] }
+# crate is only a client. 3.9 because before it the HTTP client read a response body with no limit
+# on its size (RUSTSEC-2026-0462)
+rmcp = { version = "3.9", default-features = false, features = ["client"] }
 # `time` and `macros` to wait for a call while watching for an interrupt; see `McpTool::invoke`.
 # `rmcp` depends on `tokio` anyway, so this only adds features
 tokio = { workspace = true, features = ["macros", "time"] }
@@ -61,8 +62,5 @@ nachalnik-utils = { workspace = true }
 proptest = { workspace = true }
 # the tests run a real MCP server in-process over a pipe, so they test the actual protocol rather
 # than a mock
-#
-# note: 3.4 here but 3.1 for the library, because the test server uses `ServerConfig`, added in
-# 3.4. Users of the crate keep the lower minimum; builds with both get a single copy
-rmcp = { version = "3.4", features = ["server", "transport-async-rw"] }
+rmcp = { version = "3.9", features = ["server", "transport-async-rw"] }
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "time"] }

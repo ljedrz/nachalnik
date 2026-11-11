@@ -12,6 +12,13 @@ minor bump may break you.
 - **A call given up on names its limit as it was set.** The message said the limit in whole
   seconds, so a second and a half read as `1s` and anything under a second as `0s`.
 
+### security
+
+- **`rmcp` is required at 3.9 or later**, the first whose HTTP client limits the size of a response
+  body it reads (RUSTSEC-2026-0462). Before it, a server reached with the `http` feature could
+  answer with a body that never ends, and the client kept reading it until the process ran out of
+  memory. Servers run as child processes were not affected.
+
 ## [0.12.0] - 2026-11-05
 
 ### changed
