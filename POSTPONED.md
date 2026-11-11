@@ -340,14 +340,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   and nothing would say when one is added to CI alone. A refactor for the next change to any of
   them.
 
-- **The `context` tool's undo journal has no depth, and goes into every snapshot.** Each change it
-  makes is an entry holding the items as they were, old content included, and nothing drops the
-  oldest; `History::saved` writes the whole journal into the snapshot at the end of every turn. The
-  kernel's own undo stops at `Config::context_undo_depth` (16). A session that revises large items
-  many times writes all their old versions into every snapshot after. Holding the journal to the
-  kernel's depth would bound it, at the cost of the model undoing a change further back than that;
-  nothing documents how far back it may now. It waits on choosing the depth, and saying it.
-
 - **The `context` tool works out the next request two or three times a call.** Its reads (`look`,
   `matched`, `budget`, `request`) and its changes each project and price the whole context more than
   once - before and after a change, or once for the answer and once for the budget - which is the
