@@ -155,6 +155,13 @@ minor bump may break you.
   served socket at once was not yet known as one, and was let in. While a command is between the
   two, every client is taken for a command's.
 
+### security
+
+- **`rustix` is required at 1.1.6 or later**, the first whose xattr functions do not mark unwritten
+  bytes as initialized when given an empty buffer (RUSTSEC-2026-0486). Nothing here calls them, but
+  the floor of 1.1.3 let a build resolve to an affected version and `cargo deny` refuse it. The
+  binaries are built with 1.1.6.
+
 ## [0.23.0] - 2026-11-05
 
 ### breaking
