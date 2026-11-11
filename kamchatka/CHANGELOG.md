@@ -53,6 +53,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.11.1, `nachalnik-mcp` 0.12.1 and `nachalnik-providers` 0.11.1, released
+  beside it. Nothing here uses new API from them; an OpenRouter `:batch` model works only with the
+  providers' Batch API, and the bridge requires an `rmcp` past RUSTSEC-2026-0462.
 - **A `grep` or `glob` path that is not there says where a pattern or a list goes.** A path
   holding `*`, `?`, `[` or `{` is told that a pattern of names goes in `pattern` for `glob` and in
   `glob` for `grep`, and one holding commas that `path` names one directory or file. Told only that
