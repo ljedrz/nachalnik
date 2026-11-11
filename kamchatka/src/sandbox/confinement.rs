@@ -463,11 +463,25 @@ pub fn degraded(sandbox: &sandlock_core::Sandbox) -> Confinement {
 /// note: made by this process before the command starts, not by the command: `/tmp` is not
 /// writable under the ruleset, and the spawning end is the one that removes it. Removing it is the
 /// caller's job - see [`crate::tools::Shell`].
+///
+/// note: the pid alone does not tell this process apart. Two processes in different pid
+/// namespaces - two containers sharing one `/tmp` under one account - can have the same pid at
+/// once, and [`make_scratch`] removes a directory of ours it finds at the name, so one would remove
+/// the other's under a running command. A random number picked once per process goes in the name
+/// beside the pid; `RandomState` is seeded from the operating system's randomness.
 pub fn scratch_path() -> PathBuf {
+    use std::hash::BuildHasher as _;
+
     static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static SALT: std::sync::LazyLock<u64> =
+        std::sync::LazyLock::new(|| std::hash::RandomState::new().hash_one(std::process::id()));
     let n = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    std::env::temp_dir().join(format!("kamchatka-{}-{n}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "kamchatka-{}-{:016x}-{n}",
+        std::process::id(),
+        *SALT
+    ))
 }
 
 /// Makes that directory, and only if this process is the one that made it; `None` if it could not
@@ -479,9 +493,9 @@ pub fn scratch_path() -> PathBuf {
 /// and the ruleset grants the resolved path everything a writable root gets: a link left in `/tmp`
 /// by another account opens whatever it pointed at, and `TMPDIR` sends the command there.
 ///
-/// note: what is already there and ours is different, and commoner, since process identifiers come
-/// round again. It is removed and remade, so a command does not inherit the leavings of whatever
-/// held the number last. `/tmp` is sticky, so an entry belonging to somebody else cannot be
+/// note: what is already there and ours is different: a run that crashed, and picked the same
+/// name, left it. It is removed and remade, so a command does not inherit the leavings of whatever
+/// held the name last. `/tmp` is sticky, so an entry belonging to somebody else cannot be
 /// unlinked and the retry fails, leaving the command with no temporary directory rather than
 /// theirs.
 ///
@@ -925,5 +939,20 @@ mod asked {
     #[test]
     fn every_scratch_directory_is_its_own() {
         assert_ne!(scratch_path(), scratch_path());
+    }
+
+    /// A scratch directory's name holds more than the pid and a counter, which another process in
+    /// another pid namespace could share.
+    #[test]
+    fn a_scratch_directory_is_not_named_by_the_pid_alone() {
+        let path = scratch_path();
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let parts: Vec<&str> = name.split('-').collect();
+
+        assert_eq!(parts.len(), 4, "{name}");
+        assert_eq!(parts[1], std::process::id().to_string(), "{name}");
+        assert_eq!(parts[2].len(), 16, "{name}");
+        assert!(parts[2].bytes().all(|b| b.is_ascii_hexdigit()), "{name}");
+        assert!(parts[3].parse::<u64>().is_ok(), "{name}");
     }
 }

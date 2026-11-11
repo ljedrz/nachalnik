@@ -75,6 +75,11 @@ minor bump may break you.
 - **A `/models` listing or a compaction pass that panics says what it said.** It was reported as
   "the compaction pass failed before it came back" and nothing more, though a turn that panics
   says why; it now ends with the panic's message.
+- **A confined command's `$TMPDIR` is named with a random part beside the pid.** It was named
+  after the pid and a counter, and a directory of that name that already belonged to the same
+  account was removed and made again. Two sessions in different pid namespaces sharing `/tmp`, such
+  as two containers, can have the same pid at once, and one could then remove the other's directory
+  while a command was using it.
 - **A shell call stopped part-way kills the confined command before removing its `$TMPDIR`.** The
   temporary directory was removed first and the sandbox dropped after, so a command still writing
   could put a file back between the emptying and the removal, and the directory stayed in `/tmp`.
