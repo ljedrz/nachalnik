@@ -164,8 +164,10 @@ sandlock-core = { version = "0.9.1", default-features = false }
 libc = "0.2.191"
 # `openat2` with `RESOLVE_BENEATH`, which `std` lacks, so a path the file tools checked can't be
 # swapped for a symlink before it's opened. `process` for process groups and `pidfd`s, `thread` for
-# the `no_new_privs` the signal scope needs. Screen builds already have it through `crossterm`
-rustix = { version = "1.1.3", features = ["fs", "process", "thread"] }
+# the `no_new_privs` the signal scope needs. Screen builds already have it through `crossterm`.
+# 1.1.6 because before it the xattr functions marked unwritten bytes as initialized
+# (RUSTSEC-2026-0486); nothing here calls them, but `cargo deny` refuses the version
+rustix = { version = "1.1.6", features = ["fs", "process", "thread"] }
 
 [[example]]
 name = "gateway"
