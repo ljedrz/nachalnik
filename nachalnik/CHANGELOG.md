@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`Kernel::cancel_pending_calls` no longer decides an already decided call a second time.** It
+  announced `permission.decided` with `deny` and `cancellation` for every pending call, so a call
+  allowed or refused before the cancel had two decisions on record for one request. Only the calls
+  still waiting for an answer get one now. Every call still gets a result saying it was cancelled.
 - **`Event::ModelFailed` carries the error's causes, not only its first line.** A provider's error
   is often a wrapper saying what was being done, with the reason beneath it, and the event recorded
   only the wrapper. It is now said as a tool's failure is told to the model: the error, then each

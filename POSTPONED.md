@@ -141,13 +141,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   returns that error is not known here. Unblocked by finding out, from sandlock's source or a test
   that makes it fail.
 
-- **A granted call that is cancelled is decided a second time.** `cancel_pending_calls` announces
-  `permission.decided` with `deny` and `cancellation` for every pending call, including those
-  already granted and waiting in `Ready`, so the log holds two decisions for one permission id,
-  while `decide` refuses a second decision for one. Leaving the granted ones out would keep one
-  decision per id, but leave an `allow` on record for a call that never ran, explained only by its
-  result. It waits on choosing which the log should say.
-
 - **The conformance suite's server reads a request once, sixteen KiB at most.** A socket closed
   with bytes still unread is reset rather than closed, and a reset can throw away an answer the
   client has not read yet, so a provider whose request is larger, or arrives in two pieces, could
