@@ -113,7 +113,7 @@ pub struct Args {
     /// the rest. The rating decides nothing: what the rules allow runs and what they refuse is
     /// refused. Sends the call's tool name, capabilities and arguments to the advisor, a System
     /// One model named by KAMCHATKA_SYSTEM1_MODEL; see KAMCHATKA_SYSTEM1_BASE_URL for one on this
-    /// machine, where nothing leaves it.
+    /// machine, where nothing leaves it. A headless run nobody is attached to rates nothing.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
     pub rate_shell_commands: bool,

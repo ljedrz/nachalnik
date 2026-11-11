@@ -570,7 +570,9 @@ provider that offers one of these but is not on the list can be used through Ope
 bring-your-own-key, which needs nothing from `kamchatka`.
 
 A build with the feature but without `--rate-shell-commands` shows no ratings, and the permissions
-tab says so.
+tab says so. A headless run that nobody is attached to rates nothing either, since nothing would
+show the rating: it checks the advisor's settings at startup as any session does, then says on
+standard error that it will not use it.
 
 **The questions go to OpenRouter and are paid for with an OpenRouter key**:
 `KAMCHATKA_SYSTEM1_API_KEY` if set; otherwise the session's own key, if the session already uses

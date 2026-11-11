@@ -75,6 +75,11 @@ minor bump may break you.
 - **A `/models` listing or a compaction pass that panics says what it said.** It was reported as
   "the compaction pass failed before it came back" and nothing more, though a turn that panics
   says why; it now ends with the panic's message.
+- **A headless run with `--rate-shell-commands` no longer pays for ratings nobody sees.** It sent
+  every shell command its rules would ask about to the advisor, though a headless run answers its
+  questions with `--on-ask` and prints no rating. A run nobody is attached to still checks the
+  advisor's settings at startup, then says on standard error that it will not use it. A served
+  session, which a client can draw ratings for, still rates.
 - **The `context` tool keeps only its last 16 changes to undo.** Each change it made was kept with
   the items as they were, old content included, and the whole list went into the snapshot at the
   end of every turn, so a session that revised large items many times wrote every old version
