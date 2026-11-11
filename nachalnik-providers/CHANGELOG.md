@@ -17,6 +17,11 @@ minor bump may break you.
   cannot be cancelled and is billed if it completes. `render` returns the batch's body, so a
   preview is still what goes out. On any other host a `:batch` suffix is part of a model's name.
 
+### changed
+
+- Requires `nachalnik` 0.11.1, which is released beside it. Nothing here uses what changed in it;
+  it is the runtime this release was tested with.
+
 ### fixed
 
 - **`Conformance::check` stops the servers it starts.** Each case left its server task and
