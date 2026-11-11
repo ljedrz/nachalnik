@@ -7,6 +7,11 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- Requires `nachalnik` 0.11.1, which is released beside it. Nothing here uses what changed in it;
+  it is the runtime this release was tested with.
+
 ### fixed
 
 - **`conflict` on a dossier its rift was not written for fails to set up rather than panicking.**
