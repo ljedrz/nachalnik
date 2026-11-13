@@ -1982,9 +1982,9 @@ fn a_run_that_keeps_no_record_says_so_when_it_ends() {
         .args(["--headless", "--no-record"])
         .env("TMPDIR", &dir)
         // no model and nothing typed, so nothing is asked of anybody - what is under test is the
-        // parting lines. A key is still wanted: the provider is built before the run
+        // parting lines. An address is still wanted: the provider is built before the run
         .env("KAMCHATKA_MODEL", "")
-        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .stdin(std::process::Stdio::null())
         .output()
         .expect("the binary under test is built");
@@ -2022,7 +2022,7 @@ fn a_save_under_no_record_is_not_denied_at_the_end() {
         .args(["--headless", "--no-record"])
         .env("TMPDIR", &dir)
         .env("KAMCHATKA_MODEL", "")
-        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())

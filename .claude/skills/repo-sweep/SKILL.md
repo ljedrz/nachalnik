@@ -5,8 +5,8 @@ description: Run a full code sweep of this workspace - audit, performance and co
 
 # a kamchatka-driven sweep
 
-What the person gives: a **model id** and a **key** (and optionally an endpoint; OpenRouter is the
-default). Everything else has a default below. Report progress as batches finish; do not stop to
+What the person gives: a **model id** and an **endpoint**, with a **key** where the endpoint checks
+one; a local server needs none. Everything else has a default below. Report progress as batches finish; do not stop to
 ask about anything this file decides.
 
 ## rules that do not bend
@@ -27,9 +27,9 @@ ask about anything this file decides.
 SKILL=<repo>/.claude/skills/repo-sweep
 export SWEEPS=$TMPDIR/sweeps; mkdir -p $SWEEPS/patches
 ( umask 077; cat > $SWEEPS/key.env <<EOF
-export KAMCHATKA_API_KEY=<key>
-export KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1
-export OPENROUTER_API_KEY=<key>           # for nachalnik's examples and live tests
+export KAMCHATKA_BASE_URL=<endpoint>      # e.g. http://127.0.0.1:8080/v1 for a local llama-server
+export KAMCHATKA_API_KEY=<key>            # where the endpoint checks one
+export NACHALNIK_BASE_URL=<endpoint>      # for nachalnik's examples and live tests
 export KAMCHATKA_TEST_MODEL=<model>       # for kamchatka's live suite
 EOF
 )

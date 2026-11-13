@@ -9,7 +9,7 @@
 use kamchatka::endpoint::{attribution, configured_limit};
 use nachalnik_providers::Attribution;
 
-/// Attribution is on unless `KAMCHATKA_NO_ATTRIBUTION` is set, and a configured limit is the
+/// Attribution is off unless `KAMCHATKA_ATTRIBUTION` is set, and a configured limit is the
 /// figure `KAMCHATKA_CONTEXT_LIMIT` holds when it is a whole number above 0, and nothing otherwise.
 ///
 /// note: one test rather than several, because the environment is shared by every test in the
@@ -19,28 +19,29 @@ fn the_endpoint_settings_read_the_environment_as_documented() {
     // SAFETY: this is the only test in this binary, so nothing else reads or writes the
     // environment while these run.
     unsafe {
-        std::env::remove_var("KAMCHATKA_NO_ATTRIBUTION");
+        std::env::remove_var("KAMCHATKA_ATTRIBUTION");
         std::env::remove_var("KAMCHATKA_CONTEXT_LIMIT");
     }
 
-    // unset: the program names itself, with its own address and what kind of program it is
+    // unset: nothing is named or sent
+    assert_eq!(
+        attribution(),
+        Attribution::default(),
+        "unset, something is named"
+    );
+
+    // set, to anything at all: the program names itself, with its own address and what kind of
+    // program it is
+    unsafe { std::env::set_var("KAMCHATKA_ATTRIBUTION", "1") };
     let named = attribution();
-    assert_ne!(named, Attribution::default(), "unset, nothing is named");
+    assert_ne!(named, Attribution::default(), "set, nothing is named");
     assert_eq!(
         named.url, "https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka",
         "the address it names"
     );
     assert_eq!(named.title, "kamchatka");
     assert_eq!(named.categories, ["cli-agent", "programming-app"]);
-
-    // set, to anything at all: nothing is named or sent
-    unsafe { std::env::set_var("KAMCHATKA_NO_ATTRIBUTION", "1") };
-    assert_eq!(
-        attribution(),
-        Attribution::default(),
-        "set, something is named"
-    );
-    unsafe { std::env::remove_var("KAMCHATKA_NO_ATTRIBUTION") };
+    unsafe { std::env::remove_var("KAMCHATKA_ATTRIBUTION") };
 
     // unset: no limit is set by hand
     assert_eq!(configured_limit(), None, "unset, a limit is read");

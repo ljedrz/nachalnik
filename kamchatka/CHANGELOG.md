@@ -5,6 +5,26 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### breaking
+
+- **There is no default endpoint.** A session needs `KAMCHATKA_BASE_URL`, and one without it is
+  refused at startup with a sentence naming the variable and giving `http://127.0.0.1:8080/v1`, a
+  local llama-server, as an example. It used to be OpenRouter, which picked a service for everybody
+  who had not chosen one. `--api gemini` and `--api anthropic` still use Google's and Anthropic's
+  own APIs when it is unset, because each of those dialects belongs to one service. `endpoint::base_url`
+  and `endpoint::session_endpoint` return a `Result`, with that sentence as the error.
+- **Attribution is opt-in.** `kamchatka` no longer names itself to OpenRouter for its app rankings
+  unless `KAMCHATKA_ATTRIBUTION` is set. `KAMCHATKA_NO_ATTRIBUTION` is no longer read, since
+  attribution is off without it.
+
+### changed
+
+- **The documentation leads with a local server.** The examples in the READMEs, `RUNNING.md` and
+  `--help` point at a llama-server on this machine and use model names that are not tied to one
+  service. OpenRouter is still supported and documented, as one hosted service among others.
+
 ## [0.23.1] - 2026-11-11
 
 ### added

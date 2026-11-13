@@ -28,10 +28,9 @@ and then depth on whatever looks wrong. What the person gives: a **model id** an
 SKILL=<repo>/.claude/skills/live-runs
 export LIVE=<repo>/target/agents/live; mkdir -p $LIVE
 ( umask 077; cat > $LIVE/key.env <<EOF
-export KAMCHATKA_API_KEY=<key>
-export KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1
+export KAMCHATKA_BASE_URL=<endpoint>    # e.g. http://127.0.0.1:8080/v1 for a local llama-server
+export KAMCHATKA_API_KEY=<key>          # where the endpoint checks one
 export KAMCHATKA_MODEL=<model>
-export OPENROUTER_API_KEY=<key>
 export KAMCHATKA_TEST_MODEL=<model>
 EOF
 )

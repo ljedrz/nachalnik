@@ -16,29 +16,39 @@ use std::{env, sync::Arc};
 use nachalnik::BoxError;
 use nachalnik_providers::OpenAiCompatible;
 
-/// The API key, under whichever of the documented names it is set.
+/// The API key, under whichever of the documented names it is set, or none.
 ///
 /// note: Deliberately not `OPENAI_API_KEY`, which plenty of people have exported for other
 /// reasons. Spending somebody's credits as a side effect of `cargo test` would be a poor way to
 /// demonstrate a crate about not doing things behind the user's back.
 ///
 /// note: and `OPENROUTER_API_KEY` only for OpenRouter. Pointed anywhere else - Google, a local
-/// ollama - only `NACHALNIK_API_KEY` is read, so an OpenRouter key somebody happens to have
+/// llama-server - only `NACHALNIK_API_KEY` is read, so an OpenRouter key somebody happens to have
 /// exported is never sent to another endpoint as the bearer.
+///
+/// note: no key is an empty one, which sends no header, except at OpenRouter, which refuses every
+/// request without one. A server on this machine checks none unless it was started with one, and
+/// a hosted service that does check refuses the request, which spends nothing.
 pub fn api_key() -> Result<String, BoxError> {
-    let base = base_url();
+    let base = base_url()?;
     match nachalnik_providers::is_openrouter(&base) {
         true => env::var("OPENROUTER_API_KEY")
             .or_else(|_| env::var("NACHALNIK_API_KEY"))
             .map_err(|_| "set OPENROUTER_API_KEY or NACHALNIK_API_KEY".into()),
-        false => env::var("NACHALNIK_API_KEY")
-            .map_err(|_| format!("set NACHALNIK_API_KEY for {base}").into()),
+        false => Ok(env::var("NACHALNIK_API_KEY").unwrap_or_default()),
     }
 }
 
-/// The endpoint to talk to; OpenRouter unless told otherwise.
-pub fn base_url() -> String {
-    env::var("NACHALNIK_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
+/// The endpoint to talk to, which `NACHALNIK_BASE_URL` names.
+///
+/// note: no default. Any address chosen here would be a service picked for everybody who runs an
+/// example or a live suite, so without one they refuse or skip, saying which variable to set.
+pub fn base_url() -> Result<String, BoxError> {
+    env::var("NACHALNIK_BASE_URL").map_err(|_| {
+        "set NACHALNIK_BASE_URL to the address of the server to talk to, e.g. \
+         http://127.0.0.1:8080/v1 for a local llama-server"
+            .into()
+    })
 }
 
 /// The context limit named in the environment, for a provider that will not say.
@@ -98,7 +108,7 @@ pub fn models(flags: Vec<String>) -> Vec<String> {
 /// endpoints wants different names for them than a benchmark writing one into a report - and
 /// probing is a round trip a caller may not want to pay for.
 pub fn provider(model: &str) -> Result<OpenAiCompatible, BoxError> {
-    let mut provider = OpenAiCompatible::new(model, base_url(), api_key()?)
+    let mut provider = OpenAiCompatible::new(model, base_url()?, api_key()?)
         .with_client(OpenAiCompatible::client())
         .with_context_limit(context_limit());
     if let Some((url, title)) = attribution() {

@@ -676,8 +676,8 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
 /// And when the address has already gone and the line is still too long, the *name* gives way -
 /// vendor prefix first, then from the left. The figures never do.
 ///
-/// note: found by pointing the live suite at OpenRouter, which is this program's default endpoint
-/// and where a name like `dots-studio/dots-3-note-preview:free` is ordinary. 36 columns of model
+/// note: found by pointing the live suite at OpenRouter, where a name like
+/// `dots-studio/dots-3-note-preview:free` is ordinary. 36 columns of model
 /// is enough on its own to push the last figure off a 100-column terminal, with `openrouter.ai`
 /// already dropped and nothing else left to give.
 #[test]

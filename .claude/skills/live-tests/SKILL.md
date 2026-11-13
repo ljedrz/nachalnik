@@ -10,9 +10,10 @@ it and that a real model can act on it. CONTRIBUTING.md's "the live tests" secti
 reference: every variable, and the mistakes each one has cost. This file is how to run them
 without making those mistakes, and how to read what comes back.
 
-What the person gives: **keys**, and **models** where the defaults won't do. OpenRouter with a
-cheap model that can call tools runs most of it. Ask what a run may cost before starting one
-that is not free; each suite's header says roughly how many requests it makes.
+What the person gives: **an endpoint**, **keys** where it checks them, and **models** where the
+defaults won't do. A local server with a model that can call tools runs most of it and costs
+nothing; a hosted service works too. Ask what a run may cost before starting one that is not
+free; each suite's header says roughly how many requests it makes.
 
 ## rules that do not bend
 
@@ -33,15 +34,16 @@ that is not free; each suite's header says roughly how many requests it makes.
 SKILL=<repo>/.claude/skills/live-tests
 mkdir -p $TMPDIR/live
 ( umask 077; cat > $TMPDIR/live/key.env <<EOF
-# nachalnik, nachalnik-eval, nachalnik-mcp
-export OPENROUTER_API_KEY=<key>
-export NACHALNIK_TEST_MODEL=<a cheap model that calls tools>
+# nachalnik, nachalnik-eval, nachalnik-mcp: required, and a local server needs no key
+export NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1
+# export NACHALNIK_API_KEY=<key>    # a hosted service's; OPENROUTER_API_KEY at OpenRouter
+export NACHALNIK_TEST_MODEL=<a model that calls tools>
 export NACHALNIK_TEST_MODEL_B=<a second one, for the swap test>
 # opted into one by one: a picture or a PDF sent to a text-only model is a 400 about nothing
 # export NACHALNIK_VISION_MODEL=...  NACHALNIK_DOCUMENT_MODEL=...
-# kamchatka
+# kamchatka: its suite skips without a key, so give a local server any value
 export KAMCHATKA_API_KEY=<key>
-export KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1
+export KAMCHATKA_BASE_URL=http://127.0.0.1:8080/v1
 export KAMCHATKA_TEST_MODEL=<model>        # not KAMCHATKA_MODEL, which the suite does not read
 # export KAMCHATKA_DOCUMENT_MODEL=...  KAMCHATKA_GEMINI_API_KEY=...  KAMCHATKA_GEMINI_MODEL=...
 # the vendors' own APIs, each with its own key, or through OpenRouter

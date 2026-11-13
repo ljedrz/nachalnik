@@ -56,9 +56,10 @@ usage: compare_models [-m MODEL].. [-f FILE].. [-s SYSTEM] [options] [prompt...]
       --save DIR       write every session's log and snapshot there
 
 environment:
-  NACHALNIK_API_KEY / OPENROUTER_API_KEY (the second for OpenRouter only)
-  NACHALNIK_BASE_URL   e.g. https://generativelanguage.googleapis.com/v1beta/openai
-                       or   http://localhost:11434/v1  (ollama; any key will do)";
+  NACHALNIK_BASE_URL   required: e.g. http://127.0.0.1:8080/v1 for a local llama-server,
+                       http://localhost:11434/v1 for ollama, or a hosted service's address
+  NACHALNIK_API_KEY / OPENROUTER_API_KEY (the second for OpenRouter only); a local server
+                       needs neither";
 
 /// One model, and the session it is having.
 struct Contender {
@@ -416,7 +417,7 @@ async fn main() -> Result<(), BoxError> {
     println!(
         "\x1b[1mnachalnik\x1b[0m · compare · {} models · {}",
         contenders.len(),
-        common::base_url()
+        common::base_url()?
     );
 
     let mut pending = (!words.is_empty()).then(|| words.join(" "));

@@ -143,7 +143,7 @@ pub struct Settings {
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Api {
-    /// OpenAI's chat completions, which OpenRouter and most local servers speak.
+    /// OpenAI's chat completions, which llama.cpp, ollama, vLLM and most hosted services speak.
     #[default]
     ChatCompletions,
     /// OpenAI's Responses API.

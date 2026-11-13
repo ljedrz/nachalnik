@@ -283,15 +283,16 @@ $ cargo run --example compare_models -- -m <model> -m <another model> "the bigge
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs the offline suite. The live suite, skipped without a key, is the only
-way to check that a real API accepts the requests this crate builds, and that a real model's answers
-survive the round trip through the context:
+`cargo test -p nachalnik` runs the offline suite. The live suite, skipped without an endpoint, is
+the only way to check that a real API accepts the requests this crate builds, and that a real
+model's answers survive the round trip through the context:
 
 ```console
-$ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --nocapture
+$ NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test --test live -- --test-threads=1 --nocapture
 ```
 
-`NACHALNIK_BASE_URL` and `NACHALNIK_API_KEY` point it at any other OpenAI-compatible endpoint.
+`NACHALNIK_BASE_URL` can name any OpenAI-compatible endpoint, with `NACHALNIK_API_KEY` for one that
+checks a key.
 
 ---
 

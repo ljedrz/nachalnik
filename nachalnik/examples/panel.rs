@@ -61,9 +61,10 @@ usage: panel [-m MODEL].. [-r ROUNDS] [options] question...
       --save DIR       write every panelist's log and snapshot there
 
 environment:
-  NACHALNIK_API_KEY / OPENROUTER_API_KEY (the second for OpenRouter only)
-  NACHALNIK_BASE_URL   e.g. https://generativelanguage.googleapis.com/v1beta/openai
-                       or   http://localhost:11434/v1  (ollama; any key will do)";
+  NACHALNIK_BASE_URL   required: e.g. http://127.0.0.1:8080/v1 for a local llama-server,
+                       http://localhost:11434/v1 for ollama, or a hosted service's address
+  NACHALNIK_API_KEY / OPENROUTER_API_KEY (the second for OpenRouter only); a local server
+                       needs neither";
 
 /// Complains and stops, the way a command-line tool should.
 fn bail(message: &str) -> ! {

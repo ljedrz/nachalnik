@@ -1,10 +1,10 @@
 //! Tests against a real model, over the real wire.
 //!
-//! They are skipped unless an API key is in the environment, the same variable the `compare_models` and
-//! `panel` examples read:
+//! They are skipped unless `NACHALNIK_BASE_URL` names a server, the same variable the
+//! `compare_models` and `panel` examples read. A server on this machine needs nothing else:
 //!
 //! ```text
-//! OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --nocapture
+//! NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test --test live -- --nocapture
 //! ```
 //!
 //! ```text
@@ -23,10 +23,9 @@
 //!   cargo test --test live -- --test-threads=1 --nocapture
 //! ```
 //!
-//! A local server works as well, and costs nothing:
+//! ollama works the same way:
 //!
 //! ```text
-//! NACHALNIK_API_KEY=ollama \
 //! NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 //! NACHALNIK_TEST_MODEL=granite4.2:3b \
 //! NACHALNIK_TEST_MODEL_B=llama3.2 \
@@ -163,7 +162,7 @@ async fn wired(model: &str, config: Config) -> Option<(Kernel, Arc<OpenAiCompati
     let provider = Arc::new(
         nachalnik_utils::provider(model)
             .ok()?
-            .labelled("openrouter")
+            .labelled("live")
             .streaming(false)
             // this suite asserts on what actually went out, which is what `requests` keeps
             .recording(true),
@@ -199,7 +198,7 @@ macro_rules! live {
         match live().await {
             Some(fixtures) => fixtures,
             None => {
-                eprintln!("skipped: set OPENROUTER_API_KEY to run the live tests");
+                eprintln!("skipped: set NACHALNIK_BASE_URL to run the live tests");
                 return;
             }
         }
@@ -212,7 +211,7 @@ macro_rules! live_with {
         match live_with($config).await {
             Some(fixtures) => fixtures,
             None => {
-                eprintln!("skipped: set OPENROUTER_API_KEY to run the live tests");
+                eprintln!("skipped: set NACHALNIK_BASE_URL to run the live tests");
                 return;
             }
         }
@@ -962,7 +961,7 @@ async fn the_model_can_be_swapped_mid_session() {
     let second = Arc::new(
         nachalnik_utils::provider(&model)
             .expect("the key that got us this far")
-            .labelled("openrouter")
+            .labelled("live")
             .streaming(false)
             .recording(true),
     );
