@@ -475,3 +475,12 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   lines each in their own words, and the faint bar down a code block is built three times. One
   `App` method returning the open question first, since it is the one with three copies. A
   refactor for the next change to the screen.
+
+- **A llama-server's context size is not read from its model listing.** The OpenAI dialect takes a
+  model's limit from a listing's `context_length` or `top_provider.context_length`, from Google's
+  `inputTokenLimit`, or from ollama's `/api/show`. llama.cpp's `/v1/models` gives the window the
+  server was started with as `meta.n_ctx`, which none of those read, so a session at a llama-server
+  has no limit unless `KAMCHATKA_CONTEXT_LIMIT` is set: the status line shows no percentage and the
+  compactor never makes room. Reading `meta.n_ctx` in `listed_limit` in
+  `nachalnik-providers/src/openai/mod.rs`, with a test, would close it. It is left for the next
+  change to `nachalnik-providers`.
