@@ -20,9 +20,8 @@ free; each suite's header says roughly how many requests it makes.
 - **Keys never go in the repository**, a commit, a log or a prompt. They live in
   `$TMPDIR/live/key.env`, mode 600, and are `source`d by the command that runs the suites.
 - **A key goes only to its own endpoint.** The suites are written so that this holds - an
-  OpenRouter key is read only when the base URL is OpenRouter's - and `live.py` refuses to run
-  `kamchatka`'s suite without `KAMCHATKA_BASE_URL`, since it would otherwise send the key to
-  Google's endpoint. Don't work round either.
+  OpenRouter key is read only when the base URL is OpenRouter's, and no suite has a default
+  address to send a key to. Don't work round it.
 - **A skipped test counts as passed** in cargo's summary. Read `live.py`'s, which runs each test on
   its own and reports SKIP with the reason the test printed.
 - **Suspect the model before the code.** A live failure is a claim about the code only once it
@@ -41,17 +40,18 @@ export NACHALNIK_TEST_MODEL=<a model that calls tools>
 export NACHALNIK_TEST_MODEL_B=<a second one, for the swap test>
 # opted into one by one: a picture or a PDF sent to a text-only model is a 400 about nothing
 # export NACHALNIK_VISION_MODEL=...  NACHALNIK_DOCUMENT_MODEL=...
-# kamchatka: its suite skips without a key, so give a local server any value
-export KAMCHATKA_API_KEY=<key>
+# kamchatka: required, and a local server needs no key
 export KAMCHATKA_BASE_URL=http://127.0.0.1:8080/v1
+# export KAMCHATKA_API_KEY=<key>    # a hosted service's
 export KAMCHATKA_TEST_MODEL=<model>        # not KAMCHATKA_MODEL, which the suite does not read
 # export KAMCHATKA_DOCUMENT_MODEL=...  KAMCHATKA_GEMINI_API_KEY=...  KAMCHATKA_GEMINI_MODEL=...
 # the vendors' own APIs, each with its own key, or through OpenRouter
 # export ANTHROPIC_API_KEY=...  OPENAI_API_KEY=...  GEMINI_API_KEY=...
 # export NACHALNIK_ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1   # with OPENROUTER_API_KEY
 # export NACHALNIK_RESPONSES_BASE_URL=https://openrouter.ai/api/v1
-# System One: a model OpenRouter lists at /models?output_modalities=decisions
-# export NACHALNIK_SYSTEM1_MODEL=...  KAMCHATKA_SYSTEM1_MODEL=...
+# System One: an engine (e.g. llama-server with Clef-Flash) and a model it serves
+# export NACHALNIK_SYSTEM1_BASE_URL=...  NACHALNIK_SYSTEM1_MODEL=...
+# export KAMCHATKA_SYSTEM1_BASE_URL=...  KAMCHATKA_SYSTEM1_MODEL=...
 EOF
 )
 source $TMPDIR/live/key.env

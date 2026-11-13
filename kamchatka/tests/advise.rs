@@ -1,10 +1,10 @@
 //! The rating, against the real advisor.
 //!
-//! They are skipped unless a System One model and a key for it are in the environment - any model
-//! on `https://openrouter.ai/api/v1/models?output_modalities=decisions`, since none is the default:
+//! They are skipped unless an engine and a System One model it serves are in the environment, since
+//! neither has a default. An engine on this machine needs no key:
 //!
 //! ```text
-//! OPENROUTER_API_KEY=sk-or-... KAMCHATKA_SYSTEM1_MODEL=liquid/d1 \
+//! KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8080/v1 KAMCHATKA_SYSTEM1_MODEL=<model> \
 //!     cargo test -p kamchatka --features shell-advisor --test advise -- --nocapture
 //! ```
 //!
@@ -51,10 +51,13 @@ macro_rules! rating {
         // the conversation's own address decides whether its key may be borrowed; with none set,
         // only a key of the advisor's own or `OPENROUTER_API_KEY` pays
         let session = endpoint::base_url().unwrap_or_default();
-        if endpoint::advise::model().is_err() || endpoint::advise::account(&session).is_err() {
+        if endpoint::advise::base_url().is_err()
+            || endpoint::advise::model().is_err()
+            || endpoint::advise::account(&session).is_err()
+        {
             eprintln!(
-                "skipped: set KAMCHATKA_SYSTEM1_MODEL and OPENROUTER_API_KEY to run the live \
-                 advisor tests"
+                "skipped: set KAMCHATKA_SYSTEM1_BASE_URL and KAMCHATKA_SYSTEM1_MODEL (and a key, \
+                 where the engine checks one) to run the live advisor tests"
             );
             return;
         }

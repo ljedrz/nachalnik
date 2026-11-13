@@ -40,16 +40,17 @@ def via_openrouter(base_var, default):
 
 
 def nachalnik_ready():
-    # as `nachalnik_utils::api_key`: no address, no run; an OpenRouter key only for OpenRouter's
+    # as `nachalnik_utils`: no address or model, no run; an OpenRouter key only for OpenRouter's
     # address, and no key needed anywhere else
-    if not env("NACHALNIK_BASE_URL"):
+    if not env("NACHALNIK_BASE_URL") or not env("NACHALNIK_TEST_MODEL"):
         return False
     if via_openrouter("NACHALNIK_BASE_URL", ""):
         return bool(env("OPENROUTER_API_KEY") or env("NACHALNIK_API_KEY"))
     return True
 
 
-NACHALNIK_NEEDS = "NACHALNIK_BASE_URL (and OPENROUTER_API_KEY or NACHALNIK_API_KEY at OpenRouter)"
+NACHALNIK_NEEDS = ("NACHALNIK_BASE_URL and NACHALNIK_TEST_MODEL "
+                   "(and OPENROUTER_API_KEY or NACHALNIK_API_KEY at OpenRouter)")
 
 
 def missing(*pairs):
@@ -61,12 +62,10 @@ def missing(*pairs):
 
 
 def kamchatka_live():
-    # note: refused rather than run when the base URL is not set, because the suite then
-    # defaults to Google's endpoint and sends whatever key is set there; and when only
-    # KAMCHATKA_MODEL is set, because the suite reads KAMCHATKA_TEST_MODEL and would quietly ask
-    # its default model instead
+    # note: the suite skips without a base URL or KAMCHATKA_TEST_MODEL, since neither has a
+    # default; named here so a run with only KAMCHATKA_MODEL set is told which one it reads. A
+    # local server needs no key, so none is required
     return missing(
-        (env("KAMCHATKA_API_KEY") or env("NACHALNIK_API_KEY"), "KAMCHATKA_API_KEY"),
         (env("KAMCHATKA_BASE_URL"), "KAMCHATKA_BASE_URL, set even for Google's endpoint"),
         (env("KAMCHATKA_TEST_MODEL"), "KAMCHATKA_TEST_MODEL (not KAMCHATKA_MODEL)"),
     )
@@ -117,14 +116,13 @@ SUITES = {
     "gemini": ("nachalnik-providers", "gemini_live",
                lambda: missing((env("GEMINI_API_KEY"), "GEMINI_API_KEY")), None),
     "system1": ("nachalnik-providers", "system1",
-                lambda: missing((env("NACHALNIK_SYSTEM1_MODEL"), "NACHALNIK_SYSTEM1_MODEL"),
-                                (env("OPENROUTER_API_KEY") or env("NACHALNIK_SYSTEM1_BASE_URL"),
-                                 "OPENROUTER_API_KEY or NACHALNIK_SYSTEM1_BASE_URL")),
+                lambda: missing((env("NACHALNIK_SYSTEM1_BASE_URL"), "NACHALNIK_SYSTEM1_BASE_URL"),
+                                (env("NACHALNIK_SYSTEM1_MODEL"), "NACHALNIK_SYSTEM1_MODEL")),
                 None),
     "kamchatka": ("kamchatka", "live", kamchatka_live, kamchatka_env),
     "advise": ("kamchatka", "advise",
-               lambda: missing((env("KAMCHATKA_SYSTEM1_MODEL"), "KAMCHATKA_SYSTEM1_MODEL"),
-                               (env("OPENROUTER_API_KEY"), "OPENROUTER_API_KEY")),
+               lambda: missing((env("KAMCHATKA_SYSTEM1_BASE_URL"), "KAMCHATKA_SYSTEM1_BASE_URL"),
+                               (env("KAMCHATKA_SYSTEM1_MODEL"), "KAMCHATKA_SYSTEM1_MODEL")),
                None),
 }
 

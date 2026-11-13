@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### deprecated
+
+- **`system1::DEFAULT_BASE_URL`**, which is OpenRouter's address. Nothing in the crate defaulted to
+  it, and the name said otherwise: `Client::new` takes the engine's address, and the module's docs
+  list the engines, local ones first. The constant still holds the same address.
+
 ## [0.11.1] - 2026-11-11
 
 ### added

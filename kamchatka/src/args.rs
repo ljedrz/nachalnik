@@ -41,14 +41,14 @@ pub fn environment() -> String {
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --rate-shell-commands is given:
-  KAMCHATKA_SYSTEM1_MODEL     which System One model answers; required, and any of
-                              openrouter.ai/api/v1/models?output_modalities=decisions
-  KAMCHATKA_SYSTEM1_API_KEY   its key. Without one it borrows an OpenRouter key -
-                              this session's own where it talks to OpenRouter, or
-                              OPENROUTER_API_KEY - but only for questions that go
-                              to OpenRouter; anywhere else it asks with none
-  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; OpenRouter, or an engine of
-                              your own that answers the same route";
+  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; required: an engine of your own,
+                              e.g. http://127.0.0.1:8080/v1, or a service that serves
+                              System One models
+  KAMCHATKA_SYSTEM1_MODEL     which System One model answers; required, and one the
+                              engine lists at its /models
+  KAMCHATKA_SYSTEM1_API_KEY   its key, where the engine checks one. At OpenRouter it can
+                              borrow an OpenRouter key instead - this session's own, if it
+                              talks to OpenRouter, or OPENROUTER_API_KEY";
     #[cfg(not(feature = "shell-advisor"))]
     const ADVISOR: &str = "";
 
@@ -98,13 +98,13 @@ pub struct Args {
     pub model: Option<String>,
 
     /// Which API the requests speak. `chat-completions` is OpenAI's, which llama.cpp, ollama, vLLM
-    /// and most hosted services speak too. `responses` is OpenAI's Responses API, so a turn keeps its order
-    /// and a reasoning model's thinking goes back sealed rather than being redone every turn.
-    /// OpenRouter answers it as well as OpenAI; for OpenAI's own use
-    /// `KAMCHATKA_BASE_URL=https://api.openai.com/v1`. `anthropic` is Anthropic's Messages API, so
-    /// a turn keeps its order and its signed thinking goes back as it came. OpenRouter speaks it
-    /// too, at `https://openrouter.ai/api/v1`. `gemini` is Google's own, so a turn keeps the order
-    /// it was produced in: thinking, a sentence, a tool call, more thinking.
+    /// and most hosted services speak too. `responses` is OpenAI's Responses API, so a turn keeps
+    /// its order and a reasoning model's thinking goes back sealed rather than being redone every
+    /// turn; for OpenAI's own use `KAMCHATKA_BASE_URL=https://api.openai.com/v1`. `anthropic` is
+    /// Anthropic's Messages API, so a turn keeps its order and its signed thinking goes back as it
+    /// came. `gemini` is Google's own, so a turn keeps the order it was produced in: thinking, a
+    /// sentence, a tool call, more thinking. Services other than the API's owner serve some of
+    /// these too, at whatever `KAMCHATKA_BASE_URL` says.
     #[arg(long, value_enum, value_name = "API", default_value_t = Api::ChatCompletions)]
     pub api: Api,
 

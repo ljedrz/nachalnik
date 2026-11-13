@@ -668,9 +668,9 @@ pub(crate) fn thinking_in<'a>(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ModelInfo {
-    /// The provider's name, e.g. `openrouter`.
+    /// The provider's name, e.g. `openai-compatible`.
     pub provider: String,
-    /// The model's identifier, e.g. `qwen/qwen3-coder`.
+    /// The model's identifier, e.g. `qwen3-coder`.
     pub model: String,
     /// The model's context limit in tokens, if known.
     pub context_limit: Option<usize>,

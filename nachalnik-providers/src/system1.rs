@@ -7,16 +7,14 @@
 //! questions a program asks around a conversation: whether to run that command, which of four
 //! branches this is, how bad the thing it just read is.
 //!
-//! note: named for the kind of model, not for any company selling one. OpenRouter serves a family
-//! of them under one API (TypeSafe's, Liquid's, Inception's, Upstage's and more, listed at
-//! `/models?output_modalities=decisions`), so a client takes a model identifier from that listing
-//! and has no default. A provider not on that list is reached through OpenRouter's
-//! bring-your-own-key, not by a path of its own here.
+//! note: named for the kind of model, not for any company selling one. They are served by engines
+//! of one's own and by hosted services, listed under [Engines](#engines), so a client takes the
+//! engine's address and a model it serves, and has no default for either.
 //!
 //! note: one route, `/systemone` under the base URL, with the same request body wherever it goes.
-//! That is OpenRouter's path under its ordinary `/api/v1`, so a session and its advisor can share
-//! an address and a key, and it is also the path a self-hosted engine keeps (`laya-serve` answers
-//! there), which is what [`crate::Endpoint::set_endpoint`] is for. [`SystemOne`] is the seam a
+//! It is the path a self-hosted engine answers at (`laya-serve`, and `llama-server` serving a
+//! System One model) and the one a hosted service such as OpenRouter keeps under its `/api/v1`,
+//! which is what [`crate::Endpoint::set_endpoint`] is for. [`SystemOne`] is the seam a
 //! caller holds as `dyn`, so what it asks with is decided in one place and a test can answer in its
 //! place.
 //!
@@ -30,10 +28,11 @@
 //! they are not bundled into one sentence.
 //!
 //! ```no_run
-//! # use nachalnik_providers::system1::{Client, DEFAULT_BASE_URL, Question};
+//! # use nachalnik_providers::system1::{Client, Question};
 //! # async fn go() -> Result<(), nachalnik::BoxError> {
 //! let model = std::env::var("SYSTEM1_MODEL")?;
-//! let engine = Client::new(model, DEFAULT_BASE_URL, std::env::var("OPENROUTER_API_KEY")?);
+//! // a llama-server on this machine, which checks no key
+//! let engine = Client::new(model, "http://127.0.0.1:8080/v1", "");
 //! let answers = engine
 //!     .ask(
 //!         "rm -rf /",
@@ -56,9 +55,6 @@
 //! Every engine below takes the same body and answers in the same shape; they differ in address,
 //! key and how they are run. What they answer is the next section's business.
 //!
-//! **OpenRouter**, [`DEFAULT_BASE_URL`], with an OpenRouter key. The models are those its listing
-//! names for `output_modalities=decisions`, which is what [`Client::probe`] asks for.
-//!
 //! **laya**, on the machine. [`laya`](https://github.com/NandhaKishorM/laya)'s `laya-serve` answers
 //! `/v1/systemone`, with no key:
 //!
@@ -80,6 +76,9 @@
 //! with `500: input (1261 tokens) is too large to process`. Its default of 512 holds a question or
 //! two and a short state, and little more. This is the engine the live suite has been run against
 //! on the machine.
+//!
+//! **OpenRouter**, at `https://openrouter.ai/api/v1`, with an OpenRouter key. The models are those
+//! its listing names for `output_modalities=decisions`, which is what [`Client::probe`] asks for.
 //!
 //! **Clef and Clef-flash on Workers AI**, Cloudflare's, with a Cloudflare API token that may use
 //! Workers AI. The base URL is an account's `/ai/run`, and the model is named the way Workers AI
@@ -132,7 +131,7 @@
 //!
 //! **How to see what one does.** The crate's live `tests/system1.rs` checks an engine answers in
 //! the shapes this client reads: `NACHALNIK_SYSTEM1_MODEL` names the model, and
-//! `NACHALNIK_SYSTEM1_BASE_URL` an engine of one's own, which needs no `OPENROUTER_API_KEY`.
+//! `NACHALNIK_SYSTEM1_BASE_URL` the engine; one of one's own needs no key.
 
 use std::{
     collections::BTreeMap,
@@ -146,8 +145,13 @@ use serde_json::{Value, json};
 
 use crate::{Attribution, Endpoint, Keyed, RETRIES, install_crypto};
 
-/// Where the questions go unless a caller says otherwise: OpenRouter, which serves every System
-/// One model on its list from the same `/api/v1` its chat completions are on.
+/// OpenRouter's address, which serves every System One model on its list from the same `/api/v1`
+/// its chat completions are on.
+///
+/// note: deprecated because nothing here defaults to it, and the name said otherwise.
+/// [`Client::new`] takes the engine's address, which is the caller's to choose; [the module's
+/// list](crate::system1#engines) names the engines known to work.
+#[deprecated(note = "there is no default engine: pass the engine's address to `Client::new`")]
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
 /// The path a question is posted to, under the base URL.
@@ -1057,10 +1061,13 @@ impl Endpoint for Client {
 mod tests {
     use super::*;
 
+    /// OpenRouter's address, which several tests here are about.
+    const OPENROUTER: &str = "https://openrouter.ai/api/v1";
+
     /// The payload, against the shapes the API reference documents for the three question types.
     #[test]
     fn each_question_goes_out_in_the_shape_its_type_is_documented_with() {
-        let engine = Client::new("vendor/decider", DEFAULT_BASE_URL, "k");
+        let engine = Client::new("vendor/decider", OPENROUTER, "k");
         let asked = vec![
             ("plain".to_owned(), Question::noul("Is this destructive?")),
             (
@@ -1192,10 +1199,7 @@ mod tests {
     fn every_question_goes_to_one_route_wherever_it_goes() {
         let url = |base| Client::new("vendor/decider", base, "k").url();
 
-        assert_eq!(
-            url(DEFAULT_BASE_URL),
-            "https://openrouter.ai/api/v1/systemone"
-        );
+        assert_eq!(url(OPENROUTER), "https://openrouter.ai/api/v1/systemone");
         assert_eq!(
             url("http://127.0.0.1:8080/v1/"),
             "http://127.0.0.1:8080/v1/systemone"
@@ -1281,7 +1285,7 @@ mod tests {
         }
 
         for not in [
-            DEFAULT_BASE_URL,
+            OPENROUTER,
             "http://127.0.0.1:8000/v1",
             // the rest of Cloudflare's API, which no question goes to
             "https://api.cloudflare.com/client/v4/zones",
@@ -1327,7 +1331,7 @@ mod tests {
         );
 
         // and nowhere else is the name shortened: OpenRouter's identifiers carry their vendor
-        let elsewhere = Client::new("vendor/decider", DEFAULT_BASE_URL, "k");
+        let elsewhere = Client::new("vendor/decider", OPENROUTER, "k");
         assert_eq!(
             elsewhere.render(&"anything".into(), &asked)["model"],
             "vendor/decider"
@@ -1452,7 +1456,7 @@ mod tests {
     fn the_engine_is_named_for_the_host_it_asks() {
         let named = |base| SystemOne::named(&Client::new("vendor/decider", base, "k"));
 
-        assert_eq!(named(DEFAULT_BASE_URL), "openrouter.ai");
+        assert_eq!(named(OPENROUTER), "openrouter.ai");
         assert_eq!(named("http://127.0.0.1:8080/v1"), "127.0.0.1:8080");
     }
 

@@ -1,14 +1,15 @@
 //! Tests against a real model, over the real wire.
 //!
-//! They are skipped unless `NACHALNIK_BASE_URL` names a server, the same variable the
-//! `compare_models` and `panel` examples read. A server on this machine needs nothing else:
+//! They are skipped unless `NACHALNIK_BASE_URL` names a server and `NACHALNIK_TEST_MODEL` a model
+//! with tool support, the same variables the `compare_models` and `panel` examples read. A server
+//! on this machine needs nothing else:
 //!
 //! ```text
-//! NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test --test live -- --nocapture
+//! NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 NACHALNIK_TEST_MODEL=<model> \
+//!   cargo test --test live -- --nocapture
 //! ```
 //!
 //! ```text
-//! NACHALNIK_TEST_MODEL=liquid/lfm-2.5-2.6b:free   # the default; anything with tool support
 //! NACHALNIK_TEST_MODEL_B=...                      # a second model, for the swap test
 //! NACHALNIK_BASE_URL=...                          # any OpenAI-compatible server
 //! ```
@@ -72,9 +73,6 @@ use nachalnik::{
 };
 use nachalnik_providers::{OpenAiCompatible, out_of_quota};
 use serde_json::{Value, json};
-
-/// A small, free, tool-capable model.
-const DEFAULT_MODEL: &str = "liquid/lfm-2.5-2.6b:free";
 
 /// Live tests take turns, so that the free tier's rate limit is not what is being measured.
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -151,7 +149,7 @@ async fn live() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
 
 /// The same, for a test that needs the kernel configured differently.
 async fn live_with(config: Config) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
-    wired(&nachalnik_utils::test_model(DEFAULT_MODEL), config).await
+    wired(&nachalnik_utils::test_model().ok()?, config).await
 }
 
 /// A kernel wired to this model, or `None` when there is no API key to use.
@@ -198,7 +196,9 @@ macro_rules! live {
         match live().await {
             Some(fixtures) => fixtures,
             None => {
-                eprintln!("skipped: set NACHALNIK_BASE_URL to run the live tests");
+                eprintln!(
+                    "skipped: set NACHALNIK_BASE_URL and NACHALNIK_TEST_MODEL to run the live tests"
+                );
                 return;
             }
         }
@@ -211,7 +211,9 @@ macro_rules! live_with {
         match live_with($config).await {
             Some(fixtures) => fixtures,
             None => {
-                eprintln!("skipped: set NACHALNIK_BASE_URL to run the live tests");
+                eprintln!(
+                    "skipped: set NACHALNIK_BASE_URL and NACHALNIK_TEST_MODEL to run the live tests"
+                );
                 return;
             }
         }
@@ -957,7 +959,9 @@ async fn the_model_can_be_swapped_mid_session() {
 
     // a second model if one was named, otherwise a second provider for the same one
     let model = env::var("NACHALNIK_TEST_MODEL_B")
-        .unwrap_or_else(|_| nachalnik_utils::test_model(DEFAULT_MODEL));
+        .ok()
+        .or_else(|| nachalnik_utils::test_model().ok())
+        .expect("the model that got us this far");
     let second = Arc::new(
         nachalnik_utils::provider(&model)
             .expect("the key that got us this far")

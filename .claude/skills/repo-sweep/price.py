@@ -32,7 +32,9 @@ import sweeps
 
 
 def listed(model):
-    base = os.environ.get("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base = os.environ.get("KAMCHATKA_BASE_URL", "").rstrip("/")
+    if not base:
+        sys.exit("set KAMCHATKA_BASE_URL to the endpoint the sweep talks to")
     key = os.environ.get("KAMCHATKA_API_KEY", "")
     request = urllib.request.Request(
         f"{base}/models", headers={"Authorization": f"Bearer {key}", "User-Agent": "repo-sweep"}

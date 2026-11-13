@@ -15,6 +15,12 @@ minor bump may break you.
   who had not chosen one. `--api gemini` and `--api anthropic` still use Google's and Anthropic's
   own APIs when it is unset, because each of those dialects belongs to one service. `endpoint::base_url`
   and `endpoint::session_endpoint` return a `Result`, with that sentence as the error.
+- **The advisor has no default engine either.** `--rate-shell-commands` needs
+  `KAMCHATKA_SYSTEM1_BASE_URL` as well as `KAMCHATKA_SYSTEM1_MODEL`, and is refused at startup
+  without it; its questions carry the command lines, so where they go is the person's choice. It
+  used to be OpenRouter. The refusal for a missing model now points at the engine's own `/models`,
+  and `endpoint::advise::LISTING`, OpenRouter's listing, is gone. `endpoint::advise::base_url`
+  returns a `Result`.
 - **Attribution is opt-in.** `kamchatka` no longer names itself to OpenRouter for its app rankings
   unless `KAMCHATKA_ATTRIBUTION` is set. `KAMCHATKA_NO_ATTRIBUTION` is no longer read, since
   attribution is off without it.

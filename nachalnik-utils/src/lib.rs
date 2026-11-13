@@ -73,16 +73,19 @@ pub fn attribution() -> Option<(String, String)> {
     Some((url, title))
 }
 
-/// The one model a live suite asks, from `NACHALNIK_TEST_MODEL` or the caller's fallback.
+/// The one model a live suite asks, which `NACHALNIK_TEST_MODEL` names.
 ///
 /// note: here rather than in each suite because the variable name is the shared fact; spelling it
-/// by hand costs a run without failing. `NACHALNIK_MODEL` is not read. A suite reading a misspelt
-/// name quietly uses the default model, so failures concern the test assertions, not the variable.
+/// by hand costs a run without failing. `NACHALNIK_MODEL` is not read.
 ///
-/// note: the default stays the caller's. Each suite's model is a fact about that suite; one shared
-/// default would be wrong for at least one of them.
-pub fn test_model(default: &str) -> String {
-    env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| default.to_owned())
+/// note: no default, for the reason the address has none: a model name belongs to one service,
+/// so any default picks that service's model for everybody. A llama-server answers with whatever
+/// it loaded, whatever the name, so any name does there.
+pub fn test_model() -> Result<String, BoxError> {
+    env::var("NACHALNIK_TEST_MODEL").map_err(|_| {
+        "set NACHALNIK_TEST_MODEL to a model the endpoint serves; a llama-server takes any name"
+            .into()
+    })
 }
 
 /// The models to use, from repeated flags or from `NACHALNIK_MODELS`.

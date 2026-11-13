@@ -1,6 +1,15 @@
 //! The terminal against a real model, over the real wire.
 //!
-//! Skipped unless a key is in the environment:
+//! Skipped unless an endpoint and a model are in the environment. A server on this machine needs no
+//! key:
+//!
+//! ```text
+//! KAMCHATKA_BASE_URL=http://127.0.0.1:8080/v1 KAMCHATKA_TEST_MODEL=<model> \
+//!   cargo test -p kamchatka --test live -- --test-threads=1 --nocapture
+//! ```
+//!
+//! A hosted service takes `KAMCHATKA_API_KEY` as well. Google's OpenAI shim is one, and its key
+//! also runs the middle section, which speaks Google's own API:
 //!
 //! ```text
 //! KAMCHATKA_API_KEY=... \
@@ -52,27 +61,22 @@ use serde_json::json;
 
 mod common;
 
-/// A model small enough to be free and able to call a tool.
-const DEFAULT_MODEL: &str = "gemini-3.5-flash-lite";
-
-/// The model this run is actually pointed at.
+/// The model this run is pointed at, which `KAMCHATKA_TEST_MODEL` names.
 ///
 /// note: `/models` marks the one in use, so a test that filters the list has to filter for
-/// whatever that is. Naming [`DEFAULT_MODEL`] instead passed only while nobody overrode it, and
-/// then reported a different model on the list as a broken list.
-fn model_in_use() -> String {
-    std::env::var("KAMCHATKA_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned())
+/// whatever that is. There is no default, so that no vendor's model is chosen for anybody.
+fn model_in_use() -> Option<String> {
+    std::env::var("KAMCHATKA_TEST_MODEL").ok()
 }
 
-/// Where the requests go, which is Google's OpenAI-compatible shim unless told otherwise.
-fn base_url() -> String {
-    std::env::var("KAMCHATKA_BASE_URL")
-        .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai".to_owned())
+/// Where the requests go, which `KAMCHATKA_BASE_URL` names; there is no default.
+fn base_url() -> Option<String> {
+    std::env::var("KAMCHATKA_BASE_URL").ok()
 }
 
 /// Just the host of it, which is what the status line has room to draw.
 fn host() -> String {
-    let url = base_url();
+    let url = base_url().unwrap_or_default();
     let after_scheme = url.split_once("://").map_or(&*url, |(_, rest)| rest);
 
     after_scheme
@@ -123,7 +127,7 @@ impl Tool for Secret {
 /// `KAMCHATKA_CONTEXT_LIMIT` was unset and failed when it was set: between them, every state
 /// anybody would try it in.
 async fn endpoint() -> Option<Arc<OpenAiCompatible>> {
-    talking_to(model_in_use()).await
+    talking_to(model_in_use()?).await
 }
 
 /// The same, against a named model rather than the one this run is pointed at.
@@ -132,12 +136,14 @@ async fn endpoint() -> Option<Arc<OpenAiCompatible>> {
 /// is narrower than answering a question, so that test names its own model and skips without
 /// one - and naming it by setting `KAMCHATKA_TEST_MODEL` from inside a test would be reaching
 /// into the environment every other test in the file reads.
+///
+/// note: no key is an empty one, which sends no header: a server on this machine checks none.
 async fn talking_to(model: String) -> Option<Arc<OpenAiCompatible>> {
     let key = std::env::var("KAMCHATKA_API_KEY")
         .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
-        .ok()?;
+        .unwrap_or_default();
     let provider = Arc::new(
-        OpenAiCompatible::new(model, base_url(), key)
+        OpenAiCompatible::new(model, base_url()?, key)
             .with_context_limit(kamchatka::endpoint::configured_limit()),
     );
     provider.probe().await;
@@ -183,7 +189,8 @@ macro_rules! live {
             Some(pair) => pair,
             None => {
                 eprintln!(
-                    "skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment"
+                    "skipping: set KAMCHATKA_BASE_URL and KAMCHATKA_TEST_MODEL (and \
+                     KAMCHATKA_API_KEY where the endpoint checks one)"
                 );
                 return;
             }
@@ -648,7 +655,7 @@ async fn models_lists_what_the_endpoint_actually_serves() {
     let _serial = SERIAL.lock().await;
     let (mut app, mut finished) = live!();
 
-    let model = model_in_use();
+    let model = model_in_use().expect("the run got this far with one");
     for c in format!("/models {model}").chars() {
         app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
             .await;
@@ -697,17 +704,18 @@ fn gemini() -> Option<(
 )> {
     let base = std::env::var("KAMCHATKA_GEMINI_BASE_URL")
         .unwrap_or_else(|_| nachalnik_providers::gemini::DEFAULT_BASE_URL.to_owned());
-    // a key belongs to the endpoint it was given for. The one above is borrowed only when it was
-    // plausibly Google's - an unset base URL, or one pointing there - because otherwise this sent
-    // an OpenRouter key to `generativelanguage.googleapis.com` and reported the 400 that came back
-    // as three broken tests about turn order
+    // a key belongs to the endpoint it was given for. The one above is borrowed only when the
+    // base URL is Google's, because otherwise this sent an OpenRouter key to
+    // `generativelanguage.googleapis.com` and reported the 400 that came back as three broken
+    // tests about turn order
     let key = std::env::var("KAMCHATKA_GEMINI_API_KEY")
-        .or_else(|_| match base_url().contains("googleapis.com") {
-            true => {
-                std::env::var("KAMCHATKA_API_KEY").or_else(|_| std::env::var("NACHALNIK_API_KEY"))
-            }
-            false => Err(std::env::VarError::NotPresent),
-        })
+        .or_else(
+            |_| match base_url().is_some_and(|url| url.contains("googleapis.com")) {
+                true => std::env::var("KAMCHATKA_API_KEY")
+                    .or_else(|_| std::env::var("NACHALNIK_API_KEY")),
+                false => Err(std::env::VarError::NotPresent),
+            },
+        )
         .ok()?;
     let model =
         std::env::var("KAMCHATKA_GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.6-flash".to_owned());
@@ -1186,7 +1194,8 @@ macro_rules! agent {
             Some(it) => it,
             None => {
                 eprintln!(
-                    "skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment"
+                    "skipping: set KAMCHATKA_BASE_URL and KAMCHATKA_TEST_MODEL (and \
+                     KAMCHATKA_API_KEY where the endpoint checks one)"
                 );
                 return;
             }
@@ -1200,7 +1209,8 @@ macro_rules! introspecting {
             Some(it) => it,
             None => {
                 eprintln!(
-                    "skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment"
+                    "skipping: set KAMCHATKA_BASE_URL and KAMCHATKA_TEST_MODEL (and \
+                     KAMCHATKA_API_KEY where the endpoint checks one)"
                 );
                 return;
             }
@@ -1888,7 +1898,7 @@ async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
         return;
     };
     let Some((mut app, mut finished)) = talking_to(model).await.and_then(with) else {
-        eprintln!("skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment");
+        eprintln!("skipping: no KAMCHATKA_BASE_URL in the environment");
         return;
     };
 
@@ -2070,7 +2080,7 @@ async fn a_foreign_server_s_tools_reach_a_real_model() {
         return;
     }
     let Some(provider) = endpoint().await else {
-        eprintln!("skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment");
+        eprintln!("skipping: no KAMCHATKA_BASE_URL or KAMCHATKA_TEST_MODEL in the environment");
         return;
     };
 
