@@ -800,14 +800,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // a session with no model has the same thing to say to each of them. The corner says it
         // too, for as long as it is true, and `start_turn` says it again to anything that tries to
         // send. This is the orientation, not the enforcement
-        if app.kernel.model_info().is_none() {
-            app.say(
-                Speaker::Note,
-                format!(
-                    "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
-                    app.provider.host()
-                ),
-            );
+        //
+        // note: not while the endpoint is still being asked for a model to take, which says this
+        // itself if it finds none; said here, it came a moment before the session took one
+        if app.kernel.model_info().is_none() && !app.finding_the_model() {
+            app.say_there_is_no_model();
         }
         // note: first session only. Asking `--message` again on every restart would make `/restart`
         // a way of putting the same question to the model for ever, the opposite of what somebody

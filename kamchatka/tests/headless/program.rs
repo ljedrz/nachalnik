@@ -661,6 +661,8 @@ async fn a_session_with_no_model_takes_the_only_one_its_endpoint_serves() {
         said.contains("hello"),
         "the first message went unanswered: {said}"
     );
+    // and it is not first told that there is none
+    assert!(!said.contains("no model yet"), "{said}");
 
     let several = common::listing(&["one", "two"], vec![common::answer("hello")]).await;
     let said = unnamed("program-only-model", &several, "hi\n");
