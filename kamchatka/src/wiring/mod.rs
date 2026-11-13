@@ -104,6 +104,9 @@ pub struct Setup {
     /// model in a loop and a caller not watching. See
     /// [`App::set_spend`](crate::app::App::set_spend).
     pub spend: Option<u64>,
+    /// Whether each response is followed by a line saying how long it took and what it was made
+    /// of; `--response-stats` is this, on. See [`App::response_stats`].
+    pub response_stats: bool,
     /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
     /// note: a list rather than a flag per family, because "which tools" is one question and a flag
@@ -184,6 +187,7 @@ impl Default for Setup {
             compact: Some(0.8),
             compact_target: None,
             spend: None,
+            response_stats: false,
             tools: None,
             confine: true,
             writable: Vec::new(),
@@ -963,6 +967,7 @@ impl Setup {
         app.introspect = introspect;
         app.shelved = shelved;
         app.set_spend(self.spend);
+        app.response_stats = self.response_stats;
         app.compact_target = compact_target;
         app.compact_threshold = compact_threshold;
         // what `/attach` says about a file it took, said about the ones `-f` took

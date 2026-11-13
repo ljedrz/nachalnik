@@ -1486,6 +1486,50 @@ async fn a_line_said_while_an_answer_streams_is_not_swallowed() {
     assert!(prose.contains("spent 1,200 tokens of 1,000"), "{prose}");
 }
 
+/// With `--response-stats`, a response is followed by how long it took, how soon it started
+/// arriving and the token counts it came with; without it, by none of that.
+///
+/// note: the streaming provider, because the line says when the first fragment arrived, and a
+/// scripted answer arrives with no gap to measure. No figure for time or speed is asserted, since
+/// those are whatever this machine's clock says.
+#[tokio::test]
+async fn a_response_is_followed_by_its_stats_only_when_asked() {
+    for asked in [true, false] {
+        let Wired {
+            mut app,
+            mut events,
+            mut finished,
+        } = capped(Vec::new(), None);
+        app.response_stats = asked;
+        app.kernel.set_provider(Arc::new(Trickle {
+            text: "an answer worth timing".to_owned(),
+            input: 1_200,
+            output: 40,
+        }));
+
+        let (mut records, mut prose) = (Vec::new(), Vec::new());
+        Headless::new(Grant::Deny, &mut records, &mut prose)
+            .run(&mut app, &mut events, &mut finished, &b"go\n"[..])
+            .await
+            .expect("the run failed");
+
+        let prose = String::from_utf8(prose).expect("the prose is text");
+        assert!(prose.contains("an answer worth timing"), "{prose}");
+        match asked {
+            true => {
+                let line = prose
+                    .lines()
+                    .find(|line| line.contains("this response took"))
+                    .unwrap_or_else(|| panic!("no stats line: {prose}"));
+                assert!(line.contains("the first of it after"), "{line}");
+                assert!(line.contains("40 out"), "{line}");
+                assert!(line.contains("1,200 in"), "{line}");
+            }
+            false => assert!(!prose.contains("this response took"), "{prose}"),
+        }
+    }
+}
+
 /// A prose that cannot be flushed fails the run that wrote to it.
 ///
 /// note: `Prose` answers `flush` with `Ok` rather than with the writer's own answer, and that is

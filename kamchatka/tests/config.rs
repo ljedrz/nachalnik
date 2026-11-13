@@ -2990,6 +2990,40 @@ fn the_flat_calls_flag_reaches_every_tool() {
     );
 }
 
+/// `--response-stats`, and `response-stats` in a settings file, reach the session, and a session
+/// asked for neither stays quiet about how its responses went.
+#[test]
+fn the_response_stats_flag_and_key_reach_the_session() {
+    use clap::{CommandFactory, FromArgMatches};
+    use kamchatka::{args::Args, config::Settings};
+
+    let stats = |args: &[&str], file: &str| -> bool {
+        let matches = Args::command()
+            .try_get_matches_from(std::iter::once("kamchatka").chain(args.iter().copied()))
+            .expect("the arguments parse");
+        let settings: Settings = serde_json::from_str(file).expect("the settings parse");
+        Args::from_arg_matches(&matches)
+            .expect("the arguments are read")
+            .under(settings, &matches)
+            .expect("the settings apply")
+            .setup()
+            .expect("a setup")
+            .wire(std::sync::Arc::new(
+                nachalnik_providers::OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""),
+            ))
+            .expect("the wiring failed")
+            .app
+            .response_stats
+    };
+
+    assert!(stats(&["--response-stats"], "{}"), "the flag turns it on");
+    assert!(
+        stats(&[], r#"{ "response-stats": true }"#),
+        "and so does the key"
+    );
+    assert!(!stats(&[], "{}"), "and it is off unless asked for");
+}
+
 /// `--mcp-timeout-seconds` is how long a call to an MCP server's tool may wait: ten minutes unless
 /// given, no limit for `0`, and whatever number is given otherwise.
 ///

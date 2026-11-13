@@ -210,6 +210,12 @@ pub struct Args {
     #[arg(long)]
     pub send_oversized_requests: bool,
 
+    /// Follow each response with a line saying how long it took, how soon it started arriving, how
+    /// fast it was generated, and the tokens the provider reported for it. For tuning the server
+    /// behind a model; the times are taken here, so they include the network.
+    #[arg(long)]
+    pub response_stats: bool,
+
     /// Drive the session from lines on stdin instead of from a screen: the session log goes to
     /// stdout, one JSON record per line, and what the model says goes to stderr. Implied when
     /// stdout is not a terminal.
@@ -374,6 +380,7 @@ impl Args {
             max_spend_tokens,
             discard_cut_off_output,
             send_oversized_requests,
+            response_stats,
             no_record,
         );
         // the four that are not a plain assignment: two are already `Option`, one is a list this
@@ -732,6 +739,7 @@ impl Args {
             // note: `0` is no ceiling, as `/spend 0` and `--max-requests-per-turn 0` say it. A
             // ceiling of nothing would be a session that refuses its first turn without saying why
             spend: self.max_spend_tokens.filter(|it| *it > 0),
+            response_stats: self.response_stats,
             confine: !self.no_sandbox,
             writable: self.sandbox_write.clone(),
             readable: self.sandbox_read.clone(),

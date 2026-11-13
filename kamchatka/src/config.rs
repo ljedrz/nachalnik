@@ -114,6 +114,9 @@ pub struct Settings {
     pub discard_cut_off_output: Option<bool>,
     /// Whether to send a request that looks too long for the model rather than refusing it here.
     pub send_oversized_requests: Option<bool>,
+    /// Whether each response is followed by a line saying how long it took and what it was made
+    /// of, as `--response-stats` does.
+    pub response_stats: Option<bool>,
     /// Whether to leave the session unwritten when it ends.
     pub no_record: Option<bool>,
     /// The colour the window's frame is drawn in, as `#rrggbb`. Left out, it is [`BORDER_COLOR`];
