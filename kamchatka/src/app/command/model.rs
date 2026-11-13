@@ -174,6 +174,26 @@ impl App {
         });
     }
 
+    /// Says that the session has no model yet, and how to pick one.
+    ///
+    /// note: one sentence for the two places it is said: when a session starts with no model, and
+    /// when the look at what its endpoint serves found none to take.
+    pub fn say_there_is_no_model(&mut self) {
+        let host = self.provider.host();
+        self.say(
+            Speaker::Note,
+            format!("no model yet: `/model ID` picks one, and `/models` lists what {host} serves"),
+        );
+    }
+
+    /// Whether the session is still asking its endpoint for a model to take.
+    ///
+    /// note: for the line a session starts with, which would say there is no model a moment
+    /// before the session takes one. While this is true, the look says which it was when it ends.
+    pub fn finding_the_model(&self) -> bool {
+        self.kernel.model_info().is_none() && self.settling.is_some()
+    }
+
     /// Takes the model the endpoint serves, where it serves one, for a session that has none -
     /// after moving to `url` first, for an `/endpoint` that named no model.
     ///
@@ -212,7 +232,9 @@ impl App {
                     Speaker::Note,
                     "there is still no model, and `/models` lists what this one serves",
                 ),
-                None => {}
+                // the line the session starts with, held until now so it does not say there is no
+                // model while the endpoint was still being asked for one
+                None => app.say_there_is_no_model(),
             },
         );
         self.settling = Some(settling);
