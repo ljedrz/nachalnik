@@ -24,8 +24,8 @@
 //! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
 //! kernel in its path at all:
 //!
-//! - [`system1`] - System One models, behind the `system1` feature: any of the ones OpenRouter
-//!   serves, or a self-hosted engine answering the same route. Typed questions put to a state and
+//! - [`system1`] - System One models, behind the `system1` feature: on an engine of one's own or a
+//!   hosted service, wherever it answers the same route. Typed questions put to a state and
 //!   answered with probabilities: no text, no tool calls, nothing to stream. It is for the
 //!   decisions a program makes *around* a conversation rather than the conversation itself.
 //!

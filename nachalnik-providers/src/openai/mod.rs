@@ -383,7 +383,7 @@ impl OpenAiCompatible {
         self.model.lock().clone()
     }
 
-    /// Just the authority of [`Self::endpoint`] (`openrouter.ai`, `localhost:11434`) for the status
+    /// Just the authority of [`Self::endpoint`] (`127.0.0.1:8080`, `api.openai.com`) for the status
     /// line.
     ///
     /// note: the parsing lives on [`Endpoint::host`], where the other dialect can share it; this is

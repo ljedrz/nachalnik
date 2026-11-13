@@ -477,9 +477,10 @@ pub(crate) fn unprobed(
 /// The advisor: a System One model, asked about tool calls rather than about turns - see
 /// `tools::advice` for what the program asks it.
 ///
-/// note: any of the ones OpenRouter serves, named by `KAMCHATKA_SYSTEM1_MODEL` and with no default,
-/// so that no vendor's is chosen for anybody. A provider OpenRouter does not list is reached
-/// through its bring-your-own-key; `KAMCHATKA_SYSTEM1_BASE_URL` is for an engine of one's own.
+/// note: the engine is `KAMCHATKA_SYSTEM1_BASE_URL` and the model `KAMCHATKA_SYSTEM1_MODEL`, and
+/// neither has a default, so that no engine or vendor is chosen for anybody. An engine is one of
+/// one's own, such as llama-server serving Clef-Flash, or a service that serves these models, such
+/// as OpenRouter; [`nachalnik_providers::system1`]'s documentation lists them.
 ///
 /// note: its own key under its own name first, and otherwise an OpenRouter key this session already
 /// has - its own where the session talks to OpenRouter, or `OPENROUTER_API_KEY` - and only where
@@ -489,9 +490,9 @@ pub(crate) fn unprobed(
 /// somebody's own holds a key that service issued, and borrowing it here would hand a third party a
 /// credential that has no business with them.
 ///
-/// note: what the fallback widens is who is told, which is the question `tools::advice` is about.
-/// `--rate-shell-commands` sends a command's arguments off the machine, to OpenRouter as well as to
-/// the model behind it, unless `KAMCHATKA_SYSTEM1_BASE_URL` points at an engine of one's own.
+/// note: what the advisor tells is the question `tools::advice` is about. `--rate-shell-commands`
+/// sends a command's arguments to whatever `KAMCHATKA_SYSTEM1_BASE_URL` names, which stays on the
+/// machine only when that is an engine of one's own.
 /// Nothing in here is read unless `--rate-shell-commands` was asked for: the flag decides whether
 /// they leave at all, and a key sitting in the environment is not a decision to send them.
 #[cfg(feature = "advise")]
@@ -504,9 +505,6 @@ pub mod advise {
     };
 
     use super::*;
-
-    /// Where the decision models are listed, for a refusal that has to say where to pick one.
-    pub const LISTING: &str = "https://openrouter.ai/api/v1/models?output_modalities=decisions";
 
     /// Which key pays for the advice.
     ///
@@ -559,23 +557,24 @@ pub mod advise {
         }
     }
 
-    /// Where the advisor's questions go: OpenRouter, unless `KAMCHATKA_SYSTEM1_BASE_URL` names
-    /// something else.
+    /// Where the advisor's questions go, which `KAMCHATKA_SYSTEM1_BASE_URL` names.
     ///
-    /// note: something else is an engine of one's own, or a service the client knows the address
-    /// of; [`system1`]'s documentation lists both. A provider that sells a System One model and is
-    /// not on OpenRouter's list is reached through OpenRouter's bring-your-own-key, so it needs
-    /// nothing here.
-    pub fn base_url() -> String {
-        address_in("KAMCHATKA_SYSTEM1_BASE_URL")
-            .unwrap_or_else(|| system1::DEFAULT_BASE_URL.to_owned())
+    /// note: no default, for the reason the conversation's address has none: any engine chosen
+    /// here would be one picked for everybody, and this one is sent the command lines. A session
+    /// with `--rate-shell-commands` and no engine is refused at startup, saying what to set.
+    pub fn base_url() -> Result<String, BoxError> {
+        address_in("KAMCHATKA_SYSTEM1_BASE_URL").ok_or_else(|| {
+            "--rate-shell-commands needs an engine: set KAMCHATKA_SYSTEM1_BASE_URL to its \
+             address, e.g. http://127.0.0.1:8080/v1 for a local llama-server serving a System One \
+             model"
+                .into()
+        })
     }
 
     /// The model is `KAMCHATKA_SYSTEM1_MODEL`, and nothing if it is not set.
     ///
     /// note: no default, because a default would pick one vendor's model for everyone. A session
-    /// with `--rate-shell-commands` and no model is refused at startup, with the listing to pick
-    /// one from.
+    /// with `--rate-shell-commands` and no model is refused at startup, saying where to look.
     ///
     /// note: a model set to nothing is not set, as a key set to nothing is not: taken as a name, it
     /// passed the check that the model is served, which says nothing of a model with no name, and
@@ -585,11 +584,9 @@ pub mod advise {
             .ok()
             .filter(|model| !model.is_empty());
         set.ok_or_else(|| {
-            format!(
-                "--rate-shell-commands needs a model: set KAMCHATKA_SYSTEM1_MODEL to one of the \
-                 System One models at {LISTING}"
-            )
-            .into()
+            "--rate-shell-commands needs a model: set KAMCHATKA_SYSTEM1_MODEL to one of the System \
+             One models the engine lists at its `/models`"
+                .into()
         })
     }
 
@@ -605,7 +602,7 @@ pub mod advise {
             key_for(session_endpoint).ok(),
             env::var("OPENROUTER_API_KEY").ok(),
             session_endpoint,
-            &base_url(),
+            &base_url()?,
         )
     }
 
@@ -680,7 +677,7 @@ pub mod advise {
         // note: checked as the session's address is, not left to the probe below: an address no
         // request can be built on has no listing, and the probe says nothing about an address with
         // no listing
-        let url = addressed("KAMCHATKA_SYSTEM1_BASE_URL", base_url())?;
+        let url = addressed("KAMCHATKA_SYSTEM1_BASE_URL", base_url()?)?;
         let engine =
             Arc::new(Client::new(model, url, account.api_key()).attributed_to(attribution()));
         engine.probe().await;

@@ -28,7 +28,7 @@ write the same thousand lines of streaming HTTP code before talking to a model.
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole tool calls, ordered `thought` parts. |
 | `anthropic` | Anthropic's Messages API: typed content blocks, tool call arguments streamed as `input_json_delta`, signed thinking blocks, and prompt caching on by default. Served by `api.anthropic.com`, and by OpenRouter at `/api/v1/messages`. |
 | `conformance` | the test suite every client above must pass, for anyone writing another. Opens real sockets; off by default. |
-| `system1` | not a chat API: a client for System One models (the ones OpenRouter serves, or your own server at the same route), which answer typed questions about a state with numbers instead of taking turns. Nothing it returns reaches a kernel. |
+| `system1` | not a chat API: a client for System One models (on your own server or a hosted service, at the same route), which answer typed questions about a state with numbers instead of taking turns. Nothing it returns reaches a kernel. |
 
 Every client implements `Provider`, which the kernel uses, and `Endpoint`, which the program around
 it uses: where requests go, which model is used, what models the endpoint offers, and why the last

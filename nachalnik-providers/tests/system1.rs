@@ -1,16 +1,16 @@
 //! What a System One model makes of a question, over the real wire.
 //!
-//! They are skipped unless an OpenRouter key and a model are in the environment - any model on
-//! `https://openrouter.ai/api/v1/models?output_modalities=decisions`, since none is the default:
+//! They are skipped unless an engine and a model it serves are in the environment, since neither
+//! has a default. An engine of one's own needs no key - llama.cpp's `llama-server` serving
+//! Clef-Flash, say:
 //!
 //! ```text
-//! OPENROUTER_API_KEY=sk-or-... NACHALNIK_SYSTEM1_MODEL=liquid/d1 \
+//! NACHALNIK_SYSTEM1_BASE_URL=http://127.0.0.1:8080/v1 NACHALNIK_SYSTEM1_MODEL=<model> \
 //!     cargo test -p nachalnik-providers --features system1 --test system1 -- --nocapture
 //! ```
 //!
-//! `NACHALNIK_SYSTEM1_BASE_URL` points them at an engine of one's own instead, which needs no key -
-//! llama.cpp's `llama-server` serving Clef-Flash at `http://127.0.0.1:8080/v1`, say. The one test
-//! about a bad key is about OpenRouter's refusal, and stays there.
+//! At OpenRouter's address, `OPENROUTER_API_KEY` is the key, and is sent nowhere else. The one test
+//! about a bad key is about OpenRouter's refusal, and runs only when the engine is OpenRouter.
 //!
 //! note: live rather than over a socket serving a recorded body, which is what the unit tests in
 //! the module already do. What cannot be checked without the real endpoint is the half that
@@ -32,7 +32,7 @@ use std::env;
 
 use nachalnik_providers::{
     Endpoint,
-    system1::{Answer, Client, DEFAULT_BASE_URL, Question},
+    system1::{Answer, Client, Question},
 };
 
 /// Live tests take turns, so that a rate limit is never what is being measured.
@@ -43,15 +43,20 @@ macro_rules! live {
     () => {
         match (
             env::var("NACHALNIK_SYSTEM1_BASE_URL"),
-            env::var("OPENROUTER_API_KEY"),
             env::var("NACHALNIK_SYSTEM1_MODEL"),
         ) {
-            (Ok(base), key, Ok(model)) => Client::new(model, base, key.unwrap_or_default()),
-            (Err(_), Ok(key), Ok(model)) => Client::new(model, DEFAULT_BASE_URL, key),
+            // an OpenRouter key goes to OpenRouter and nowhere else
+            (Ok(base), Ok(model)) => {
+                let key = match nachalnik_providers::is_openrouter(&base) {
+                    true => env::var("OPENROUTER_API_KEY").unwrap_or_default(),
+                    false => String::new(),
+                };
+                Client::new(model, base, key)
+            }
             _ => {
                 eprintln!(
-                    "skipped: set NACHALNIK_SYSTEM1_MODEL and OPENROUTER_API_KEY, or \
-                     NACHALNIK_SYSTEM1_BASE_URL, to run the live tests"
+                    "skipped: set NACHALNIK_SYSTEM1_BASE_URL and NACHALNIK_SYSTEM1_MODEL to run \
+                     the live tests"
                 );
                 return;
             }
@@ -255,9 +260,15 @@ async fn the_listing_names_the_models_and_an_unknown_one_is_reported() {
 #[tokio::test]
 async fn a_bad_key_is_reported_in_the_service_s_own_words() {
     let _serial = SERIAL.lock().await;
-    // note: no `live!` - this one needs no valid key and no particular model, only the endpoint.
-    // It is the one live test that costs nothing and can always run
-    let engine = Client::new("vendor/decider", DEFAULT_BASE_URL, "sk-or-v1-not-a-key");
+    // note: no `live!` - this one needs no valid key and no particular model, only OpenRouter's
+    // endpoint, and it costs nothing. It runs only when the engine named is OpenRouter's, since an
+    // engine of one's own checks no key and a run pointed at one should not reach a service at all
+    let base = env::var("NACHALNIK_SYSTEM1_BASE_URL").unwrap_or_default();
+    if !nachalnik_providers::is_openrouter(&base) {
+        eprintln!("skipped: NACHALNIK_SYSTEM1_BASE_URL is not OpenRouter's");
+        return;
+    }
+    let engine = Client::new("vendor/decider", base, "sk-or-v1-not-a-key");
 
     let refused = engine
         .ask("anything", [("q", Question::noul("Is this fine?"))])

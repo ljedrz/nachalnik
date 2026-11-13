@@ -562,33 +562,28 @@ instead of writing text) about every shell command you are about to be asked abo
 answer in the permission question:
 
 ```console
-$ export KAMCHATKA_SYSTEM1_MODEL=<one of the models below>
+$ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8080/v1   # e.g. llama-server with Clef-Flash
+$ export KAMCHATKA_SYSTEM1_MODEL=<a model the engine lists>
 $ kamchatka --rate-shell-commands "tidy up the build artifacts"
 ```
 
-**You choose the model; there is no default.** OpenRouter offers several, from different vendors,
-listed at `https://openrouter.ai/api/v1/models?output_modalities=decisions`. `--rate-shell-commands`
-without `KAMCHATKA_SYSTEM1_MODEL` stops before the session starts and says where the list is. A
-provider that offers one of these but is not on the list can be used through OpenRouter's
-bring-your-own-key, which needs nothing from `kamchatka`.
+**You choose the engine and the model; there is no default for either.** An engine is a server of
+your own that answers the `/systemone` route, such as llama-server serving Clef-Flash, or a service
+that serves these models, such as OpenRouter. [The client's documentation][engines] lists the ones
+known to work and how to run each. `--rate-shell-commands` without `KAMCHATKA_SYSTEM1_BASE_URL` or
+`KAMCHATKA_SYSTEM1_MODEL` stops before the session starts and says which one to set.
 
 A build with the feature but without `--rate-shell-commands` shows no ratings, and the permissions
 tab says so. A headless run that nobody is attached to rates nothing either, since nothing would
 show the rating: it checks the advisor's settings at startup as any session does, then says on
 standard error that it will not use it.
 
-**The questions go to OpenRouter and are paid for with an OpenRouter key**:
-`KAMCHATKA_SYSTEM1_API_KEY` if set; otherwise the session's own key, if the session already uses
-OpenRouter; otherwise `OPENROUTER_API_KEY`. A session using another service has that service's
-key, so if neither of the other two is set, it stops before starting and says which key to set.
-
-`KAMCHATKA_SYSTEM1_BASE_URL` sends the questions elsewhere: to your own server answering the same
-route OpenRouter uses (`/systemone`), or to one of the services the client knows the address of.
-Keys from other variables are only ever sent to OpenRouter, so an advisor elsewhere gets
-`KAMCHATKA_SYSTEM1_API_KEY` if set, and no key otherwise, never an OpenRouter one. If such a service
-requires a key, it says so on the first question, in place of the colour, or at startup if the
-client knows it requires one. Which servers are supported, and how to address and run each, is in
-[the client's documentation][engines].
+**The key is `KAMCHATKA_SYSTEM1_API_KEY`**, sent wherever the questions go. An engine on this
+machine needs none, and gets no key unless that variable is set. An advisor at OpenRouter can also
+use an OpenRouter key the session already has: its own key, if the conversation goes to OpenRouter
+too, or `OPENROUTER_API_KEY`. Those keys are only ever sent to OpenRouter. If an engine requires a
+key it was not given, it says so on the first question, in place of the colour, or at startup if
+the client knows it requires one.
 
 It **decides nothing**. What your rules allow runs without a question and without anything being
 sent, and what they refuse is refused. If the advisor is unreachable or its answer cannot be read,

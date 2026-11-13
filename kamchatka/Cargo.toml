@@ -30,8 +30,8 @@ path = "src/main.rs"
 [features]
 default = ["mcp", "tui", "webui"]
 # a client for System One models (`endpoint::advise`), which answer typed questions with
-# probabilities instead of writing text: the ones OpenRouter serves, or a compatible server of your
-# own. On its own it changes nothing in the program; `shell-advisor` uses it.
+# probabilities instead of writing text, on an engine of your own or a service that serves them.
+# On its own it changes nothing in the program; `shell-advisor` uses it.
 advise = ["nachalnik-providers/system1"]
 # `--rate-shell-commands`: the advisor rates each `shell` command you're asked about on a
 # three-level scale, shown as green, yellow or red in the permission question. A command chained

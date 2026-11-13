@@ -30,10 +30,9 @@ gemini = []
 # signed thinking blocks. Served by `api.anthropic.com`, and by OpenRouter at `/api/v1/messages`.
 anthropic = []
 # A client for System One models, which answer typed questions about a state with probabilities,
-# at `POST /systemone`: the ones OpenRouter serves, or your own server. Unlike the others it is not
-# a `Dialect`: it generates no text and calls no tools, so it isn't a `Provider` and its answers
-# never reach a kernel. Providers OpenRouter doesn't list are reached through OpenRouter's
-# bring-your-own-key, not through separate code here.
+# at `POST /systemone`, on your own server or a hosted service. Unlike the others it is not a
+# `Dialect`: it generates no text and calls no tools, so it isn't a `Provider` and its answers never
+# reach a kernel.
 system1 = []
 # The test suite every dialect above must pass, for anyone writing a new one. It opens real
 # sockets and needs `nachalnik/test`, so it's off by default and meant for dev-dependencies.

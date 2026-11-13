@@ -23,7 +23,7 @@ pub trait Endpoint: Send + Sync {
     /// Which model is being asked.
     fn model(&self) -> String;
 
-    /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for the
+    /// Just the authority of [`Endpoint::endpoint`] - `127.0.0.1:8080`, `api.openai.com` - for the
     /// status line, which has no room for the rest.
     ///
     /// note: hand-parsed, not through a URL crate, because the whole use is a string to draw.

@@ -75,10 +75,10 @@ $ NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test --test live -- --test-t
   with `OPENROUTER_API_KEY` and `NACHALNIK_ANTHROPIC_BASE_URL` or `NACHALNIK_RESPONSES_BASE_URL`
   set to its address. `gemini_live` doesn't: OpenRouter serves Google's models only through its
   own APIs, BYOK included, and not Google's native one, which is what the `Gemini` client speaks.
-  `system1` reads `NACHALNIK_SYSTEM1_MODEL`, and `kamchatka`'s `advise` reads
-  `KAMCHATKA_SYSTEM1_MODEL`; OpenRouter lists the models it serves for them at
-  `/models?output_modalities=decisions` (the `system1` module's docs list which servers they've
-  been run against).
+  `system1` reads `NACHALNIK_SYSTEM1_BASE_URL` and `NACHALNIK_SYSTEM1_MODEL`, and `kamchatka`'s
+  `advise` reads `KAMCHATKA_SYSTEM1_BASE_URL` and `KAMCHATKA_SYSTEM1_MODEL`: an engine and a
+  model it serves, with no default for either. The `system1` module's docs list the engines and
+  which ones they've been run against.
 - **The suites can run at the same time**, each with `--test-threads=1`, and so can two runs of
   `kamchatka`'s, against different models say: it names each run's directories by its process.
 

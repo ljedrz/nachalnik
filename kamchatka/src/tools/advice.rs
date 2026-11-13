@@ -14,8 +14,8 @@
 //! session, every command the model writes - it sends the tool's id, the capabilities it declared,
 //! and its arguments: the command line. That is a real disclosure, much larger than the app name
 //! `KAMCHATKA_ATTRIBUTION` sends, so this is off unless somebody asks for it by name, and [`ROOM`]
-//! caps what one call can send. Nothing else goes: not the conversation, not the
-//! system instruction, not the model's prose about why it wants the call.
+//! caps what one call can send. Nothing else goes: not the conversation, not the system
+//! instruction, not the model's prose about why it wants the call.
 //!
 //! note: the invariant that nothing in a model's output reaches the policy holds twice over:
 //! nothing here reaches a verdict at all, and what reaches the advisor is the tool name and

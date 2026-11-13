@@ -36,7 +36,7 @@ const USAGE: &str = "\
 usage: bench [-m MODEL] [-r N] [-l N] [-j N] [--per-minute N] [--swap] [-e NAME]..
              [--temperature T] [--max-tokens N] [--json FILE | --no-json]
 
-  -m, --model MODEL      the model to measure; or NACHALNIK_TEST_MODEL
+  -m, --model MODEL      the model to measure, or NACHALNIK_TEST_MODEL; one is required
   -r, --replicates N     how many copies each condition gets (default 1)
   -l, --ladders N        how many times `repair` runs its ladder per dossier
   -j, --at-once N        how many requests may be in flight at once (default 1)
@@ -59,9 +59,6 @@ environment:
   NACHALNIK_APP_URL      name the app the run is on behalf of, where the endpoint ranks
   NACHALNIK_APP_TITLE    apps; no claim is made unless both are set";
 
-/// A small, free, widely available model.
-const DEFAULT_MODEL: &str = "google/gemini-3.5-flash-lite";
-
 /// The output budget every request is sent with.
 ///
 /// note: generous on purpose, and it costs nothing to be: a cap is a ceiling rather than a
@@ -76,7 +73,7 @@ const MAX_TOKENS: u32 = 32_768;
 
 #[tokio::main]
 async fn main() -> Result<(), nachalnik::BoxError> {
-    let mut model = nachalnik_utils::test_model(DEFAULT_MODEL);
+    let mut model = nachalnik_utils::test_model().ok();
     let mut replicates = 1usize;
     let mut ladders = suite::LADDERS;
     let mut at_once = 1usize;
@@ -95,7 +92,7 @@ async fn main() -> Result<(), nachalnik::BoxError> {
                 println!("{USAGE}");
                 return Ok(());
             }
-            "-m" | "--model" => model = args.next().ok_or("-m wants a model")?,
+            "-m" | "--model" => model = Some(args.next().ok_or("-m wants a model")?),
             "-r" | "--replicates" => {
                 replicates = args.next().ok_or("-r wants a number")?.parse()?
             }
@@ -117,6 +114,8 @@ async fn main() -> Result<(), nachalnik::BoxError> {
             other => return Err(format!("{other}: not an option\n\n{USAGE}").into()),
         }
     }
+    let model =
+        model.ok_or_else(|| format!("no model: give -m or set NACHALNIK_TEST_MODEL\n\n{USAGE}"))?;
 
     let provider: Arc<dyn Provider> = Arc::new(
         nachalnik_utils::provider(&model)?

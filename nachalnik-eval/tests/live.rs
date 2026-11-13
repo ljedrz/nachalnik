@@ -1,15 +1,11 @@
 //! The suite against a real model, over the real wire.
 //!
-//! Skipped unless `NACHALNIK_BASE_URL` names a server, the same variable the rest of the workspace
-//! reads. A server on this machine needs nothing else:
+//! Skipped unless `NACHALNIK_BASE_URL` names a server and `NACHALNIK_TEST_MODEL` a model, the same
+//! variables the rest of the workspace reads. A server on this machine needs nothing else:
 //!
 //! ```text
-//! NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test -p nachalnik-eval --test live -- --nocapture
-//! ```
-//!
-//! ```text
-//! NACHALNIK_TEST_MODEL=google/gemini-3.5-flash-lite   # the default
-//! NACHALNIK_BASE_URL=...                              # any OpenAI-compatible server
+//! NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 NACHALNIK_TEST_MODEL=<model> \
+//!   cargo test -p nachalnik-eval --test live -- --nocapture
 //! ```
 //!
 //! note: What these check is what a rulebook cannot: that a real model answers in the shape the
@@ -36,19 +32,18 @@ use nachalnik_providers::out_of_quota;
 use nachalnik_utils::api_key;
 use serde_json::json;
 
-/// A small, free, widely available model.
-const DEFAULT_MODEL: &str = "google/gemini-3.5-flash-lite";
-
 /// Live tests take turns, so that a free tier's rate limit is not what is being measured.
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// The model to measure, or `None` when there is no key and the test should skip.
+/// The model to measure, or `None` when there is no endpoint or model and the test should skip.
 fn provider() -> Option<Arc<dyn Provider>> {
-    if let Err(why) = api_key() {
-        println!("skipped: {why}");
-        return None;
-    }
-    let model = nachalnik_utils::test_model(DEFAULT_MODEL);
+    let model = match api_key().and_then(|_| nachalnik_utils::test_model()) {
+        Ok(model) => model,
+        Err(why) => {
+            println!("skipped: {why}");
+            return None;
+        }
+    };
     let provider = nachalnik_utils::provider(&model)
         .expect("the key is there")
         .streaming(false);

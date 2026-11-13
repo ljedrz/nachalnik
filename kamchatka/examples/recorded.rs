@@ -91,8 +91,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
     // `DIALECT=openai` points this at OpenAI-compatible endpoints such as llama.cpp, ollama, or a
-    // hosted service. The only downstream change is whether the projector is asked for ordered blocks,
-    // because that shape is Google's
+    // hosted service. The only downstream change is whether the projector is asked for ordered
+    // blocks, because that shape is Google's
     let ordered = std::env::var("DIALECT").as_deref() != Ok("openai");
     let model = std::env::var("KAMCHATKA_MODEL").unwrap_or_else(|_| {
         match ordered {

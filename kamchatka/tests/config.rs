@@ -2242,7 +2242,26 @@ fn an_advisor_with_no_model_is_refused_with_where_to_find_one() {
     let (ok, said) = run_with(&["--rate-shell-commands"], "", &unnamed);
     assert!(!ok, "{said}");
     assert!(said.contains("KAMCHATKA_SYSTEM1_MODEL"), "{said}");
-    assert!(said.contains("output_modalities=decisions"), "{said}");
+    assert!(said.contains("/models"), "{said}");
+}
+
+/// `--rate-shell-commands` with no engine named is refused, naming the variable, rather than sent
+/// to a service nobody chose.
+///
+/// note: the questions carry the command lines, so where they go is the person's decision; there
+/// is no default engine for the reason there is no default model.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn an_advisor_with_no_engine_is_refused_naming_the_variable() {
+    let unaddressed = [
+        ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
+        ("KAMCHATKA_SYSTEM1_MODEL", "vendor/decider"),
+    ];
+
+    let (ok, said) = run_with(&["--rate-shell-commands"], "", &unaddressed);
+    assert!(!ok, "{said}");
+    assert!(said.contains("set KAMCHATKA_SYSTEM1_BASE_URL"), "{said}");
+    assert!(!said.contains("openrouter.ai"), "{said}");
 }
 
 /// An advisor's address that is not one is refused at startup, by the variable's name, as the
@@ -2279,10 +2298,15 @@ fn an_advisor_address_that_is_not_one_is_refused_at_startup() {
 #[cfg(feature = "shell-advisor")]
 #[test]
 fn a_dialect_is_half_of_which_service_a_session_talks_to() {
-    // a model named, since `--rate-shell-commands` names none of its own and this is about the key
-    let model = [("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model")];
+    // a model and an engine at OpenRouter named, since `--rate-shell-commands` has neither of its
+    // own and this is about whose key goes there
+    let model = [
+        ("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model"),
+        ("KAMCHATKA_SYSTEM1_BASE_URL", "https://openrouter.ai/api/v1"),
+    ];
     let at_openrouter = [
         model[0],
+        model[1],
         ("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1"),
     ];
     let (ok, said) = run_with(&["--rate-shell-commands"], "", &at_openrouter);

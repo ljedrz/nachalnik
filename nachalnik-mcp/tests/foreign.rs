@@ -18,13 +18,6 @@ use nachalnik_mcp::{Server, Trust};
 use serde_json::json;
 use tokio::process::Command;
 
-/// The model the one live test asks when the environment names none.
-///
-/// note: the same free model the runtime's own live suite defaults to, and for the same two
-/// reasons: it is served at the endpoint `nachalnik_utils` defaults to, and it calls tools, which
-/// is the whole of what the test is about.
-const DEFAULT_MODEL: &str = "liquid/lfm-2.5-2.6b:free";
-
 /// Starts the Python server as a child process, or gives up quietly.
 ///
 /// note: `args` go to the script, which takes one: a file to write when it ends on its own.
@@ -195,18 +188,19 @@ async fn the_session_ends_when_it_is_told_to() {
 /// identifier survives a provider's charset, whether the schema is one a model fills in
 /// correctly, and whether the description is enough to pick the right tool from three.
 ///
-/// note: skipped without a key, and without `python3`, for the reason every test in this file is.
-/// It also skips when the turn fails, because the free pool this runs against answers `429` often
-/// enough that a rate limit is not news - which is why the default below has to be a model that
-/// address really serves. A name it does not know is a 404, skipped the same way, and the suite
-/// passes with the one claim it is here to make untested and nothing saying so.
+/// note: skipped without an endpoint and a model, and without `python3`, for the reason every test
+/// in this file is. It also skips when the turn fails, because a free hosted tier answers `429`
+/// often enough that a rate limit is not news - which is why `NACHALNIK_TEST_MODEL` has to name a
+/// model that address really serves. A name it does not know is a 404, skipped the same way, and
+/// the suite passes with the one claim it is here to make untested and nothing saying so.
 #[tokio::test]
 async fn a_real_model_uses_a_tool_from_a_foreign_server() {
-    let Some(provider) = nachalnik_utils::provider(&nachalnik_utils::test_model(DEFAULT_MODEL))
+    let Some(provider) = nachalnik_utils::test_model()
+        .and_then(|model| nachalnik_utils::provider(&model))
         .ok()
         .map(Arc::new)
     else {
-        eprintln!("skipped: no key in the environment");
+        eprintln!("skipped: no NACHALNIK_BASE_URL or NACHALNIK_TEST_MODEL in the environment");
         return;
     };
     let server = foreign!("arith");
