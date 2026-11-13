@@ -92,8 +92,9 @@ pub struct Args {
     /// A first message, sent as soon as it starts.
     pub message: Vec<String>,
 
-    /// The model to talk to. Without one the session starts with none and sends nothing until
-    /// `/model` picks one; `/models` lists what the endpoint serves.
+    /// The model to talk to. Without one, a session at an endpoint that serves exactly one model
+    /// uses that one and says so; otherwise it starts with none and sends nothing until `/model`
+    /// picks one. `/models` lists what the endpoint serves.
     #[arg(short, long, env = "KAMCHATKA_MODEL")]
     pub model: Option<String>,
 
@@ -919,11 +920,13 @@ impl Args {
     /// note: there are four wire formats and one trait. `--api` selects the format. The kernel, the
     /// screen, `/model`, and `/endpoint` hold a `Dialect` and never find out which one it is.
     ///
-    /// note: no model is used unless one was named. A default would make a session started without
+    /// note: no model is chosen by this program. A default would make a session started without
     /// `-m` talk to whatever this program's author picked, at the person's expense and without
     /// saying the choice was not theirs. Without a model the session still starts: the address and
     /// key are settled, `/models` lists what is served, and `/model` picks one. Until a model is
-    /// picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
+    /// picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`. The one
+    /// exception is no choice at all: an endpoint that serves exactly one model, whose model the
+    /// session takes once its screen is up, saying so; see `App::look_up_the_model`.
     ///
     /// note: the endpoint is not asked about the model here. A wired session asks once its screen
     /// is up, and holds the first line until it has an answer; see
