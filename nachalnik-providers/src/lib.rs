@@ -13,7 +13,7 @@
 //! `openai` is on by default:
 //!
 //! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments.
-//!   What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak. With
+//!   What llama.cpp, ollama, vLLM, LM Studio and most hosted services speak. With
 //!   [`OpenAiCompatible::responses`], OpenAI's Responses API instead: ordered items, and a
 //!   reasoning model's thinking sealed and sent back rather than redone every turn.
 //! - [`gemini`] - Google's own `generateContent`: `candidates[].content.parts`, whole calls, and
@@ -36,10 +36,11 @@
 //! # use nachalnik_providers::OpenAiCompatible;
 //! # #[cfg(feature = "openai")]
 //! # async fn go() -> Result<(), nachalnik::BoxError> {
+//! // a llama-server on this machine, which checks no key
 //! let provider = Arc::new(OpenAiCompatible::new(
-//!     "openai/gpt-5",
-//!     "https://openrouter.ai/api/v1",
-//!     std::env::var("OPENROUTER_API_KEY")?,
+//!     "qwen3-coder",
+//!     "http://127.0.0.1:8080/v1",
+//!     "",
 //! ));
 //! provider.probe().await;
 //!

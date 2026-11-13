@@ -4,8 +4,8 @@
 //! context limit small enough that managing it is not optional.
 //!
 //! ```console
-//! KAMCHATKA_API_KEY=... KAMCHATKA_CONTEXT_LIMIT=10000 DIALECT=openai \
-//!   KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1 KAMCHATKA_MODEL=... \
+//! KAMCHATKA_CONTEXT_LIMIT=10000 DIALECT=openai \
+//!   KAMCHATKA_BASE_URL=http://127.0.0.1:8080/v1 KAMCHATKA_MODEL=... \
 //!   cargo run -p kamchatka --example recorded
 //! ```
 //!
@@ -90,8 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              is held to",
         )?;
 
-    // `DIALECT=openai` points this at OpenAI-compatible endpoints such as OpenRouter, ollama, or a
-    // proxy. The only downstream change is whether the projector is asked for ordered blocks,
+    // `DIALECT=openai` points this at OpenAI-compatible endpoints such as llama.cpp, ollama, or a
+    // hosted service. The only downstream change is whether the projector is asked for ordered blocks,
     // because that shape is Google's
     let ordered = std::env::var("DIALECT").as_deref() != Ok("openai");
     let model = std::env::var("KAMCHATKA_MODEL").unwrap_or_else(|_| {

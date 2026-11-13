@@ -51,8 +51,9 @@ usage: bench [-m MODEL] [-r N] [-l N] [-j N] [--per-minute N] [--swap] [-e NAME]
       --no-json          do not write one
 
 environment:
-  NACHALNIK_API_KEY / OPENROUTER_API_KEY
-  NACHALNIK_BASE_URL     e.g. http://localhost:11434/v1  (ollama; any key will do)
+  NACHALNIK_BASE_URL     required: e.g. http://127.0.0.1:8080/v1 for a local llama-server
+  NACHALNIK_API_KEY / OPENROUTER_API_KEY (the second for OpenRouter only); a local server
+                         needs neither
   NACHALNIK_TEST_MODEL   the model, if -m is not given
   NACHALNIK_CONTEXT_LIMIT  the model's window, where the endpoint does not say
   NACHALNIK_APP_URL      name the app the run is on behalf of, where the endpoint ranks
@@ -119,7 +120,7 @@ async fn main() -> Result<(), nachalnik::BoxError> {
 
     let provider: Arc<dyn Provider> = Arc::new(
         nachalnik_utils::provider(&model)?
-            .labelled(base_url())
+            .labelled(base_url()?)
             // there is nothing to stream to: every answer here is read, not watched
             .streaming(false),
     );
@@ -155,7 +156,7 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     println!(
         "measuring {model} at {} over {} experiment(s), {replicates} copy/copies per condition, \
          {ladders} ladder(s) per dossier, {at_once} request(s) at once{}",
-        base_url(),
+        base_url()?,
         experiments.len(),
         match per_minute {
             0 => String::new(),

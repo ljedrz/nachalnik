@@ -13,8 +13,8 @@
 //! note: what leaves the machine. For each shell command the rules ask about - in a default
 //! session, every command the model writes - it sends the tool's id, the capabilities it declared,
 //! and its arguments: the command line. That is a real disclosure, much larger than the app name
-//! `KAMCHATKA_NO_ATTRIBUTION` exists to suppress, so this is off unless somebody asks for it by
-//! name, and [`ROOM`] caps what one call can send. Nothing else goes: not the conversation, not the
+//! `KAMCHATKA_ATTRIBUTION` sends, so this is off unless somebody asks for it by name, and [`ROOM`]
+//! caps what one call can send. Nothing else goes: not the conversation, not the
 //! system instruction, not the model's prose about why it wants the call.
 //!
 //! note: the invariant that nothing in a model's output reaches the policy holds twice over:

@@ -18,14 +18,14 @@ connection to an internet address until it is answered: by you, unless a rule an
 
 ```console
 $ cargo install kamchatka # or download the released binary
-$ export KAMCHATKA_API_KEY=sk-or-...
-$ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
+$ export KAMCHATKA_BASE_URL=http://127.0.0.1:8080/v1   # a local llama-server
+$ kamchatka -m qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ```
 
-OpenRouter is the default, but `KAMCHATKA_BASE_URL` can point it at anything that supports OpenAI's
-chat completions API, including a local model served by ollama, vLLM or LM Studio (no key needed);
-`--api gemini` and `--api anthropic` use Google's and Anthropic's own APIs, and `--api responses`
-OpenAI's Responses API. [Running it][running] has the details.
+`KAMCHATKA_BASE_URL` is required, and can point at anything that supports OpenAI's chat completions
+API: a local model served by llama.cpp, ollama, vLLM or LM Studio (no key needed), or a hosted
+service with `KAMCHATKA_API_KEY`. `--api gemini` and `--api anthropic` use Google's and Anthropic's
+own APIs, and `--api responses` OpenAI's Responses API. [Running it][running] has the details.
 
 ## ❓ who this is for
 

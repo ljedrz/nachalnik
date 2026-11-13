@@ -8,8 +8,8 @@ description: Run a soak of this workspace - one long headless kamchatka session 
 One session, long enough and interrupted often enough that the invariants which only hold *across*
 things get a chance to break: identifiers across a resume, states across compaction, items across
 `/load` and undo, the record across a kill. The unit tests check each of these small; a soak checks
-them on a real record a model wrote. What the person gives: a **model id** and a **key** (and
-optionally an endpoint; OpenRouter is the default).
+them on a real record a model wrote. What the person gives: a **model id** and an **endpoint**,
+with a **key** where the endpoint checks one; a local server needs none.
 
 ## rules that do not bend
 
@@ -32,8 +32,8 @@ SKILL=<repo>/.claude/skills/soak
 export SOAK=<repo>/target/agents/soak
 mkdir -p $SOAK
 ( umask 077; cat > $SOAK/key.env <<EOF
-export KAMCHATKA_API_KEY=<key>
-export KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1
+export KAMCHATKA_BASE_URL=<endpoint>    # e.g. http://127.0.0.1:8080/v1 for a local llama-server
+export KAMCHATKA_API_KEY=<key>          # where the endpoint checks one
 EOF
 )
 source $SOAK/key.env

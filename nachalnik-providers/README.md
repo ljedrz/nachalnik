@@ -24,7 +24,7 @@ write the same thousand lines of streaming HTTP code before talking to a model.
 
 | feature | what it supports |
 | --- | --- |
-| `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments: OpenRouter, ollama, vLLM, LM Studio, Together, and most others. With `responses(true)`, OpenAI's Responses API instead: `POST /responses`, ordered items, and reasoning returned encrypted in `encrypted_content` and sent back. Served by `api.openai.com` and OpenRouter. |
+| `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments: llama.cpp, ollama, vLLM, LM Studio, and most hosted services. With `responses(true)`, OpenAI's Responses API instead: `POST /responses`, ordered items, and reasoning returned encrypted in `encrypted_content` and sent back. Served by `api.openai.com` and OpenRouter. |
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole tool calls, ordered `thought` parts. |
 | `anthropic` | Anthropic's Messages API: typed content blocks, tool call arguments streamed as `input_json_delta`, signed thinking blocks, and prompt caching on by default. Served by `api.anthropic.com`, and by OpenRouter at `/api/v1/messages`. |
 | `conformance` | the test suite every client above must pass, for anyone writing another. Opens real sockets; off by default. |

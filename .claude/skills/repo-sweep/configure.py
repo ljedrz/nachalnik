@@ -298,7 +298,9 @@ PAUSE_EVERY = 4
 
 
 def listed_limit(model: str) -> int | None:
-    base = os.environ.get("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base = os.environ.get("KAMCHATKA_BASE_URL", "").rstrip("/")
+    if not base:
+        sys.exit("set KAMCHATKA_BASE_URL to the endpoint the sweep talks to")
     key = os.environ.get("KAMCHATKA_API_KEY", "")
     # a user agent of its own: some endpoints sit behind a firewall that refuses Python's
     request = urllib.request.Request(

@@ -55,17 +55,18 @@ The advisor, which is only ever asked when --rate-shell-commands is given:
     format!(
         "\
 Environment:
-  KAMCHATKA_API_KEY        the key, sent wherever the requests go. Needed for OpenRouter,
-                           OpenAI, Google and Anthropic; a model served locally takes none
+  KAMCHATKA_API_KEY        the key, sent wherever the requests go. A model served locally
+                           takes none; hosted services such as OpenAI, Google, Anthropic and
+                           OpenRouter need one
   OPENROUTER_API_KEY       the key for OpenRouter, and only there
   OPENAI_API_KEY           the key for OpenAI's own API, and only there
   ANTHROPIC_API_KEY        the key for Anthropic's own API, with --api anthropic, and only there
-  KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
-                           OpenRouter by default, Google's own v1beta with --api gemini, or
-                           Anthropic's own with --api anthropic; with --api responses,
-                           OpenRouter or https://api.openai.com/v1 for OpenAI's own
+  KAMCHATKA_BASE_URL       where the requests go, e.g. http://127.0.0.1:8080/v1 for a local
+                           llama-server or http://127.0.0.1:11434/v1 for ollama. Required,
+                           except with --api gemini or --api anthropic, which default to
+                           Google's and Anthropic's own APIs
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
-  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}
+  KAMCHATKA_ATTRIBUTION    set to name this program to OpenRouter, for its app rankings{ADVISOR}
 
 Exit status of a headless run: 0 done, 1 failed, 3 --max-spend-tokens reached, 4 paused at
 --max-requests-per-turn, 5 done but the record could not be written, 124 --max-run-seconds
@@ -96,8 +97,8 @@ pub struct Args {
     #[arg(short, long, env = "KAMCHATKA_MODEL")]
     pub model: Option<String>,
 
-    /// Which API the requests speak. `chat-completions` is OpenAI's, which OpenRouter and most
-    /// local servers speak too. `responses` is OpenAI's Responses API, so a turn keeps its order
+    /// Which API the requests speak. `chat-completions` is OpenAI's, which llama.cpp, ollama, vLLM
+    /// and most hosted services speak too. `responses` is OpenAI's Responses API, so a turn keeps its order
     /// and a reasoning model's thinking goes back sealed rather than being redone every turn.
     /// OpenRouter answers it as well as OpenAI; for OpenAI's own use
     /// `KAMCHATKA_BASE_URL=https://api.openai.com/v1`. `anthropic` is Anthropic's Messages API, so
@@ -891,7 +892,9 @@ impl Args {
             return Ok(setup);
         }
 
-        let engine = endpoint::advise::connect(&endpoint::session_endpoint(self.wire()))
+        let session =
+            endpoint::session_endpoint(self.wire()).map_err(|e| anyhow::anyhow!("{e}"))?;
+        let engine = endpoint::advise::connect(&session)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
             .context("could not reach the advisor")?;

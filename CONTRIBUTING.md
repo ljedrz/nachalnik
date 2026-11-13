@@ -50,15 +50,16 @@ raised in any minor release, to a toolchain that has been stable for about six m
 ## the live tests
 
 They're the only way to check that a real API accepts what this workspace sends, and each skips
-itself without a key. Run them before a release and after any change to how requests are built.
+itself without an endpoint to talk to. Run them before a release and after any change to how
+requests are built.
 
 ```console
-$ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --nocapture
+$ NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test --test live -- --test-threads=1 --nocapture
 ```
 
-- **`nachalnik`'s** read `OPENROUTER_API_KEY` (only when the base URL is OpenRouter's) or
-  `NACHALNIK_API_KEY`, plus `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and
-  `NACHALNIK_CONTEXT_LIMIT`. `nachalnik-eval`'s and `nachalnik-mcp`'s read the same;
+- **`nachalnik`'s** skip without `NACHALNIK_BASE_URL`. They read `NACHALNIK_API_KEY` where the
+  endpoint checks a key, and `OPENROUTER_API_KEY` only when the base URL is OpenRouter's. They
+  also read `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT`. `nachalnik-eval`'s and `nachalnik-mcp`'s read the same;
   `nachalnik-mcp`'s is one test in `foreign` (`cargo test -p nachalnik-mcp --test foreign`), which
   `--test live` does not run. The PDF and picture tests also need `NACHALNIK_DOCUMENT_MODEL` and
   `NACHALNIK_VISION_MODEL`, a model that reads each.

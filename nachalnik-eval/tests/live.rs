@@ -1,10 +1,10 @@
 //! The suite against a real model, over the real wire.
 //!
-//! Skipped unless an API key is in the environment, the same variables the rest of the workspace
-//! reads:
+//! Skipped unless `NACHALNIK_BASE_URL` names a server, the same variable the rest of the workspace
+//! reads. A server on this machine needs nothing else:
 //!
 //! ```text
-//! OPENROUTER_API_KEY=sk-or-... cargo test -p nachalnik-eval --test live -- --nocapture
+//! NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test -p nachalnik-eval --test live -- --nocapture
 //! ```
 //!
 //! ```text

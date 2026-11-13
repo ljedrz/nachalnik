@@ -20,7 +20,7 @@ all-features = true
 [features]
 default = ["openai"]
 # The OpenAI chat-completions API (`/chat/completions`, `choices[].delta`, tool calls assembled
-# from fragments), which OpenRouter, ollama, vLLM, Together and most others implement. Also
+# from fragments), which llama.cpp, ollama, vLLM and most hosted services implement. Also
 # OpenAI's Responses API, which returns a reasoning model's thinking in encrypted form.
 openai = []
 # Google's own `generateContent` API: `candidates[].content.parts`, whole tool calls, and ordered

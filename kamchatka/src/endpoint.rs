@@ -32,9 +32,9 @@ use nachalnik_providers::{
 /// renamed.
 ///
 /// note: what goes out is the name of the program and what kind of program it is, not the key, not
-/// the model, and not a word of what was asked. It goes only to OpenRouter.
-/// `KAMCHATKA_NO_ATTRIBUTION` turns it off, because a program that names its user's tooling to a
-/// third party should say so and let them stop it.
+/// the model, and not a word of what was asked. It goes only to OpenRouter, and only when
+/// `KAMCHATKA_ATTRIBUTION` is set: naming somebody's tooling to a third party is theirs to choose,
+/// not a default.
 const APP_URL: &str = "https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka";
 const APP_TITLE: &str = "kamchatka";
 
@@ -51,8 +51,8 @@ const APP_TITLE: &str = "kamchatka";
 /// built and seeing what it says.
 const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
 
-/// What this program says about itself to an endpoint that keeps a ranking of apps, or nothing
-/// where `KAMCHATKA_NO_ATTRIBUTION` is set.
+/// What this program says about itself to an endpoint that keeps a ranking of apps: nothing unless
+/// `KAMCHATKA_ATTRIBUTION` is set.
 ///
 /// note: one value for every client that sends it, the conversation's provider and the advisor, and
 /// one switch for all of them. Somebody who turned attribution off for their conversation has not
@@ -63,9 +63,9 @@ const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
 /// that was never attributed. Where it goes, `nachalnik_providers` decides by the same address test
 /// for both.
 pub fn attribution() -> Attribution {
-    match env::var_os("KAMCHATKA_NO_ATTRIBUTION") {
-        Some(_) => Attribution::default(),
-        None => Attribution::new(APP_URL, APP_TITLE).filed_under(APP_CATEGORIES),
+    match env::var_os("KAMCHATKA_ATTRIBUTION") {
+        Some(_) => Attribution::new(APP_URL, APP_TITLE).filed_under(APP_CATEGORIES),
+        None => Attribution::default(),
     }
 }
 
@@ -331,9 +331,18 @@ fn addressed(variable: &str, url: String) -> Result<String, BoxError> {
     }
 }
 
-/// The endpoint to talk to; OpenRouter unless told otherwise.
-pub fn base_url() -> String {
-    address_in("KAMCHATKA_BASE_URL").unwrap_or_else(|| "https://openrouter.ai/api/v1".to_owned())
+/// The endpoint to talk to, which `KAMCHATKA_BASE_URL` names.
+///
+/// note: no default. Any address chosen here would be a service picked for everybody, so a session
+/// that names none is refused, with an example of the most common local server. `--api gemini` and
+/// `--api anthropic` still default to Google's and Anthropic's own APIs, because each of those
+/// dialects belongs to one service.
+pub fn base_url() -> Result<String, BoxError> {
+    address_in("KAMCHATKA_BASE_URL").ok_or_else(|| {
+        "set KAMCHATKA_BASE_URL to the address of the server to talk to, e.g. \
+         http://127.0.0.1:8080/v1 for a local llama-server"
+            .into()
+    })
 }
 
 /// What an address variable holds, where it is set.
@@ -352,7 +361,7 @@ fn address_in(variable: &str) -> Option<String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Wire {
-    /// OpenAI chat-completions, which OpenRouter and most local servers speak.
+    /// OpenAI chat-completions, which llama.cpp, ollama, vLLM and most hosted services speak.
     OpenAi,
     /// Google's own `generateContent`, with `--api gemini`.
     Gemini,
@@ -366,19 +375,19 @@ pub enum Wire {
 /// Where this session's requests go, in the dialect it was asked to speak.
 ///
 /// note: the dialect cannot be read from the environment, so this takes the flag.
-/// `KAMCHATKA_BASE_URL` is read by both, but the defaults are different services; without the flag,
-/// an `--api gemini` session that never set the variable would report OpenRouter's address and
-/// Google's key.
+/// `KAMCHATKA_BASE_URL` is read by every dialect, but only Google's and Anthropic's have a default;
+/// without the flag, an `--api gemini` session that never set the variable would be refused for
+/// want of an address it does not need.
 ///
 /// note: the advisor asks, and the question is whose key [`api_key`] handed it. A key is an
 /// OpenRouter key because it is sent to OpenRouter, not because of the variable it was read from.
 /// `KAMCHATKA_API_KEY` is whatever the endpoint issued.
-pub fn session_endpoint(wire: Wire) -> String {
-    match wire {
-        Wire::OpenAi | Wire::Responses => base_url(),
+pub fn session_endpoint(wire: Wire) -> Result<String, BoxError> {
+    Ok(match wire {
+        Wire::OpenAi | Wire::Responses => base_url()?,
         Wire::Gemini => gemini::base_url(),
         Wire::Anthropic => anthropic::base_url(),
-    }
+    })
 }
 
 /// Builds a provider from the environment, asking the endpoint what the model's limit is.
@@ -431,10 +440,11 @@ fn built(
     responses: bool,
     send_reasoning: bool,
 ) -> Result<Arc<OpenAiCompatible>, BoxError> {
+    let url = base_url()?;
     let provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
-        addressed("KAMCHATKA_BASE_URL", base_url())?,
-        key_for(&base_url())?,
+        addressed("KAMCHATKA_BASE_URL", url.clone())?,
+        key_for(&url)?,
     )
     .with_context_limit(checked_limit()?)
     .responses(responses)

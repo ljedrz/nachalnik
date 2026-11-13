@@ -39,11 +39,17 @@ def via_openrouter(base_var, default):
     return OPENROUTER in (env(base_var) or default)
 
 
-def nachalnik_key():
-    # as `nachalnik_utils::api_key`: an OpenRouter key only for OpenRouter's address
-    if via_openrouter("NACHALNIK_BASE_URL", "https://openrouter.ai/api/v1"):
-        return env("OPENROUTER_API_KEY") or env("NACHALNIK_API_KEY")
-    return env("NACHALNIK_API_KEY")
+def nachalnik_ready():
+    # as `nachalnik_utils::api_key`: no address, no run; an OpenRouter key only for OpenRouter's
+    # address, and no key needed anywhere else
+    if not env("NACHALNIK_BASE_URL"):
+        return False
+    if via_openrouter("NACHALNIK_BASE_URL", ""):
+        return bool(env("OPENROUTER_API_KEY") or env("NACHALNIK_API_KEY"))
+    return True
+
+
+NACHALNIK_NEEDS = "NACHALNIK_BASE_URL (and OPENROUTER_API_KEY or NACHALNIK_API_KEY at OpenRouter)"
 
 
 def missing(*pairs):
@@ -85,13 +91,13 @@ def nachalnik_env(e):
 # name: (package, test target, what it needs - None when met, the environment it runs with)
 SUITES = {
     "nachalnik": ("nachalnik", "live",
-                  lambda: missing((nachalnik_key(), "OPENROUTER_API_KEY or NACHALNIK_API_KEY")),
+                  lambda: missing((nachalnik_ready(), NACHALNIK_NEEDS)),
                   nachalnik_env),
     "eval": ("nachalnik-eval", "live",
-             lambda: missing((nachalnik_key(), "OPENROUTER_API_KEY or NACHALNIK_API_KEY")),
+             lambda: missing((nachalnik_ready(), NACHALNIK_NEEDS)),
              None),
     "mcp": ("nachalnik-mcp", "foreign",
-            lambda: missing((nachalnik_key(), "OPENROUTER_API_KEY or NACHALNIK_API_KEY"),
+            lambda: missing((nachalnik_ready(), NACHALNIK_NEEDS),
                             (shutil.which("python3"), "python3")),
             None),
     "anthropic": ("nachalnik-providers", "anthropic_live",

@@ -29,16 +29,16 @@ sent.
 
 ```console
 $ cargo install kamchatka # or download a released binary
-$ export KAMCHATKA_API_KEY=sk-or-...
-$ kamchatka -m qwen/qwen3-coder "what does this repository do?"
+$ export KAMCHATKA_BASE_URL=http://127.0.0.1:8080/v1   # a local llama-server
+$ kamchatka -m qwen3-coder "what does this repository do?"
 ```
 
-**Any model, hosted or local.** OpenRouter is only the default address. Anything that speaks
-OpenAI's chat completions works by setting `KAMCHATKA_BASE_URL`, including a model running on your
-own machine under ollama, vLLM or LM Studio, which needs no key. `--api gemini` uses Google's API,
-`--api anthropic` uses Anthropic's Messages API, and `--api responses` uses OpenAI's Responses API.
-These keep a turn's thinking, text and calls in the order they came and send the signed or sealed
-thinking back.
+**Any model, local or hosted.** `KAMCHATKA_BASE_URL` is where the requests go, and there is no
+default: anything that speaks OpenAI's chat completions works, such as llama.cpp, ollama, vLLM or
+LM Studio on your own machine, which need no key, or a hosted service with `KAMCHATKA_API_KEY`.
+`--api gemini` uses Google's API, `--api anthropic` uses Anthropic's Messages API, and
+`--api responses` uses OpenAI's Responses API. These keep a turn's thinking, text and calls in the
+order they came and send the signed or sealed thinking back.
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka -m qwen3-coder "what does this repository do?"
@@ -113,7 +113,7 @@ describes, which is what an append-only log of typed events is for.
 | **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes — and so Linux only. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
-| **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (OpenRouter, and local servers such as ollama, vLLM and LM Studio) with OpenAI's Responses API as a mode of it, Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
+| **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (local servers such as llama.cpp, ollama, vLLM and LM Studio, and most hosted services) with OpenAI's Responses API as a mode of it, Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
 | `nachalnik-utils` | never published: shared code that picks the endpoint, key and models for the workspace's examples and live tests. |
 
 ### 📖 the docs
@@ -194,10 +194,10 @@ agent to run.
 $ cargo test --workspace
 ```
 
-The live suites skip themselves without a key:
+The live suites skip themselves without an endpoint to talk to:
 
 ```console
-$ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
+$ NACHALNIK_BASE_URL=http://127.0.0.1:8080/v1 cargo test --workspace -- --test-threads=1
 ```
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the full command set, what CI runs, the keys each live

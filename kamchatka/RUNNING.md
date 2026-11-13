@@ -14,7 +14,7 @@ stdout is not a terminal, and says so.
 
 ```console
 $ printf 'what is 2+2? answer with just the number\n/budget\n' \
-    | kamchatka --headless -m qwen/qwen3-coder > session.jsonl
+    | kamchatka --headless -m qwen3-coder > session.jsonl
 ```
 
 **stdout is the session log**: one JSON record per line, the same as `/save` writes. Read a run back
@@ -139,7 +139,7 @@ still drawn where there's a terminal, so a session started at your desk is the s
 or another client picks up: the keys and the clients both control the same session.
 
 ```console
-$ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m qwen/qwen3-coder
+$ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m qwen3-coder
 ```
 
 ```console
@@ -172,7 +172,7 @@ else (`--serve tcp:0.0.0.0:7878`, for example) is refused. From another machine,
 authenticates:
 
 ```console
-host$  kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder
+host$  kamchatka --serve tcp:127.0.0.1:7878 -m qwen3-coder
 other$ ssh -N -L 7878:127.0.0.1:7878 host &
 other$ kamchatka --connect tcp:127.0.0.1:7878
 ```
@@ -203,7 +203,7 @@ The protocol is newline-delimited JSON, so `nc` and `jq` can read it, and
 follows the turn, refuses a permission question, and reads back the item the answer was saved as:
 
 ```console
-$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
+$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen3-coder &
 $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
 ```
 
@@ -213,7 +213,7 @@ Its header comment has a transcript of the messages, for writing a client in ano
 themselves:
 
 ```console
-$ kamchatka --web 127.0.0.1:8080 -m qwen/qwen3-coder
+$ kamchatka --web 127.0.0.1:8080 -m qwen3-coder
 ```
 
 With `--serve`, the page relays to that socket (`unix:` or `tcp:`); without it, the session is
@@ -228,7 +228,7 @@ loopback, or on this machine's IP address on a private network (10/8, 172.16/12,
 fc00::/7):
 
 ```console
-$ kamchatka --web 192.168.1.5:8080 -m qwen/qwen3-coder
+$ kamchatka --web 192.168.1.5:8080 -m qwen3-coder
 ```
 
 A phone on the same network can open the printed address, `http://192.168.1.5:8080/<key>`, or scan
@@ -281,7 +281,7 @@ conversation; clearing it on one client clears it on all of them.
 `--web` or by a build without the `webui` feature:
 
 ```console
-$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
+$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen3-coder &
 $ cargo run --example gateway -- tcp:127.0.0.1:7878 127.0.0.1:8080
 ```
 
@@ -467,7 +467,7 @@ let wired = kamchatka::wiring::Setup {
     spend: Some(50_000),
     ..Default::default()
 }
-.wire(kamchatka::endpoint::connect(Some("qwen/qwen3-coder")).await?)?;
+.wire(kamchatka::endpoint::connect(Some("qwen3-coder")).await?)?;
 ```
 
 It subscribes to events before setting anything up, so the trace includes the setup, and keeps
@@ -494,7 +494,7 @@ lines is told when the limit is reached instead of being billed without notice. 
 
 ```json
 {
-  "model": "qwen/qwen3-coder",
+  "model": "qwen3-coder",
   "system-prompt": "you are working in a Rust workspace; run `cargo test` before saying anything is done",
   "mcp": ["files=npx -y @modelcontextprotocol/server-filesystem /srv"],
   "sandbox-read": ["~/.rustup", "~/.cargo"],
@@ -539,13 +539,16 @@ on your behalf.
 
 `kamchatka --help` lists every option, and the environment variables:
 
-- **`KAMCHATKA_API_KEY`**, sent to whatever endpoint is used. Without it, `OPENROUTER_API_KEY` is
-  used for OpenRouter, `OPENAI_API_KEY` for `api.openai.com` and `ANTHROPIC_API_KEY` for
-  Anthropic's own API, each only sent to that service. A model served on this machine needs no key.
-- **`KAMCHATKA_BASE_URL`**, the endpoint: OpenRouter by default, Google's own API with
-  `--api gemini`, or Anthropic's own with `--api anthropic`.
+- **`KAMCHATKA_BASE_URL`**, the endpoint, such as `http://127.0.0.1:8080/v1` for a local
+  llama-server or `http://127.0.0.1:11434/v1` for ollama. There is no default: a session without
+  it is refused at startup, except with `--api gemini` and `--api anthropic`, which use Google's
+  and Anthropic's own APIs unless it says otherwise.
+- **`KAMCHATKA_API_KEY`**, sent to whatever endpoint is used. A model served on this machine needs
+  no key. Without it, `OPENROUTER_API_KEY` is used for OpenRouter, `OPENAI_API_KEY` for
+  `api.openai.com` and `ANTHROPIC_API_KEY` for Anthropic's own API, each only sent to that service.
 - **`KAMCHATKA_CONTEXT_LIMIT`**, for providers that don't report their model's context size.
-- **`KAMCHATKA_NO_ATTRIBUTION`**, which stops `kamchatka` from identifying itself to OpenRouter.
+- **`KAMCHATKA_ATTRIBUTION`**, which makes `kamchatka` identify itself to OpenRouter, for
+  OpenRouter's app rankings. Off unless set, and sent nowhere else.
 
 A build with `--rate-shell-commands` also lists the advisor's variables.
 

@@ -48,9 +48,10 @@ fn running(id: &str, command: &str) -> PermissionRequest {
 /// A policy that will ask about a command, advised by the real endpoint - or a skipped test.
 macro_rules! rating {
     () => {{
-        if endpoint::advise::model().is_err()
-            || endpoint::advise::account(&endpoint::base_url()).is_err()
-        {
+        // the conversation's own address decides whether its key may be borrowed; with none set,
+        // only a key of the advisor's own or `OPENROUTER_API_KEY` pays
+        let session = endpoint::base_url().unwrap_or_default();
+        if endpoint::advise::model().is_err() || endpoint::advise::account(&session).is_err() {
             eprintln!(
                 "skipped: set KAMCHATKA_SYSTEM1_MODEL and OPENROUTER_API_KEY to run the live \
                  advisor tests"
@@ -59,7 +60,7 @@ macro_rules! rating {
         }
 
         // nothing set, so `exec:run` is `ask` - which is the branch a rating is asked on
-        let engine = endpoint::advise::connect(&endpoint::base_url())
+        let engine = endpoint::advise::connect(&session)
             .await
             .expect("the advisor connects");
 

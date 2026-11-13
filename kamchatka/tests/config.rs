@@ -62,12 +62,12 @@ fn run_with(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) 
     spawn(elsewhere(), args, lines, env, true, true)
 }
 
-/// The same, with no `KAMCHATKA_BASE_URL` at all, so that the address is whichever one this
-/// program defaults to.
+/// The same, with no `KAMCHATKA_BASE_URL` at all, so that the address is whichever one the
+/// dialect defaults to, if it has one.
 ///
 /// note: every other run here is pointed at a closed port on this machine, and a question about
-/// which service a session talks to has to be asked of the defaults - where the two dialects
-/// point at two different ones.
+/// which service a session talks to has to be asked of the defaults - where `--api gemini` and
+/// `--api anthropic` point at their own services.
 #[cfg(feature = "shell-advisor")]
 fn run_where_defaulted(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) {
     spawn(elsewhere(), args, lines, env, true, false)
@@ -91,8 +91,8 @@ fn spawn(
         .current_dir(dir)
         .args(["--no-record"])
         .args(args)
-        // or the address is OpenRouter's whatever the run meant to ask about, and every run here
-        // stands in for a session that does not reach a model
+        // a closed port on this machine, because every run here stands in for a session that
+        // does not reach a model
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         // or the model is whatever somebody running the suite has in their environment, and the
         // settings file under test would be overridden by it
@@ -1416,7 +1416,7 @@ fn help_names_the_variables_the_program_reads() {
         "KAMCHATKA_API_KEY",
         "KAMCHATKA_BASE_URL",
         "KAMCHATKA_CONTEXT_LIMIT",
-        "KAMCHATKA_NO_ATTRIBUTION",
+        "KAMCHATKA_ATTRIBUTION",
     ] {
         assert!(help.contains(variable), "no {variable}: {help}");
     }
@@ -1560,14 +1560,26 @@ fn the_api_is_one_setting_and_names_what_it_takes() {
     );
 }
 
-/// `--api responses` goes where chat completions does - OpenRouter, unless told otherwise - and is
-/// refused there without a key, as chat completions is.
+/// A session with no `KAMCHATKA_BASE_URL` is refused at startup, naming the variable, rather than
+/// sent to a service nobody chose; `--api responses` reads the same variable, and so is refused
+/// the same way. `--api gemini` and `--api anthropic` are not refused for it, since their dialect
+/// names their service.
 #[test]
-fn a_responses_session_with_no_key_goes_where_chat_completions_does() {
-    let (ok, said) = spawn(elsewhere(), &["--api", "responses"], "", &[], false, false);
-    assert!(!ok, "{said}");
-    assert!(said.contains("KAMCHATKA_API_KEY"), "{said}");
-    assert!(said.contains("openrouter.ai"), "{said}");
+fn a_session_with_no_address_is_refused_unless_its_dialect_names_one() {
+    for api in ["chat-completions", "responses"] {
+        let (ok, said) = spawn(elsewhere(), &["--api", api], "", &[], true, false);
+        assert!(!ok, "`--api {api}` with no address started: {said}");
+        assert!(said.contains("KAMCHATKA_BASE_URL"), "{said}");
+        assert!(!said.contains("openrouter.ai"), "{said}");
+    }
+
+    for api in ["gemini", "anthropic"] {
+        let (_, said) = spawn(elsewhere(), &["--api", api], "", &[], true, false);
+        assert!(
+            !said.contains("set KAMCHATKA_BASE_URL"),
+            "`--api {api}` was refused for an address it does not need: {said}"
+        );
+    }
 }
 
 /// `--api anthropic` with no address goes to Anthropic, and is refused there without a key - which
@@ -2261,15 +2273,19 @@ fn an_advisor_address_that_is_not_one_is_refused_at_startup() {
 ///
 /// note: read off the refusal rather than off the code: a session pointed at OpenRouter may spend
 /// its key at OpenRouter and runs, and an `--api gemini` session is refused by name because its key
-/// is Google's. Both runs hold the same key and set neither variable, so the only thing between
-/// them is the address - and an `--api gemini` session reporting OpenRouter's would borrow a
-/// Google-issued credential for a third party.
+/// is Google's. Both runs hold the same key, so the only thing between them is the address - and an
+/// `--api gemini` session reporting OpenRouter's would borrow a Google-issued credential for a
+/// third party.
 #[cfg(feature = "shell-advisor")]
 #[test]
 fn a_dialect_is_half_of_which_service_a_session_talks_to() {
     // a model named, since `--rate-shell-commands` names none of its own and this is about the key
     let model = [("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model")];
-    let (ok, said) = run_where_defaulted(&["--rate-shell-commands"], "", &model);
+    let at_openrouter = [
+        model[0],
+        ("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1"),
+    ];
+    let (ok, said) = run_with(&["--rate-shell-commands"], "", &at_openrouter);
     assert!(
         ok,
         "a session at OpenRouter may spend its own key there: {said}"
@@ -2996,7 +3012,8 @@ fn a_key_is_asked_for_only_where_the_address_checks_one() {
     assert!(ok, "a local address needs no key: {said}");
     assert!(!said.contains("KAMCHATKA_API_KEY"), "{said}");
 
-    let (ok, said) = spawn(elsewhere(), &[], "", &[], false, false);
+    let openrouter = [("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1")];
+    let (ok, said) = spawn(elsewhere(), &[], "", &openrouter, false, true);
     assert!(!ok, "OpenRouter takes no request without a key: {said}");
     assert!(said.contains("KAMCHATKA_API_KEY"), "{said}");
     assert!(said.contains("openrouter.ai"), "and it says where: {said}");
