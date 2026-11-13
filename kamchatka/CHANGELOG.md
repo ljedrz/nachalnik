@@ -25,6 +25,15 @@ minor bump may break you.
   unless `KAMCHATKA_ATTRIBUTION` is set. `KAMCHATKA_NO_ATTRIBUTION` is no longer read, since
   attribution is off without it.
 
+### added
+
+- **A session with no model takes the only one its endpoint serves.** Started without `-m`, a
+  session asks the endpoint what it serves, and if the answer is exactly one model - a llama-server
+  with one model loaded - it uses that model and says so: `the endpoint serves one model, …, so this
+  session uses it`. The first message waits for the answer, as it waits for a named model's. An
+  endpoint that lists several models, or none, leaves the choice to you as before. `/endpoint URL`
+  without a model does the same for a session that has none yet.
+
 ### changed
 
 - **The documentation leads with a local server.** The examples in the READMEs, `RUNNING.md` and

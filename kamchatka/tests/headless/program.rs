@@ -617,6 +617,80 @@ async fn the_first_message_waits_for_what_the_endpoint_says_about_the_model() {
     }
 }
 
+/// Runs the program headless at `base` with no model named, these lines typed into it, standing in
+/// a directory called `dir`, and hands back what a person read.
+///
+/// note: a directory per test, because each run clears its directory first, and two tests sharing
+/// one cleared it from under each other.
+fn unnamed(dir: &str, base: &str, lines: &str) -> String {
+    use std::io::Write as _;
+
+    let mut child = common::command()
+        .args(["--headless", "--no-record"])
+        .current_dir(common::workdir(dir))
+        .env("KAMCHATKA_BASE_URL", base)
+        .env_remove("KAMCHATKA_MODEL")
+        .env_remove("KAMCHATKA_API_KEY")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    stdin.write_all(lines.as_bytes()).expect("written");
+    drop(stdin);
+    let out = child.wait_with_output().expect("it ran");
+
+    String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+/// A session started with no model, at an endpoint that serves exactly one, takes that one, says
+/// so, and answers the first message with it; at one that serves several, it takes none.
+///
+/// note: through the binary, because the look at the model is what `main` starts once the session
+/// is wired, and nothing in process starts it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_with_no_model_takes_the_only_one_its_endpoint_serves() {
+    let single = common::listing(&["the-only-one"], vec![common::answer("hello")]).await;
+    let said = unnamed("program-only-model", &single, "hi\n");
+    assert!(
+        said.contains("the endpoint serves one model, the-only-one, so this session uses it"),
+        "{said}"
+    );
+    assert!(
+        said.contains("hello"),
+        "the first message went unanswered: {said}"
+    );
+
+    let several = common::listing(&["one", "two"], vec![common::answer("hello")]).await;
+    let said = unnamed("program-only-model", &several, "hi\n");
+    assert!(!said.contains("serves one model"), "{said}");
+    assert!(said.contains("no model yet"), "{said}");
+}
+
+/// `/endpoint` with no model, in a session that has none, takes the only model the new address
+/// serves, as a session starting there would.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_endpoint_with_no_model_named_takes_the_only_one_served_there() {
+    let several = common::listing(&["one", "two"], Vec::new()).await;
+    let single = common::listing(&["the-only-one"], vec![common::answer("hello")]).await;
+
+    let said = unnamed(
+        "program-only-model-moved",
+        &several,
+        &format!("/endpoint {single}\nhi\n"),
+    );
+    assert!(
+        said.contains("the endpoint serves one model, the-only-one, so this session uses it"),
+        "{said}"
+    );
+    assert!(
+        said.contains("hello"),
+        "the message went unanswered: {said}"
+    );
+    assert!(!said.contains("there is still no model"), "{said}");
+}
+
 /// The program finds the gate for itself and puts the shell behind it: a command that opens a
 /// socket under `--auto-allow exec:run` is asked about when it tries, and a run with nobody at it
 /// answers with `--on-ask`.

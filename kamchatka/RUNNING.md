@@ -324,6 +324,12 @@ the next request.
 `/models [FILTER]` lists the models the endpoint offers, under the ids it uses (they differ between
 endpoints), and marks the current one with `▸`.
 
+A session started without `-m` asks the endpoint what it serves. If it serves exactly one model, as
+a llama-server with one model loaded does, the session uses that model and says so; otherwise it
+starts with none, and `/model` picks one. `/endpoint URL` without a model does the same for a
+session that has none yet. When the endpoint lists several models, or none, nothing is chosen for
+you.
+
 The API key is not switched with the address. It is read from the environment once, at startup,
 because a key typed at a prompt would end up in the transcript. `/endpoint` is for addresses that
 need no key or the same key: a local model, a proxy, another base URL on the same account.

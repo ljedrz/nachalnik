@@ -33,6 +33,24 @@ pub(super) fn hand_over(kernel: &Kernel, provider: Arc<dyn Dialect>, named: bool
     }
 }
 
+/// The model an endpoint serves, where it lists exactly one.
+///
+/// note: one and only one, because then there is nothing to choose: a local server with one model
+/// loaded is the case, and that model is the one the person meant. An endpoint listing several - a
+/// hosted service, an ollama with more than one pulled, a llama-server routing between models -
+/// leaves the choice to the person, and one that lists none, or will not say, leaves it too.
+async fn only_model(provider: &dyn Dialect) -> Option<String> {
+    match provider.models().await.as_slice() {
+        [only] if !only.is_empty() => Some(only.clone()),
+        _ => None,
+    }
+}
+
+/// What a session says when it has taken the one model its endpoint serves.
+fn adopted(model: &str) -> String {
+    format!("the endpoint serves one model, {model}, so this session uses it")
+}
+
 /// Parameters that shape how an answer is delivered rather than what the model does. Every endpoint
 /// of the dialect reads them; no model lists them.
 ///
@@ -103,11 +121,8 @@ impl App {
                 ),
                 // a session that has not picked a model: there is no name to carry over. Saying
                 // it is "still asking for" nothing reads as a model called nothing, not as the gap
-                // it is
-                (None, None) => format!(
-                    "requests now go to {shown}; there is still no model, and `/models` \
-                     lists what this one serves"
-                ),
+                // it is. Whether the new address picks one for it is said once its list is in
+                (None, None) => format!("requests now go to {shown}"),
             },
         );
         // for the reason `/model` drops them. The same name at a different address is a different
@@ -123,6 +138,10 @@ impl App {
         // had been talking
         let kernel = self.kernel.clone();
         let named = model.as_deref().is_some_and(|model| !model.is_empty());
+        if !named && self.kernel.model_info().is_none() {
+            self.adopt_the_only_model(Some(url));
+            return;
+        }
         self.switch(async move {
             provider.set_endpoint(url, model).await;
             hand_over(&kernel, provider, named);
@@ -139,11 +158,13 @@ impl App {
     /// that was a listing and, where the listing named no context length, a question to the
     /// address about whether it is an ollama.
     ///
-    /// note: nothing is asked where no model is named. The session holds no provider until
-    /// `/model` picks one, and that switch asks.
+    /// note: where no model is named, the endpoint is asked what it serves instead, and a session
+    /// at one that serves a single model takes it and says so; see `only_model`. Otherwise the
+    /// session holds no provider until `/model` picks one, and that switch asks.
     pub fn look_up_the_model(&mut self) {
         let model = self.provider.model();
         if model.is_empty() {
+            self.adopt_the_only_model(None);
             return;
         }
         let (provider, kernel) = (self.provider.clone(), self.kernel.clone());
@@ -151,6 +172,50 @@ impl App {
             provider.set_model(model).await;
             hand_over(&kernel, provider, true);
         });
+    }
+
+    /// Takes the model the endpoint serves, where it serves one, for a session that has none -
+    /// after moving to `url` first, for an `/endpoint` that named no model.
+    ///
+    /// note: a switch like any other, so the first line waits for it as it waits for a named
+    /// model's look; a message sent before the list was in would be refused for want of a model
+    /// the endpoint was about to give it. The kernel is told only where a model was taken, or
+    /// where the address moved, as `/endpoint` tells it.
+    ///
+    /// note: said rather than done quietly, because the model is what the session spends on, and
+    /// one nobody named should not be one nobody was told about. Where no model was taken after a
+    /// move, what to do next is said instead, as `/endpoint` said it before it asked.
+    fn adopt_the_only_model(&mut self, url: Option<String>) {
+        let (provider, kernel) = (self.provider.clone(), self.kernel.clone());
+        let moved = url.is_some();
+        let (settling, _) = self.send_out(
+            None,
+            "the switch",
+            async move {
+                if let Some(url) = url {
+                    provider.set_endpoint(url, None).await;
+                }
+                let only = only_model(&*provider).await;
+                match &only {
+                    Some(model) => {
+                        provider.set_model(model.clone()).await;
+                        hand_over(&kernel, provider, true);
+                    }
+                    None if moved => hand_over(&kernel, provider, false),
+                    None => {}
+                }
+                only
+            },
+            move |app, only| match only {
+                Some(model) => app.say(Speaker::Note, adopted(&model)),
+                None if moved => app.say(
+                    Speaker::Note,
+                    "there is still no model, and `/models` lists what this one serves",
+                ),
+                None => {}
+            },
+        );
+        self.settling = Some(settling);
     }
 
     /// `/params` sets one parameter to a JSON value or takes it away with `null`, then shows what

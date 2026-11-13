@@ -190,6 +190,22 @@ pub async fn listing_after(
     delay: std::time::Duration,
     answers: Vec<String>,
 ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    serving(delay, &["nothing"], answers).await
+}
+
+/// [`endpoint`], listing these models rather than the one called `nothing`, for a test about
+/// what a session does with the list.
+pub async fn listing(models: &[&str], answers: Vec<String>) -> String {
+    serving(std::time::Duration::ZERO, models, answers).await.0
+}
+
+/// The endpoint the functions above describe: `models` in its listing, answered after `delay`,
+/// and these bodies handed out one per request.
+async fn serving(
+    delay: std::time::Duration,
+    models: &[&str],
+    answers: Vec<String>,
+) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering::SeqCst},
@@ -200,12 +216,21 @@ pub async fn listing_after(
         .expect("a port");
     let at = listener.local_addr().expect("its address");
     let answers = Arc::new(answers);
+    let listed: Arc<str> = serde_json::json!({
+        "data": models
+            .iter()
+            .map(|id| serde_json::json!({"id": id, "context_length": 128000}))
+            .collect::<Vec<_>>()
+    })
+    .to_string()
+    .into();
     let nth = Arc::new(AtomicUsize::new(0));
     let heard = Arc::new(Mutex::new(Vec::new()));
     let log = heard.clone();
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
             let (answers, nth, log) = (answers.clone(), nth.clone(), log.clone());
+            let listed = listed.clone();
             tokio::spawn(async move {
                 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -229,11 +254,21 @@ pub async fn listing_after(
                 if head.contains("/models") {
                     tokio::time::sleep(delay).await;
                 }
+                // any other `GET` is a question about the server - `/api/version`, asked to tell an
+                // ollama from the rest - and not a request for an answer. Answered `404`, as a
+                // server that is not an ollama answers it, rather than handed one of the bodies
+                // meant for the model
+                if head.starts_with("GET ") && !head.contains("/models") {
+                    let _ = socket
+                        .write_all(
+                            b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        )
+                        .await;
+                    let _ = socket.shutdown().await;
+                    return;
+                }
                 let (kind, body) = match head.contains("/models") {
-                    true => (
-                        "application/json",
-                        r#"{"data":[{"id":"nothing","context_length":128000}]}"#.to_owned(),
-                    ),
+                    true => ("application/json", listed.to_string()),
                     false => match answers.get(nth.fetch_add(1, SeqCst)) {
                         Some(whole) if whole.starts_with("HTTP/") => {
                             let _ = socket.write_all(whole.as_bytes()).await;

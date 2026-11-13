@@ -24,8 +24,9 @@ long it has been. The dots stop if the program is stuck, and do not appear while
 **you**.
 
 Next is the model and its address, because the same model name at a different address is a different
-model. A session started without `-m` shows `no model` there: nothing is sent until `/model` picks
-one, and `/models` lists what the endpoint offers.
+model. A session started without `-m` at an endpoint that serves exactly one model, such as a
+llama-server with one model loaded, uses that model and says so. Otherwise it shows `no model`
+there: nothing is sent until `/model` picks one, and `/models` lists what the endpoint offers.
 
 The budget shows the estimated cost of the next request, marked `~` because it is an estimate, as a
 percentage of the model's limit with the limit beside it. It is green, then yellow from 70%, then
