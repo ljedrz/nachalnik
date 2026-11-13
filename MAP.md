@@ -41,7 +41,8 @@ CI; `compare_models` and `panel` talk to a real API through `examples/common`.
 
 **`app/`** is the state. `mod.rs` is its public interface, `turn.rs` drives the kernel,
 `questions.rs` handles the questions shown in place of the prompt (permissions and the like),
-`events.rs` applies kernel events, and `spend.rs` is the spending limit. `transcript.rs` is the chat
+`events.rs` applies kernel events, `spend.rs` is the spending limit, and `stats.rs` times each
+response for `--response-stats`. `transcript.rs` is the chat
 as a person reads it, and `views.rs` is what a view of the session asks of it, on the screen or sent
 to a client. `going.rs` works out what the next request does with each item; it's a separate file
 because the screen, the `context` tool and a served session's protocol all use it, so the model and

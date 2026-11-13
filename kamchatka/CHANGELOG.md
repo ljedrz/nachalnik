@@ -13,8 +13,9 @@ minor bump may break you.
   refused at startup with a sentence naming the variable and giving `http://127.0.0.1:8080/v1`, a
   local llama-server, as an example. It used to be OpenRouter, which picked a service for everybody
   who had not chosen one. `--api gemini` and `--api anthropic` still use Google's and Anthropic's
-  own APIs when it is unset, because each of those dialects belongs to one service. `endpoint::base_url`
-  and `endpoint::session_endpoint` return a `Result`, with that sentence as the error.
+  own APIs when it is unset, because each of those dialects belongs to one service.
+  `endpoint::base_url` and `endpoint::session_endpoint` return a `Result`, with that sentence as
+  the error.
 - **The advisor has no default engine either.** `--rate-shell-commands` needs
   `KAMCHATKA_SYSTEM1_BASE_URL` as well as `KAMCHATKA_SYSTEM1_MODEL`, and is refused at startup
   without it; its questions carry the command lines, so where they go is the person's choice. It
@@ -24,6 +25,8 @@ minor bump may break you.
 - **Attribution is opt-in.** `kamchatka` no longer names itself to OpenRouter for its app rankings
   unless `KAMCHATKA_ATTRIBUTION` is set. `KAMCHATKA_NO_ATTRIBUTION` is no longer read, since
   attribution is off without it.
+- **`Setup` has a `response_stats` field**, for `--response-stats` below, so code that builds one
+  with every field spelled out must set it: `false` for what a session did before.
 
 ### added
 
@@ -33,6 +36,17 @@ minor bump may break you.
   session uses it`. The first message waits for the answer, as it waits for a named model's. An
   endpoint that lists several models, or none, leaves the choice to you as before. `/endpoint URL`
   without a model does the same for a session that has none yet.
+
+- **`--response-stats` follows each response with a line about how it went.** The line says how
+  long the response took, how soon its first fragment arrived, how fast the rest was generated,
+  and the tokens the provider reported for it: what came out and how much of that was thinking,
+  and what went in and how much of that came from the cache. It is a note on the chat and on a
+  headless run's stderr, and never reaches the model. The times are taken by `kamchatka` from the
+  events it is handed, so they work with any endpoint and include the network. The speed is
+  measured from the first fragment, so it leaves out the time spent reading the request. An answer
+  that does not stream gets no speed. It is off by default, because a turn of tool calls makes one
+  response per call, and a line after each is a lot to read. `"response-stats": true` in a
+  settings file turns it on too, and `App::response_stats` is the setting for an embedder.
 
 ### changed
 

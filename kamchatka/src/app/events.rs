@@ -45,12 +45,15 @@ impl App {
         }
 
         match event {
-            Event::ModelDelta { delta } => match delta {
-                Delta::Text(fragment) => self.append(Speaker::Model, &fragment),
-                Delta::Reasoning(fragment) => self.append(Speaker::Reasoning, &fragment),
-                // the arguments are shown once they parse, as the call the model actually made
-                _ => {}
-            },
+            Event::ModelDelta { delta } => {
+                self.time_fragment();
+                match delta {
+                    Delta::Text(fragment) => self.append(Speaker::Model, &fragment),
+                    Delta::Reasoning(fragment) => self.append(Speaker::Reasoning, &fragment),
+                    // the arguments are shown once they parse, as the call the model actually made
+                    _ => {}
+                }
+            }
             Event::ModelRequested {
                 repairs,
                 skipped,
@@ -61,6 +64,7 @@ impl App {
                 // request is only built from `Idle`, so every call they were given for has run
                 self.policy.forget_network_grants();
                 self.close();
+                self.time_request();
                 // note: split here rather than when the response lands, because here the context
                 // has just been projected into the request and has not moved yet. Asked later, an
                 // elided item would look as though it had gone out as a marker
@@ -176,11 +180,13 @@ impl App {
                 if let Some(why) = text::stopped_short(&stop, asked) {
                     self.say(Speaker::Note, why);
                 }
+                self.report_timing(usage);
             }
             // the same fact can come from two places, and the second line says which of the two it
             // was: one is a count, the other is a guess
             Event::ModelFailed { error, overrun } => {
                 self.unanswered = Some(error.clone());
+                self.forget_timing();
                 self.close();
                 self.say_error(error);
                 self.overran(overrun, true);

@@ -12,6 +12,7 @@
   "tools": ["context", "fork", "fs", "log", "setup", "shell"],
   "discard-cut-off-output": false,
   "send-oversized-requests": false,
+  "response-stats": false,
   "no-sandbox": false,
   "sandbox-write": [],
   "sandbox-read": [],

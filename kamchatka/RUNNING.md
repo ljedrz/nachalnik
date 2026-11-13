@@ -394,6 +394,15 @@ without a screen](#-the-same-program-without-a-screen). The `--rate-shell-comman
 reported costs are included too, whichever key pays for them, and `/spend` shows how much of the
 total was the advisor's.
 
+`--response-stats` (`"response-stats": true` in a settings file) adds a line after each response:
+how long it took, how soon its first fragment arrived, how many tokens a second the rest came at,
+and the tokens the provider reported for it, with how much of the output was thinking and how much
+of the input came from the cache. It is for tuning the server behind a model, such as trying a
+speculative-decoding setting on a local one. The times are taken here rather than reported by the
+endpoint, so they include the network. The speed is measured from the first fragment, so it does
+not include the time spent reading the request, and an answer that does not stream gets no speed.
+The line is a note for you; the model never sees it.
+
 ## 🗜️ when the context fills
 
 The compactor removes what the conversation no longer needs, using two rules. The first runs before

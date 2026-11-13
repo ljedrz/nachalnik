@@ -34,6 +34,7 @@ mod questions;
 mod search;
 mod session;
 mod spend;
+mod stats;
 mod transcript;
 mod turn;
 mod views;
@@ -720,6 +721,15 @@ pub struct App {
     /// note: a property of the endpoint rather than news about a turn, like `thought_unseen` above
     /// and for the same reason.
     unreported: bool,
+    /// Whether a line saying how long each response took and what it was made of follows it, as
+    /// `--response-stats` asks.
+    ///
+    /// note: off unless asked for. A turn of tool calls makes one response per call, and a line
+    /// after each one gets in the way of reading the answer. It is for tuning the server behind
+    /// the model.
+    pub response_stats: bool,
+    /// When the request in flight went out and its answer started arriving, for that line.
+    timing: Option<stats::Timing>,
     /// The files `/save` wrote this session to in each directory it was given, by directory.
     ///
     /// note: so that saving into one again replaces this sitting's own pair, the ordinary case,
@@ -885,6 +895,8 @@ impl App {
             overspent: false,
             oversized: None,
             unreported: false,
+            response_stats: false,
+            timing: None,
             saved_into: BTreeMap::new(),
         }
     }
