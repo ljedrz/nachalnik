@@ -1,7 +1,7 @@
 //! What the events the kernel broadcasts do to the screen: an `impl App` of its own, since
 //! [`App::on_event`] is one `match` over every event there is.
 
-use nachalnik::{Delta, Event, Grant, GrantSource};
+use nachalnik::{Delta, Event, Grant, GrantSource, StopReason};
 
 use super::{
     Anchor, App, Speaker,
@@ -179,6 +179,26 @@ impl App {
                     .is_some_and(|turn| turn.calls().next().is_some());
                 if let Some(why) = text::stopped_short(&stop, asked) {
                     self.say(Speaker::Note, why);
+                }
+                // note: said every time, because every such turn is lost to the model: the
+                // projector leaves out a turn with no content and no calls, reasoning and all. A
+                // model that answers inside a thinking block it never closes is filed this way by
+                // an endpoint's own parser, and the person sees answers drawn as thinking and a
+                // model that never remembers them
+                if stop == StopReason::EndTurn
+                    && !asked
+                    && self.kernel.item(item).is_some_and(|turn| {
+                        turn.content.to_text().trim().is_empty()
+                            && turn.thinking().any(|it| !it.to_text().trim().is_empty())
+                    })
+                {
+                    self.say(
+                        Speaker::Note,
+                        "the whole reply arrived as reasoning, with no answer, so the model will \
+                         not see it in the next request; the endpoint may be reading the answer as \
+                         thinking (on llama-server, `--reasoning-format none` sends it as text)"
+                            .to_owned(),
+                    );
                 }
                 self.report_timing(usage);
             }
