@@ -3315,6 +3315,48 @@ async fn a_turn_that_stopped_short_says_why() {
     );
 }
 
+/// A reply that arrived as nothing but reasoning says so, since the next request leaves it out;
+/// thinking beside an answer, or reasoning cut off at the length limit, says nothing more.
+#[tokio::test]
+async fn a_reply_that_is_all_reasoning_says_so() {
+    let thought = |said: &str, thinking: &str, stop| ModelResponse {
+        reasoning: Some(nachalnik::Content::text(thinking)),
+        stop,
+        ..ModelResponse::text(said)
+    };
+    let script = vec![
+        thought(
+            "",
+            "<think>\n\nHello! What shall we do?",
+            StopReason::EndTurn,
+        ),
+        thought("Hello again.", "they said hi twice", StopReason::EndTurn),
+        thought("", "still weighing it up", StopReason::Length),
+        thought(" \n", "an answer with only blanks", StopReason::EndTurn),
+    ];
+    let run = run("hi\nhi\nhi\nhi\n", script, |_| {}).await;
+
+    let notes: Vec<&str> = run
+        .prose
+        .lines()
+        .filter(|line| line.starts_with("· the "))
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            "· the whole reply arrived as reasoning, with no answer, so the model will not see it \
+             in the next request; the endpoint may be reading the answer as thinking (on \
+             llama-server, `--reasoning-format none` sends it as text)",
+            "· the answer stopped at the model's length limit; /continue asks for the rest",
+            "· the whole reply arrived as reasoning, with no answer, so the model will not see it \
+             in the next request; the endpoint may be reading the answer as thinking (on \
+             llama-server, `--reasoning-format none` sends it as text)",
+        ],
+        "{}",
+        run.prose
+    );
+}
+
 /// `/note` and `/attach` say what went in, which a screen draws from the item and a pipe has no
 /// other sight of.
 #[tokio::test]

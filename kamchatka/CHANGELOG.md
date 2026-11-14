@@ -48,6 +48,13 @@ minor bump may break you.
   response per call, and a line after each is a lot to read. `"response-stats": true` in a
   settings file turns it on too, and `App::response_stats` is the setting for an embedder.
 
+- **A reply that arrives as nothing but reasoning is called out.** When a turn ends with no answer
+  and no tool calls, only thinking, a note says so: the turn is drawn as thinking, and the next
+  request leaves it out, so the model never sees what it said. This happens when the endpoint's
+  parser files the whole answer as reasoning. llama-server does it when a model opens a thinking
+  block and never closes it, so the note suggests `--reasoning-format none`. A turn cut off at the
+  length limit while thinking keeps its own note and gets no second one.
+
 ### changed
 
 - **The documentation leads with a local server.** The examples in the READMEs, `RUNNING.md` and
