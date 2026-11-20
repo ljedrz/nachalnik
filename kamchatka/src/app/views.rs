@@ -845,8 +845,24 @@ impl App {
                     false => READS,
                 }),
                 // whether it is writable is in the word beside it, and why in the rule named
-                // after it
-                sandbox.workdir.display().to_string(),
+                // after it. Under `ask` the word is the shell's alone: a command writes there
+                // without asking, while the file tools ask first, and the line says so rather
+                // than leaving `read-write` beside the rule to read as a grant
+                match (
+                    self.policy
+                        .stance(&Subject::Capability(Capability::fs("write"))),
+                    shell,
+                ) {
+                    (Verdict::Ask, true) => format!(
+                        "{} · the shell writes freely; the file tools ask",
+                        sandbox.workdir.display()
+                    ),
+                    (Verdict::Ask, false) => format!(
+                        "{} · the file tools ask before writing",
+                        sandbox.workdir.display()
+                    ),
+                    _ => sandbox.workdir.display().to_string(),
+                },
                 Vec::new(),
             )
         }];
