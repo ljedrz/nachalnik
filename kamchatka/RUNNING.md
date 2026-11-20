@@ -427,7 +427,12 @@ hand is not elided again by the first rule. The placeholder says the content has
 content the model has not seen is never removed to make a request fit.
 
 `/compact` runs the same compactor manually, and shows what it would do before doing anything:
-every item it would remove, with its id, what it is and what it contains. It then waits for
+every item it would remove, with its id, what it is and what it contains. Since no turn is running
+when you type it, it treats the last turn as finished: the tool results the model read in it are
+replaced by placeholders, even below the threshold. While the request is over the limit, it also
+takes results the model was given but never read, such as a file too big to send. Their
+placeholder says they went because the request would not fit, not that they were read. The
+automatic pass never takes those. It then waits for
 <kbd>y</kbd> or <kbd>n</kbd> in place of the prompt. Like a tool's question, it doesn't block the
 screen, so you can switch to the context tab and <kbd>p</kbd> anything you want to keep. Answering
 yes recalculates the compaction, so items you pinned while reading the list are respected.

@@ -234,27 +234,22 @@ impl App {
             return;
         }
 
-        let Some(compactor) = self.kernel.compactor() else {
-            return;
-        };
         // worked out again rather than applied as listed, and sent out as `/compact` sends its
         // own: the pass can be a request of its own, and nothing holds the loop for one
-        let (items, budget) = (self.kernel.items(), self.kernel.budget());
-        self.errand(
-            "the compaction pass",
-            async move { compactor.plan(&items, &budget).await },
-            |app, plan| match plan {
-                // the report is said by `Event::Compacted`, like any other pass: one account of a
-                // compaction, whoever asked for it
-                Some(plan) => {
-                    app.kernel.apply_compaction(plan);
-                }
-                None => app.say(
-                    Speaker::Note,
-                    "nothing left to take: everything the pass had listed is pinned now",
-                ),
-            },
-        );
+        let Some((_, plan)) = self.plan_by_hand() else {
+            return;
+        };
+        self.errand("the compaction pass", plan, |app, plan| match plan {
+            // the report is said by `Event::Compacted`, like any other pass: one account of a
+            // compaction, whoever asked for it
+            Some(plan) => {
+                app.kernel.apply_compaction(plan);
+            }
+            None => app.say(
+                Speaker::Note,
+                "nothing left to take: everything the pass had listed is pinned now",
+            ),
+        });
     }
 }
 

@@ -257,6 +257,46 @@ impl App {
         self.preview("what is plugged into the runtime", body);
     }
 
+    /// Plugs in this program's own compactor, or takes out whatever is plugged in, and tells
+    /// `/compact` what it aims for.
+    pub fn set_shedder(&mut self, shed: Option<crate::tools::Shedder>) {
+        let shed = shed.map(std::sync::Arc::new);
+        self.compact_target = shed.as_ref().map(|shed| shed.target);
+        self.compact_threshold = shed.as_ref().map(|shed| shed.threshold);
+        self.kernel.set_compactor(
+            shed.clone()
+                .map(|shed| shed as std::sync::Arc<dyn nachalnik::Compactor>),
+        );
+        self.shedder = shed;
+    }
+
+    /// The pass a person asks for, worked out off the loop: the one between turns where the
+    /// compactor is this program's own, and what any other compactor plans otherwise.
+    pub(in crate::app) fn plan_by_hand(
+        &self,
+    ) -> Option<(
+        std::sync::Arc<dyn nachalnik::Compactor>,
+        impl std::future::Future<Output = Option<nachalnik::CompactionPlan>> + Send + 'static,
+    )> {
+        let compactor = self.kernel.compactor()?;
+        let own = self.shedder.clone().filter(|own| {
+            std::ptr::addr_eq(
+                std::sync::Arc::as_ptr(own),
+                std::sync::Arc::as_ptr(&compactor),
+            )
+        });
+        let (items, budget) = (self.kernel.items(), self.kernel.budget());
+        let asked = compactor.clone();
+        let plan = async move {
+            match own {
+                Some(own) => own.plan_between_turns(&items, &budget),
+                None => asked.plan(&items, &budget).await,
+            }
+        };
+
+        Some((compactor, plan))
+    }
+
     /// Lists what a compaction pass would take, and asks whether to take it.
     ///
     /// note: the compactor the kernel runs before a request is the same object, asked by hand. This
@@ -284,7 +324,7 @@ impl App {
             return;
         }
 
-        let Some(compactor) = self.kernel.compactor() else {
+        let Some((compactor, plan)) = self.plan_by_hand() else {
             self.say(
                 Speaker::Error,
                 "no compactor is installed, so there is nothing to ask one for. \
@@ -298,7 +338,7 @@ impl App {
         self.errand(
             "the compaction pass",
             async move {
-                let plan = compactor.plan(&items, &budget).await;
+                let plan = plan.await;
                 (plan, items, budget, compactor)
             },
             move |app, (plan, items, budget, compactor)| {

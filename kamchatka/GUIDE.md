@@ -80,7 +80,8 @@ Answering yes recalculates the compaction and leaves the pinned items out.
 An **elided** item keeps a one-line placeholder instead of its content, so the tool call it answers
 still has an answer. Excluding a result would make the projector remove its call too. The
 placeholder tells the model it already read the content, and to read it again, or only the part it
-needs, if necessary.
+needs, if necessary. The one exception is a result `/compact` takes before the model read it,
+because the request would not fit with it; its placeholder says that instead.
 
 Once the context is full, the compactor removes the oldest exchanges entirely (excluded, not
 elided), and a summary at the end of the context says how many were removed. Each is still listed

@@ -313,8 +313,10 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         the web page. `y` on the context tab is the same act on
                         the row it is standing on
     /compact            what the compactor would take, listed, and then `y` or
-                        `n`. The list waits, so `p` on the context tab keeps
-                        something out of it and the pass is worked out again
+                        `n`. It takes what the last turn read, and while the
+                        request is over the limit, what it never read too. The
+                        list waits, so `p` on the context tab keeps something
+                        out of it and the pass is worked out again
     /spend [TOKENS]     what the provider has charged for this session, and the
                         ceiling it stops at; 0 takes the ceiling away
     /requests [N]       how many requests a turn sends before it pauses, or
