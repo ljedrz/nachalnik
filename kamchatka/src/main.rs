@@ -892,6 +892,12 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // the first thing the new session says, because only here are the old session's name and
         // the file it went to still written down
         app.say(Speaker::Note, said);
+        // a session the flags gave no model asks its endpoint again for the one it serves, as the
+        // first one did: the restore above took back the model the old session took, along with
+        // any `/model`. A named model is not asked about again; the provider was told already
+        if app.provider.model().is_empty() {
+            app.look_up_the_model();
+        }
         start_recording(&mut app, base.record);
 
         // note: the servers keep running and their tools are installed into the new kernel, so

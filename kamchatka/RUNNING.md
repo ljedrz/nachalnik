@@ -327,7 +327,7 @@ endpoints), and marks the current one with `▸`.
 A session started without `-m` asks the endpoint what it serves. If it serves exactly one model, as
 a llama-server with one model loaded does, the session uses that model and says so; otherwise it
 starts with none, and `/model` picks one. `/endpoint URL` without a model does the same for a
-session that has none yet. When the endpoint lists several models, or none, nothing is chosen for
+session that has none yet, and so does the fresh session a `/restart` starts. When the endpoint lists several models, or none, nothing is chosen for
 you.
 
 The API key is not switched with the address. It is read from the environment once, at startup,

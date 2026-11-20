@@ -670,6 +670,26 @@ async fn a_session_with_no_model_takes_the_only_one_its_endpoint_serves() {
     assert!(said.contains("no model yet"), "{said}");
 }
 
+/// A `/restart` of a session that took the only model its endpoint serves takes it again, as the
+/// first session did, rather than starting the fresh one with none.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_takes_the_only_model_again() {
+    let single = common::listing(&["the-only-one"], vec![common::answer("hello")]).await;
+    let said = unnamed("program-only-model-restarted", &single, "/restart\nhi\n");
+    let (_, after) = said
+        .split_once("ended")
+        .unwrap_or_else(|| panic!("no restart in: {said}"));
+    assert!(
+        after.contains("the endpoint serves one model, the-only-one, so this session uses it"),
+        "{after}"
+    );
+    assert!(
+        after.contains("hello"),
+        "the message after the restart went unanswered: {after}"
+    );
+    assert!(!after.contains("no model yet"), "{after}");
+}
+
 /// `/endpoint` with no model, in a session that has none, takes the only model the new address
 /// serves, as a session starting there would.
 #[tokio::test(flavor = "multi_thread")]
