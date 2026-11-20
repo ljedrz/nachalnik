@@ -69,6 +69,16 @@ minor bump may break you.
   `--help` point at a llama-server on this machine and use model names that are not tied to one
   service. OpenRouter is still supported and documented, as one hosted service among others.
 
+### fixed
+
+- **A long round of tool calls no longer stops at the context limit.** When one turn filled the
+  context by itself and there was no older exchange left to remove, the compactor took nothing,
+  and the turn ended on a request too long to send. Now, once the context is past the
+  `--compact-context-at` threshold, the turn's oldest tool results are replaced by placeholders
+  until it is down to the target, and the model keeps working. The results from the model's latest
+  step are kept, because it is still working from them. The full notice and the screen's "context
+  is full" line now say that this is what is left.
+
 ## [0.23.1] - 2026-11-11
 
 ### added

@@ -274,9 +274,9 @@ impl App {
                 self.say(Speaker::Note, note);
             }
             // note: said, because it is the one thing about compaction a person has to act on. The
-            // compactor keeps its promise - `Shedder` takes neither the turn in progress nor what
-            // is pinned - so once the rest is gone, only the person or the model can say what of
-            // that may go. The model is told by the notice the wiring gave
+            // compactor keeps its promise - `Shedder` takes neither what the model's latest step
+            // was handed nor what is pinned - so once the rest is gone, only the person or the
+            // model can say what of that may go. The model is told by the notice the wiring gave
             // the kernel, which it reads in the next request; see `wiring::full_notice`
             //
             // note: whether the model was told is not said here. The kernel leaves the notice out
@@ -306,7 +306,8 @@ impl App {
             Event::ContextFull { full: true, .. } => self.say(
                 Speaker::Note,
                 "the context is full, and the compactor has nothing more it may take: what is left \
-                 is the turn in progress and what is pinned. `/exclude` what is no longer needed",
+                 is the latest work of the turn in progress and what is pinned. `/exclude` what \
+                 is no longer needed",
             ),
             Event::ContextFull { full: false, .. } => {
                 self.say(Speaker::Note, "the context has room again")
