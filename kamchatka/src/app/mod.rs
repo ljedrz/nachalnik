@@ -758,6 +758,13 @@ pub struct App {
     /// is one with nothing to do rather than one with nothing eligible; measured against the target
     /// alone, `/compact` there once said the second.
     pub compact_threshold: Option<f64>,
+    /// This program's own compactor, when it is the one plugged in, for `/compact` to ask for the
+    /// pass between turns; see [`Shedder::plan_between_turns`](crate::tools::Shedder).
+    ///
+    /// note: held here because the kernel hands its compactor back as a `dyn Compactor`, which
+    /// cannot be asked whether it is a `Shedder`. `/compact` uses it only while the kernel's
+    /// compactor is this same object, so one swapped in since is asked as itself.
+    pub(crate) shedder: Option<Arc<crate::tools::Shedder>>,
 }
 
 impl App {
@@ -870,6 +877,7 @@ impl App {
             unanswered: None,
             compact_target: None,
             compact_threshold: None,
+            shedder: None,
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,

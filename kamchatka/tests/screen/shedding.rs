@@ -1795,6 +1795,39 @@ fn any_pass_over_any_context_keeps_the_rules() {
             let items = kernel.items();
             let budget = against(&kernel, limit);
             let repaired_before = kernel.project().repairs.is_empty();
+
+            // the pass `/compact` asks for between turns: nothing pinned and nothing twice, the
+            // person's latest message kept, and what the model never read taken only while the
+            // request is over the limit, under a marker that does not say it was read
+            if let Some(between) = trim.plan_between_turns(&items, &budget) {
+                let position = |id: ContextId| items.iter().position(|item| item.id == id).unwrap();
+                let seen = items
+                    .iter()
+                    .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+                    .unwrap_or(0);
+                let latest = items.iter().rposition(|item| item.kind == ContextKind::UserMessage);
+                let mut named: Vec<_> =
+                    between.elide.iter().chain(&between.remove).copied().collect();
+                named.sort();
+                let total = named.len();
+                named.dedup();
+                prop_assert_eq!(named.len(), total, "named twice: {:?}", between);
+                for id in between.elide.iter().chain(&between.remove) {
+                    let it = &items[position(*id)];
+                    prop_assert!(it.state != ContextState::Pinned, "{id} is pinned");
+                    prop_assert!(Some(position(*id)) != latest, "{id} is the latest message");
+                }
+                for id in &between.elide {
+                    if position(*id) >= seen {
+                        prop_assert!(
+                            limit.is_some_and(|limit| budget.used() > limit),
+                            "{id} unread, and elided with the request under the limit"
+                        );
+                        prop_assert!(!between.reason.contains("read it"), "{}", between.reason);
+                    }
+                }
+            }
+
             let Some(plan) = runtime.block_on(trim.plan(&items, &budget)) else {
                 return Ok(());
             };

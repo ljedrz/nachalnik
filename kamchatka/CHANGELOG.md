@@ -79,6 +79,17 @@ minor bump may break you.
   step are kept, because it is still working from them. The full notice and the screen's "context
   is full" line now say that this is what is left.
 
+- **`/compact` finds something to take.** The automatic pass before each request already takes
+  everything it may from earlier exchanges, so all `/compact` had left was the last exchange, and
+  it left that alone as a turn in progress. It found nothing every time, even right after a request
+  refused for its length. No turn is running when it is typed, so it now treats the last turn as
+  finished: the results the model read in it are replaced by placeholders. While the request is
+  over the limit, it also takes results the model never read, such as a file too big to send,
+  which nothing could take before. Their placeholder says they went because the request would not
+  fit, not that they were read. The automatic pass is unchanged. `App::set_shedder` plugs in the
+  compactor and tells `/compact` its marks in one call, and `Shedder::plan_between_turns` is the
+  pass `/compact` asks for.
+
 ## [0.23.1] - 2026-11-11
 
 ### added

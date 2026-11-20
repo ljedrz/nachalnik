@@ -80,28 +80,31 @@ impl Shedder {
             target: (threshold - 0.2).max(threshold / 2.0),
         }
     }
-}
 
-#[async_trait]
-impl Compactor for Shedder {
-    /// note: always. The first rule is not about the budget: a result is done with once its turn is
-    /// over, however empty the context is. Only `plan` can tell that, because it has the items. It
-    /// costs one walk of the items per request, beside the projection's two. `plan` returns `None`
-    /// when there is nothing to do, which is most requests in a turn.
-    fn should_compact(&self, _: &Budget) -> bool {
-        true
+    /// The pass `/compact` asks for, between turns: the same rules, with no turn in progress.
+    ///
+    /// note: the pass before every request has already taken what it may from the exchanges
+    /// before the last one, so what a person typing `/compact` has left is the last exchange - and
+    /// [`Compactor::plan`] leaves that alone as the turn in progress, so the command found nothing,
+    /// every time. Asked by hand, with no turn running, that exchange is over: what the model read
+    /// in it may go by the first rule, whether or not the context is full. What it never read is
+    /// still kept, and so is the person's latest message, which the second rule never drops.
+    #[must_use]
+    pub fn plan_between_turns(
+        &self,
+        items: &[Arc<ContextItem>],
+        budget: &Budget,
+    ) -> Option<CompactionPlan> {
+        self.shed(items, budget, false)
     }
 
-    /// note: the threshold alone. Something unpriced is a reason to look, and every request is
-    /// looked at anyway; it is not a sign the context is full: a pinned picture is unpriced for
-    /// the whole session, and a context holding one at five percent is not full
-    fn wants_room(&self, budget: &Budget) -> bool {
-        budget
-            .fraction_used()
-            .is_some_and(|used| used >= self.threshold)
-    }
-
-    async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan> {
+    /// A pass, with or without a turn in progress.
+    fn shed(
+        &self,
+        items: &[Arc<ContextItem>],
+        budget: &Budget,
+        in_progress: bool,
+    ) -> Option<CompactionPlan> {
         // what the counter active here calls four bytes, taken from the items in hand, so that a
         // marker and a summary are priced on the same scale as the results they stand in for
         let scale = scale(items);
@@ -142,9 +145,19 @@ impl Compactor for Shedder {
              {limit}-token limit. If you still need it, ask for the part you need rather than the \
              whole - there is little room for it"
         );
-        // the longer of the two. Whatever the pass ends up with, nothing it takes is smaller than
+        // the one on a pass asked for by hand that takes what the model never read, which says
+        // nothing about reading: the model would be told it had read what it had not
+        let no_fit = format!(
+            "{MARK} because the request would not fit the {limit}-token limit with it. If you \
+             need it, ask for the part you need rather than the whole - there is no room for it"
+        );
+        // the longest of them. Whatever the pass ends up with, nothing it takes is smaller than
         // the line standing in for it
-        let marker = [&served, &room_made]
+        let reasons = match in_progress {
+            true => vec![&served, &room_made],
+            false => vec![&served, &room_made, &no_fit],
+        };
+        let marker = reasons
             .into_iter()
             .map(|reason| marker_tokens(reason, scale))
             .max()
@@ -212,8 +225,11 @@ impl Compactor for Shedder {
             .unwrap_or(0);
         let exchanges = exchanges(items);
         // where the turn in progress starts, which the first two rules do not reach into; with no
-        // message from the person at all, everything is that turn
-        let current = exchanges.last().map_or(0, |turn| turn.start);
+        // message from the person at all, everything is that turn. Between turns there is none
+        let current = match in_progress {
+            true => exchanges.last().map_or(0, |turn| turn.start),
+            false => items.len(),
+        };
 
         let mut used = budget.used();
         let mut routine = Vec::new();
@@ -401,7 +417,37 @@ impl Compactor for Shedder {
                 in_turn.push(item.id);
             }
         }
-        let elide: Vec<ContextId> = elide.into_iter().chain(in_turn).collect();
+        // and by hand only, with no turn running, what the model was handed and never read - but
+        // only while the request would not be sent at all with it. A read whose result was too big
+        // to send otherwise stays there for good: no pass takes what was never read, and the
+        // request that would have it read is the one refused. The person sees the list first, and
+        // the marker on such a pass says why it went rather than that it was read
+        let mut unread = Vec::new();
+        if let Some(limit) = budget.limit.filter(|_| !in_progress) {
+            for item in items.iter().skip(seen) {
+                if used <= limit {
+                    break;
+                }
+                if !matches!(item.kind, ContextKind::ToolResult { .. })
+                    || !sheddable(item)
+                    || item.note.is_some()
+                    || carries_blob(&item.content)
+                    || remove.contains(&item.id)
+                {
+                    continue;
+                }
+                let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
+                    continue;
+                };
+                used -= net.min(used);
+                unread.push(item.id);
+            }
+        }
+        let elide: Vec<ContextId> = elide
+            .into_iter()
+            .chain(in_turn)
+            .chain(unread.iter().copied())
+            .collect();
         if elide.is_empty() && remove.is_empty() {
             return None;
         }
@@ -429,9 +475,10 @@ impl Compactor for Shedder {
             None => remove,
         };
 
-        let reason = match summary.is_some() || full {
-            true => room_made,
-            false => served,
+        let reason = match (unread.is_empty(), summary.is_some() || full) {
+            (false, _) => no_fit,
+            (true, true) => room_made,
+            (true, false) => served,
         };
 
         Some(CompactionPlan {
@@ -440,6 +487,30 @@ impl Compactor for Shedder {
             elide,
             remove,
         })
+    }
+}
+
+#[async_trait]
+impl Compactor for Shedder {
+    /// note: always. The first rule is not about the budget: a result is done with once its turn is
+    /// over, however empty the context is. Only `plan` can tell that, because it has the items. It
+    /// costs one walk of the items per request, beside the projection's two. `plan` returns `None`
+    /// when there is nothing to do, which is most requests in a turn.
+    fn should_compact(&self, _: &Budget) -> bool {
+        true
+    }
+
+    /// note: the threshold alone. Something unpriced is a reason to look, and every request is
+    /// looked at anyway; it is not a sign the context is full: a pinned picture is unpriced for
+    /// the whole session, and a context holding one at five percent is not full
+    fn wants_room(&self, budget: &Budget) -> bool {
+        budget
+            .fraction_used()
+            .is_some_and(|used| used >= self.threshold)
+    }
+
+    async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan> {
+        self.shed(items, budget, true)
     }
 }
 

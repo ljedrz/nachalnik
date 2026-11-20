@@ -1658,6 +1658,148 @@ async fn y_takes_it_and_says_what_it_took() {
     assert!(screen.contains("compacted:"), "{screen}");
 }
 
+/// `/compact` after a turn takes what that turn read, which is all a person typing it has left.
+///
+/// note: found live, and the command had never once been of use. The pass before every request
+/// takes whatever it may from earlier exchanges, so by the time somebody types `/compact` the only
+/// thing left is the last exchange, which `/compact` took for the turn in progress and left alone
+/// - even after a request too long to send, where the "too long" line had just pointed at it.
+#[tokio::test]
+async fn compact_after_a_turn_takes_what_that_turn_read() {
+    use nachalnik::Content;
+
+    let mut harness = Harness::new([]);
+    harness.app.set_shedder(Some(Shedder::under(0.8)));
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(ContextItem::user("read them both"));
+    let mut results = Vec::new();
+    for n in 0..2 {
+        let read = call(&format!("c{n}"), "read", json!({ "n": n }));
+        harness.app.kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![read.clone()],
+        ));
+        results.push(harness.app.kernel.push(ContextItem::tool_result(
+            read.id.clone(),
+            "read",
+            "a line of routine output. ".repeat(limit / 10),
+            false,
+        )));
+    }
+    // read, both of them: the model went on from them
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("both are long"),
+        vec![],
+    ));
+    harness.drain();
+
+    harness.send("/compact").await;
+    harness.settle().await;
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
+    harness.drain();
+
+    for result in results {
+        assert_eq!(
+            harness.app.kernel.item(result).unwrap().state,
+            ContextState::Elided,
+            "{}",
+            harness.flat()
+        );
+    }
+}
+
+/// `/compact` after a turn leaves what the model was handed and never read: the marker says it was
+/// read, and the person's latest question stays.
+#[tokio::test]
+async fn compact_after_a_turn_leaves_what_was_never_read() {
+    use nachalnik::Content;
+
+    let mut harness = Harness::new([]);
+    harness.app.set_shedder(Some(Shedder::under(0.8)));
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    let asked = harness.app.kernel.push(ContextItem::user("read it"));
+    let read = call("c0", "read", json!({}));
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![read.clone()],
+    ));
+    let unread = harness.app.kernel.push(ContextItem::tool_result(
+        read.id.clone(),
+        "read",
+        "a line of routine output. ".repeat(limit / 10),
+        false,
+    ));
+    harness.drain();
+
+    harness.send("/compact").await;
+    harness.settle().await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("nothing"), "{screen}");
+    for id in [asked, unread] {
+        assert!(harness.app.kernel.item(id).unwrap().state.sends_content());
+    }
+}
+
+/// A read too big to send, refused for its length, is taken by `/compact` and said not to have
+/// been read; the pass before a request still leaves it.
+///
+/// note: otherwise it stays for good. No pass takes what the model never read, and the request
+/// that would have it read is the one refused, so the session could only go on by `/exclude`.
+#[tokio::test]
+async fn compact_takes_a_read_too_big_to_send() {
+    use nachalnik::Content;
+
+    let mut harness = Harness::new([]);
+    harness.app.set_shedder(Some(Shedder::under(0.8)));
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    let asked = harness.app.kernel.push(ContextItem::user("read it"));
+    let read = call("c0", "read", json!({}));
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![read.clone()],
+    ));
+    let unread = harness.app.kernel.push(ContextItem::tool_result(
+        read.id.clone(),
+        "read",
+        "a line of routine output. ".repeat(limit / 4),
+        false,
+    ));
+    harness.drain();
+    let compactor = harness.app.kernel.compactor().expect("installed");
+    let (items, budget) = (harness.app.kernel.items(), harness.app.kernel.budget());
+    assert!(budget.used() > limit, "over the limit");
+    assert!(
+        compactor.plan(&items, &budget).await.is_none(),
+        "the pass before a request leaves what was never read"
+    );
+
+    harness.send("/compact").await;
+    harness.settle().await;
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
+    harness.drain();
+
+    let item = harness.app.kernel.item(unread).unwrap();
+    assert_eq!(item.state, ContextState::Elided, "{}", harness.flat());
+    let note = item.note.clone().unwrap_or_default();
+    assert!(note.contains("would not fit"), "{note}");
+    assert!(!note.contains("read it"), "it was never read: {note}");
+    assert!(
+        harness
+            .app
+            .kernel
+            .item(asked)
+            .unwrap()
+            .state
+            .sends_content()
+    );
+    assert!(harness.app.kernel.budget().used() <= limit);
+}
+
 /// `y` with another command still out waits for it, rather than putting the pass in its place.
 ///
 /// note: a pass and a listing are one errand slot. Taking the pass while a client's `/models` was

@@ -809,8 +809,9 @@ impl Setup {
         });
         let compact_target = shed.as_ref().map(|shed| shed.target);
         let compact_threshold = shed.as_ref().map(|shed| shed.threshold);
-        if let Some(shed) = shed {
-            kernel.set_compactor(Some(Arc::new(shed)));
+        let shed = shed.map(Arc::new);
+        if let Some(shed) = &shed {
+            kernel.set_compactor(Some(shed.clone()));
             // worked out again once the tools not asked for are off; see below
             kernel.set_full_notice(Some(full_notice(&kernel, &policy)));
         }
@@ -971,6 +972,7 @@ impl Setup {
         app.response_stats = self.response_stats;
         app.compact_target = compact_target;
         app.compact_threshold = compact_threshold;
+        app.shedder = shed;
         // what `/attach` says about a file it took, said about the ones `-f` took
         for item in app.kernel.items() {
             if let Some(caution) = attach::caution(&item) {
