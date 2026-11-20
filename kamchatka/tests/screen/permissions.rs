@@ -3446,8 +3446,16 @@ async fn the_permissions_tab_lists_the_sandbox() {
         .find(|line| line.contains("working directory"))
         .expect("a line for the working directory");
     assert!(workdir.contains("read-write"), "{workdir}");
-    assert!(workdir.contains("/work · set by fs:write"), "{workdir}");
-    assert!(!workdir.contains(" ask "), "{workdir}");
+    // and under `ask`, that the word is the shell's: the file tools still ask before writing, and
+    // `read-write` beside the rule alone read as the rule granting it
+    assert!(
+        workdir.contains("/work · the shell writes freely; the file tools ask · set by fs:write"),
+        "{workdir}"
+    );
+    let (_, column) = workdir
+        .split_once("working directory")
+        .expect("the line names it");
+    assert!(column.trim_start().starts_with("read-write"), "{workdir}");
     // whether the shell is held to any of it is the sandbox's own state, in its heading - not a
     // line among the parts, and not along the bottom, where it used to be
     let heading = screen
@@ -3540,6 +3548,17 @@ async fn the_permissions_tab_lists_the_sandbox() {
     assert!(
         refused.contains("2 paths, 1 of them from sandbox-write while fs:write is denied"),
         "{refused}"
+    );
+
+    // allowed, both write there without asking, and nothing needs saying beside the path
+    harness.app.policy.set(
+        &Subject::Capability(Capability::fs("write")),
+        Verdict::Allow,
+    );
+    let allowed = harness.sized(110, 40);
+    assert!(
+        allowed.contains("read-write  /work · set by fs:write"),
+        "{allowed}"
     );
 }
 

@@ -60,6 +60,11 @@ minor bump may break you.
 
 ### changed
 
+- **The permissions tab says who asks before writing in the working directory.** While `fs:write`
+  is `ask`, the directory is `read-write` for the shell, but the file tools still ask before each
+  write. The line now says so: `the shell writes freely; the file tools ask`. Before, `read-write`
+  next to `set by fs:write` looked like the rule had allowed writing.
+
 - **The documentation leads with a local server.** The examples in the READMEs, `RUNNING.md` and
   `--help` point at a llama-server on this machine and use model names that are not tied to one
   service. OpenRouter is still supported and documented, as one hosted service among others.

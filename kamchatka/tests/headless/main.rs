@@ -4766,7 +4766,8 @@ async fn the_permissions_page_lists_the_sandbox() {
     assert!(confined.contains("the sandbox:"), "{confined}");
     assert!(
         confined.contains(&format!(
-            "working directory: read-write, {} (set by fs:write)",
+            "working directory: read-write, {} · the shell writes freely; the file tools ask \
+             (set by fs:write)",
             workdir.display()
         )),
         "{confined}"
