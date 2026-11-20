@@ -58,6 +58,9 @@ minor bump may break you.
   block and never closes it, so the note suggests `--reasoning-format none`. A turn cut off at the
   length limit while thinking keeps its own note and gets no second one.
 
+- **`Shedder::plan_between_turns`** is the pass `/compact` asks for, and **`App::set_shedder`**
+  plugs a `Shedder` in and gives `/compact` its threshold and target in one call.
+
 ### changed
 
 - **The permissions tab says who asks before writing in the working directory.** While `fs:write`
@@ -86,9 +89,7 @@ minor bump may break you.
   finished: the results the model read in it are replaced by placeholders. While the request is
   over the limit, it also takes results the model never read, such as a file too big to send,
   which nothing could take before. Their placeholder says they went because the request would not
-  fit, not that they were read. The automatic pass is unchanged. `App::set_shedder` plugs in the
-  compactor and tells `/compact` its marks in one call, and `Shedder::plan_between_turns` is the
-  pass `/compact` asks for.
+  fit, not that they were read. The automatic pass is unchanged.
 
 ## [0.23.1] - 2026-11-11
 

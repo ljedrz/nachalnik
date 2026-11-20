@@ -422,9 +422,9 @@ latest step are kept, because it is still working from them.
 
 None of the rules touches pinned items or notes the model wrote for itself, and none summarizes
 anything. Every item is still on the context tab: an elided one is a <kbd>space</kbd> away from
-coming back, a removed one a `/restore` away. A result you bring back by
-hand is not elided again by the first rule. The placeholder says the content has been read, and
-content the model has not seen is never removed to make a request fit.
+coming back, a removed one a `/restore` away. A result you bring back by hand is not elided again by
+the first rule. The placeholder says the content has been read, and the automatic pass never removes
+content the model has not seen. Only `/compact` does, as described below.
 
 `/compact` runs the same compactor manually, and shows what it would do before doing anything:
 every item it would remove, with its id, what it is and what it contains. Since no turn is running
