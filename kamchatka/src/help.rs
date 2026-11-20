@@ -133,6 +133,7 @@ pub const CHAT: &str =
     ctrl+end            the end of it, and following the newest again
     ctrl+e              follow the newest again, from wherever you are
     left / right        move the cursor
+    ctrl+left / right   move the cursor a word back / forward
     home / end          the start / the end of the line
     backspace / delete  take out the character before / after the cursor
     (a message sent while a turn is running waits for the end of it, and

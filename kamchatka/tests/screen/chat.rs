@@ -3158,6 +3158,29 @@ async fn the_prompt_has_no_keys_the_help_does_not_name() {
     assert_eq!(harness.app.input.lines(), ["ne w?o"]);
 }
 
+/// `ctrl+left` and `ctrl+right` move the prompt's cursor a word at a time.
+#[tokio::test]
+async fn ctrl_and_an_arrow_move_the_prompt_cursor_by_a_word() {
+    let mut harness = Harness::new([]);
+    for c in "one two three".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+
+    harness.chord(KeyCode::Left).await;
+    harness.press(KeyCode::Char('_')).await;
+    assert_eq!(harness.app.input.lines(), ["one two _three"]);
+
+    harness.chord(KeyCode::Left).await;
+    harness.chord(KeyCode::Left).await;
+    harness.press(KeyCode::Char('_')).await;
+    assert_eq!(harness.app.input.lines(), ["one _two _three"]);
+
+    harness.press(KeyCode::Home).await;
+    harness.chord(KeyCode::Right).await;
+    harness.press(KeyCode::Char('_')).await;
+    assert_eq!(harness.app.input.lines(), ["one __two _three"]);
+}
+
 /// Thinking is on the chat while the turn is still arriving, beside the answer.
 #[tokio::test]
 async fn thinking_that_arrives_is_on_the_chat_while_the_turn_is_still_arriving() {

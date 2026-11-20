@@ -37,6 +37,8 @@ minor bump may break you.
   endpoint that lists several models, or none, leaves the choice to you as before. `/endpoint URL`
   without a model does the same for a session that has none yet, and so does the fresh session a
   `/restart` starts.
+- **`ctrl+left` and `ctrl+right` move the prompt's cursor by a word**, as they do in most text
+  fields. `/help` lists them with the other prompt keys.
 
 - **`--response-stats` follows each response with a line about how it went.** The line says how
   long the response took, how soon its first fragment arrived, how fast the rest was generated,

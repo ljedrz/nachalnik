@@ -111,8 +111,19 @@ impl App {
     /// end of the line, `alt+<` jumping to the top, a shift-arrow selection only its own `ctrl+x`
     /// could use - none of it on a help line, so a chord pressed by mistake once changed the
     /// message in a way nothing on the screen could account for. A chord is dropped, as it is on
-    /// the tabs.
+    /// the tabs, except `ctrl+left` and `ctrl+right`, which move by a word as they do in most text
+    /// fields.
     fn edit(&mut self, key: KeyEvent) {
+        if key.modifiers == KeyModifiers::CONTROL
+            && let Some(moved) = match key.code {
+                KeyCode::Left => Some(CursorMove::WordBack),
+                KeyCode::Right => Some(CursorMove::WordForward),
+                _ => None,
+            }
+        {
+            self.input.move_cursor(moved);
+            return;
+        }
         if key
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
