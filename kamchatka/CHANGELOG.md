@@ -35,7 +35,8 @@ minor bump may break you.
   with one model loaded - it uses that model and says so: `the endpoint serves one model, …, so this
   session uses it`. The first message waits for the answer, as it waits for a named model's. An
   endpoint that lists several models, or none, leaves the choice to you as before. `/endpoint URL`
-  without a model does the same for a session that has none yet.
+  without a model does the same for a session that has none yet, and so does the fresh session a
+  `/restart` starts.
 
 - **`--response-stats` follows each response with a line about how it went.** The line says how
   long the response took, how soon its first fragment arrived, how fast the rest was generated,
