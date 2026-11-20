@@ -19,7 +19,8 @@
 //!
 //! note: none of them takes anything the model has not been shown. The marker must say the model
 //! had read what it stands in for; a marker that said only "compacted" made the model withdraw its
-//! own summaries as fabricated.
+//! own summaries as fabricated. The one exception is [`Shedder::plan_between_turns`], which a
+//! person asks for and sees the list of first, and which has a marker of its own for it.
 //!
 //! note: what it frees has to beat what it costs, both counted on the counter's own scale. An
 //! elided item leaves behind a sentence carrying the reason for eliding it, so a result smaller
@@ -45,10 +46,10 @@ use crate::app::named_calls;
 /// and says so.
 ///
 /// note: it does not summarize what it takes, and nothing left behind claims more than that the
-/// content existed, was read, and is gone; a compactor that paraphrased output it never read would
-/// be putting words in a tool's mouth. Every change is reversible: items keep what they hold, stay
-/// in the context pane counted as held back, and restoring one is a keystroke. Anything pinned is
-/// left where it is.
+/// content existed, was read (or, by hand, did not fit), and is gone; a compactor that paraphrased
+/// output it never read would be putting words in a tool's mouth. Every change is reversible: items
+/// keep what they hold, stay in the context pane counted as held back, and restoring one is a
+/// keystroke. Anything pinned is left where it is.
 ///
 /// note: blobs go as soon as they have been shown, on principle rather than measurement. This
 /// terminal client renders no pictures, so a blob is a cost the person cannot see, paid from a
@@ -88,7 +89,9 @@ impl Shedder {
     /// [`Compactor::plan`] leaves that alone as the turn in progress, so the command found nothing,
     /// every time. Asked by hand, with no turn running, that exchange is over: what the model read
     /// in it may go by the first rule, whether or not the context is full. What it never read is
-    /// still kept, and so is the person's latest message, which the second rule never drops.
+    /// kept while the request fits, and taken under a marker of its own while it does not, since
+    /// nothing else can take it then. The person's latest message is kept, as the second rule
+    /// never drops it.
     #[must_use]
     pub fn plan_between_turns(
         &self,

@@ -226,10 +226,9 @@ pub struct Wired {
 ///
 /// note: `Shedder` never takes what the model's latest step was handed, what is pinned, or a note
 /// the model wrote for itself, so once the older exchanges and the turn's older results are gone
-/// that is what is left, and only the model or the
-/// person can say what of it may go. The kernel places this once per fill, between a turn's results
-/// and its next request, so a tool loop that fills the context hears it inside the same turn - see
-/// `nachalnik::Kernel::set_full_notice`.
+/// that is what is left, and only the model or the person can say what of it may go. The kernel
+/// places this once per fill, between a turn's results and its next request, so a tool loop that
+/// fills the context hears it inside the same turn - see `nachalnik::Kernel::set_full_notice`.
 ///
 /// note: the `context` tool is named only where the model could use it to make room now - offered,
 /// and with `context:move`, which `exclude` and `elide` need, not refused by a rule or by a

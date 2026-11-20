@@ -316,9 +316,9 @@ impl App {
     ///
     /// note: use `/compact` where the tool results could cover the overrun; use the model's own
     /// turns when the tool results could not, and only if taking all the turns would leave room. A
-    /// request is refused for length after the compactor has run, so what is left is mostly what
-    /// the latest step of the turn in progress was handed, which no pass takes. `/compact` there
-    /// would find nothing.
+    /// request is refused for length after the compactor has run, so what is left is mostly the
+    /// last turn's results, which the automatic pass keeps and `/compact` takes: what the model
+    /// read, and while the request is over the limit, what it never read too.
     ///
     /// note: the turns are priced from the request, not from the items. A reasoning model's turn
     /// holds its thinking, which the projector does not send back, so the item figures made the
