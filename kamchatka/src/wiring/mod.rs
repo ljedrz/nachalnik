@@ -224,8 +224,9 @@ pub struct Wired {
 /// What the model is told as the context becomes full: that the compactor has nothing more it may
 /// take, and what it can do about the rest.
 ///
-/// note: `Shedder` never takes the turn in progress, what is pinned, or a note the model wrote for
-/// itself, so once the older exchanges are gone that is what is left, and only the model or the
+/// note: `Shedder` never takes what the model's latest step was handed, what is pinned, or a note
+/// the model wrote for itself, so once the older exchanges and the turn's older results are gone
+/// that is what is left, and only the model or the
 /// person can say what of it may go. The kernel places this once per fill, between a turn's results
 /// and its next request, so a tool loop that fills the context hears it inside the same turn - see
 /// `nachalnik::Kernel::set_full_notice`.
@@ -239,16 +240,16 @@ pub struct Wired {
 pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
     let can =
         |subject: &str| crate::introspect::reachable(kernel, policy, &format!("context:{subject}"));
-    // note: both say what is left - this turn, what is pinned and the notes - because a model told
-    // only that the context was full went looking for tool results to elide, and one told to ask
-    // the person wrote a file larger than the room. Both say what not to do, since a request over
-    // the limit is not sent
+    // note: both say what is left - this turn's latest work, what is pinned and the notes -
+    // because a model told only that the context was full went looking for tool results to elide,
+    // and one told to ask the person wrote a file larger than the room. Both say what not to do,
+    // since a request over the limit is not sent
     let said = match (can("move"), can("read")) {
         (true, looks) => format!(
             "The context is full, and nothing more will be taken from it automatically: what \
-             fills it now is this turn, what is pinned and the notes you kept. Before anything \
-             else, {} what you no longer need, and say why. Add nothing large until there is \
-             room - a request over the limit is not sent.",
+             fills it now is this turn's latest work, what is pinned and the notes you kept. \
+             Before anything else, {} what you no longer need, and say why. Add nothing large \
+             until there is room - a request over the limit is not sent.",
             match looks {
                 true =>
                     "`look` with the `context` tool to see what there is, then `exclude` or \
@@ -256,11 +257,11 @@ pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
                 false => "`exclude` or `elide` with the `context` tool, by id,",
             }
         ),
-        (false, _) => "The context is full, and what fills it now is this turn and what is \
-                       pinned. Add nothing large to it - no long answers, no large files written \
-                       or read - because a request over the limit is not sent. Tell the person \
-                       you are working with that the context is full, so they can exclude what is \
-                       no longer needed, and keep to short answers until there is room."
+        (false, _) => "The context is full, and what fills it now is this turn's latest work and \
+                       what is pinned. Add nothing large to it - no long answers, no large files \
+                       written or read - because a request over the limit is not sent. Tell the \
+                       person you are working with that the context is full, so they can exclude \
+                       what is no longer needed, and keep to short answers until there is room."
             .to_owned(),
     };
 

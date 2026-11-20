@@ -454,10 +454,10 @@ async fn a_target_at_the_threshold_drops_just_enough() {
     assert_eq!(plan.remove, all[0].all(), "one exchange is enough");
 }
 
-/// The turn in progress is never touched, however large, and a result of it the model has read is
-/// no exception: when it is all that is left, the pass has nothing to do and the context is full.
+/// What the latest step of the turn in progress was handed is never touched, however large: when
+/// it is all that is left, the pass has nothing to do and the context is full.
 #[tokio::test]
-async fn the_turn_in_progress_is_never_touched() {
+async fn what_the_latest_step_was_handed_is_never_touched() {
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
     exchange(kernel, "a", &words(40_000), &["x".repeat(4_000)]);
@@ -627,10 +627,10 @@ async fn an_exchange_smaller_than_its_summary_is_not_dropped() {
     assert_eq!(kernel.item(pinned).unwrap().state, ContextState::Pinned);
 }
 
-/// A pass that drops exchanges leaves the turn in progress whole, however much of it is read, and
-/// its summary is about the exchanges alone.
+/// A pass that drops exchanges takes of the turn in progress only what dropping them left over the
+/// target, and never what its latest step was handed; its summary is about the exchanges alone.
 #[tokio::test]
-async fn a_pass_that_drops_exchanges_leaves_the_turn_in_progress_whole() {
+async fn a_pass_that_drops_exchanges_takes_what_is_left_over_from_the_turn_in_progress() {
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
     exchange(kernel, "a", &words(4_000), &[]);
@@ -654,12 +654,128 @@ async fn a_pass_that_drops_exchanges_leaves_the_turn_in_progress_whole() {
     let said = said(&plan);
     assert!(said.contains("The 1 earliest exchange(s)"), "{said}");
     assert!(!said.contains("this turn"), "{said}");
+    assert_eq!(
+        plan.elide,
+        [current.results[0]],
+        "the older result, still over the target"
+    );
     for id in current.all() {
-        assert!(
-            !plan.elide.contains(&id) && !plan.remove.contains(&id),
-            "{id}"
-        );
+        assert!(!plan.remove.contains(&id), "{id}");
     }
+}
+
+// --------------------------------------------------------------------- a turn that fills alone
+
+/// One long round of reads, with no older exchange to drop: past the threshold, the turn's oldest
+/// results go to markers until it is down to the target, so the round can go on, and what the
+/// latest step was handed stays.
+#[tokio::test]
+async fn a_long_round_has_its_oldest_results_elided_once_it_is_full() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let current = exchange(
+        kernel,
+        "a",
+        "read them all",
+        &(0..8).map(|_| "x".repeat(4_000)).collect::<Vec<_>>(),
+    );
+    // the round is still going: its last step asked for something it has not been handed yet
+    kernel.set_state(
+        [current.answer],
+        ContextState::Excluded,
+        Some("by hand".into()),
+    );
+    let limit = filled_to(kernel, 0.85);
+    let trim = Shedder {
+        threshold: 0.8,
+        target: 0.6,
+    };
+
+    let plan = planned(&trim, kernel, Some(limit))
+        .await
+        .expect("a full context with read results in it");
+    assert!(plan.remove.is_empty() && plan.summary.is_none());
+    assert!(!plan.elide.is_empty());
+    assert_eq!(
+        plan.elide,
+        current.results[..plan.elide.len()],
+        "oldest first"
+    );
+    assert!(
+        !plan.elide.contains(&current.results[7]),
+        "what the latest step was handed stays"
+    );
+    assert!(
+        plan.reason.contains("because the context had reached"),
+        "{}",
+        plan.reason
+    );
+    let report = kernel.apply_compaction(plan);
+    assert!(report.refused.is_empty());
+    assert!(
+        report.tokens_after as f64 <= limit as f64 * 0.6 + 200.0,
+        "down to about the target: {} of {limit}",
+        report.tokens_after
+    );
+    assert!(kernel.project().repairs.is_empty());
+}
+
+/// Under the threshold, a round in progress keeps every result it has, however many.
+#[tokio::test]
+async fn a_long_round_short_of_the_threshold_keeps_its_results() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    exchange(
+        kernel,
+        "a",
+        "read them all",
+        &(0..8).map(|_| "x".repeat(4_000)).collect::<Vec<_>>(),
+    );
+    let limit = filled_to(kernel, 0.7);
+
+    assert!(
+        planned(&Shedder::under(0.8), kernel, Some(limit))
+            .await
+            .is_none()
+    );
+}
+
+/// End to end: one turn reading far more than the limit, a little at a time, finishes rather than
+/// ending on a request too long to send, and no request it sends is over the limit.
+#[tokio::test]
+async fn a_turn_reading_more_than_the_limit_goes_on_to_its_answer() {
+    let limit = 6_000;
+    let steps = 20;
+    let (kernel, mut events) = session(steps, limit, Shedder::under(0.8));
+    let mut responses: Vec<ModelResponse> = (0..steps)
+        .map(|k| {
+            ModelResponse::tool_calls(vec![call(
+                &format!("s{k}"),
+                "read",
+                json!({ "bytes": 4_000 }),
+            )])
+        })
+        .collect();
+    responses.push(ModelResponse::text("done"));
+    kernel.set_provider(Arc::new(
+        ScriptedProvider::new(responses)
+            .with_info(ModelInfo::new("m", "m").with_context_limit(limit)),
+    ));
+    kernel.push(ContextItem::user("read twenty files"));
+
+    kernel.turn().await.expect("the turn goes on to its answer");
+    let mut elided = 0;
+    while let Ok(event) = events.try_recv() {
+        match event {
+            Event::ModelRequested { tokens, .. } => assert!(tokens <= limit, "{tokens}"),
+            Event::Compacted { report } => elided += report.elided.len(),
+            _ => {}
+        }
+    }
+    assert!(
+        elided >= steps / 2,
+        "only {elided} of {steps} results were elided"
+    );
 }
 
 /// A summary the person pinned is theirs, and the next pass's summary does not supersede it.
@@ -1096,7 +1212,7 @@ async fn play(
                     report.tokens_before,
                     report.tokens_after
                 );
-                // nothing of the turn in progress is ever excluded or elided
+                // nothing of the turn in progress is ever excluded, and only its results elided
                 let current: Vec<_> = kernel
                     .items()
                     .iter()
@@ -1113,7 +1229,11 @@ async fn play(
                 }
                 for elided in &report.elided {
                     assert!(
-                        !current.contains(&elided.id),
+                        !current.contains(&elided.id)
+                            || matches!(
+                                kernel.item(elided.id).unwrap().kind,
+                                ContextKind::ToolResult { .. }
+                            ),
                         "turn {n}: {} of the turn in progress was elided",
                         elided.id
                     );
@@ -1355,7 +1475,7 @@ async fn one_undo_puts_a_pass_back() {
 }
 
 /// A tool loop that fills the context mid-turn has older exchanges dropped between its steps, and
-/// is told the context is full only once nothing older is left.
+/// once nothing older is left, its own older reads go to markers so that it can go on.
 #[tokio::test]
 async fn a_turn_that_fills_the_context_has_the_past_dropped_between_its_steps() {
     let limit = 8_000;
@@ -1384,14 +1504,21 @@ async fn a_turn_that_fills_the_context_has_the_past_dropped_between_its_steps() 
         })
         .count();
     assert_eq!(gone, 3, "the past made room for the turn, all of it");
-    assert_eq!(
-        watched.full, 1,
-        "and with nothing older left, it was said to be full rather than have its reads taken"
+    let elided = kernel
+        .items()
+        .iter()
+        .filter(|item| {
+            matches!(item.kind, ContextKind::ToolResult { .. })
+                && item.state == ContextState::Elided
+        })
+        .count();
+    assert!(
+        elided > 0,
+        "and with nothing older left, its own older reads made room"
     );
-    assert_eq!(
-        watched.refused.len(),
-        1,
-        "and the request it could not fit was not sent"
+    assert!(
+        watched.refused.is_empty(),
+        "so every request it made was sent, and it got to its answer"
     );
 }
 
@@ -1678,6 +1805,10 @@ fn any_pass_over_any_context_keeps_the_rules() {
                 .iter()
                 .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
                 .unwrap_or(0);
+            let answered = items[..seen]
+                .iter()
+                .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+                .unwrap_or(0);
             let current = {
                 let last = items.iter().rposition(|item| item.kind == ContextKind::UserMessage);
                 let mut start = last.unwrap_or(0);
@@ -1703,7 +1834,16 @@ fn any_pass_over_any_context_keeps_the_rules() {
                 prop_assert!(it.state != ContextState::Pinned, "{id} is pinned");
                 prop_assert!(it.state.sends_content(), "{id} is not being sent");
                 prop_assert!(index(*id) < seen, "{id} unread, and elided");
-                prop_assert!(index(*id) < current, "{id} is in the turn in progress");
+                // of the turn in progress, only a result the step before the latest was handed,
+                // and only once the context is full
+                prop_assert!(
+                    index(*id) < current
+                        || (index(*id) < answered
+                            && matches!(it.kind, ContextKind::ToolResult { .. })
+                            && it.content.blobs().is_empty()
+                            && trim.wants_room(&budget)),
+                    "{id} is in the turn in progress"
+                );
                 prop_assert!(
                     matches!(it.kind, ContextKind::ToolResult { .. })
                         || (it.kind == ContextKind::Reference && !it.content.blobs().is_empty()),

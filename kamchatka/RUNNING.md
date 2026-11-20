@@ -405,7 +405,7 @@ The line is a note for you; the model never sees it.
 
 ## 🗜️ when the context fills
 
-The compactor removes what the conversation no longer needs, using two rules. The first runs before
+The compactor removes what the conversation no longer needs, using three rules. The first runs before
 every request: a tool result from a finished turn is replaced by a placeholder, as is an image or
 document shown in a finished exchange, unless the placeholder would be bigger than the original. The
 second applies only when space runs out: once the context passes the `--compact-context-at`
@@ -414,9 +414,15 @@ the target, the second number in `--compact-context-at 0.8,0.6`. If the target i
 twenty percentage points below the threshold or half of it, whichever is higher, so removals happen
 in batches instead of changing the cached start of the request every turn.
 
-Neither rule touches the turn in progress, pinned items, or notes the model wrote for itself, and
-neither summarizes anything. Every item is still on the context tab: an elided one is a
-<kbd>space</kbd> away from coming back, a removed one a `/restore` away. A result you bring back by
+The third is for a single turn that fills the context by itself, in a long round of tool calls
+with no older exchange left to remove. Once the context is past the threshold, the turn's oldest
+tool results are replaced by placeholders until it is down to the target, so the model can keep
+working instead of the turn ending on a request too long to send. The results from the model's
+latest step are kept, because it is still working from them.
+
+None of the rules touches pinned items or notes the model wrote for itself, and none summarizes
+anything. Every item is still on the context tab: an elided one is a <kbd>space</kbd> away from
+coming back, a removed one a `/restore` away. A result you bring back by
 hand is not elided again by the first rule. The placeholder says the content has been read, and
 content the model has not seen is never removed to make a request fit.
 
@@ -426,16 +432,16 @@ every item it would remove, with its id, what it is and what it contains. It the
 screen, so you can switch to the context tab and <kbd>p</kbd> anything you want to keep. Answering
 yes recalculates the compaction, so items you pinned while reading the list are respected.
 
-If the turn in progress and pinned items make up most of the context, the compactor can't help. When
-the context is past the `--compact-context-at` threshold and there's nothing left it's allowed to
-remove, the session says the context is full, once, while there's still room below the limit. You
-can `/exclude`, or the model can exclude with its `context` tool. The model is also told, by a note
-added to the context before its next request, within the turn that filled it, so an unattended run
-can make room itself instead of hitting the limit. If the model can't make room with the `context`
-tool (it's turned off, a rule refuses `exclude` and `elide`, or a headless run would refuse them
-because nobody is there to ask), the note asks the model to tell you instead, and it's reworded,
-including any copy already in the context, whenever that changes. Once there's room again, the
-session says so and the note is excluded.
+If the latest step of the turn in progress and pinned items make up most of the context, the
+compactor can't help. When the context is past the `--compact-context-at` threshold and there's
+nothing left it's allowed to remove, the session says the context is full, once, while there's still
+room below the limit. You can `/exclude`, or the model can exclude with its `context` tool. The
+model is also told, by a note added to the context before its next request, within the turn that
+filled it, so an unattended run can make room itself instead of hitting the limit. If the model
+can't make room with the `context` tool (it's turned off, a rule refuses `exclude` and `elide`, or a
+headless run would refuse them because nobody is there to ask), the note asks the model to tell you
+instead, and it's reworded, including any copy already in the context, whenever that changes. Once
+there's room again, the session says so and the note is excluded.
 
 In a headless run, making room is a permission question like any other: every `context` call is
 asked about, including `look`, and `--on-ask deny` refuses all of them, so the note doesn't send the

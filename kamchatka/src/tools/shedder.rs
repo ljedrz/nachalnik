@@ -1,22 +1,25 @@
 //! `Shedder`: the compactor. It sheds what the conversation is done with and says exactly what it
 //! took.
 //!
-//! note: two rules answer different questions. The first, about what has served its purpose, runs
-//! before every request whether the context is full or not: a tool result the model has read and
-//! whose turn is over goes to a marker, and so does a picture the model has been shown in an
-//! exchange before the one in progress. The second, about room, runs once the context reaches the
-//! threshold: the oldest exchanges with the person go whole - the message, the turns answering it
-//! and their results - until the context is down to the target. The pair is a high- and low-water
-//! mark, so the second rule runs in bursts rather than an exchange at a time before every turn.
+//! note: three rules. The first, about what has served its purpose, runs before every request
+//! whether the context is full or not: a tool result the model has read and whose turn is over
+//! goes to a marker, and so does a picture the model has been shown in an exchange before the one
+//! in progress. The second, about room, runs once the context reaches the threshold: the oldest
+//! exchanges with the person go whole - the message, the turns answering it and their results -
+//! until the context is down to the target. The pair is a high- and low-water mark, so the second
+//! rule runs in bursts rather than an exchange at a time before every turn.
 //!
-//! note: neither rule touches the turn in progress. The model is still using what it is in the
-//! middle of. A result taken from under it - read once, never answered with - was read again and
-//! elided again on the next step. A turn that fills the context is told so by the full notice, in
-//! the same turn. What goes is for the model or the person to say.
+//! note: the third is for a turn that fills the context by itself, in one long round of tool calls
+//! with no older exchange left to drop. Once the context is past the threshold, the turn's own
+//! results go to markers, oldest first, down to the target, so the round goes on rather than
+//! ending on a request too long to send. It stops short of what the model's latest step was
+//! handed: a result taken from under it - read once, never answered with - was read again and
+//! elided again on the next step. What is left after that is told by the full notice, in the same
+//! turn, and what goes is for the model or the person to say.
 //!
-//! note: neither takes anything the model has not been shown. The marker must say the model had
-//! read what it stands in for; a marker that said only "compacted" made the model withdraw its own
-//! summaries as fabricated.
+//! note: none of them takes anything the model has not been shown. The marker must say the model
+//! had read what it stands in for; a marker that said only "compacted" made the model withdraw its
+//! own summaries as fabricated.
 //!
 //! note: what it frees has to beat what it costs, both counted on the counter's own scale. An
 //! elided item leaves behind a sentence carrying the reason for eliding it, so a result smaller
@@ -38,7 +41,8 @@ use nachalnik::{
 use crate::app::named_calls;
 
 /// Elides what the conversation is done with as it goes, drops its oldest exchanges once the
-/// context gets full, and says so.
+/// context gets full - and the oldest results of the turn in progress, if that is not enough -
+/// and says so.
 ///
 /// note: it does not summarize what it takes, and nothing left behind claims more than that the
 /// content existed, was read, and is gone; a compactor that paraphrased output it never read would
@@ -207,8 +211,8 @@ impl Compactor for Shedder {
             .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
             .unwrap_or(0);
         let exchanges = exchanges(items);
-        // where the turn in progress starts, which neither rule reaches into; with no message from
-        // the person at all, everything is that turn
+        // where the turn in progress starts, which the first two rules do not reach into; with no
+        // message from the person at all, everything is that turn
         let current = exchanges.last().map_or(0, |turn| turn.start);
 
         let mut used = budget.used();
@@ -247,6 +251,9 @@ impl Compactor for Shedder {
             routine.push(item.id);
         }
 
+        // what the context comes to before the room half, so that a room half which is not worth
+        // its summary, and is not run, does not leave the third rule thinking it made room
+        let before_room = used;
         let mut remove = Vec::new();
         let mut dropped = 0usize;
         // what the room half of the pass has freed, on the counter's scale and before its own
@@ -334,18 +341,67 @@ impl Compactor for Shedder {
         // what its own bookkeeping costs before it spends a turn of the model's attention on it;
         // otherwise an exchange of two short lines goes for a paragraph saying it went
         let (summary, elide, remove): (_, Vec<ContextId>, Vec<ContextId>) = match summary {
-            Some(said) if recovered >= summary_tokens(&said, scale).saturating_mul(2) => (
-                Some(said),
-                // what this pass was eliding and has dropped with its exchange instead is not
-                // elided as well
-                routine
-                    .into_iter()
-                    .filter(|id| !remove.contains(id))
-                    .collect(),
-                remove,
-            ),
-            _ => (None, routine, Vec::new()),
+            Some(said) if recovered >= summary_tokens(&said, scale).saturating_mul(2) => {
+                used += summary_tokens(&said, scale);
+                (
+                    Some(said),
+                    // what this pass was eliding and has dropped with its exchange instead is not
+                    // elided as well
+                    routine
+                        .into_iter()
+                        .filter(|id| !remove.contains(id))
+                        .collect(),
+                    remove,
+                )
+            }
+            _ => {
+                used = before_room;
+                (None, routine, Vec::new())
+            }
         };
+
+        // the third rule, for a turn that fills the context on its own: with the older exchanges
+        // gone and the context still over the threshold, the results of the turn in progress go
+        // to markers, oldest first, until it is down to the target. Left alone, a long round of
+        // tool calls ran into the limit and the turn ended on a request that could not be sent
+        //
+        // note: only what the model has read and gone on from - the results before the step that
+        // answered its last request. Those it was just handed are what its latest step is working
+        // from, and taking one of those is what made a model reading eight files in one turn read
+        // the first three again, and have them elided again on the next step. Nothing it has not
+        // been shown goes either, so the marker's "after you had read it" holds for these too.
+        // What is left once these are gone is for the model or the person, as before, and the full
+        // notice says so
+        //
+        // note: not a picture, which the counter prices at nothing and so frees nothing by its
+        // reckoning, and not one carrying a note, which somebody restored by hand
+        let mut in_turn = Vec::new();
+        if let Some(limit) = budget.limit.filter(|_| full) {
+            let target = (limit as f64 * self.target) as usize;
+            // where the step that answered the last request starts: the turn before the last one
+            let answered = items[..seen]
+                .iter()
+                .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+                .unwrap_or(0);
+            for item in &items[current.min(answered)..answered] {
+                if used <= target {
+                    break;
+                }
+                if !matches!(item.kind, ContextKind::ToolResult { .. })
+                    || !sheddable(item)
+                    || item.note.is_some()
+                    || carries_blob(&item.content)
+                {
+                    continue;
+                }
+                let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
+                    continue;
+                };
+                used -= net.min(used);
+                in_turn.push(item.id);
+            }
+        }
+        let elide: Vec<ContextId> = elide.into_iter().chain(in_turn).collect();
         if elide.is_empty() && remove.is_empty() {
             return None;
         }
