@@ -96,8 +96,9 @@ impl Tool for Setup {
              context it has, and whether this \
              conversation was resumed from a snapshot - which matters, because a resumed context \
              can be somebody else's earlier turns and nothing in them says so. `tools` is every \
-             tool you are offered, what each declares it needs, and how much of its output you \
-             are shown; one that went away mid-session is simply not here. `permissions` is what \
+             tool you are offered, the capabilities each declares it needs (such as `fs:read`, \
+             which are what the permissions are about), and how much of its output you are \
+             shown; one that went away mid-session is simply not here. `permissions` is what \
              the policy allows, refuses, or will stop and ask about, so you can tell a thing that \
              will be refused from a thing nobody has decided. `policy` is what will be done to \
              your context unasked: by the compactor, which elides or excludes older items once \

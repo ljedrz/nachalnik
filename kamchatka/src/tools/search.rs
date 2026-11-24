@@ -75,7 +75,10 @@ pub(super) const WIDTH: usize = 200;
 /// across a separator", which a shell taught it, writes `**/*.rs` where `*.rs` would have done and
 /// `src/*.rs` where it wanted everything under `src`.
 pub(super) const GLOB_ARG: &str = "a glob over the whole path, not just the name: `**/*.rs`, `src/**/mod.rs`, \
-                        `Cargo.*`. `*` crosses `/`, so `*.rs` finds every Rust file at any depth";
+                        `Cargo.*`. It is matched against each path relative to the working \
+                        directory - absolute outside it - whatever `path` is, so `src/**/mod.rs` \
+                        works with or without `path: src`. `*` crosses `/`, so `*.rs` finds every \
+                        Rust file at any depth";
 
 /// What both tools need: where they may look, what they may not open, and how much they may say.
 ///

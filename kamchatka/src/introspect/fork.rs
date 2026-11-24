@@ -43,7 +43,8 @@ fn ops() -> Vec<Op> {
         Op::new(
             "draft",
             "answers the conversation as it stands, so you can read what you would say *before* \
-             you say it and fix either the answer or the context",
+             you say it and fix either the answer or the context. It sees the whole context; \
+             `ask` with `without` is the one that leaves items out",
             vec![],
         ),
         Op::new(
@@ -112,9 +113,11 @@ impl Tool for Fork {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "fork",
-            "asks a copy of you, on a copy of your context, and costs one more model request. A \
-             fork has no tools: it can think, not act, and it answers once. Nothing it does \
-             reaches your context: what it says comes back to you alone, to use or drop. A fork \
+            "asks a copy of you, on a copy of your context, and costs one more model request. \
+             The copy has your system instructions and your items but no tools: it can think, not \
+             act, and it answers once. Its answer comes back to you alone, followed by its \
+             reasoning where it produced any, to use or drop; nothing it does reaches your \
+             context. A fork \
              sees your context as it stood when your turn asked for it, so forks asked in one \
              turn do not see one another's answers or the results of your other calls in that \
              turn. A `context` call in the same turn that adds or rewrites an item, such as a \
