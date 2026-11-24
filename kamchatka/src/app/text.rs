@@ -8,6 +8,8 @@
 //! not by a person off a screen. A build with no screen needs them, so the drawing feature cannot
 //! own them.
 
+use std::borrow::Cow;
+
 use nachalnik::{
     Block, Content, ContextItem, ContextKind, Event, GrantSource, Kernel, StopReason, Usage,
     Verdict,
@@ -681,7 +683,15 @@ pub(super) fn unpadded(text: &str) -> &str {
     }
 }
 
-/// The first few lines of something, and a mark if there was more.
+/// How many characters of one line [`head`] keeps.
+///
+/// note: three or four rows of an ordinary terminal. A line is not a row: an MCP server's result is
+/// JSON written on one line, and a web search's came to forty thousand characters, which the chat
+/// tab drew in full under a limit of six lines.
+pub(super) const HEAD_LINE: usize = 240;
+
+/// The first few lines of something, each cut at [`HEAD_LINE`] characters, with a mark wherever
+/// there was more.
 pub(super) fn head(text: &str, lines: usize) -> String {
     // Strip blank lines first, or a provider that opens every message with two of them spends two
     // of a tool result's rows and truncates two lines early
@@ -689,12 +699,64 @@ pub(super) fn head(text: &str, lines: usize) -> String {
     // note: one line past the kept ones is all the mark needs. This runs for every tool result on
     // the chat tab every frame; counting to the end walked the whole of each one
     let mut all = text.lines();
-    let mut kept: Vec<&str> = all.by_ref().take(lines).collect();
+    let mut kept: Vec<Cow<'_, str>> = all
+        .by_ref()
+        .take(lines)
+        .map(|line| match line.char_indices().nth(HEAD_LINE) {
+            Some((cut, _)) => Cow::Owned(format!("{}…", &line[..cut])),
+            None => Cow::Borrowed(line),
+        })
+        .collect();
     if all.next().is_some() {
-        kept.push("…");
+        kept.push(Cow::Borrowed("…"));
     }
 
     kept.join("\n")
+}
+
+/// As much of a tool result's text as [`head`] could show, without writing out the rest.
+///
+/// note: [`Content::to_text`] writes a JSON result out whole, and the chat tab asks for every tool
+/// result on every frame. JSON comes out on one line, of which `head` keeps [`HEAD_LINE`]
+/// characters, so the writing stops at as many bytes as that many characters can take, and a
+/// result cut short is still long enough for `head` to mark.
+pub(super) fn excerpt(content: &Content) -> Cow<'_, str> {
+    /// Takes bytes until it has `room` of them, and refuses after that.
+    struct Capped {
+        out: Vec<u8>,
+        room: usize,
+    }
+
+    impl std::io::Write for Capped {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if self.room == 0 {
+                return Err(std::io::ErrorKind::WriteZero.into());
+            }
+            let taken = buf.len().min(self.room);
+            self.out.extend_from_slice(&buf[..taken]);
+            self.room -= taken;
+            Ok(taken)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    match content {
+        Content::Json(value) => {
+            let mut capped = Capped {
+                out: Vec::new(),
+                room: 4 * HEAD_LINE + 4,
+            };
+            // the error is the cap, and what was written before it is the point
+            let _ = serde_json::to_writer(&mut capped, value.as_ref());
+            // a cut can land inside a character, which comes out as a replacement at the very end,
+            // past where `head` cuts
+            Cow::Owned(String::from_utf8_lossy(&capped.out).into_owned())
+        }
+        other => other.to_text(),
+    }
 }
 
 // ----------------------------------------------------------------------------------- figures
@@ -889,6 +951,35 @@ mod tests {
         assert_eq!(head("a\nb\nc\nd", 3), "a\nb\nc\n…");
         // the blank lines a provider opens with are not counted against the ones kept
         assert_eq!(head("\n\na\nb", 2), "a\nb");
+    }
+
+    /// One long line is cut at its characters, not its bytes, and says it was cut; a line at the
+    /// limit is left whole.
+    #[test]
+    fn the_head_of_something_cuts_a_line_longer_than_a_few_rows() {
+        let whole = "é".repeat(HEAD_LINE);
+        assert_eq!(head(&whole, 6), whole);
+
+        let long = format!("{whole}and more\nnext");
+        assert_eq!(head(&long, 6), format!("{whole}…\nnext"));
+    }
+
+    /// A JSON result is written only as far as `head` would show it, and what is cut short is
+    /// still marked as cut once `head` has it; a small one is written whole.
+    #[test]
+    fn an_excerpt_of_a_large_json_result_is_marked_as_cut() {
+        let small = Content::Json(std::sync::Arc::new(serde_json::json!({ "a": 1 })));
+        assert_eq!(excerpt(&small), r#"{"a":1}"#);
+
+        // four-byte characters, so the byte cap lands inside one
+        let big = serde_json::json!({ "text": "🌶".repeat(100_000) });
+        let big = Content::Json(std::sync::Arc::new(big));
+        let excerpt = excerpt(&big);
+        assert!(excerpt.len() <= 4 * HEAD_LINE + 4 + 3, "{}", excerpt.len());
+        let shown = head(&excerpt, 6);
+        assert!(shown.starts_with(r#"{"text":"🌶🌶"#), "{shown}");
+        assert!(shown.ends_with('…'), "{shown}");
+        assert_eq!(shown.chars().count(), HEAD_LINE + 1);
     }
 
     /// What one event says, as the trace pane and the `log` tool both read it.

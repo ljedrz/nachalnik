@@ -15,7 +15,7 @@ use nachalnik::{
 
 use super::{
     App, Going, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
-    text::{head, one_line, plural, thousands, unpadded},
+    text::{excerpt, head, one_line, plural, thousands, unpadded},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -900,7 +900,7 @@ impl App {
             ContextKind::ToolResult { tool, is_error, .. } => {
                 line(
                     Speaker::Result,
-                    Cow::Owned(head(&item.content.to_text(), 6)),
+                    Cow::Owned(head(&excerpt(&item.content), 6)),
                 );
                 // note: what a tool cost and what the output limit took are not here. Both are
                 // facts about an item rather than anything said, and both are already a column on
