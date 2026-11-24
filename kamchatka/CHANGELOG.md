@@ -74,6 +74,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A tool result on the chat tab is cut by length as well as by lines.** Each of the six lines
+  kept is cut at 240 characters, with a `…`. An MCP server's result is JSON on one line, and a web
+  search's filled the screen under a limit that only counted lines. A JSON result is no longer
+  written out whole on every frame to find its first line.
 - **A long round of tool calls no longer stops at the context limit.** When one turn filled the
   context by itself and there was no older exchange left to remove, the compactor took nothing,
   and the turn ended on a request too long to send. Now, once the context is past the
