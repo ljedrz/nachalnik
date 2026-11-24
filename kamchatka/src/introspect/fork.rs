@@ -28,7 +28,7 @@ use crate::{
     app::text::thousands,
     tools::{
         Limits, domains,
-        ops::{Arg, Layout, Op, actions, inner, schema},
+        ops::{Arg, Layout, Op, actions, inner, schema, shape},
     },
 };
 
@@ -113,7 +113,9 @@ impl Tool for Fork {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "fork",
-            "asks a copy of you, on a copy of your context, and costs one more model request. \
+            format!(
+                "{}{}",
+                "asks a copy of you, on a copy of your context, and costs one more model request. \
              The copy has your system instructions and your items but no tools: it can think, not \
              act, and it answers once. Its answer comes back to you alone, followed by its \
              reasoning where it produced any, to use or drop; nothing it does reaches your \
@@ -124,6 +126,11 @@ impl Tool for Fork {
              `note`, does reach the forks asked after it; when that leaves two forks with \
              different contexts, the later fork's answer names the items the earlier one did \
              not have.",
+                shape(
+                    Layout::of(&self.schema),
+                    r#"{"action": "ask", "question": "is the bug in the parser?", "without": [12]}"#
+                )
+            ),
         )
         .with_schema(self.schema.clone())
         // note: one subject for both, because both do the same to the session: spend a request on

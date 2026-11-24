@@ -65,6 +65,26 @@ impl Layout {
 /// What the wrapper says it is, which is the same sentence for every tool that has one.
 const ABOUT: &str = "the operation to perform, and the arguments that operation takes";
 
+/// The line at the end of a tool's description that says where the arguments go, with one
+/// example call. `example` is the call's arguments as a JSON object, `action` first.
+///
+/// note: said in the description and not only in the schema. A model in a real session put `cmd`
+/// beside `call` and was refused twice before the refusal told it the rule; the schema shows the
+/// nesting, but the descriptions read as though the operation were the argument. A call with the
+/// arguments half inside `call` and half beside it is refused rather than guessed at, so the rule
+/// has to be known before the first call, not learnt from the second.
+pub(crate) fn shape(layout: Layout, example: &str) -> String {
+    match layout {
+        Layout::Wrapped => format!(
+            "\nEvery argument, `action` included, goes inside one `{WRAPPER}` object: \
+             `{{\"{WRAPPER}\": {example}}}`."
+        ),
+        Layout::Flat => {
+            format!("\nEvery argument goes at the top level, beside `action`: `{example}`.")
+        }
+    }
+}
+
 /// One argument of one operation: its name, its schema, and whether leaving it out is a call.
 pub(crate) struct Arg {
     name: &'static str,
@@ -867,6 +887,23 @@ pub(crate) fn offered(schema: &Value) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The line about where arguments go names `call` only in the layout that has one, and the
+    /// example in each is a call in that layout.
+    #[test]
+    fn the_shape_line_follows_the_layout() {
+        let example = r#"{"action": "run", "cmd": "ls"}"#;
+
+        let wrapped = shape(Layout::Wrapped, example);
+        assert!(
+            wrapped.contains(r#"`{"call": {"action": "run", "cmd": "ls"}}`"#),
+            "{wrapped}"
+        );
+
+        let flat = shape(Layout::Flat, example);
+        assert!(!flat.contains("call"), "{flat}");
+        assert!(flat.contains(&format!("`{example}`")), "{flat}");
+    }
 
     fn ops() -> Vec<Op> {
         vec![

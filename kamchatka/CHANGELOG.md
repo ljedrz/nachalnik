@@ -65,6 +65,9 @@ minor bump may break you.
 
 - **The tool descriptions explain more of what the tools do.** A model reads these, and several
   passages were unclear or left things out.
+  - Every tool's description now ends with where its arguments go and one example call:
+    `{"call": {"action": "run", "cmd": "cargo test"}}`, or the flat form in a session offered
+    flat tools. A model put `cmd` beside `call` twice before an error told it the rule.
   - `context` names its twelve operations and lists the `select` forms one per line. It gives the
     kinds, states and sources that exist, says `first` is the earliest result and `latest` the
     most recent, and says a label must match exactly. A selector that matches nothing changes

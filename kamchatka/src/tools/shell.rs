@@ -535,7 +535,7 @@ impl Tool for Shell {
                  line, then its standard error under `--- stderr ---`, then its standard output \
                  under `--- stdout ---`. Every call starts afresh in the working directory, {}, \
                  so a `cd` lasts only as long as the command it is in.{cut} Nothing is typed at \
-                 it: a command reading its input reads end-of-file.{}",
+                 it: a command reading its input reads end-of-file.{}{}",
                 self.workdir.display(),
                 match self.confined {
                     true => format!(
@@ -567,7 +567,8 @@ impl Tool for Shell {
                         },
                     ),
                     false => String::new(),
-                }
+                },
+                ops::shape(self.layout, r#"{"action": "run", "cmd": "cargo test"}"#)
             ),
         )
         // note: one operation, asked for by name, because every tool this program offers takes an

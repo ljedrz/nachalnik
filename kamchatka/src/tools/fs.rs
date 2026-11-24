@@ -28,7 +28,7 @@ use crate::{
     tools::{
         Limits,
         files::{Changing, Edit, PATH_ARG, Read, Write},
-        ops::{Arg, Layout, Op, action_of, actions, inner, schema, unplaced, unread},
+        ops::{Arg, Layout, Op, action_of, actions, inner, schema, shape, unplaced, unread},
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
     },
 };
@@ -239,8 +239,12 @@ impl Tool for Fs {
                  grouped by directory: a directory's path and a `:`, then the names in it one to \
                  a line, so a file's path is its directory joined to its name. `edit` changes \
                  nothing when `old` occurs nowhere in the file or more than once, and says \
-                 which, with the count.",
-                self.read.0.workdir.display()
+                 which, with the count.{}",
+                self.read.0.workdir.display(),
+                shape(
+                    Layout::of(&self.schema),
+                    r#"{"action": "grep", "pattern": "fn main", "path": "src"}"#
+                )
             ),
         )
         .with_schema(self.schema.clone())
