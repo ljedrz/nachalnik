@@ -615,9 +615,9 @@ impl Changes {
         }
         // note: a tool result is what the tool answered, not something the model wrote down, so
         // rewriting it would put output in the context that no tool produced - and every later
-        // request, and every fork, would read it as the tool's. A review of these definitions
-        // asked for it to be said; it is refused rather than said, since a description can only
-        // ask. What the model wants to keep of a result goes in a note, and the result can go
+        // request, and every fork, would read it as the tool's. It is refused here rather than
+        // only discouraged in the description, which a model can ignore. What the model wants to
+        // keep of a result goes in a note, and the result itself can be elided or excluded
         if matches!(item.kind, ContextKind::ToolResult { .. }) {
             return ToolOutput::error(format!(
                 "refused: [{id}] is a tool result, which is what the tool answered - rewriting it \

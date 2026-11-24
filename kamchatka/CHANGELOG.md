@@ -78,9 +78,10 @@ minor bump may break you.
     most recent, and says a label must match exactly. A selector that matches nothing changes
     nothing. "The turn you are speaking in" is now defined as the current reply.
   - The `look` text said `ids` reads an item in full, but an item over 3,000 bytes is shown as
-    its first and last 1,500 bytes unless `whole` is set. Both arguments now say that. `look` says it reads items in any state, and that the 100-row cap holds with a
-    `select` too. `search` says plainly that it shows no lines without `take`, and that it does
-    not read the turn it is called from. `look`'s answer says what its `held` column is.
+    its first and last 1,500 bytes unless `whole` is set. Both arguments now say that. `look`
+    says it reads items in any state, and that the 100-row cap holds with a `select` too.
+    `search` says plainly that it shows no lines without `take`, and that it does not read the
+    turn it is called from. `look`'s answer says what its `held` column is.
   - `context` says that every change, `restore` included, is refused on an item the person
     pinned. It says what `elide` and `exclude` do to one of the model's own turns, what `revise`
     may rewrite, what one `undo` step is, what a walk past the 16 kept changes does, and that a
