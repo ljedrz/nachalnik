@@ -31,6 +31,7 @@ use crate::app::{
 
 mod markdown;
 mod overlay;
+mod steady;
 mod table;
 mod tabs;
 mod text;
@@ -41,6 +42,7 @@ use crate::ui::{
     tabs::{draw_chat, draw_context, draw_permissions, draw_trace},
     text::{clip, columns, compact, prefix_within, rows_for, suffix_within},
 };
+pub use steady::Steady;
 
 /// The first line of a session that is not being resumed.
 ///
