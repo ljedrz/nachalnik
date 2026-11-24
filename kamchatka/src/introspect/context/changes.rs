@@ -613,6 +613,19 @@ impl Changes {
                  change - nothing was revised. `note` puts what you meant to say beside it"
             ));
         }
+        // note: a tool result is what the tool answered, not something the model wrote down, so
+        // rewriting it would put output in the context that no tool produced - and every later
+        // request, and every fork, would read it as the tool's. A review of these definitions
+        // asked for it to be said; it is refused rather than said, since a description can only
+        // ask. What the model wants to keep of a result goes in a note, and the result can go
+        if matches!(item.kind, ContextKind::ToolResult { .. }) {
+            return ToolOutput::error(format!(
+                "refused: [{id}] is a tool result, which is what the tool answered - rewriting it \
+                 would put output in your context that no tool produced. Nothing was revised. \
+                 `note` writes down what you want to keep of it, and `elide` or `exclude` puts \
+                 the result away"
+            ));
+        }
         // note: the three shapes a person's edit is refused for, refused here for the same reason:
         // text written over a picture is the picture gone, and over a turn whose calls live beside
         // or among its words it is the calls gone - and their results with them, orphaned and

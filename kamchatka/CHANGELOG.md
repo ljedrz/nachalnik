@@ -63,6 +63,11 @@ minor bump may break you.
 
 ### changed
 
+- **`context`'s `revise` refuses a tool result.** A tool result is what the tool answered, and a
+  rewritten one would be output no tool produced, read as the tool's by every later request and
+  every fork. The refusal points to `note` for what to keep, and to `elide` or `exclude` for
+  putting the result away. The person can still edit a tool result from the context tab.
+
 - **The tool descriptions explain more of what the tools do.** A model reads these, and several
   passages were unclear or left things out.
   - Every tool's description now ends with where its arguments go and one example call:

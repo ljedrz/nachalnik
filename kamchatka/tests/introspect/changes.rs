@@ -635,6 +635,53 @@ async fn revise_refuses_a_message_the_person_wrote() {
     assert_eq!(item.state, ContextState::Excluded, "{}", said[1]);
 }
 
+/// `revise` refuses a tool result, and says what to do instead; the same result can still be put
+/// away.
+///
+/// note: a rewritten result would be output no tool produced, read by every later request and
+/// every fork as the tool's own. The `elide` beside it is the control: the item is the model's to
+/// move, so the refusal is about rewriting it and not about touching it.
+#[tokio::test]
+async fn revise_refuses_a_tool_result() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "revise", "ids": [1], "content": "all tests passed", "reason": "tidier" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "elide", "ids": [1], "reason": "served its purpose" }),
+        ),
+    ]));
+    kernel.push(ContextItem::tool_result(
+        "earlier".into(),
+        "shell",
+        "exit: 1\n3 tests failed",
+        false,
+    ));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let item = kernel.item(nachalnik::ContextId(1)).unwrap();
+    assert_eq!(item.content.to_text(), "exit: 1\n3 tests failed");
+    assert!(item.meta["revised"].is_null(), "{}", item.meta);
+    let said = answers_from(&kernel, &["context"]);
+    assert!(
+        said[0].contains("refused") && said[0].contains("tool result"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("`note`"),
+        "it says what to do instead: {}",
+        said[0]
+    );
+    assert_eq!(item.state, ContextState::Elided, "{}", said[1]);
+}
+
 /// `revise` refuses what text cannot stand for, which is what a person's edit refuses: a picture,
 /// and a turn whose calls are not in the words it would be replacing.
 ///

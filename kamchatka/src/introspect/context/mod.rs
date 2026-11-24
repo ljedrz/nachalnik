@@ -222,8 +222,8 @@ fn ops() -> Vec<Op> {
             "revise",
             "rewrites what one item says, for when you wrote something down wrong. It replaces \
              the item's text and keeps its reasoning and tool calls. It is refused for a message \
-             the person wrote, a picture, a turn that is only a tool call, and a turn recorded as \
-             ordered blocks",
+             the person wrote, a tool result, a picture, a turn that is only a tool call, and a \
+             turn recorded as ordered blocks",
             vec![
                 Arg::one_of("ids", "integer", "the one item to rewrite").needed(),
                 Arg::text("content", "what the item should say instead").needed(),
