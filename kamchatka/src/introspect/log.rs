@@ -31,7 +31,7 @@ use crate::{
     app::text::{thousands, trace_line},
     tools::{
         Limits, domains, number,
-        ops::{Arg, Layout, Op, actions, inner, schema, unplaced, unread},
+        ops::{Arg, Layout, Op, actions, inner, schema, shape, unplaced, unread},
         yes_or_no,
     },
     wiring::Earlier,
@@ -147,7 +147,9 @@ impl Tool for Log {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "log",
-            "reads this session's record: an append-only log of what happened, kept beside your \
+            format!(
+                "{}{}",
+                "reads this session's record: an append-only log of what happened, kept beside your \
              context and not part of it. Every item added, replaced, elided, undone or \
              compacted; every permission asked for and answered; every tool that appeared or went \
              away. On its own it says how many records there are, of what kinds, and what they \
@@ -156,6 +158,8 @@ impl Tool for Log {
              them, how many of those match, so an answer that lists fewer was cut short by what \
              you asked for, not because the rest do not exist. You cannot write to it. A replacement keeps what the item said before, which once it leaves the undo \
              window is nowhere else at all.",
+                shape(Layout::of(&self.schema), r#"{"action": "read", "kinds": ["permission.decided"], "take": 5}"#)
+            ),
         )
         .with_schema(self.schema.clone())
         .with_capabilities([domains::log("read")])

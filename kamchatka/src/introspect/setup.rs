@@ -29,7 +29,7 @@ use crate::{
     app::text::{short, thousands, verdict_word},
     tools::{
         Careful, Limits, Subject, domains,
-        ops::{Layout, Op, actions, inner, schema},
+        ops::{Layout, Op, actions, inner, schema, shape},
     },
     wiring::Earlier,
 };
@@ -91,7 +91,9 @@ impl Tool for Setup {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "setup",
-            "reads what you are running with, which you cannot otherwise find out, and changes \
+            format!(
+                "{}{}",
+                "reads what you are running with, which you cannot otherwise find out, and changes \
              nothing. `model` is which model you are, what parameters it is being sent, how much \
              context it has, and whether this \
              conversation was resumed from a snapshot - which matters, because a resumed context \
@@ -105,6 +107,8 @@ impl Tool for Setup {
              the context fills up, and by the projector, which turns the items into the request \
              you send and decides what of each goes into it, such as whether your reasoning is \
              sent back.",
+                shape(Layout::of(&self.schema), r#"{"action": "permissions"}"#)
+            ),
         )
         .with_schema(self.schema.clone())
         // note: one subject for the four, because each reads and none changes anything. A person

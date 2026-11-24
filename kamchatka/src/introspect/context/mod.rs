@@ -27,7 +27,7 @@ use serde_json::Value;
 
 use crate::tools::{
     Limits, domains,
-    ops::{Arg, Layout, Op, action_of, actions, inner, schema},
+    ops::{Arg, Layout, Op, action_of, actions, inner, schema, shape},
     yes_or_no,
 };
 
@@ -320,7 +320,9 @@ impl Tool for Context {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "context",
-            "your own context: what is in it, what it costs, and what you carry into the next \
+            format!(
+                "{}{}",
+                "your own context: what is in it, what it costs, and what you carry into the next \
              request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
              `pin`, `restore`, `revise`, `note`, `undo` and `redo` change it. Nothing destroys \
              anything: every item keeps its number and can be restored. Every change, \
@@ -347,6 +349,8 @@ impl Tool for Context {
              as `tool:x`, has to be written `label:tool:x`\n\
              A kind or state not in those lists is refused. A selector that matches nothing \
              changes nothing and says so.",
+                shape(Layout::of(&self.schema), r#"{"action": "elide", "select": "tool:shell:latest", "reason": "the build passed"}"#)
+            ),
         )
         .with_schema(self.schema.clone())
         .with_capabilities(["read", "move", "pin", "note", "revise"].map(domains::context))

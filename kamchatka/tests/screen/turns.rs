@@ -938,6 +938,39 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             spec.description.len()
         );
 
+        // every description says where the arguments go, with an example call, and the example is
+        // one the tool accepts. A model in a real session put `cmd` beside `call` twice before a
+        // refusal told it the rule; an example the tool refused would teach the wrong shape
+        let marker = "goes inside one `call` object: `";
+        let at = spec
+            .description
+            .find(marker)
+            .unwrap_or_else(|| panic!("{} does not say where its arguments go", spec.id));
+        let example = &spec.description[at + marker.len()..];
+        let example = &example[..example.rfind('`').expect("the example is closed")];
+        let args: serde_json::Value = serde_json::from_str(example)
+            .unwrap_or_else(|e| panic!("{}'s example `{example}` is not JSON: {e}", spec.id));
+        let tool = harness.app.kernel.tool(&spec.id).expect("offered");
+        let call = nachalnik::ToolCall::new("example", spec.id.clone(), args);
+        assert_eq!(
+            tool.malformed(&call),
+            None,
+            "{}'s example `{example}` is refused",
+            spec.id
+        );
+        // the control: the same check refuses an operation the tool does not have, so the pass
+        // above is the example being right and not the check accepting anything
+        let wrong = nachalnik::ToolCall::new(
+            "control",
+            spec.id.clone(),
+            json!({ "call": { "action": "no-such-operation" } }),
+        );
+        assert!(
+            tool.malformed(&wrong).is_some(),
+            "{} accepts any call, so its example was not checked",
+            spec.id
+        );
+
         // every argument says what it is for. A bare `{"type": "string"}` leaves a model to
         // guess whether a path is absolute, what `old` has to match, what a `select` accepts -
         // and a guess costs a turn each time
