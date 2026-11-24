@@ -78,6 +78,11 @@ minor bump may break you.
   kept is cut at 240 characters, with a `…`. An MCP server's result is JSON on one line, and a web
   search's filled the screen under a limit that only counted lines. A JSON result is no longer
   written out whole on every frame to find its first line.
+- **An emoji the terminal draws wider than expected no longer shifts the screen.** A glyph that
+  `unicode-width` counts as one column and a terminal draws as two - a bare `🌶`, a private-use
+  icon - pushed the rest of its row a column right, and the row's end wrapped onto the next row's
+  left border until the window was redrawn. The cursor is now moved to its proper place after
+  every such glyph, so at worst the glyph overlaps the cell next to it.
 - **A long round of tool calls no longer stops at the context limit.** When one turn filled the
   context by itself and there was no older exchange left to remove, the compactor took nothing,
   and the turn ended on a request too long to send. Now, once the context is past the

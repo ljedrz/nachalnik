@@ -54,6 +54,9 @@ same text it draws.
 **`ui/`** draws and decides nothing: `mod.rs` the frame, `tabs.rs` the tab contents, `overlay.rs`
 the floating panel, `markdown.rs` and `table.rs` render a model's answers as styled lines, and
 `text.rs` wraps and fits text by the columns it takes on screen rather than by its characters.
+`steady.rs` wraps the terminal backend and moves the cursor after every glyph whose width depends
+on the terminal (emoji, private-use icons), so a glyph drawn wider than counted does not shift the
+rest of its row.
 
 **`tools/`**: `fs.rs` is the filesystem tool (`files.rs` for single files, `search.rs` for
 searching, `names.rs` for the other names a hard-linked file has), `shell.rs` the shell, including `joints`, which finds where a command line's stages meet

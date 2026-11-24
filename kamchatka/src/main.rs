@@ -38,9 +38,18 @@ use kamchatka::{
 };
 // the drawing loop's own: the channel payload it has to name in a signature, and the screen
 #[cfg(feature = "tui")]
-use kamchatka::{app::Outcome, ui};
+use kamchatka::{
+    app::Outcome,
+    ui::{self, Steady},
+};
 #[cfg(feature = "tui")]
 use nachalnik::Event;
+#[cfg(feature = "tui")]
+use ratatui::{Terminal, backend::CrosstermBackend};
+
+/// The terminal the drawn session draws on.
+#[cfg(feature = "tui")]
+type Screen = Terminal<Steady<CrosstermBackend<std::io::Stdout>>>;
 
 /// How often the loop looks for what arrives with no event: a notice, the busy line's clock, an
 /// advisor's rating.
@@ -1030,7 +1039,19 @@ async fn drawn(
     // here rather than inside `run` so that the last of it can be said once the loop is over
     let mut serving = server.is_some().then(|| remote::Serving::new(app));
 
-    let mut terminal = ratatui::init();
+    // note: what `ratatui::init` does, with the backend inside `Steady`: a hook that restores the
+    // terminal before the one above runs, raw mode, and the alternate screen. See `ui::Steady` for
+    // why the backend is not ratatui's own
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        ratatui::restore();
+        previous(info);
+    }));
+    let mut terminal = crossterm::terminal::enable_raw_mode()
+        .and_then(|()| execute!(stdout(), crossterm::terminal::EnterAlternateScreen))
+        .and_then(|()| Terminal::new(Steady(CrosstermBackend::new(stdout()))))
+        .inspect_err(|_| ratatui::restore())
+        .context("could not take over the terminal")?;
     // note: the kitty keyboard protocol, asked for rather than checked for, is the only way a
     // terminal sends `shift+enter` as anything but `enter`. One that does not speak it ignores
     // the request, and `alt+enter` is the newline there. Only the flag that disambiguates:
@@ -1077,7 +1098,7 @@ async fn drawn(
 /// event, an outcome or an arrival is a function of `remote::server`'s that both call.
 #[cfg(feature = "tui")]
 async fn run(
-    terminal: &mut ratatui::DefaultTerminal,
+    terminal: &mut Screen,
     app: &mut App,
     events: &mut tokio::sync::broadcast::Receiver<Event>,
     finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
