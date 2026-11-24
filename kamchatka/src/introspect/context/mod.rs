@@ -157,9 +157,10 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "search",
-            "finds text anywhere in your context, excluded items included. Without `take` it \
-             shows no lines, only how many match and what they would cost, so you can decide \
-             before paying for them",
+            "finds text anywhere in your context, excluded items included, except the turn you \
+             are asking from - the message that started it, your replies in it and their results \
+             - which you already have. Without `take` it shows no lines, only how many match and \
+             what they would cost, so you can decide before paying for them",
             vec![
                 // note: it says what it is *not*, because `fs`'s `grep` is offered in the same
                 // request and says outright that its `pattern` is a regular expression, so a model
@@ -335,14 +336,16 @@ impl Tool for Context {
              item\n\
              - `tool:<name>` every result of that tool; `tool:<name>:first` the earliest of them, \
              `tool:<name>:latest` the most recent\n\
-             - `kind:<kind>`: `system`, `user_message`, `assistant_message`, `tool_result` or \
-             `reference` (notes, attached files, summaries)\n\
+             - `kind:<kind>`, what an item is: `system`, `user_message`, `assistant_message`, \
+             `tool_result` or `reference` (notes, attached files, summaries)\n\
              - `state:<state>`: `active`, `elided`, `excluded` or `pinned`\n\
-             - `source:<name>`, also written `all:<name>`, where an item came from: `user` \
+             - `source:<name>`, also written `all:<name>`, where an item came from - finer \
+             than its kind, since a `reference` can come from `file`, `memory`, `agent` or \
+             `compaction`: `user` \
              for the person's messages, `model` for your own turns, `tool_result`, `file` for a \
              file the person attached with `/attach` (a file you read with a tool is a \
              `tool_result`), `memory` for a note the person wrote with `/note`, `agent` for a \
-             note you wrote, `compaction` for a summary that replaced older items\n\
+             note you wrote (so `source:agent` lists your notes), `compaction` for a summary that replaced older items\n\
              - `file:<path>` the attached file with exactly that path\n\
              - `label:<text>` every item whose label is exactly that text. Anything that is none \
              of the above is read as a label too; a label that starts like one of the forms, such \

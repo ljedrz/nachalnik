@@ -466,8 +466,8 @@ impl Tool for Shell {
         // the same kind of number
         let cut = match self.limits.for_call(&[Capability::exec("run")]) {
             Some(bytes) => format!(
-                " An answer over {bytes} bytes is cut from the end, which is why standard error \
-                 comes first."
+                " An answer over {bytes} bytes is cut off at the end, which is why standard \
+                 error comes first."
             ),
             None => String::new(),
         };
