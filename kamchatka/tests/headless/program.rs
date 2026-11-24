@@ -1451,8 +1451,24 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
             .expect("the binary under test is built");
         let said = watch(child.stderr.take().expect("stderr is a pipe"));
         until_said(&said, "⟩ shell(", "the command").await;
-        // a moment for the command to have started, rather than only been asked for
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        // until the command has started and written its pid, rather than a fixed wait for it. A
+        // slow runner took over 300 milliseconds to start the confined shell, and the signal then
+        // arrived after the redirection had created `shell.pid` but before `echo` had written to it
+        let shell: u32 = {
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let written = std::fs::read_to_string(dir.join("shell.pid")).unwrap_or_default();
+                if let Ok(pid) = written.trim().parse() {
+                    break pid;
+                }
+                assert!(
+                    std::time::Instant::now() < until,
+                    "SIG{signal}: the command never wrote its pid: {}",
+                    said.lock()
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        };
 
         let sent = std::process::Command::new("kill")
             .args([&format!("-{signal}"), &child.id().to_string()])
@@ -1506,11 +1522,6 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
         // note: gone, rather than four seconds of waiting to see whether it touched the file - a
         // shell that is not running touches nothing. It was most of the time this test took, and
         // the moment `init` takes to reap it is all a stopped one needs
-        let shell: u32 = std::fs::read_to_string(dir.join("shell.pid"))
-            .expect("the command said which shell it was")
-            .trim()
-            .parse()
-            .expect("a process identifier");
         let running = || std::path::Path::new(&format!("/proc/{shell}")).exists();
         let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while running() && std::time::Instant::now() < until {
