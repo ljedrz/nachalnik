@@ -108,16 +108,24 @@ fn ops() -> Vec<Op> {
             "look",
             format!(
                 "lists the items - what each is, what it costs, whether it is going into the next \
-                 request and why not if it is not. The {} most recent are listed, with the number \
-                 of the ones before them and what lists them",
+                 request and why not if it is not. At most the {} most recent are listed, with or \
+                 without a `select`; a line above the table says how many earlier ones were left \
+                 out and which range lists them. With `ids` it reads those items instead, in any \
+                 state: an elided or excluded item shows what it holds, not its marker",
                 reads::ROWS
             ),
             vec![
                 Arg::list(
                     "ids",
                     "integer",
-                    "read these items in full - block by block, including what you were \
-                     thinking when you produced them - instead of listing all of them",
+                    format!(
+                        "read these items instead of listing them - block by block, including \
+                         what you were thinking when you produced them. An item longer than {} \
+                         bytes shows its first and last {} bytes and says how much is between them, \
+                         unless `whole` asks for all of it",
+                        2 * reads::SAMPLE,
+                        reads::SAMPLE
+                    ),
                 ),
                 Arg::text(
                     "select",
@@ -128,8 +136,8 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::truth(
                     "whole",
-                    "read the named items entire rather than as a start and an end. It costs what \
-                     carrying them costs",
+                    "with `ids`, read each item entire rather than its first and last part. It \
+                     costs what carrying them costs",
                 ),
             ],
         ),
@@ -149,9 +157,9 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "search",
-            "finds text anywhere in your context, excluded items included, which `look` can only \
-             read by copying them in; it says how many lines match and what they would cost \
-             before showing you one",
+            "finds text anywhere in your context, excluded items included. Without `take` it \
+             shows no lines, only how many match and what they would cost, so you can decide \
+             before paying for them",
             vec![
                 // note: it says what it is *not*, because `fs`'s `grep` is offered in the same
                 // request and says outright that its `pattern` is a regular expression, so a model
@@ -186,7 +194,10 @@ fn ops() -> Vec<Op> {
          when you are done with something rather than merely finished reading it. `pin` protects \
          it from being compacted away. `restore` is the way back from any of the other three, a \
          `pin` of your own included - it puts an item back to plain active, so restoring something \
-         you pinned unpins it.",
+         you pinned unpins it. On one of your own turns, `elide` replaces its text and \
+         reasoning with the marker and keeps its tool calls, so their results still answer them; \
+         `exclude` takes the turn out of the request, and its results are left out with it, \
+         since they would answer nothing.",
         vec![
             Arg::list(
                 "ids",
@@ -208,8 +219,10 @@ fn ops() -> Vec<Op> {
     ops.extend([
         Op::new(
             "revise",
-            "rewrites what one item says, for when you wrote something down wrong - never a \
-             message the person wrote",
+            "rewrites what one item says, for when you wrote something down wrong. It replaces \
+             the item's text and keeps its reasoning and tool calls. It is refused for a message \
+             the person wrote, a picture, a turn that is only a tool call, and a turn recorded as \
+             ordered blocks",
             vec![
                 Arg::one_of("ids", "integer", "the one item to rewrite").needed(),
                 Arg::text("content", "what the item should say instead").needed(),
@@ -245,9 +258,12 @@ fn ops() -> Vec<Op> {
         Op::these(
             &["undo", "redo"],
             "`undo` walks back through the changes *you* made here, and `redo` walks forward \
-             again through what `undo` took back. Neither touches anything you did not do, and \
-             an item somebody else has changed since you did is left as it is now. Only your last \
-             16 changes are kept.",
+             again through what `undo` took back. One change is one call, however many items it \
+             moved. Undoing a `note` excludes it, and undoing a `revise` puts the old text back. \
+             Neither touches anything you did not do, and an item somebody else has changed since \
+             you did is left as it is now. Only your last 16 changes are kept, so a walk longer \
+             than that stops where they run out, and the answer says how many it walked. A new change empties what `redo` \
+             could walk forward through.",
             vec![
                 Arg::whole(
                     "steps",
@@ -307,12 +323,14 @@ impl Tool for Context {
             "your own context: what is in it, what it costs, and what you carry into the next \
              request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
              `pin`, `restore`, `revise`, `note`, `undo` and `redo` change it. Nothing destroys \
-             anything: every item keeps its number and can be restored. A change is refused for a \
-             system instruction, for the turn you are speaking in - your current reply, with its \
-             reasoning and its tool calls - and for an item the person you work with pinned: \
-             those are not yours. A pin of your own is, and `restore` undoes it.\n\
+             anything: every item keeps its number and can be restored. Every change, \
+             `restore` included, is refused for a system instruction, for the turn you are \
+             speaking in - your current reply, with its reasoning and its tool calls - and for an \
+             item the person you work with pinned: those are not yours. A pin of your own is, and \
+             `restore` undoes it.\n\
              Where an operation takes a `select`, it names a class of items instead of `ids`:\n\
-             - `17` one item; `10-15` a range, both ends included; `all` every item\n\
+             - `17` one item, never a label; `10-15` a range, both ends included; `all` every \
+             item\n\
              - `tool:<name>` every result of that tool; `tool:<name>:first` the earliest of them, \
              `tool:<name>:latest` the most recent\n\
              - `kind:<kind>`: `system`, `user_message`, `assistant_message`, `tool_result` or \
@@ -320,12 +338,13 @@ impl Tool for Context {
              - `state:<state>`: `active`, `elided`, `excluded` or `pinned`\n\
              - `source:<name>`, also written `all:<name>`, where an item came from: `user` \
              for the person's messages, `model` for your own turns, `tool_result`, `file` for a \
-             file the person attached (a file you read with a tool is a `tool_result`), `memory` \
-             for a note the person wrote, `agent` for a note you wrote, `compaction` for a \
-             summary that replaced older items\n\
-             - `file:<path>` the attached file with that path\n\
-             - `label:<text>` every item whose label is exactly that text; any other word is read \
-             as a label too\n\
+             file the person attached with `/attach` (a file you read with a tool is a \
+             `tool_result`), `memory` for a note the person wrote with `/note`, `agent` for a \
+             note you wrote, `compaction` for a summary that replaced older items\n\
+             - `file:<path>` the attached file with exactly that path\n\
+             - `label:<text>` every item whose label is exactly that text. Anything that is none \
+             of the above is read as a label too; a label that starts like one of the forms, such \
+             as `tool:x`, has to be written `label:tool:x`\n\
              A kind or state not in those lists is refused. A selector that matches nothing \
              changes nothing and says so.",
         )

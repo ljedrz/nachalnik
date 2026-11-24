@@ -60,7 +60,8 @@ fn ops() -> Vec<Op> {
             Arg::list(
                 "ids",
                 "integer",
-                "only the records naming these context items",
+                "only the records about these context items, by the numbers `context` shows; a \
+                 record about no item, such as a permission asked for, never matches",
             ),
             // note: `0` is said out loud, because it is not guessable and guessing is costly.
             // `since: N` is exclusive: it means after record N. A model asking for "everything"
@@ -87,8 +88,8 @@ fn ops() -> Vec<Op> {
             // context and costs what it costs
             Arg::truth(
                 "whole",
-                "print a replaced item's old text entire rather than its first line. It costs \
-                 what that text costs",
+                "print a replaced item's old text entire rather than its first line; other \
+                 records are printed the same either way. It costs what that text costs",
             ),
         ],
     )]

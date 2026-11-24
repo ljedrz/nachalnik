@@ -69,15 +69,28 @@ minor bump may break you.
     kinds, states and sources that exist, says `first` is the earliest result and `latest` the
     most recent, and says a label must match exactly. A selector that matches nothing changes
     nothing. "The turn you are speaking in" is now defined as the current reply.
+  - The `look` text said `ids` reads an item in full, but an item over 3,000 bytes is shown as
+    its first and last 1,500 bytes unless `whole` is set. Both arguments now say that. `look` says it reads items in any state, and that the 100-row cap holds with a
+    `select` too. `search` says plainly that it shows no lines without `take`.
+  - `context` says that every change, `restore` included, is refused on an item the person
+    pinned. It says what `elide` and `exclude` do to one of the model's own turns, what `revise`
+    may rewrite, what one `undo` step is, what a walk past the 16 kept changes does, and that a
+    new change clears `redo`.
   - `fs` names the working directory. It says which paths `glob` and `grep` skip without a word
     and which they count, what their answers look like, and how many results one call returns.
     It says `edit` changes nothing when `old` occurs nowhere or more than once.
+  - `fs` says a glob pattern is matched against paths relative to the working directory, not to
+    `path`. It says `grep`'s context lines do not count towards the cap, and what `read` does at
+    the output limit, past the end of a file, and on a file that is not text.
   - `fork` says plainly what a copy sees, including a `context` change made earlier in the same
-    turn.
+    turn. It says the copy has the system instructions and no tools, and that its reasoning
+    comes back after its answer.
   - `shell` says how its answer is laid out and that the output limit cuts from the end. Its
-    confinement is described in separate sentences.
-  - `log` says what its opening count counts, and `setup` says what the compactor and the
-    projector are.
+    confinement is described in separate sentences. It says the network question is asked per
+    command, and that the person can let commands through for the rest of the session.
+  - `log` says what its opening count counts, which records `ids` matches, and what `whole`
+    changes. `setup` says what the compactor and the projector are, and what a tool's declared
+    capabilities are.
 
 - **The permissions tab says who asks before writing in the working directory.** While `fs:write`
   is `ask`, the directory is `read-write` for the shell, but the file tools still ask before each

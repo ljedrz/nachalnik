@@ -56,7 +56,9 @@ fn ops() -> Vec<Op> {
     vec![
         Op::new(
             "read",
-            "reads a text file, or some of its lines",
+            "reads a text file, or some of its lines. A read that would pass the output limit stops \
+             before the line that does not fit and says which line to go on `from`; a `from` past the end, or \
+             a file that is not UTF-8 text, is refused with the reason",
             vec![
                 Arg::text("path", "the file to read").needed(),
                 Arg::whole(
@@ -92,8 +94,8 @@ fn ops() -> Vec<Op> {
                 Arg::text("path", WHERE),
                 Arg::text(
                     "glob",
-                    "search only the files whose path matches this, written the way `glob`'s own \
-                     `pattern` is",
+                    "search only the files whose path matches this glob pattern, written and \
+                     matched the way the `glob` operation's `pattern` is",
                 ),
                 Arg::truth(
                     "ignore_case",
@@ -101,8 +103,9 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::whole(
                     "context",
-                    "lines to show either side of each match, up to 10; none by default. They are \
-                     marked with a `-` where a match is marked with a `:`",
+                    "lines to show either side of each match, up to 10; none by default. They \
+                     come as `path-line-text` where a match is `path:line:text`, and do not count \
+                     towards the cap on matches",
                 ),
                 Arg::truth(
                     "files_only",
@@ -143,8 +146,8 @@ fn ops() -> Vec<Op> {
 }
 
 /// What `glob` and `grep` say about the path they are pointed at, which is the same thing twice.
-const WHERE: &str = "where to look - one file, or a directory and everything under it; the \
-                     working directory if left out";
+const WHERE: &str = "where to look - one file, which counts only if it matches, or a directory \
+                     and everything under it; the working directory if left out";
 
 /// Everything a session may do to a file, as one tool.
 pub(super) struct Fs {
@@ -235,7 +238,8 @@ impl Tool for Fs {
                  characters is cut and ends in `…`. `glob` lists only the files that matched, \
                  grouped by directory: a directory's path and a `:`, then the names in it one to \
                  a line, so a file's path is its directory joined to its name. `edit` changes \
-                 nothing when `old` occurs nowhere in the file or more than once, and says which.",
+                 nothing when `old` occurs nowhere in the file or more than once, and says \
+                 which, with the count.",
                 self.read.0.workdir.display()
             ),
         )

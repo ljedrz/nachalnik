@@ -514,8 +514,9 @@ impl Tool for Shell {
         let network = match confined.as_ref().map(|sandbox| sandbox.network) {
             Some(Network::Shut) => " The command has no network.",
             Some(Network::Asked) => {
-                " The first time a command reaches for the network, it waits while the person you \
-                 are working with is asked."
+                " When a command reaches for the network - a connection or a name lookup - it \
+                 waits while the person you are working with is asked. They answer for that \
+                 command, or let commands through for the rest of the session."
             }
             _ => "",
         };

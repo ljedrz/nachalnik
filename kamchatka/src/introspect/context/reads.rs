@@ -462,7 +462,7 @@ fn row(item: &ContextItem, going: &Going, own: Option<ContextId>) -> String {
 /// decide whether to keep it costs nearly what keeping it costs, and cleaning up that way can
 /// finish heavier than it started. A head and tail are enough to tell build noise from something
 /// worth keeping; the whole thing is one argument away.
-const SAMPLE: usize = 1_500;
+pub(super) const SAMPLE: usize = 1_500;
 
 /// An item's content: whole if it is small or if it was asked for, a head and a tail otherwise.
 fn sampled(text: &str, whole: bool) -> String {
