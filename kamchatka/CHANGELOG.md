@@ -63,6 +63,22 @@ minor bump may break you.
 
 ### changed
 
+- **The tool descriptions explain more of what the tools do.** A model reads these, and several
+  passages were unclear or left things out.
+  - `context` names its twelve operations and lists the `select` forms one per line. It gives the
+    kinds, states and sources that exist, says `first` is the earliest result and `latest` the
+    most recent, and says a label must match exactly. A selector that matches nothing changes
+    nothing. "The turn you are speaking in" is now defined as the current reply.
+  - `fs` names the working directory. It says which paths `glob` and `grep` skip without a word
+    and which they count, what their answers look like, and how many results one call returns.
+    It says `edit` changes nothing when `old` occurs nowhere or more than once.
+  - `fork` says plainly what a copy sees, including a `context` change made earlier in the same
+    turn.
+  - `shell` says how its answer is laid out and that the output limit cuts from the end. Its
+    confinement is described in separate sentences.
+  - `log` says what its opening count counts, and `setup` says what the compactor and the
+    projector are.
+
 - **The permissions tab says who asks before writing in the working directory.** While `fs:write`
   is `ask`, the directory is `read-write` for the shell, but the file tools still ask before each
   write. The line now says so: `the shell writes freely; the file tools ask`. Before, `read-write`

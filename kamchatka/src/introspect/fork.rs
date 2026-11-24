@@ -112,11 +112,15 @@ impl Tool for Fork {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "fork",
-            "asks a copy of you, on a copy of your context, and costs a request. A fork has no \
-             tools: it can think, not act, and it answers once. Nothing it does reaches your \
-             context: what it says comes back to you alone, to use or drop. Forks asked in one \
-             turn do not read one another's answers, and a call of yours that writes to the \
-             context is said when it gave one fork something the other did not have.",
+            "asks a copy of you, on a copy of your context, and costs one more model request. A \
+             fork has no tools: it can think, not act, and it answers once. Nothing it does \
+             reaches your context: what it says comes back to you alone, to use or drop. A fork \
+             sees your context as it stood when your turn asked for it, so forks asked in one \
+             turn do not see one another's answers or the results of your other calls in that \
+             turn. A `context` call in the same turn that adds or rewrites an item, such as a \
+             `note`, does reach the forks asked after it; when that leaves two forks with \
+             different contexts, the later fork's answer names the items the earlier one did \
+             not have.",
         )
         .with_schema(self.schema.clone())
         // note: one subject for both, because both do the same to the session: spend a request on

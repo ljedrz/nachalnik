@@ -305,17 +305,29 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
-             request. Four operations read it and eight change it. Nothing destroys anything: \
-             every item keeps its number and can be restored. What is refused is changing a \
-             system instruction, the turn you are speaking in, or an item the person you work \
-             with pinned - those are not yours. A pin of your own is, and `restore` undoes it.\n\
-             Where an operation takes a `select`, it is a class of items instead of `ids`: an \
-             item number; a range of them, `10-15`, both ends included; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
-             instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
-             taking the words `look` prints in those columns; `tool:<name>`, optionally `:first` \
-             or `:latest`; `source:<name>`, and the notes you wrote are `source:agent`; \
-             `file:<path>`, a file attached rather than read; \
-             `label:<text>`. Anything else is read as a label.",
+             request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
+             `pin`, `restore`, `revise`, `note`, `undo` and `redo` change it. Nothing destroys \
+             anything: every item keeps its number and can be restored. A change is refused for a \
+             system instruction, for the turn you are speaking in - your current reply, with its \
+             reasoning and its tool calls - and for an item the person you work with pinned: \
+             those are not yours. A pin of your own is, and `restore` undoes it.\n\
+             Where an operation takes a `select`, it names a class of items instead of `ids`:\n\
+             - `17` one item; `10-15` a range, both ends included; `all` every item\n\
+             - `tool:<name>` every result of that tool; `tool:<name>:first` the earliest of them, \
+             `tool:<name>:latest` the most recent\n\
+             - `kind:<kind>`: `system`, `user_message`, `assistant_message`, `tool_result` or \
+             `reference` (notes, attached files, summaries)\n\
+             - `state:<state>`: `active`, `elided`, `excluded` or `pinned`\n\
+             - `source:<name>`, also written `all:<name>`, where an item came from: `user` \
+             for the person's messages, `model` for your own turns, `tool_result`, `file` for a \
+             file the person attached (a file you read with a tool is a `tool_result`), `memory` \
+             for a note the person wrote, `agent` for a note you wrote, `compaction` for a \
+             summary that replaced older items\n\
+             - `file:<path>` the attached file with that path\n\
+             - `label:<text>` every item whose label is exactly that text; any other word is read \
+             as a label too\n\
+             A kind or state not in those lists is refused. A selector that matches nothing \
+             changes nothing and says so.",
         )
         .with_schema(self.schema.clone())
         .with_capabilities(["read", "move", "pin", "note", "revise"].map(domains::context))
