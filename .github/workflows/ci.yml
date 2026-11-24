@@ -83,7 +83,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      - uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2.1.2
 
   # note: the libraries (runtime, providers, MCP bridge, benchmark) are pure Rust and should build
   # anywhere, so they're tested on Linux, macOS and Windows. `kamchatka` only builds for Linux on
@@ -118,7 +118,7 @@ jobs:
       # note: nextest rather than `cargo test`, which runs one test binary at a time. Nextest runs
       # them all in parallel: on four cores the suite takes 35 seconds instead of 116. The `ci`
       # profile is in `.config/nextest.toml`
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: nextest
 
@@ -202,7 +202,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: 1.95.0
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-hack,cargo-minimal-versions
       - run: cargo minimal-versions check --workspace --all-features --direct
