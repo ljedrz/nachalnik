@@ -114,18 +114,16 @@ impl Tool for Fork {
         ToolSpec::new(
             "fork",
             format!(
-                "{}{}",
-                "asks a copy of you, on a copy of your context, and costs one more model request. \
-             The copy has your system instructions and your items but no tools: it can think, not \
-             act, and it answers once. Its answer comes back to you alone, followed by its \
-             reasoning where it produced any, to use or drop; nothing it does reaches your \
-             context. A fork \
-             sees your context as it stood when your turn asked for it, so forks asked in one \
-             turn do not see one another's answers or the results of your other calls in that \
-             turn. A `context` call in the same turn that adds or rewrites an item, such as a \
-             `note`, does reach the forks asked after it; when that leaves two forks with \
-             different contexts, the later fork's answer names the items the earlier one did \
-             not have.",
+                "asks a copy of you, on a copy of your context, and costs one more model \
+                 request. The copy has your system instructions and your items but no tools: it \
+                 can think, not act, and it answers once. Its answer comes back to you alone, \
+                 followed by its reasoning where it produced any, to use or drop; nothing it does \
+                 reaches your context. A fork sees your context as it stood when your turn asked \
+                 for it, so forks asked in one turn do not see one another's answers or the \
+                 results of your other calls in that turn. A `context` call in the same turn that \
+                 adds or rewrites an item, such as a `note`, does reach the forks asked after it; \
+                 when that leaves two forks with different contexts, the later fork's answer names \
+                 the items the earlier one did not have.{}",
                 shape(
                     Layout::of(&self.schema),
                     r#"{"action": "ask", "question": "is the bug in the parser?", "without": [12]}"#

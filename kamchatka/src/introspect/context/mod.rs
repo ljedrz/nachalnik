@@ -121,8 +121,8 @@ fn ops() -> Vec<Op> {
                     format!(
                         "read these items instead of listing them - block by block, including \
                          what you were thinking when you produced them. An item longer than {} \
-                         bytes shows its first and last {} bytes and says how much is between them, \
-                         unless `whole` asks for all of it",
+                         bytes shows its first and last {} bytes and says how much is between \
+                         them, unless `whole` asks for all of it",
                         2 * reads::SAMPLE,
                         reads::SAMPLE
                     ),
@@ -263,8 +263,8 @@ fn ops() -> Vec<Op> {
              moved. Undoing a `note` excludes it, and undoing a `revise` puts the old text back. \
              Neither touches anything you did not do, and an item somebody else has changed since \
              you did is left as it is now. Only your last 16 changes are kept, so a walk longer \
-             than that stops where they run out, and the answer says how many it walked. A new change empties what `redo` \
-             could walk forward through.",
+             than that stops where they run out, and the answer says how many it walked. A new \
+             change empties what `redo` could walk forward through.",
             vec![
                 Arg::whole(
                     "steps",
@@ -322,37 +322,39 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             format!(
-                "{}{}",
                 "your own context: what is in it, what it costs, and what you carry into the next \
-             request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
-             `pin`, `restore`, `revise`, `note`, `undo` and `redo` change it. Nothing destroys \
-             anything: every item keeps its number and can be restored. Every change, \
-             `restore` included, is refused for a system instruction, for the turn you are \
-             speaking in - your current reply, with its reasoning and its tool calls - and for an \
-             item the person you work with pinned: those are not yours. A pin of your own is, and \
-             `restore` undoes it.\n\
-             Where an operation takes a `select`, it names a class of items instead of `ids`:\n\
-             - `17` one item, never a label; `10-15` a range, both ends included; `all` every \
-             item\n\
-             - `tool:<name>` every result of that tool; `tool:<name>:first` the earliest of them, \
-             `tool:<name>:latest` the most recent\n\
-             - `kind:<kind>`, what an item is: `system`, `user_message`, `assistant_message`, \
-             `tool_result` or `reference` (notes, attached files, summaries)\n\
-             - `state:<state>`: `active`, `elided`, `excluded` or `pinned`\n\
-             - `source:<name>`, also written `all:<name>`, where an item came from - finer \
-             than its kind, since a `reference` can come from `file`, `memory`, `agent` or \
-             `compaction`: `user` \
-             for the person's messages, `model` for your own turns, `tool_result`, `file` for a \
-             file the person attached with `/attach` (a file you read with a tool is a \
-             `tool_result`), `memory` for a note the person wrote with `/note`, `agent` for a \
-             note you wrote (so `source:agent` lists your notes), `compaction` for a summary that replaced older items\n\
-             - `file:<path>` the attached file with exactly that path\n\
-             - `label:<text>` every item whose label is exactly that text. Anything that is none \
-             of the above is read as a label too; a label that starts like one of the forms, such \
-             as `tool:x`, has to be written `label:tool:x`\n\
-             A kind or state not in those lists is refused. A selector that matches nothing \
-             changes nothing and says so.",
-                shape(Layout::of(&self.schema), r#"{"action": "elide", "select": "tool:shell:latest", "reason": "the build passed"}"#)
+                 request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
+                 `pin`, `restore`, `revise`, `note`, `undo` and `redo` change it. Nothing destroys \
+                 anything: every item keeps its number and can be restored. Every change, \
+                 `restore` included, is refused for a system instruction, for the turn you are \
+                 speaking in - your current reply, with its reasoning and its tool calls - and for \
+                 an item the person you work with pinned: those are not yours. A pin of your own \
+                 is, and `restore` undoes it.\n\
+                 Where an operation takes a `select`, it names a class of items instead of `ids`:\n\
+                 - `17` one item, never a label; `10-15` a range, both ends included; `all` every \
+                 item\n\
+                 - `tool:<name>` every result of that tool; `tool:<name>:first` the earliest of \
+                 them, `tool:<name>:latest` the most recent\n\
+                 - `kind:<kind>`, what an item is: `system`, `user_message`, `assistant_message`, \
+                 `tool_result` or `reference` (notes, attached files, summaries)\n\
+                 - `state:<state>`: `active`, `elided`, `excluded` or `pinned`\n\
+                 - `source:<name>`, also written `all:<name>`, where an item came from - finer \
+                 than its kind, since a `reference` can come from `file`, `memory`, `agent` or \
+                 `compaction`: `user` for the person's messages, `model` for your own turns, \
+                 `tool_result`, `file` for a file the person attached with `/attach` (a file you \
+                 read with a tool is a `tool_result`), `memory` for a note the person wrote with \
+                 `/note`, `agent` for a note you wrote (so `source:agent` lists your notes), \
+                 `compaction` for a summary that replaced older items\n\
+                 - `file:<path>` the attached file with exactly that path\n\
+                 - `label:<text>` every item whose label is exactly that text. Anything that is \
+                 none of the above is read as a label too; a label that starts like one of the \
+                 forms, such as `tool:x`, has to be written `label:tool:x`\n\
+                 A kind or state not in those lists is refused. A selector that matches nothing \
+                 changes nothing and says so.{}",
+                shape(
+                    Layout::of(&self.schema),
+                    r#"{"action": "elide", "select": "tool:shell:latest", "reason": "it passed"}"#
+                )
             ),
         )
         .with_schema(self.schema.clone())

@@ -92,21 +92,20 @@ impl Tool for Setup {
         ToolSpec::new(
             "setup",
             format!(
-                "{}{}",
-                "reads what you are running with, which you cannot otherwise find out, and changes \
-             nothing. `model` is which model you are, what parameters it is being sent, how much \
-             context it has, and whether this \
-             conversation was resumed from a snapshot - which matters, because a resumed context \
-             can be somebody else's earlier turns and nothing in them says so. `tools` is every \
-             tool you are offered, the capabilities each declares it needs (such as `fs:read`, \
-             which are what the permissions are about), and how much of its output you are \
-             shown; one that went away mid-session is simply not here. `permissions` is what \
-             the policy allows, refuses, or will stop and ask about, so you can tell a thing that \
-             will be refused from a thing nobody has decided. `policy` is what will be done to \
-             your context unasked: by the compactor, which elides or excludes older items once \
-             the context fills up, and by the projector, which turns the items into the request \
-             you send and decides what of each goes into it, such as whether your reasoning is \
-             sent back.",
+                "reads what you are running with, which you cannot otherwise find out, and \
+                 changes nothing. `model` is which model you are, what parameters it is being \
+                 sent, how much context it has, and whether this conversation was resumed from a \
+                 snapshot - which matters, because a resumed context can be somebody else's \
+                 earlier turns and nothing in them says so. `tools` is every tool you are offered, \
+                 the capabilities each declares it needs (such as `fs:read`, which are what the \
+                 permissions are about), and how much of its output you are shown; one that went \
+                 away mid-session is simply not here. `permissions` is what the policy allows, \
+                 refuses, or will stop and ask about, so you can tell a thing that will be refused \
+                 from a thing nobody has decided. `policy` is what will be done to your context \
+                 unasked: by the compactor, which elides or excludes older items once the context \
+                 fills up, and by the projector, which turns the items into the request you send \
+                 and decides what of each goes into it, such as whether your reasoning is sent \
+                 back.{}",
                 shape(Layout::of(&self.schema), r#"{"action": "permissions"}"#)
             ),
         )

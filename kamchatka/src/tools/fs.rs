@@ -56,9 +56,9 @@ fn ops() -> Vec<Op> {
     vec![
         Op::new(
             "read",
-            "reads a text file, or some of its lines. A read that would pass the output limit stops \
-             before the line that does not fit and says which line to go on `from`; a `from` past the end, or \
-             a file that is not UTF-8 text, is refused with the reason",
+            "reads a text file, or some of its lines. A read that would pass the output limit \
+             stops before the line that does not fit and says which line to go on `from`; a \
+             `from` past the end, or a file that is not UTF-8 text, is refused with the reason",
             vec![
                 Arg::text("path", "the file to read").needed(),
                 Arg::whole(

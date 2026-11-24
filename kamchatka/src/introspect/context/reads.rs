@@ -118,10 +118,10 @@ pub(super) fn look(
     out.push_str(
         "\n`look` with `ids` reads any of these back, including the reasoning recorded on an \
          assistant turn; a long one arrives as its start and its end unless you ask for the \
-         `whole` of it. `sending` is what an item adds to the next request; `held` is what it holds \
-         beyond that, which the request does not carry - reasoning the endpoint is not sent back, \
-         or what is behind an elision marker. Giving an item up frees what it is `sending` and none \
-         of what it is holding.\n",
+         `whole` of it. `sending` is what an item adds to the next request; `held` is what it \
+         holds beyond that, which the request does not carry - reasoning the endpoint is not sent \
+         back, or what is behind an elision marker. Giving an item up frees what it is `sending` \
+         and none of what it is holding.\n",
     );
 
     out
