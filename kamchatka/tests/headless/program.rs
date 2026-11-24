@@ -2878,7 +2878,7 @@ async fn a_run_that_refuses_every_question_shuts_the_network_rather_than_asking(
         .find(|spec| spec.id == "shell")
         .expect("the shell is on offer");
     assert!(
-        shell.description.contains("it has no network"),
+        shell.description.contains("The command has no network."),
         "{}",
         shell.description
     );

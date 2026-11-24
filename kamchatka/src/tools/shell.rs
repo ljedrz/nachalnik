@@ -465,7 +465,10 @@ impl Tool for Shell {
         // `[... 4000 bytes truncated by an output limit ...]` against this, and the two should be
         // the same kind of number
         let cut = match self.limits.for_call(&[Capability::exec("run")]) {
-            Some(bytes) => format!(" Output over {bytes} bytes is cut off at the end."),
+            Some(bytes) => format!(
+                " An answer over {bytes} bytes is cut from the end, which is why standard error \
+                 comes first."
+            ),
             None => String::new(),
         };
 
@@ -509,10 +512,10 @@ impl Tool for Shell {
         // that reaches out waits on a person, and a model that does not know that reads a long
         // silence as a hang
         let network = match confined.as_ref().map(|sandbox| sandbox.network) {
-            Some(Network::Shut) => ", and it has no network",
+            Some(Network::Shut) => " The command has no network.",
             Some(Network::Asked) => {
-                ", and the first time a command reaches for the network it waits while the person \
-                 you are working with is asked"
+                " The first time a command reaches for the network, it waits while the person you \
+                 are working with is asked."
             }
             _ => "",
         };
@@ -527,17 +530,24 @@ impl Tool for Shell {
         ToolSpec::new(
             "shell",
             format!(
-                "runs one command with `sh -c` and returns its exit status, its errors and its \
-                 output. Every call starts afresh in the working directory, {}, so a `cd` lasts \
-                 only as long as the command it is in.{cut} Nothing \
-                 is typed at it: a command reading its input reads end-of-file.{}",
+                "runs one command with `sh -c`. The answer is its exit status on an `exit:` \
+                 line, then its standard error under `--- stderr ---`, then its standard output \
+                 under `--- stdout ---`. Every call starts afresh in the working directory, {}, \
+                 so a `cd` lasts only as long as the command it is in.{cut} Nothing is typed at \
+                 it: a command reading its input reads end-of-file.{}",
                 self.workdir.display(),
                 match self.confined {
                     true => format!(
-                        " It runs confined: outside the working directory it can read {}{} and \
-                         no more{network} - so a permission error there is the confinement rather \
-                         than the command. `$TMPDIR` is a directory of the command's own that it \
-                         may write in, removed when it ends.{}",
+                        " It runs confined. {} Outside it, the command can read {}{}, and nothing \
+                         else, so a permission error there is the confinement rather than the \
+                         command.{network} `$TMPDIR` is a directory of the command's own that it \
+                         may write in, removed when it ends.",
+                        match read_only {
+                            true =>
+                                "The working directory is read-only in this session, so a \
+                                     refusal to write in it is the confinement too.",
+                            false => "It can read and write anywhere in the working directory.",
+                        },
                         match self.shell_readable.as_slice() {
                             [] => "nothing of this machine's own".to_owned(),
                             [one] => one.display().to_string(),
@@ -552,14 +562,8 @@ impl Tool for Shell {
                         },
                         match opened.is_empty() {
                             true => String::new(),
-                            false => format!(", and {},", opened.join(" and ")),
+                            false => format!(", and use {}", opened.join(" and ")),
                         },
-                        match read_only {
-                            true =>
-                                " The working directory is read-only in this session, so a \
-                                     refusal to write in it is that boundary too.",
-                            false => "",
-                        }
                     ),
                     false => String::new(),
                 }
@@ -2202,7 +2206,7 @@ mod tests {
 
         for (gated, stance, said_of_it) in [
             // the gate refuses it outright, and nobody is asked
-            (true, Verdict::Deny, "it has no network"),
+            (true, Verdict::Deny, "The command has no network."),
             // the gate holds it, and the first attempt waits for a person
             (
                 true,

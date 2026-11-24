@@ -99,8 +99,11 @@ impl Tool for Setup {
              tool you are offered, what each declares it needs, and how much of its output you \
              are shown; one that went away mid-session is simply not here. `permissions` is what \
              the policy allows, refuses, or will stop and ask about, so you can tell a thing that \
-             will be refused from a thing nobody has decided. `policy` is what the compactor and \
-             the projector will do to your context unasked.",
+             will be refused from a thing nobody has decided. `policy` is what will be done to \
+             your context unasked: by the compactor, which elides or excludes older items once \
+             the context fills up, and by the projector, which turns the items into the request \
+             you send and decides what of each goes into it, such as whether your reasoning is \
+             sent back.",
         )
         .with_schema(self.schema.clone())
         // note: one subject for the four, because each reads and none changes anything. A person

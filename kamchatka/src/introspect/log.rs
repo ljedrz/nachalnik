@@ -146,13 +146,14 @@ impl Tool for Log {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "log",
-            "reads the session's own record: an append-only log of what happened, kept beside \
-             your context and not part of it. Every item added, replaced, elided, undone or \
+            "reads this session's record: an append-only log of what happened, kept beside your \
+             context and not part of it. Every item added, replaced, elided, undone or \
              compacted; every permission asked for and answered; every tool that appeared or went \
              away. On its own it says how many records there are, of what kinds, and what they \
              would cost you, and the arguments narrow that down and hand them over. Every \
-             answer opens with the true total, so a short one is never absence. You cannot write \
-             to it. A replacement keeps what the item said before, which once it leaves the undo \
+             answer opens with how many records the log holds and, when the arguments narrowed \
+             them, how many of those match, so an answer that lists fewer was cut short by what \
+             you asked for, not because the rest do not exist. You cannot write to it. A replacement keeps what the item said before, which once it leaves the undo \
              window is nowhere else at all.",
         )
         .with_schema(self.schema.clone())

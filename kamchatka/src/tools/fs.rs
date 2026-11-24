@@ -222,14 +222,21 @@ impl Tool for Fs {
         ToolSpec::new(
             "fs",
             format!(
-                "the filesystem, five operations on it. Every `path` is {PATH_ARG}. `glob` \
-                 and `grep` walk a directory themselves, not through `find` or `grep`: they obey \
-                 `.gitignore` and stay out of `.git`, neither of them counted; they do look at \
-                 hidden files, and they count everything else they passed over. \
-                 At most {MATCHES} matches or {PATHS} paths come back, and a line wider than \
-                 {WIDTH} characters is cut. `glob` answers as `ls -R` does, with only the files \
-                 that matched: a directory and `:`, then the names in it, so a file's path is \
-                 its directory's joined to its name."
+                "the filesystem, in five operations: `read`, `glob`, `grep`, `write` and `edit`. \
+                 The working directory is {}. Every `path` is {PATH_ARG}. `glob` and `grep` \
+                 walk a directory themselves rather than running `find` or `grep`. They skip \
+                 what `.gitignore` names and the `.git` directory without mentioning either, and \
+                 they include hidden files. Anything else they skip - a binary or unreadable \
+                 file, a pipe, a link out of reach - is counted on a `skipped:` line. One call \
+                 returns at most {MATCHES} matching lines from `grep`, or {PATHS} files with \
+                 `files_only`, and at most {PATHS} paths from `glob`; the first line of the \
+                 answer says when the walk stopped there and there may be more. `grep` answers \
+                 one match per line as `path:line:text`, and a line wider than {WIDTH} \
+                 characters is cut and ends in `…`. `glob` lists only the files that matched, \
+                 grouped by directory: a directory's path and a `:`, then the names in it one to \
+                 a line, so a file's path is its directory joined to its name. `edit` changes \
+                 nothing when `old` occurs nowhere in the file or more than once, and says which.",
+                self.read.0.workdir.display()
             ),
         )
         .with_schema(self.schema.clone())
