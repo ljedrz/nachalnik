@@ -28,8 +28,6 @@ use crate::context::{ContextId, ContextItem, ContextKind, ContextState};
 pub enum Which {
     /// All of them.
     All,
-    /// The earliest one.
-    First,
     /// The most recent one.
     Latest,
 }
@@ -66,7 +64,7 @@ impl std::error::Error for SelectorError {}
 /// state:elided           every item in that state; also active, excluded, pinned
 /// file:src/parser.rs     the file with that path
 /// tool:grep              every result produced by the `grep` tool
-/// tool:grep:latest       the most recent one; also: tool:grep:first
+/// tool:grep:latest       the most recent one
 /// tool_result:1842       the item with that identifier, as `1842` is; the kind is not checked
 /// label:cargo test       every item with that exact label
 /// src/parser.rs          anything else is taken as a label
@@ -157,10 +155,9 @@ impl Selector {
             "tool" => {
                 let (name, which) = match rest.split_once(':') {
                     Some((name, "latest")) => (name, Which::Latest),
-                    Some((name, "first")) => (name, Which::First),
                     Some((_, other)) => {
                         return Err(SelectorError(format!(
-                            "unknown tool qualifier `{other}`; expected `first` or `latest`"
+                            "unknown tool qualifier `{other}`; expected `latest`"
                         )));
                     }
                     None => (rest, Which::All),
@@ -192,7 +189,6 @@ impl Selector {
         if let Self::Tool { which, .. } = self {
             match which {
                 Which::All => {}
-                Which::First => hits.truncate(1),
                 Which::Latest => {
                     if let Some(last) = hits.pop() {
                         hits.clear();
@@ -207,9 +203,9 @@ impl Selector {
 
     /// Returns whether the selector matches a single item.
     ///
-    /// note: `first` and `latest` are not applied here, because they are about a position in a list
-    /// that one item cannot know: `tool:grep:latest` matches every `grep` result.
-    /// [`Selector::matches`] applies them.
+    /// note: `latest` is not applied here, because it is about a position in a list that one item
+    /// cannot know: `tool:grep:latest` matches every `grep` result. [`Selector::matches`] applies
+    /// it.
     pub fn matches_item(&self, item: &ContextItem) -> bool {
         match self {
             Self::Id(id) => item.id == *id,
@@ -248,7 +244,6 @@ impl fmt::Display for Selector {
             Self::File(path) => write!(f, "file:{path}"),
             Self::Tool { name, which } => match which {
                 Which::All => write!(f, "tool:{name}"),
-                Which::First => write!(f, "tool:{name}:first"),
                 Which::Latest => write!(f, "tool:{name}:latest"),
             },
         }
@@ -432,7 +427,6 @@ mod tests {
             "label:cargo test",
             "file:src/foo.rs",
             "tool:grep",
-            "tool:grep:first",
             "tool:grep:latest",
         ] {
             let selector = parse(input);

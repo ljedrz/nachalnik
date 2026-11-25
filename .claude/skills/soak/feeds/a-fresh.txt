@@ -11,7 +11,7 @@ Pin a note with the names of the four tabs so it cannot be compacted away, then 
 Write yourself a note saying the default context undo depth is 32.
 Now check that figure in the code, and if the note is wrong, correct the note rather than writing a new one.
 Show me the note as it stands, and tell me what it said before.
-/pin tool:fs:first
+/pin tool:fs:latest
 Find every place the constant TRACE_DEPTH is defined or used, and write what you found - file, line and what each use does - into a new file notes/trace-depth.md.
 Add a second section to that file listing every other constant defined in the same file as TRACE_DEPTH, with its value.
 /compact

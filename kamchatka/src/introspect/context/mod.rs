@@ -133,30 +133,30 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::text(
                     "select",
-                    "list only the items this class comes to, which is the set a change naming \
-                     the same `select` would take: the grammar is the one in this tool's \
-                     description. Not with `ids`, which names items to read rather than a class \
-                     to resolve",
+                    "list only the items this selector matches: the items a state change with \
+                     the same `select` would apply to. Use either `ids` or `select`, not both",
                 ),
                 Arg::truth(
                     "whole",
-                    "with `ids`, read each item entire rather than its first and last part. It \
-                     costs what carrying them costs",
+                    "with `ids`, show each item in full instead of its first and last part. The \
+                     full text goes into your context and costs its tokens there",
                 ),
             ],
         ),
         Op::new(
             "budget",
-            "what the next request costs against what there is, what the last one really cost, \
+            "what the next request will cost against the model's context limit, what the last \
+             request really cost, \
              and which items are the expensive ones: read it before deciding what to give up",
             vec![],
         ),
         Op::new(
             "request",
-            "the request you are about to send, message by message; what was left out and by \
-             which rule - a state you set, which you can undo, or the projector, which you cannot \
-             - and what the projector had to take out or put in a different order to make it a \
-             request an endpoint will read",
+            "the next request, message by message, and why each left-out item was left out: \
+             either its state, which you can change, or the projector, which you cannot. The \
+             projector is the fixed rule that turns your context into messages. The answer also \
+             lists what the projector had to drop or reorder so that the endpoint accepts the \
+             request",
             vec![],
         ),
         Op::new(
@@ -193,9 +193,9 @@ fn ops() -> Vec<Op> {
          matches before changing them, call `look` with it.\n\
          - `elide`: the item stays, but its content is replaced by a short marker. Use it on a \
          tool result you no longer need; the call it answers still counts as answered.\n\
-         - `exclude`: the item is left out of the request entirely, along with the tool call it \
-         answers.\n\
-         - `pin`: compaction will not remove the item.\n\
+         - `exclude`: the item is left out of the request entirely; for a tool result, the \
+         call that asked for it is left out too.\n\
+         - `pin`: compaction will not elide or exclude the item.\n\
          - `reset_state`: makes the item active again, undoing `elide`, `exclude` or `pin`. It \
          does not undo a `revise`.\n\
          On one of your own replies, `elide` replaces its text and reasoning but keeps its tool \
@@ -204,8 +204,7 @@ fn ops() -> Vec<Op> {
             Arg::list(
                 "ids",
                 "integer",
-                "the items to change, by the numbers `look` prints; not with `select`, which is \
-                 the other way of saying which",
+                "the item numbers, as `look` shows them. Use either `ids` or `select`, not both",
             ),
             Arg::text("select", SELECT),
             // note: `label` is read but not offered because it is neither a way to name items to
@@ -221,10 +220,11 @@ fn ops() -> Vec<Op> {
     ops.extend([
         Op::new(
             "revise",
-            "rewrites what one item says, for when you wrote something down wrong. It replaces \
-             the item's text and keeps its reasoning and tool calls. It is refused for a message \
-             the person wrote, a tool result, a picture, a turn that is only a tool call, and a \
-             turn recorded as ordered blocks",
+            "rewrites the text of one item, for when something written down is wrong. Reasoning \
+             and tool calls stay as they were. It works on anything except the person's \
+             messages, tool results, pictures, PDFs and other files that are not text, and \
+             replies that hold only tool calls; if an item still cannot be revised, the refusal \
+             says why",
             vec![
                 Arg::one_of("ids", "integer", "the one item to rewrite").needed(),
                 Arg::text("content", "what the item should say instead").needed(),
@@ -234,8 +234,9 @@ fn ops() -> Vec<Op> {
         Op::new(
             "note",
             "writes something into your context - a plan, a conclusion, a thing not to try again. \
-             Saying it in a turn is not the same: thinking is not carried into later requests, a \
-             note is an item of its own that goes into every one and can be pinned",
+             Your reasoning is not sent back in later requests, so a conclusion reached only \
+             there is lost; a note is an item of its own that goes into every request and can be \
+             pinned",
             vec![
                 Arg::text("content", "what to write down").needed(),
                 // note: what it is *not* is half of this line. `label` reads as a key, so a model
@@ -323,15 +324,17 @@ impl Tool for Context {
                  No change can touch a system instruction, an item the person pinned, or the \
                  reply you are writing now (its text, reasoning and tool calls).\n\
                  A `select` names a class of items instead of `ids`:\n\
-                 - `17`; `10-15`, both ends included; `all`\n\
-                 - `tool:<name>`, or `tool:<name>:first` / `tool:<name>:latest` for one result\n\
+                 - `17`: item 17; `10-15`: items 10 to 15, both included; `all`: every item\n\
+                 - `tool:<name>`: every result of that tool; `tool:<name>:latest`: only its most \
+                 recent result\n\
                  - `kind:<kind>`: `system`, `user_message`, `assistant_message`, `tool_result`, \
                  `reference`\n\
                  - `state:<state>`: `active`, `elided`, `excluded`, `pinned`\n\
                  - `source:<name>`: `user`, `model`, `tool_result`, `file` (attached with \
                  `/attach`), `memory` (the person's `/note`), `agent` (your notes), `compaction` \
                  (summaries)\n\
-                 - `file:<path>`, an attached file; `label:<text>`, items with that label\n\
+                 - `file:<path>`: the attached file with that path\n\
+                 - `label:<text>`: items whose label, as `look` shows it, is exactly that text\n\
                  A selector that matches nothing changes nothing.{}",
                 shape(
                     Layout::of(&self.schema),

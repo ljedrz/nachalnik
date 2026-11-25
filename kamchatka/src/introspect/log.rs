@@ -88,8 +88,9 @@ fn ops() -> Vec<Op> {
             // context and costs what it costs
             Arg::truth(
                 "whole",
-                "print a replaced item's old text entire rather than its first line; other \
-                 records are printed the same either way. It costs what that text costs",
+                "print a replaced item's previous text in full instead of its first line; other \
+                 records are printed the same either way. The full text goes into your context \
+                 and costs its tokens there",
             ),
         ],
     )]
@@ -151,13 +152,14 @@ impl Tool for Log {
                 "reads this session's record: an append-only log of what happened, kept beside \
                  your context and not part of it. Every item added, replaced, elided, undone or \
                  compacted; every permission asked for and answered; every tool that appeared or \
-                 went away. On its own it says how many records there are, of what kinds, and \
-                 what they would cost you, and the arguments narrow that down and hand them over. \
+                 went away. `read` with no other arguments gives a summary: how many records of \
+                 each kind there are and what reading them would cost. Add `kinds`, `ids`, `since` \
+                 or `take` to get the records themselves. \
                  Every answer opens with how many records the log holds and, when the arguments \
                  narrowed them, how many of those match, so an answer that lists fewer was cut \
                  short by what you asked for, not because the rest do not exist. You cannot write \
-                 to it. A replacement keeps what the item said before, which once it leaves the \
-                 undo window is nowhere else at all.{}",
+                 to it. A `context.replaced` record keeps an item's previous text. Once that \
+                 change is too old to undo, this log is the only place the text still exists.{}",
                 shape(
                     Layout::of(&self.schema),
                     r#"{"action": "read", "kinds": ["permission.decided"], "take": 5}"#

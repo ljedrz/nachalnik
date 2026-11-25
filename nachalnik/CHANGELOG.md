@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### breaking
+
+- **`tool:<name>:first` is no longer a selector, and `Which::First` is gone.** It had no use that an
+  item number does not cover. `tool:grep:first` is now refused as an unknown qualifier, and the
+  refusal names `latest` as the only one.
+
 ## [0.11.1] - 2026-11-11
 
 ### fixed
