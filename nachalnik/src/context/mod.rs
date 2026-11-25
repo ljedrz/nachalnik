@@ -198,6 +198,29 @@ impl Context {
         Some((was, before, item.tokens))
     }
 
+    /// Replaces the reasoning an assistant turn keeps beside its content, returning what it was
+    /// and the old and new token counts; `None` if there is no such item or it has no such slot.
+    pub(crate) fn replace_reasoning(
+        &mut self,
+        id: ContextId,
+        reasoning: Option<Content>,
+        counter: &dyn TokenCounter,
+    ) -> Option<(Option<Content>, usize, usize)> {
+        let index = self.index_of(id)?;
+        let item = Arc::make_mut(&mut self.items[index]);
+        let before = item.tokens;
+        let ContextKind::AssistantMessage {
+            reasoning: slot, ..
+        } = &mut item.kind
+        else {
+            return None;
+        };
+        let was = std::mem::replace(slot, reasoning);
+        measure(item, counter);
+
+        Some((was, before, item.tokens))
+    }
+
     /// Replaces the contents with the items of a [`Snapshot`](crate::Snapshot), recounting them.
     ///
     /// note: items are sorted by identifier and the next identifier is placed past the highest, so

@@ -120,6 +120,83 @@ fn content_can_be_replaced_in_place() {
     assert!(kernel.replace(ContextId(999), "x").is_err());
 }
 
+/// A turn's reasoning is replaced in place like its content: recounted, announced with what it
+/// said, and undone in one step. The content and the calls beside it are left alone.
+#[test]
+fn reasoning_can_be_replaced_in_place() {
+    let kernel = kernel();
+    let call = nachalnik::ToolCall::new("c1", "peek", json!({}));
+    let turn = kernel.push(
+        ContextItem::assistant("looking", vec![call]).with_reasoning(Some("r".repeat(100).into())),
+    );
+    let before = kernel.item(turn).unwrap();
+
+    let mut events = kernel.subscribe();
+    kernel.replace_reasoning(turn, Some("r".into())).unwrap();
+    let Ok(nachalnik::Event::ReasoningReplaced {
+        id,
+        tokens_before,
+        tokens_after,
+        was,
+    }) = events.try_recv()
+    else {
+        panic!("a replaced reasoning is announced")
+    };
+    assert_eq!((id, tokens_before), (turn, before.tokens));
+    assert_eq!(was.unwrap().to_text(), "r".repeat(100));
+
+    let after = kernel.item(turn).unwrap();
+    assert_eq!(after.reasoning().unwrap().to_text(), "r");
+    assert_eq!(after.tokens, tokens_after);
+    assert!(after.tokens < before.tokens, "it was not recounted");
+    assert_eq!(after.content, before.content);
+    assert_eq!(after.calls().count(), 1);
+
+    // taking it away is a replacement too, and so is giving a turn some it did not have
+    kernel.replace_reasoning(turn, None).unwrap();
+    assert!(kernel.item(turn).unwrap().reasoning().is_none());
+
+    assert!(kernel.undo().unwrap());
+    assert!(kernel.undo().unwrap());
+    assert_eq!(*kernel.item(turn).unwrap(), *before);
+}
+
+/// Only an assistant turn has reasoning to replace, and a replacement that changes nothing is not
+/// an operation: neither is announced or leaves an undo step behind.
+#[test]
+fn reasoning_is_replaced_only_where_there_is_some_to_change() {
+    let kernel = kernel();
+    let user = kernel.push(ContextItem::user("hello"));
+    let turn = kernel
+        .push(ContextItem::assistant("hi", Vec::new()).with_reasoning(Some("greet them".into())));
+    // the two pushes are the only steps there are to undo, so a third would mean a refusal or a
+    // no-op took a checkpoint
+    let mut events = kernel.subscribe();
+
+    assert!(matches!(
+        kernel.replace_reasoning(user, Some("x".into())),
+        Err(nachalnik::Error::NotATurn(id)) if id == user
+    ));
+    assert!(matches!(
+        kernel.replace_reasoning(ContextId(999), None),
+        Err(nachalnik::Error::UnknownItem(_))
+    ));
+    kernel
+        .replace_reasoning(turn, Some("greet them".into()))
+        .unwrap();
+    assert!(
+        events.try_recv().is_err(),
+        "nothing changed, and it was announced"
+    );
+
+    assert!(kernel.undo().unwrap());
+    assert!(kernel.undo().unwrap());
+    assert!(
+        !kernel.undo().unwrap(),
+        "a refusal or a no-op left an undo step"
+    );
+}
+
 #[test]
 fn selectors_resolve_against_real_items() {
     let kernel = kernel();

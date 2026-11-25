@@ -208,8 +208,8 @@ reader's version does not know reads as `Event::Unknown` rather than failing the
 `tests/records/` holds one of every event and a snapshot, per format, as the shapes to read against.
 
 The log stays small by referring to things rather than copying them: `model.requested` records the
-context ids a request was built from, not the messages. `context.replaced` is the only event that
-carries content, because the log records what cannot be recovered any other way: an added item is
+context ids a request was built from, not the messages. `context.replaced` and
+`context.reasoning_replaced` are the only events that carry content, because the log records what cannot be recovered any other way: an added item is
 still in the context, but overwritten text is gone. Item metadata is also copied into
 `context.added` and `context.annotated`, because compactors make decisions based on it and nothing
 else keeps the value that an annotation replaced. `model.payload` holds the rendered request and is

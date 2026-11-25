@@ -126,8 +126,8 @@ each one in full with its reasoning; read it before changing anything under `nac
 - **Identifiers are never reused**, even across a resumed session.
 - **Every state change is an `Event`**, and the log and the broadcast are written under one lock so
   their order matches. No logging that the user can't see.
-- **The log refers to things, it doesn't copy them.** `context.replaced` is the one exception, for
-  content the caller didn't ask for; an item's metadata is copied too, both the old and the new.
+- **The log refers to things, it doesn't copy them.** `context.replaced` and
+  `context.reasoning_replaced` are the exceptions, for content the caller didn't ask for; an item's metadata is copied too, both the old and the new.
 - **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove or elide a pinned
   item, and reports it in `CompactionReport::refused`.
 - **One operation is one undo step**, and an operation that changes nothing creates no checkpoint.

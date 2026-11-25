@@ -51,6 +51,8 @@ pub enum Error {
     EmptyProjection,
     /// The referenced context item does not exist.
     UnknownItem(ContextId),
+    /// The referenced context item is not an assistant turn, so it has no reasoning to replace.
+    NotATurn(ContextId),
     /// The referenced permission request does not exist, or has already been decided.
     UnknownPermission(PermissionId),
 }
@@ -77,6 +79,10 @@ impl fmt::Display for Error {
             },
             Self::EmptyProjection => write!(f, "the context projects to an empty request"),
             Self::UnknownItem(id) => write!(f, "there is no context item {id}"),
+            Self::NotATurn(id) => write!(
+                f,
+                "context item {id} is not an assistant turn, so it has no reasoning"
+            ),
             Self::UnknownPermission(id) => write!(f, "there is no pending permission request {id}"),
         }
     }

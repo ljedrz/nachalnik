@@ -13,6 +13,17 @@ minor bump may break you.
   item number does not cover. `tool:grep:first` is now refused as an unknown qualifier, and the
   refusal names `latest` as the only one.
 
+### added
+
+- **`Kernel::replace_reasoning`** replaces the reasoning an assistant turn keeps beside its
+  content, or removes it with `None`. It works like `Kernel::replace`: the item keeps its id and is
+  recounted, the change is one undo step, and a replacement that changes nothing does nothing. It
+  is announced as the new `Event::ReasoningReplaced` (`context.reasoning_replaced` in the log),
+  which carries the reasoning the turn had before, so the log keeps it after it leaves the undo
+  window. An item that is not an assistant turn is refused with the new `Error::NotATurn`.
+  Thinking recorded as ordered blocks is part of the content, so `Kernel::replace` is still the way
+  to change it.
+
 ## [0.11.1] - 2026-11-11
 
 ### fixed
