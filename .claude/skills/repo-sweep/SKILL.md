@@ -476,6 +476,13 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   `--flaky TEST` lists the catches it made alone; take them out of the shard's `caught.txt`
   (keeping a copy) so the next `--iterate` tests them again, and count what it will test from the
   merged skip lists rather than the outcomes.
+- **Shards that share a temporary directory break each other's tests.** A unit test has no
+  `CARGO_TARGET_TMPDIR`, so `kamchatka`'s `wiring::record` tests work in directories of fixed names
+  under `temp_dir()`, and with one `TMPDIR` for every shard two of them ran those tests at once:
+  two baselines failed and ended their shards, and one mutant in `nachalnik-providers` was counted
+  caught by those tests alone. `shards.sh` gives each shard a `TMPDIR` of its own now. A run made
+  before that is screened with `screen.py --flaky` naming those tests, and the catches it lists
+  are tested again.
 - **A shard at zero CPU is usually a deadlocked mutant, not a hung run.** Many mutants of the
   kernel's state machine (`is_interrupted` made `true`, `Restore::disarm` emptied) leave a test
   waiting on a lock forever: its binary sits on a futex using nothing until the timeout kills it,
