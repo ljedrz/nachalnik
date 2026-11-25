@@ -723,11 +723,12 @@ impl Changes {
         };
         ToolOutput::new(format!(
             "[{id}] {} now says something else: ~{} tokens instead of ~{}.{unread} What it said \
-             before is on the trace as `context.replaced`, is on the context pane under `enter`, \
-             and one undo brings it back.\n{}",
+             before is in the session's record as `context.replaced`{}, the person sees it on \
+             their context pane, and one undo brings it back.\n{}",
             item.label,
             thousands(now),
             thousands(was),
+            reads_back(kernel, &self.policy, id),
             // the two figures above already say the new text is the longer one, so the sentence
             // this would add says it a second time
             cost(kernel, before, Grew::Asked),
@@ -831,10 +832,11 @@ impl Changes {
             None => "no longer has any reasoning",
         };
         ToolOutput::new(format!(
-            "[{id}] {did}: ~{} tokens instead of ~{}.{unread} What it was before is on the trace \
-             as `context.reasoning_replaced`, and one undo brings it back.\n{}",
+            "[{id}] {did}: ~{} tokens instead of ~{}.{unread} What it was before is in the \
+             session's record as `context.reasoning_replaced`{}, and one undo brings it back.\n{}",
             thousands(now),
             thousands(was),
+            reads_back(kernel, &self.policy, id),
             cost(kernel, before, Grew::Asked),
         ))
     }
@@ -1222,6 +1224,17 @@ fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
                 .to_owned(),
         },
     )
+}
+
+/// Where the model reads back what a rewrite of `id` overwrote, if it can: `log`, by the item's
+/// number.
+///
+/// note: the record rather than "the trace", which is the person's tab and nothing the model can
+/// open. Said only where `log:read` is reachable, as every pointer to another tool is.
+fn reads_back(kernel: &Kernel, policy: &Careful, id: ContextId) -> String {
+    crate::introspect::if_reachable(kernel, policy, "log:read", || {
+        format!(" (`log` with `ids: [{id}]` reads it)")
+    })
 }
 
 /// A list of item numbers, as somebody would read them out.

@@ -133,8 +133,8 @@ fn ops() -> Vec<Op> {
                     "integer",
                     format!(
                         "show the content of these items instead of listing them, including the \
-                         reasoning in your own replies, which is kept here even though it is not \
-                         sent back in later requests. An item longer than {} \
+                         reasoning in your own replies, which is kept here whether or not later \
+                         requests carry it. An item longer than {} \
                          bytes shows its first and last {} bytes and says how much is between \
                          them, unless `whole` asks for all of it",
                         2 * reads::SAMPLE,
@@ -252,10 +252,10 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "revise_reasoning",
-            "rewrites the reasoning of one of your earlier replies, for example so that it agrees \
-             with a reply you corrected with `revise`. The reply's text and tool calls stay as \
-             they were. Reasoning the provider signed or sealed cannot be rewritten; the refusal \
-             says so",
+            "rewrites the reasoning of one of your earlier replies, for example so that what is \
+             recorded agrees with a reply you corrected with `revise`; the answer says whether \
+             later requests read it. The reply's text and tool calls stay as they were. \
+             Reasoning the provider signed or sealed cannot be rewritten; the refusal says so",
             vec![
                 Arg::one_of(
                     "ids",
@@ -274,9 +274,9 @@ fn ops() -> Vec<Op> {
         Op::new(
             "note",
             "adds a note to your context: a plan, a conclusion, a thing not to try again. \
-             Your reasoning is not sent back in later requests, so a conclusion reached only \
-             there is lost; a note is an item of its own that goes into every request and can be \
-             pinned",
+             Your reasoning may not be sent back in later requests, so a conclusion reached \
+             only there can be lost; a note is an item of its own that goes into every request \
+             and can be pinned",
             vec![
                 Arg::text("content", "what to write down").needed(),
                 // note: what it is *not* is half of this line. `label` reads as a key, so a model
