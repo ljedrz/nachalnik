@@ -262,12 +262,11 @@ with allow, ask and deny for each rule.][shot-web]
 
 The **context** view shows the same rows as the context tab: what each item is, its estimated cost,
 and what the next request will do with it. Tapping a row loads the whole item, since the session
-only sends item summaries; a message you wrote is named by its start. A reply shows its reasoning above its text, dimmed and marked when it is
-not sent back to the model, and its tool calls below. The text and the reasoning are each in a box
-you can edit, and leaving a box you changed saves it. The button on the right of a row shows its
-state, and tapping it moves to
-the next one (active, elided, excluded, active again), like <kbd>space</kbd> on the context tab,
-note included. The **chat** updates with it, as in the terminal. The **events** view is the trace,
+only sends item summaries; a message you wrote is named by its start. A reply shows its reasoning
+above its text, dimmed and marked when it is not sent back to the model, and its tool calls below.
+The text and the reasoning are each in a box you can edit, and leaving a box you changed saves it.
+The button on the right of a row shows its state, and tapping it moves to the next one (active,
+elided, excluded, active again), like <kbd>space</kbd> on the context tab, note included. The **chat** updates with it, as in the terminal. The **events** view is the trace,
 with the time each step took; the **permissions** view lists the rules, each with **allow**, **ask**
 and **deny**, and **ask** undoes an `always`.
 
@@ -277,6 +276,11 @@ starts a new line, as in the terminal; on a touch screen, <kbd>enter</kbd> start
 while a turn is running. The model's answers are rendered as markdown, never as raw
 HTML, and links only work for `http`, `https` and `mailto`. Answers stream in as they're written and
 are then replaced by the saved version, as in the terminal.
+
+The **Aa** button next to the tab button sets the page's text size and font: smaller, larger or
+back to the start, and monospace, sans-serif, serif or any font on the device typed by name. The
+choice is kept by the browser, so a phone and a laptop on one session can each have their own,
+and it never reaches the session.
 
 `/cleanup` (<kbd>ctrl+l</kbd>) removes `kamchatka`'s own notes from the chat and keeps the
 conversation; clearing it on one client clears it on all of them.

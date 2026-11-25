@@ -45,6 +45,12 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page's text size and font can be changed**, with the **Aa** button in its header:
+  smaller, larger or back to the start, from 12px to 28px, and monospace, sans-serif, serif or any
+  font on the device typed by name. Every size on the page scales with the one chosen. The choice
+  is kept by the browser, so each device looking at a session has its own, and nothing is sent to
+  the session. The terminal's font stays the terminal emulator's; the GUIDE says where to change
+  it.
 - **The `--web` page's context view names a message you wrote by its start.** Every such row is
   labelled `user`, so the row now reads `user:` followed by the first line of the message, cut
   with `…` where it does not fit. A served row carries it in `Listed`'s new `glimpse`, at most
