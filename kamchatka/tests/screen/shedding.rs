@@ -1117,6 +1117,46 @@ async fn a_request_that_would_not_fit_leaves_its_turn_alone() {
     );
 }
 
+/// Between turns, what was never read is taken to make the request fit, but not a result somebody
+/// brought back by hand, which the note on it says, nor one pinned: the pass goes on to the next.
+#[tokio::test]
+async fn between_turns_an_unread_result_kept_by_hand_stays() {
+    for (state, note) in [
+        (ContextState::Active, Some("brought back by hand")),
+        (ContextState::Pinned, None),
+    ] {
+        let harness = Harness::new([]);
+        let kernel = &harness.app.kernel;
+        kernel.push(ContextItem::user("read both"));
+        let calls = vec![
+            call("c1", "read", json!({ "n": 1 })),
+            call("c2", "read", json!({ "n": 2 })),
+        ];
+        kernel.push(ContextItem::assistant(Content::text(""), calls.clone()));
+        let results: Vec<_> = calls
+            .iter()
+            .map(|asked| {
+                kernel.push(ContextItem::tool_result(
+                    asked.id.clone(),
+                    "read",
+                    "x".repeat(8_000),
+                    false,
+                ))
+            })
+            .collect();
+        kernel.set_state([results[0]], state, note.map(Into::into));
+        assert_eq!(
+            kernel.item(results[0]).unwrap().note.is_some(),
+            note.is_some()
+        );
+
+        let between = Shedder::under(0.8)
+            .plan_between_turns(&kernel.items(), &against(kernel, Some(3_000)))
+            .expect("a request too long to send");
+        assert_eq!(between.elide, [results[1]], "{state:?}");
+    }
+}
+
 // ----------------------------------------------------------------- whole sessions, end to end
 
 /// A kernel with the sized `read`, a scripted model behind it at this limit, and this compactor.
