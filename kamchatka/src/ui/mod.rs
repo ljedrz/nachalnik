@@ -500,9 +500,13 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     // ordinarily sends a message, and typing into it while an item is being edited rewrites what
     // the model will read. Either way the title says how to reach it when the keys are elsewhere,
     // the way the question's does
+    let what = match app.editing_reasoning {
+        true => "the reasoning of ",
+        false => "",
+    };
     let title = match (app.editing, focused) {
-        (Some(id), true) => format!(" editing [{id}] · enter commits · esc cancels "),
-        (Some(id), false) => format!(" editing [{id}] · tab "),
+        (Some(id), true) => format!(" editing {what}[{id}] · enter commits · esc cancels "),
+        (Some(id), false) => format!(" editing {what}[{id}] · tab "),
         (None, true) => " you ".to_owned(),
         (None, false) => " you · tab ".to_owned(),
     };

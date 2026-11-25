@@ -170,6 +170,19 @@ pub enum Command {
         /// What it should say now.
         text: String,
     },
+    /// Put edited reasoning on one of the model's replies in place of what it had; text that is
+    /// empty or only whitespace takes the reasoning away.
+    ///
+    /// note: [`Command::Revise`] for a reply's reasoning, which is held beside its text rather
+    /// than in it. `r` on the context tab does this at a terminal. The session decides whether the
+    /// reasoning can be rewritten, by [`crate::app::App::revise_reasoning`], and a row says so
+    /// beforehand in [`Listed::reasoning_beyond`].
+    ReviseReasoning {
+        /// Which item.
+        id: ContextId,
+        /// What it should hold now.
+        text: String,
+    },
     /// Tell the policy what to answer about one row of the permissions tab from here on.
     ///
     /// note: a command of its own rather than [`Command::Submit`] of a line, as [`Command::Cycle`]
@@ -423,6 +436,20 @@ pub enum Message {
         /// Which version this is, echoed from [`Command::Inspect`]; `None` is what it says now.
         #[serde(default)]
         version: Option<usize>,
+        /// A reply's reasoning, where `body` is the text of what the reply says now.
+        ///
+        /// note: beside the text rather than in it, because the text is what an edit is made of
+        /// and the reasoning is edited on its own, with [`Command::ReviseReasoning`]. A client that
+        /// asked for the text gets these too, so it can show the whole of a reply with only the
+        /// text in the box that rewrites the text. Empty for anything else, and for a turn
+        /// recorded as ordered blocks, whose parts are among its content; [`Listed::ordered`] says
+        /// which turns those are.
+        #[serde(default)]
+        reasoning: Option<String>,
+        /// A reply's tool calls, each as `tool(arguments)`, under the same conditions as
+        /// `reasoning`.
+        #[serde(default)]
+        calls: Vec<String>,
     },
     /// The text of an item this client asked `/copy` for, to put on its own clipboard.
     ///
@@ -847,6 +874,22 @@ pub struct Listed {
     /// decides - a row is a moment old by the time anybody acts on it - but a client that only
     /// learns from the refusal takes an edit it was never going to keep.
     pub beyond: Option<String>,
+    /// Why this one's reasoning cannot be rewritten, where it cannot be; see [`Listed::beyond`].
+    ///
+    /// note: `Some` for every item that is not a reply, which has no reasoning to rewrite.
+    pub reasoning_beyond: Option<String>,
+    /// Whether the next request carries this reply's reasoning; `None` where that cannot be told,
+    /// and for anything without reasoning to carry.
+    ///
+    /// note: most endpoints are not sent reasoning back, and a client showing a reply's reasoning
+    /// says so beside it, so that rewriting it is not taken for steering the model.
+    pub reasoning_sent: Option<bool>,
+    /// Whether this is a reply recorded as ordered blocks, whose thinking and calls are among its
+    /// content rather than beside it.
+    ///
+    /// note: such a turn has no text, reasoning and calls to show apart, so a client shows it as
+    /// the reading [`Command::Inspect`] gives when `raw` is not asked for.
+    pub ordered: bool,
 }
 
 impl Listed {
@@ -870,6 +913,10 @@ impl Listed {
             marker: going.marker.get(&item.id).cloned(),
             versions,
             beyond: crate::app::text::beyond_a_prompt(item).map(str::to_owned),
+            reasoning_beyond: crate::app::text::reasoning_beyond(item).map(str::to_owned),
+            reasoning_sent: item.reasoning().and_then(|_| going.sends_reasoning(item)),
+            ordered: matches!(item.kind, nachalnik::ContextKind::AssistantMessage { .. })
+                && item.content.as_blocks().is_some(),
         }
     }
 }

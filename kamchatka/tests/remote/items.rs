@@ -235,6 +235,116 @@ async fn the_reading_of_an_item_is_not_the_text_an_edit_is_made_of() {
     );
 }
 
+/// A reply's reasoning and calls arrive beside its text, and the reasoning is rewritten on its own.
+///
+/// note: a reply that is only calls is the case this is for. Its text is empty, so a client that
+/// got only the text drew an empty box under a row holding hundreds of tokens. The row also says
+/// beforehand that its reasoning can be rewritten and that it is not sent back, and a reply
+/// recorded as ordered blocks says that it is one.
+#[tokio::test]
+async fn a_replys_reasoning_arrives_beside_its_text_and_is_rewritten_on_its_own() {
+    let session = served(vec![], |app| {
+        app.kernel
+            .set_projector(std::sync::Arc::new(nachalnik::LinearProjector {
+                send_reasoning: false,
+                ..Default::default()
+            }));
+        app.kernel.push(nachalnik::ContextItem::user("look it up"));
+        app.kernel.push(
+            nachalnik::ContextItem::assistant(
+                "",
+                vec![nachalnik::ToolCall::new(
+                    "c1",
+                    "search",
+                    std::sync::Arc::new(serde_json::json!({ "query": "x" })),
+                )],
+            )
+            .with_reasoning(Some("it said parser.rs".into())),
+        );
+        app.kernel.push(nachalnik::ContextItem::assistant(
+            nachalnik::Content::blocks([
+                nachalnik::Block::reasoning("a signed thought"),
+                nachalnik::Block::text("an answer"),
+            ]),
+            Vec::new(),
+        ));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let (user, reply, ordered) = (&attached.items[0], &attached.items[1], &attached.items[2]);
+    assert!(
+        user.reasoning_beyond.is_some(),
+        "a message has no reasoning"
+    );
+    assert_eq!(
+        reply.reasoning_beyond, None,
+        "this reasoning can be rewritten"
+    );
+    assert_eq!(reply.reasoning_sent, Some(false), "and it is not sent back");
+    assert!(!reply.ordered && ordered.ordered);
+    assert!(
+        ordered.reasoning_beyond.is_some(),
+        "a signed block is not rewritten"
+    );
+    let id = reply.id;
+
+    peer.send(Command::Inspect {
+        id,
+        raw: true,
+        version: None,
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Item { raw: true, .. }))
+        .await;
+    let Some(Message::Item {
+        body,
+        reasoning,
+        calls,
+        ..
+    }) = heard.last()
+    else {
+        unreachable!("just matched")
+    };
+    assert_eq!(body, "");
+    assert_eq!(reasoning.as_deref(), Some("it said parser.rs"));
+    assert_eq!(calls, &[r#"search({"query":"x"})"#.to_owned()]);
+
+    peer.send(Command::ReviseReasoning {
+        id,
+        text: "it said parse.rs".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    // and one that cannot be rewritten is refused, saying why
+    peer.send(Command::ReviseReasoning {
+        id: ordered.id,
+        text: "another thought".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Failed { .. }))
+        .await;
+    let Some(Message::Failed { about, error }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(about, "revise_reasoning");
+    assert!(error.contains("signed"), "{error}");
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    let item = app.kernel.item(id).expect("still there");
+    assert_eq!(item.reasoning().unwrap().to_text(), "it said parse.rs");
+    assert_eq!(item.calls().count(), 1, "the call stayed");
+    assert_eq!(item.meta["reasoning_revised"]["by"], "user");
+}
+
 /// An item that has been rewritten says how many versions of it there are, and hands them back.
 ///
 /// note: the count is what a client draws a control from, so it has to mean the same thing as the

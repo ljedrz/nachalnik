@@ -581,6 +581,12 @@ pub struct App {
     /// Which context item the prompt is editing, if it is editing one rather than composing a
     /// message.
     pub editing: Option<ContextId>,
+    /// Whether what [`App::editing`] names is being edited for its reasoning rather than its text.
+    ///
+    /// note: a flag beside the id rather than a second id, because the prompt edits one thing at a
+    /// time, and a flag keeps every place that asks only whether something is being edited as it
+    /// was.
+    pub editing_reasoning: bool,
     /// Whether the loop is being driven a transition at a time, so that answering a permission
     /// does not quietly run the rest of the turn.
     pub stepping: bool,
@@ -863,6 +869,7 @@ impl App {
             #[cfg(feature = "tui")]
             search: None,
             editing: None,
+            editing_reasoning: false,
             stepping: false,
             keys: true,
             remote: false,
@@ -1369,6 +1376,7 @@ impl App {
 
     /// Puts the prompt back to composing a message, whatever it was doing.
     pub(super) fn cancel_edit(&mut self) {
+        self.editing_reasoning = false;
         if self.editing.take().is_some() {
             #[cfg(feature = "tui")]
             self.clear_input();

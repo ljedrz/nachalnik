@@ -1292,6 +1292,20 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 error,
             },
         }),
+        // note: answered as `Command::Revise` is, for the same reasons
+        Command::ReviseReasoning { id, text } => Some(
+            match app.revise_reasoning(id, &text, "edited from a client") {
+                Ok(true) => Message::Projected(Box::new(project(app))),
+                Ok(false) => Message::Done {
+                    about: "revise_reasoning".to_owned(),
+                    busy: app.working(),
+                },
+                Err(error) => Message::Failed {
+                    about: "revise_reasoning".to_owned(),
+                    error,
+                },
+            },
+        ),
         // note: refused here and at the two line drivers, because the protocol is open to any
         // client and a blank line handed to `App::submit` is a message: an empty turn sent to the
         // model, and a request some endpoints refuse outright
@@ -1383,6 +1397,8 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 body: was.to_text().into_owned(),
                 raw,
                 version,
+                reasoning: None,
+                calls: Vec::new(),
             },
             None => Message::Failed {
                 about: "inspect".to_owned(),
@@ -1563,6 +1579,7 @@ fn name(command: &Command) -> &'static str {
         Command::Cycle { .. } => "cycle",
         Command::Rule { .. } => "rule",
         Command::Revise { .. } => "revise",
+        Command::ReviseReasoning { .. } => "revise_reasoning",
         Command::Unknown => "unknown",
     }
 }

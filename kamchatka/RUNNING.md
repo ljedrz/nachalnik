@@ -262,7 +262,10 @@ with allow, ask and deny for each rule.][shot-web]
 
 The **context** view shows the same rows as the context tab: what each item is, its estimated cost,
 and what the next request will do with it. Tapping a row loads the whole item, since the session
-only sends item summaries; the button on the right of a row shows its state, and tapping it moves to
+only sends item summaries. A reply shows its reasoning above its text, dimmed and marked when it is
+not sent back to the model, and its tool calls below. The text and the reasoning are each in a box
+you can edit, and leaving a box you changed saves it. The button on the right of a row shows its
+state, and tapping it moves to
 the next one (active, elided, excluded, active again), like <kbd>space</kbd> on the context tab,
 note included. The **chat** updates with it, as in the terminal. The **events** view is the trace,
 with the time each step took; the **permissions** view lists the rules, each with **allow**, **ask**

@@ -172,6 +172,19 @@
     width: 100%; font: inherit; background: transparent; color: inherit; resize: vertical;
   }
   .row.open .body { display: block; }
+  /* what a reply keeps beside its text: the thinking above the box, dim and italic as the chat
+     draws it, and the calls under it. Both are read from the same answer as the text; see
+     `Message::Item` */
+  .thought { font-style: italic; color: var(--dim); }
+  .parts {
+    display: none; margin-top: 8px; font-size: 12px; color: var(--dim);
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .row.open .parts { display: block; }
+  .calls { font-family: monospace; }
+  /* a part this item does not have, such as the text of a turn that is only calls. As specific as
+     the rules that show the parts of an open row, and after them, so it wins over them */
+  .row.open .absent { display: none; }
   /* the three shapes an edit cannot reach, and any earlier version, still open and still read -
      what they do not do is take typing they were never going to keep. `Listed::beyond` is what
      says which shapes, and says why */
@@ -1032,7 +1045,38 @@ function draw() {
         body.readOnly = true;
         body.title = item.beyond;
       }
-      el.append(body);
+      // note: the parts a reply keeps beside its text, drawn around the box rather than in it.
+      // The box is what an edit of the text is made of, and the reasoning is a part of the
+      // context in its own right, edited in its own box with `revise_reasoning`. Hidden until an
+      // answer says the item has them
+      const said = document.createElement("div");
+      said.className = "parts absent";
+      said.textContent =
+        item.reasoning_sent === false ? "reasoning · not sent back to the model" : "reasoning";
+      const thought = document.createElement("textarea");
+      thought.className = "body thought absent";
+      thought.rows = 6;
+      thought.dataset.thought = item.id;
+      if (item.reasoning_beyond) {
+        thought.readOnly = true;
+        thought.title = item.reasoning_beyond;
+      }
+      const calls = document.createElement("div");
+      calls.className = "parts calls absent";
+      el.append(said, thought, body, calls);
+      // what the answer to this row's question says about the parts, kept here so the handler
+      // can reach the row's own elements without knowing how the row is laid out
+      thought.shown = (reasoning, called) => {
+        said.classList.toggle("absent", reasoning === null);
+        thought.classList.toggle("absent", reasoning === null);
+        thought.value = reasoning ?? "";
+        thought.dataset.was = reasoning ?? "";
+        calls.textContent = called.join("\n");
+        calls.classList.toggle("absent", !called.length);
+        // a turn that is only calls has no text, and an empty box that cannot be typed into
+        // says nothing the calls under it do not
+        body.classList.toggle("absent", body.readOnly && !body.value && called.length > 0);
+      };
       // note: `data-body` rather than `data-item`, which the chat uses for the line that *is* the
       // item. One `inspect` answer fills both, and a row opened here would otherwise overwrite
       // the chat's own line with the item's whole rendering
@@ -1049,14 +1093,25 @@ function draw() {
       let at = total;
       const fill = () => {
         const wire = at === total ? null : at;
+        // note: the reading, not the text, for a turn recorded as ordered blocks and for anything
+        // else no edit can be made of but a reply. The text of those is not what they hold - an
+        // ordered turn's leaves out the thinking and calls among its blocks, and a file's is a
+        // line standing in for it - and the box is read-only for them, so it can show what the
+        // terminal's context tab shows. A reply that is only calls is asked for its text like any
+        // other, and its reasoning and calls arrive beside it. An earlier version is still asked
+        // for as text, because that is the only answer the session gives for one
+        const reading =
+          wire === null &&
+          (item.ordered || (!!item.beyond && item.kind !== "assistant_message"));
         body.value = "…";
         body.dataset.body = item.id;
         body.dataset.at = wire === null ? "" : String(wire);
+        body.dataset.ask = reading ? "reading" : "raw";
         // an old version is read-only. Committing one would be a *restore* - a perfectly
         // reasonable thing to want, and not this button: somebody cycling to see what a message
         // used to say has not asked for it to say that again
         body.readOnly = !!item.beyond || at !== total;
-        send({ do: "inspect", id: item.id, raw: true, version: wire });
+        send({ do: "inspect", id: item.id, raw: !reading, version: wire });
       };
 
       // note: the way back through what an item used to say, and only on the items that have
@@ -1097,7 +1152,7 @@ function draw() {
         // the row is the toggle and the box inside it is not: a tap on the text is somebody
         // reaching for the keyboard, and a row that collapsed under it would be a row nobody
         // could edit. Everything else about the row opens and closes it
-        if (body.contains(e.target)) return;
+        if (body.contains(e.target) || thought.contains(e.target)) return;
         if (el.classList.toggle("open")) opened.add(item.id);
         else opened.delete(item.id);
         if (body.value) return;
@@ -1122,6 +1177,16 @@ function draw() {
         // whatever the page held back while this had the focus. An edit answers with a projection
         // of its own, but a box let go of unchanged answers with nothing, and the rebuild it was
         // standing in front of is still owed
+        if (owed) draw();
+      };
+      // the reasoning is committed the way the text is, and against what arrived for the same
+      // reason. Emptying it takes the reasoning away, as `r` at the terminal does
+      thought.onblur = () => {
+        const was = thought.dataset.was;
+        if (!thought.readOnly && was !== undefined && thought.value !== was) {
+          thought.dataset.was = thought.value;
+          send({ do: "revise_reasoning", id: item.id, text: thought.value });
+        }
         if (owed) draw();
       };
     }
@@ -1569,17 +1634,23 @@ function heard(m) {
       // `value`, because a context row's body is the box an edit is typed into. `dataset.was` is
       // what arrived: an edit is what differs from it, so letting go of a box nobody touched
       // sends nothing, and a box still holding `…` is one that cannot be committed at all
-      if (m.raw) {
-        for (const el of document.querySelectorAll(`[data-body="${m.id}"]`)) {
-          // the box that asked this question, which is not every box showing this item: a
-          // version answer belongs to the box that is on that version
-          if (String(el.dataset.at ?? "") !== String(m.version ?? "")) continue;
-          el.value = m.body;
-          // and a baseline only for the version an edit can be made of. An old one is read-only,
-          // so letting go of it has nothing to compare against and nothing to send
-          if (m.version === null || m.version === undefined) el.dataset.was = m.body;
-          else delete el.dataset.was;
-        }
+      for (const el of document.querySelectorAll(`[data-body="${m.id}"]`)) {
+        // the box that asked this question, which is not every box showing this item: most rows
+        // ask for the text and a row no edit can be made of asks for the reading, and a version
+        // answer belongs to the box that is on that version
+        if (el.dataset.ask !== (m.raw ? "raw" : "reading")) continue;
+        if (String(el.dataset.at ?? "") !== String(m.version ?? "")) continue;
+        el.value = m.body;
+        const now = m.version === null || m.version === undefined;
+        // and a baseline only for the text an edit can be made of. An old version or a reading
+        // is read-only, so letting go of it has nothing to compare against and nothing to send
+        if (m.raw && now) el.dataset.was = m.body;
+        else delete el.dataset.was;
+        // what the reply keeps beside its text, which only an answer about what it says now
+        // carries. An earlier version is a version of the text alone, so the reasoning and the
+        // calls shown around it stay as they are
+        const thought = el.parentElement?.querySelector(`[data-thought="${m.id}"]`);
+        if (now && thought) thought.shown(m.raw ? (m.reasoning ?? null) : null, m.calls ?? []);
       }
       break;
     }
