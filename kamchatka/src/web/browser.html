@@ -129,6 +129,9 @@
     border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; max-width: 100%;
   }
   #fonts label { display: flex; flex-direction: column; gap: 4px; }
+  #fonts label.toggle { flex-direction: row; align-items: center; }
+  #fonts .heading { color: var(--dim); }
+  #send.stop { border-color: var(--bad); color: var(--bad); }
   /* note: `min-height: 0` because a flex item will not shrink below its content without it, and
      the log is the one thing here that must: when the box grows to three lines the room comes out
      of the conversation, never out of the footer, which is the half of the page somebody is
@@ -348,7 +351,7 @@
   <b id="model">connecting…</b>
   <span id="budget"></span>
   <button id="font" type="button" aria-expanded="false" aria-controls="fonts"
-          title="text size and font, for this browser">Aa</button>
+          title="text size, font and notifications, for this browser">Aa</button>
   <button id="view" type="button" title="the next view: chat, context, events, permissions">chat</button>
 </header>
 <div id="fonts" hidden>
@@ -368,6 +371,10 @@
   </label>
   <input id="named" type="text" placeholder="a font on this device, e.g. Iosevka" hidden
          autocomplete="off" spellcheck="false">
+  <!-- shown only where the browser can notify at all; see `attention` -->
+  <label class="toggle" id="notifying" hidden>
+    <input id="notify" type="checkbox"> notify me when a question waits and this page is hidden
+  </label>
 </div>
 
 <div id="log"></div>
@@ -379,7 +386,8 @@
          Left of the prompt rather than beside `send`, so it is the first thing seen -->
     <button id="continue" type="button" title="carry on the paused turn, as /continue does" hidden>continue</button>
     <textarea id="line" rows="1" placeholder="ask for something, or /help" autocomplete="off"></textarea>
-    <button type="submit">send</button>
+    <!-- `stop` while a turn runs and the box is empty; see `button` -->
+    <button id="send" type="submit">send</button>
   </form>
   <div id="question">
     <p id="rating" hidden></p>
@@ -1067,7 +1075,11 @@ const typeface = (() => {
   panel.onclick = (e) => e.stopPropagation();
   document.addEventListener("click", () => open(false));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !panel.hidden) open(false);
+    if (e.key === "Escape" && !panel.hidden) {
+      open(false);
+      // an `esc` that closed the panel is spent, and does not also stop the turn
+      e.preventDefault();
+    }
   });
 
   for (const step of panel.querySelectorAll("[data-step]")) {
@@ -1622,7 +1634,61 @@ function showQuestion() {
       "of it, and \"always\" allows the network from now on";
   }
   band(next);
+  attention.asked(next ? `q${next.id}` : reached ? `r${reached.id}` : null, asked.textContent);
 }
+
+/**
+ * A notification for a question that arrives while nobody is looking at the page, where this
+ * browser was asked for one.
+ *
+ * note: off unless somebody turns it on in the `Aa` panel, because a browser asks for permission
+ * and that question should come from a click, not from a page that has just opened. The toggle is
+ * there only where notifications can work at all: a browser that has them, on a page served
+ * securely, which `localhost` and `https` are and a plain `http` address on a network is not.
+ *
+ * note: once per question, and only while the page is hidden. The tab title already says a question
+ * is waiting to somebody who can see the tab, and a question still on screen after a rebuild is not
+ * a new one.
+ */
+const attention = (() => {
+  const KEY = "kamchatka.notify";
+  const row = document.getElementById("notifying");
+  const box = document.getElementById("notify");
+  const able = "Notification" in window && window.isSecureContext;
+  let told = null;
+  const wanted = () => {
+    try { return localStorage.getItem(KEY) === "1"; } catch { return false; }
+  };
+  const keep = (on) => {
+    try { on ? localStorage.setItem(KEY, "1") : localStorage.removeItem(KEY); } catch { /* not kept */ }
+  };
+
+  row.hidden = !able;
+  box.checked = able && wanted() && Notification.permission === "granted";
+  box.onchange = async () => {
+    if (!box.checked) return keep(false);
+    // asked here, from the click, which is the one moment a browser will show its question
+    const answer = await Notification.requestPermission();
+    box.checked = answer === "granted";
+    keep(box.checked);
+  };
+
+  return {
+    /** Notes which question is on screen now, and tells somebody about a new one if asked to. */
+    asked(id, text) {
+      if (id === told) return;
+      told = id;
+      if (!id || !box.checked || !document.hidden) return;
+      try {
+        const note = new Notification("kamchatka is waiting for an answer", {
+          body: text.split("\n")[0],
+          tag: "kamchatka-question",
+        });
+        note.onclick = () => { window.focus(); note.close(); };
+      } catch { /* a browser that will only notify from a service worker says nothing */ }
+    },
+  };
+})();
 
 /**
  * What the advisor made of the command, above the command.
@@ -1684,7 +1750,11 @@ document.getElementById("answers").onclick = (e) => {
 prompt.onsubmit = async (e) => {
   e.preventDefault();
   const text = line.value.trim();
-  if (!text) return;
+  if (!text) {
+    // the button says `stop` exactly when this is what it does; see `button`
+    if (turning) stop();
+    return;
+  }
   line.value = "";
   line.style.height = "auto";
   // a command is sent and not drawn, as the terminal never shows a typed command in the chat; what
@@ -1725,6 +1795,39 @@ line.addEventListener("keydown", (e) => {
 line.addEventListener("input", () => {
   line.style.height = "auto";
   line.style.height = Math.min(line.scrollHeight, visible() * 0.3) + "px";
+  button();
+});
+
+/**
+ * Stops the running turn, as `esc` and `/stop` do at the terminal: whatever arrived is kept.
+ *
+ * note: `interrupt` rather than a `/stop` line, because that is the command for it and has been in
+ * the protocol all along. A `/stop` typed into the box still works, as any line does.
+ */
+function stop() {
+  send({ do: "interrupt" });
+}
+
+/**
+ * Says on the prompt's button what pressing it does: `stop` while a turn runs and the box is empty,
+ * `send` otherwise.
+ *
+ * note: `send` again as soon as anything is typed, because a line sent into a running turn waits
+ * for it and gets a turn of its own, as at the terminal. One button rather than two keeps the
+ * footer one row on a phone; the colour is the one the question's `stop` has.
+ */
+function button() {
+  const stopping = turning && !line.value.trim();
+  const send = document.getElementById("send");
+  send.textContent = stopping ? "stop" : "send";
+  send.classList.toggle("stop", stopping);
+  send.title = stopping ? "stop the turn and keep what has arrived, as esc does" : "";
+}
+
+// `esc` stops a running turn wherever the keys are, as at the terminal, unless something on the
+// page has already used it
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !e.defaultPrevented && turning) stop();
 });
 
 /** Everything the session says, one message at a time. */
@@ -2011,6 +2114,7 @@ function working(busy) {
   turning = busy;
   indicator();
   offer();
+  button();
   line.disabled = false; // a line typed into a running turn waits for it, which is the session's job
 }
 
@@ -2089,6 +2193,9 @@ function indicator() {
   }
   dot.className = look;
   dot.title = title;
+  // and the tab's own title, which is all of the page somebody sees from another tab: a question
+  // first, since the session has stopped for it, then a turn, then a stream that went
+  document.title = `${asked ? "? " : adrift ? "✕ " : turning ? "● " : ""}kamchatka`;
   // ticking only while there is something for the time to change
   const ticks = turning && !adrift;
   if (ticks && !ticking) ticking = setInterval(indicator, 500);

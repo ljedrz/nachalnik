@@ -45,6 +45,15 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page can stop a turn.** While a turn runs and the prompt is empty, the **send**
+  button is **stop**, and <kbd>esc</kbd> stops it too, as at the terminal; both send
+  `Command::Interrupt`. Typing turns the button back into **send**, to queue a line for after the
+  turn.
+- **The `--web` page says from another tab what it is waiting for.** Its title starts with `?`
+  while a question waits, `●` while a turn runs and `✕` while the stream is down. The **Aa** panel
+  can also turn on a browser notification for a question that arrives while the page is hidden,
+  once per question; it is offered only where the browser allows notifications, on `localhost` and
+  over `https`.
 - **The `--web` page's text size and font can be changed**, with the **Aa** button in its header:
   smaller, larger or back to the start, from 12px to 28px, and monospace, sans-serif, serif or any
   font on the device typed by name. Every size on the page scales with the one chosen. The choice

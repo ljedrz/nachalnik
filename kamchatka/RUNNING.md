@@ -272,15 +272,20 @@ and **deny**, and **ask** undoes an `always`.
 
 The prompt is only on the chat. With a mouse, <kbd>enter</kbd> sends and <kbd>shift+enter</kbd>
 starts a new line, as in the terminal; on a touch screen, <kbd>enter</kbd> starts a new line and the
-**send** button sends. A waiting question colours the tab button, and a mark in the top left blinks
-while a turn is running. The model's answers are rendered as markdown, never as raw
+**send** button sends. While a turn is running and the box is empty, that button is **stop**, which
+stops the turn and keeps what arrived, as <kbd>esc</kbd> does; type something and it sends again,
+to wait for the turn. A waiting question colours the tab button, and a mark in the top left blinks
+while a turn is running. The browser tab's title starts with `?` while a question waits and `●`
+while a turn runs. The model's answers are rendered as markdown, never as raw
 HTML, and links only work for `http`, `https` and `mailto`. Answers stream in as they're written and
 are then replaced by the saved version, as in the terminal.
 
 The **Aa** button next to the tab button sets the page's text size and font: smaller, larger or
 back to the start, and monospace, sans-serif, serif or any font on the device typed by name. The
 choice is kept by the browser, so a phone and a laptop on one session can each have their own,
-and it never reaches the session.
+and it never reaches the session. The same panel can turn on a notification for when a question
+waits while the page is hidden. Browsers only allow those on `localhost` and over `https`, so on a
+plain `http` address the option is not shown.
 
 `/cleanup` (<kbd>ctrl+l</kbd>) removes `kamchatka`'s own notes from the chat and keeps the
 conversation; clearing it on one client clears it on all of them.
