@@ -94,8 +94,8 @@ const WHY: &str = "why, in your own words; the person reads it, and it becomes t
 /// note: "instead of" is said in both directions - here and on each `ids` beside it - because a
 /// call giving both is refused and the schema cannot say so. `oneOf` would say it, and neither
 /// dialect this crate speaks has that keyword.
-const SELECT: &str =
-    "a class of items instead of `ids` (never both), in the grammar from this tool's description";
+const SELECT: &str = "a selector, written as this tool's description lists them, instead of \
+                      `ids`; never both";
 
 /// The eleven operations, what each is for, and what each reads.
 ///
@@ -123,8 +123,8 @@ fn ops() -> Vec<Op> {
                     "ids",
                     "integer",
                     format!(
-                        "read these items instead of listing them - block by block, including \
-                         what you were thinking when you produced them. An item longer than {} \
+                        "show the content of these items instead of listing them, including your \
+                         reasoning in your own replies. An item longer than {} \
                          bytes shows its first and last {} bytes and says how much is between \
                          them, unless `whole` asks for all of it",
                         2 * reads::SAMPLE,
@@ -138,21 +138,22 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::truth(
                     "whole",
-                    "with `ids`, show each item in full instead of its first and last part. The \
-                     full text goes into your context and costs its tokens there",
+                    "`true`, together with `ids`, to show each item in full instead of its first \
+                     and last part. The full text goes into your context and costs its tokens \
+                     there",
                 ),
             ],
         ),
         Op::new(
             "budget",
-            "what the next request will cost against the model's context limit, what the last \
-             request really cost, \
-             and which items are the expensive ones: read it before deciding what to give up",
+            "shows what the next request will cost against the model's context limit, what the \
+             last request really cost, and which items are the expensive ones: read it before \
+             deciding what to elide or exclude",
             vec![],
         ),
         Op::new(
             "request",
-            "the next request, message by message, and why each left-out item was left out: \
+            "shows the next request, message by message, and why each left-out item was left out: \
              either its state, which you can change, or the projector, which you cannot. The \
              projector is the fixed rule that turns your context into messages. The answer also \
              lists what the projector had to drop or reorder so that the endpoint accepts the \
@@ -164,7 +165,7 @@ fn ops() -> Vec<Op> {
             "finds text anywhere in your context, excluded items included, except the turn you \
              are asking from - the message that started it, your replies in it and their results \
              - which you already have. Without `take` it shows no lines, only how many match and \
-             what they would cost, so you can decide before paying for them",
+             what they would cost in tokens, so you can decide before reading them",
             vec![
                 // note: it says what it is *not*, because `fs`'s `grep` is offered in the same
                 // request and says outright that its `pattern` is a regular expression, so a model
@@ -180,8 +181,8 @@ fn ops() -> Vec<Op> {
                 Arg::list("ids", "integer", "look only in these items, by number"),
                 Arg::whole(
                     "take",
-                    "show this many of the matching lines, up to 64; left out, you get the count \
-                     and the price and no lines",
+                    "show this many of the matching lines, up to 64; left out, you get only the \
+                     number of matches and their token cost",
                 ),
             ],
         ),
@@ -189,10 +190,10 @@ fn ops() -> Vec<Op> {
 
     ops.push(Op::these(
         &["elide", "exclude", "pin", "reset_state"],
-        "change the state of items, named with `ids` or `select`. To see which items a `select` \
+        "changes the state of items, named with `ids` or `select`. To see which items a `select` \
          matches before changing them, call `look` with it.\n\
          - `elide`: the item stays, but its content is replaced by a short marker. Use it on a \
-         tool result you no longer need; the call it answers still counts as answered.\n\
+         tool result you no longer need; the tool call it answers stays in the request.\n\
          - `exclude`: the item is left out of the request entirely; for a tool result, the \
          call that asked for it is left out too.\n\
          - `pin`: compaction will not elide or exclude the item.\n\
@@ -226,7 +227,12 @@ fn ops() -> Vec<Op> {
              replies that hold only tool calls; if an item still cannot be revised, the refusal \
              says why",
             vec![
-                Arg::one_of("ids", "integer", "the one item to rewrite").needed(),
+                Arg::one_of(
+                    "ids",
+                    "integer",
+                    "a list holding the number of the one item to rewrite, such as `[12]`",
+                )
+                .needed(),
                 Arg::text("content", "what the item should say instead").needed(),
                 Arg::text("reason", WHY).needed(),
             ],
@@ -246,14 +252,13 @@ fn ops() -> Vec<Op> {
                 // regretted
                 Arg::text(
                     "label",
-                    "a short name for it, so you can find it again. Not a key: a second note \
-                     under a name is a second item, and `revise` is what changes one you already \
-                     wrote",
+                    "a short name for it, so you can find it again. A second note with the same \
+                     label is a second item and does not replace the first; to change a note, \
+                     use `revise`",
                 ),
                 Arg::truth(
                     "pin",
-                    "protect it from compaction, for a finding that has to outlast the context it \
-                     was found in",
+                    "`true` to pin the note at once, so compaction will not elide or exclude it",
                 ),
                 Arg::text("reason", WHY).needed(),
             ],
@@ -319,18 +324,21 @@ impl Tool for Context {
             format!(
                 "your own context: what is in it, what it costs, and what goes into the next \
                  request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
-                 `pin`, `reset_state`, `revise`, `note` and `undo` change it. Nothing is deleted: \
-                 an item keeps its number and its content whatever its state.\n\
+                 `pin`, `reset_state`, `revise`, `note` and `undo` change it.\n\
+                 Your context is a numbered list of items: the person's messages, your replies, \
+                 tool results, notes, attached files and summaries. Nothing is deleted: an item \
+                 keeps its number and its content whatever its state.\n\
                  No change can touch a system instruction, an item the person pinned, or the \
                  reply you are writing now (its text, reasoning and tool calls).\n\
-                 A `select` names a class of items instead of `ids`:\n\
+                 A `select` picks items by a rule instead of listing their numbers in `ids`:\n\
                  - `17`: item 17; `10-15`: items 10 to 15, both included; `all`: every item\n\
                  - `tool:<name>`: every result of that tool; `tool:<name>:latest`: only its most \
                  recent result\n\
-                 - `kind:<kind>`: `system`, `user_message`, `assistant_message`, `tool_result`, \
-                 `reference`\n\
+                 - `kind:<kind>`: `system`, `user_message`, `assistant_message` (your replies), \
+                 `tool_result`, `reference` (notes, attached files and summaries)\n\
                  - `state:<state>`: `active`, `elided`, `excluded`, `pinned`\n\
-                 - `source:<name>`: `user`, `model`, `tool_result`, `file` (attached with \
+                 - `source:<name>`: `user` (the person's messages), `model` (your replies), \
+                 `tool_result`, `file` (attached with \
                  `/attach`), `memory` (the person's `/note`), `agent` (your notes), `compaction` \
                  (summaries)\n\
                  - `file:<path>`: the attached file with that path\n\

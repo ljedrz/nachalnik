@@ -28,8 +28,8 @@ pub(super) fn taken(args: &Value) -> Result<Option<usize>, String> {
         Ok(take) => Ok(take.filter(|&take| take != 0).map(|take| take as usize)),
         Err(_) => Err(format!(
             "`take` is a whole number of lines and this one is `{}`. Nothing was read, rather \
-             than nothing being found: leave it out for the count and the price, which is what \
-             `take: 0` asks for too.",
+             than nothing being found: leave it out for the number of matches and their token \
+             cost, which is what `take: 0` asks for too.",
             crate::tools::quoted(&args["take"])
         )),
     }

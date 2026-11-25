@@ -53,7 +53,7 @@ fn ops() -> Vec<Op> {
              conversation - for weighing an approach, or, with `without`, for finding out whether \
              a piece of your context is what is leading you astray",
             vec![
-                Arg::text("question", "what to put to the copy").needed(),
+                Arg::text("question", "the question to ask the copy").needed(),
                 Arg::list(
                     "without",
                     "integer",

@@ -83,7 +83,7 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "grep",
-            "searches inside files",
+            "searches the contents of files for lines that match `pattern`",
             vec![
                 Arg::text(
                     "pattern",
@@ -99,7 +99,7 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::truth(
                     "ignore_case",
-                    "match without regard to case; false by default",
+                    "`true` to ignore upper and lower case; false by default",
                 ),
                 Arg::whole(
                     "context",
@@ -109,10 +109,10 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::truth(
                     "files_only",
-                    "answer with the files that match and how many each has - `path: 12`, most \
-                     first - instead of the lines, which is `grep -l`. For a common word, or when \
-                     you do not know where something lives: a fraction of the tokens, and it names \
-                     the file to search properly next",
+                    "`true` to list only the files that match and how many matches each has - \
+                     `path: 12`, most first - instead of the lines. Use it for a common word, or \
+                     when you do not know where something is: it costs far fewer tokens, and tells \
+                     you which file to search next",
                 ),
             ],
         ),
@@ -130,7 +130,7 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "edit",
-            "replaces one piece of a file",
+            "replaces one exact piece of text in a file with another",
             vec![
                 Arg::text("path", "the file to change").needed(),
                 Arg::text(
@@ -239,8 +239,9 @@ impl Tool for Fs {
                  they include hidden files. Anything else they skip - a binary or unreadable \
                  file, a pipe, a link out of reach - is counted on a `skipped:` line. One call \
                  returns at most {MATCHES} matching lines from `grep`, or {PATHS} files with \
-                 `files_only`, and at most {PATHS} paths from `glob`; the first line of the \
-                 answer says when the walk stopped there and there may be more. `grep` answers \
+                 `files_only`, and at most {PATHS} paths from `glob`. When a call reaches \
+                 one of these limits, the first line of the answer says so, and there may be \
+                 more. `grep` answers \
                  one match per line as `path:line:text`, and a line wider than {WIDTH} \
                  characters is cut and ends in `…`. `glob` lists only the files that matched, \
                  grouped by directory: a directory's path and a `:`, then the names in it one to \

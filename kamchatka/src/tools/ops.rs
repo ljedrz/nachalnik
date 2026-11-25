@@ -135,10 +135,10 @@ impl Arg {
 
     /// An argument the operation reads but does not offer.
     ///
-    /// note: `context`'s four moves read `label` so a call giving `label` instead of `ids` can be
-    /// answered with the spelling it meant - a model may reach for it that way, and
+    /// note: `context`'s four state changes read `label` so a call giving `label` instead of `ids`
+    /// can be answered with the spelling it meant - a model may reach for it that way, and
     /// `Changes::moved` says `select: "label:<text>"` back. It is not a way to name the items to
-    /// move, so advertising it would teach the mistake the answer corrects; leaving it out of the
+    /// change, so advertising it would teach the mistake the answer corrects; leaving it out of the
     /// table would have [`unread`] refuse the call before that answer could be given.
     pub(crate) fn tolerated(name: &'static str) -> Self {
         Self {
@@ -170,9 +170,9 @@ impl Arg {
 /// One shape a call may take: the operations that share it, and what they read.
 ///
 /// note: several operations rather than one, because a branch per operation is only worth its
-/// scaffolding where the operations differ. `context`'s four moves take one argument list because
-/// they are one function, so they are one branch under an `action` of four words, and the arguments
-/// are written once rather than four times on every request.
+/// scaffolding where the operations differ. `context`'s four state changes take one argument list
+/// because they are one function, so they are one branch under an `action` of four words, and the
+/// arguments are written once rather than four times on every request.
 pub(crate) struct Op {
     actions: Vec<&'static str>,
     does: String,

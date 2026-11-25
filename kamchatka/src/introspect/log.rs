@@ -70,8 +70,8 @@ fn ops() -> Vec<Op> {
             // to the question
             Arg::whole(
                 "since",
-                "only the records after this sequence number, which is the first column; `0` is \
-                 all of them",
+                "only the records after this sequence number, the number at the start of each \
+                 record; `0` is all of them",
             ),
             // note: two of them written out, because "spelled as the summary spells them" alone
             // sends a model to the summary for the vocabulary it needs before it can ask. The
@@ -88,9 +88,9 @@ fn ops() -> Vec<Op> {
             // context and costs what it costs
             Arg::truth(
                 "whole",
-                "print a replaced item's previous text in full instead of its first line; other \
-                 records are printed the same either way. The full text goes into your context \
-                 and costs its tokens there",
+                "`true` to print a replaced item's previous text in full instead of its first \
+                 line; other records are printed the same either way. The full text goes into \
+                 your context and costs its tokens there",
             ),
         ],
     )]
@@ -150,11 +150,11 @@ impl Tool for Log {
             "log",
             format!(
                 "reads this session's record: an append-only log of what happened, kept beside \
-                 your context and not part of it. Every item added, replaced, elided, undone or \
-                 compacted; every permission asked for and answered; every tool that appeared or \
-                 went away. `read` with no other arguments gives a summary: how many records of \
-                 each kind there are and what reading them would cost. Add `kinds`, `ids`, `since` \
-                 or `take` to get the records themselves. \
+                 your context and not part of it. It records every item added, replaced, elided, \
+                 undone or compacted, every permission asked for and answered, and every tool \
+                 that appeared or went away. `read` with no other arguments gives a summary: how \
+                 many records of each kind there are and what reading them would cost. Add \
+                 `kinds`, `ids`, `since` or `take` to get the records themselves. \
                  Every answer opens with how many records the log holds and, when the arguments \
                  narrowed them, how many of those match, so an answer that lists fewer was cut \
                  short by what you asked for, not because the rest do not exist. You cannot write \
