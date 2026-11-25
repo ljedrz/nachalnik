@@ -668,6 +668,12 @@ async fn a_session_with_no_model_takes_the_only_one_its_endpoint_serves() {
     let said = unnamed("program-only-model", &several, "hi\n");
     assert!(!said.contains("serves one model"), "{said}");
     assert!(said.contains("no model yet"), "{said}");
+
+    // and one listed with no name is no model to take
+    let nameless = common::listing(&[""], vec![common::answer("hello")]).await;
+    let said = unnamed("program-only-model", &nameless, "hi\n");
+    assert!(!said.contains("serves one model"), "{said}");
+    assert!(said.contains("no model yet"), "{said}");
 }
 
 /// A `/restart` of a session that took the only model its endpoint serves takes it again, as the
