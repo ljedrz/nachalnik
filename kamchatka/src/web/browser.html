@@ -277,15 +277,22 @@
      first thing read. A turn can be a minute of nothing arriving - a model thinking, a command
      running, a provider gone quiet - and a page with no pulse in it is indistinguishable from a
      page whose connection died.
-     note: and it is the whole of what the bar says about both. A word beside it would say what the
-     dot already says, and cost the row the width that makes it wrap. The two states are told apart
-     by colour rather than by text: the colour a call is drawn in for a turn that is running, and
-     the colour a refusal is drawn in for a stream that has gone */
-  #pulse { color: var(--call); animation: pulse 1.2s ease-in-out infinite; }
+     note: and it is the whole of what the bar says about it. A word beside it would say what the
+     dot already says, and cost the row the width that makes it wrap. What a turn is doing is told
+     by colour and by whether the dot pulses, and the tooltip says it in words; see `indicator`.
+     note: while the model is answering, the dot is lit by what arrives rather than by a timer, and
+     dims when nothing has arrived for a while. A timed pulse looked the same over a server that
+     was writing and one that had hung */
+  #pulse { color: var(--call); animation: pulse 1.2s ease-in-out infinite; transition: opacity .6s; }
+  #pulse.sending { animation: none; }
+  #pulse.sending.quiet { opacity: .3; }
+  #pulse.tool { color: var(--code); }
+  #pulse.you { color: var(--user); animation: none; }
   #pulse.down { color: var(--bad); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
-  /* a reader who asked for no animation gets a steady dot, which says the same thing */
-  @media (prefers-reduced-motion: reduce) { #pulse { animation: none; } }
+  /* a reader who asked for no animation gets a steady dot, which still dims when the model goes
+     quiet, without the fade */
+  @media (prefers-reduced-motion: reduce) { #pulse { animation: none; transition: none; } }
 </style>
 
 <header>
@@ -347,6 +354,12 @@ let showing = "chat";   // which of the four is on screen
 let turning = false;    // whether a turn is running, which is half of what the one dot says
 let paused = false;     // whether the last turn stopped at its request budget, waiting to carry on
 let adrift = false;     // and whether the stream has gone, which is the other half
+let phase = null;       // what the running turn is doing: "waiting", "sending", "tool" or null
+let since = 0;          // when it started doing that
+let fragment = 0;       // when the last fragment of the model's answer arrived
+let running = 0;        // how many tools are running
+let tool = "";          // the last of them to start
+let ticking = null;     // the timer that keeps the dot's tooltip and dimming up to date
 
 /**
  * The views, in the order the terminal's tab strip has them.
@@ -1335,6 +1348,7 @@ function showQuestion() {
   // the tab strip goes red upstairs and this is the same sentence: from another view a question is
   // not what you are looking at, but it is the thing the session has stopped for
   document.getElementById("view").classList.toggle("asked", !!(next || reached));
+  indicator();
   if (next) {
     asked.textContent =
       `${next.tool}(${JSON.stringify(next.args)})\nit declares ` +
@@ -1487,6 +1501,8 @@ function heard(m) {
       // projection draws them. With only the answer streamed, a model thinking for a minute showed
       // nothing but the dot, which looks the same as a model that has stopped - and a model going
       // round in circles in its thinking could not be seen doing it until the turn was over
+      // the dot hears every fragment, including a tool call's arguments, which draw nothing here
+      if (m.event.event === "model.delta") arrived();
       if (m.event.event === "model.delta" && streaming) {
         const delta = m.event.delta;
         const kind = delta.text !== undefined ? "model" : delta.reasoning !== undefined ? "reasoning" : null;
@@ -1633,9 +1649,13 @@ function happened(e) {
       if (e.kind === "user_message" && !claim(e.id)) inspect(e.id, "user");
       break;
     // a request is on its way, so whatever arrives next belongs to it and nothing before it does
-    case "model.requested": open = answer = null; streaming = true; break;
+    case "model.requested": open = answer = null; streaming = true; doing("waiting"); break;
+    case "model.failed": doing(null); break;
+    case "tool.started": running++; tool = e.tool; doing("tool"); break;
     case "tool.requested": say("call", `${e.tool}(${JSON.stringify(e.args)})`); break;
     case "tool.finished":
+      running = Math.max(0, running - 1);
+      if (!running && phase === "tool") doing(null);
       say("result", `${e.tool}: ${e.tokens} tokens${e.is_error ? ", an error" : ""}`);
       break;
     // note: and a projection asked for on the spot, because the advisor's reading of the command
@@ -1662,6 +1682,7 @@ function happened(e) {
       // the fragments are what the provider sent, byte for byte, so an answer that began with two
       // blank lines would begin with two blank lines, where the context trims them
       streaming = false;
+      doing(null);
       // the answer's line only, even where the thinking came last: an `item` answer fills every
       // line carrying the item with the answer, and a line of thinking filled with it would say
       // the answer twice
@@ -1716,6 +1737,7 @@ function working(busy) {
   // a rebuild held back while the model was typing is owed the moment it stops. See the
   // `projected` case for why it is held back rather than done and undone
   if (!busy && stale) send({ do: "project" });
+  if (!busy) { phase = null; running = 0; }
   turning = busy;
   indicator();
   offer();
@@ -1734,19 +1756,73 @@ function offer() {
 
 resume.onclick = () => send({ do: "submit", line: "/continue" });
 
+/** Notes what the running turn has started doing, for the dot. */
+function doing(what) {
+  phase = what;
+  since = fragment = Date.now();
+  indicator();
+}
+
+/** Notes that a fragment of the model's answer arrived, which is what keeps the dot lit. */
+function arrived() {
+  if (phase !== "waiting" && phase !== "sending") return;
+  if (phase === "waiting") phase = "sending";
+  fragment = Date.now();
+  indicator();
+}
+
+/** How long ago `then` was, the way the tooltip says it. */
+function ago(then) {
+  const seconds = Math.floor((Date.now() - then) / 1000);
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+/** How long the model can send nothing before the dot dims. */
+const QUIET_MS = 2000;
+
 /**
  * Draws the one indicator there is.
  *
- * note: two states and one dot, told apart by colour rather than by a word beside it. A word is
- * what made the header wrap, and it never said anything the dot was not already saying - see the
- * note on `#pulse`. A stream that has gone shows whether or not a turn is running, because it is
- * the more urgent of the two and the turn carries on at the session either way.
+ * note: one dot, with its colour and its pulse saying what a turn is doing, and the tooltip
+ * saying it in words. A word beside it is what made the header wrap - see the note on `#pulse`.
+ * The phases come from the session's own events:
+ * - a request out and nothing back yet, which on a local server is the prompt being read or a
+ *   queue: the pulse
+ * - the model answering: lit while fragments arrive, dim once none has for `QUIET_MS`
+ * - a tool running, while the model server has nothing to do: the pulse, in another colour
+ * - a question waiting on somebody: steady, in the colour of a person's lines
+ *
+ * A stream that has gone shows whether or not a turn is running, because it is the more urgent
+ * and the turn carries on at the session either way.
  */
 function indicator() {
   const dot = document.getElementById("pulse");
-  dot.hidden = !turning && !adrift;
-  dot.classList.toggle("down", adrift);
-  dot.title = adrift ? "the stream went; picking it back up" : "working";
+  // and while a question waits, when the session reports no turn running
+  const asked = asking.length || reaching.length;
+  dot.hidden = !turning && !adrift && !asked;
+  let look = "", title = "working";
+  if (adrift) {
+    look = "down";
+    title = "the stream went; picking it back up";
+  } else if (asked) {
+    look = "you";
+    title = "waiting on you";
+  } else if (phase === "waiting") {
+    title = `asked the model ${ago(since)} ago; nothing back yet`;
+  } else if (phase === "sending") {
+    const quiet = Date.now() - fragment >= QUIET_MS;
+    look = quiet ? "sending quiet" : "sending";
+    title = quiet ? `the model has sent nothing for ${ago(fragment)}` : "the model is answering";
+  } else if (phase === "tool") {
+    look = "tool";
+    title = `running ${tool} for ${ago(since)}`;
+  }
+  dot.className = look;
+  dot.title = title;
+  // ticking only while there is something for the time to change
+  const ticks = turning && !adrift;
+  if (ticks && !ticking) ticking = setInterval(indicator, 500);
+  if (!ticks && ticking) { clearInterval(ticking); ticking = null; }
 }
 
 // note: anything this page throws goes on the page, because the alternative is a blank screen and
