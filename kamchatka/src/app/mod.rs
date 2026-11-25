@@ -1794,3 +1794,30 @@ pub fn queued(
         Err(TryRecvError::Empty | TryRecvError::Closed) => None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Page;
+
+    fn page(name: &str, body: &str) -> Page {
+        Page {
+            name: name.to_owned(),
+            body: body.to_owned(),
+        }
+    }
+
+    /// Several pages are printed each under its name, and a lone page or a nameless one as its
+    /// body alone.
+    #[test]
+    fn printed_pages_are_named_only_where_there_are_several() {
+        assert_eq!(
+            Page::printed(&[page("one", "first"), page("two", "second")]),
+            "-- one --\nfirst\n-- two --\nsecond"
+        );
+        assert_eq!(Page::printed(&[page("one", "first")]), "first");
+        assert_eq!(
+            Page::printed(&[page("", "first"), page("two", "second")]),
+            "first\n-- two --\nsecond"
+        );
+    }
+}
