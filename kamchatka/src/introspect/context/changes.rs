@@ -1,5 +1,5 @@
-//! The half of `context` that changes it: move items, rewrite one, write something down, and walk
-//! any of it back.
+//! The half of `context` that changes it: change items' states, rewrite one, write something down,
+//! and walk any of it back.
 
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -24,7 +24,7 @@ use crate::{
 
 use super::{CHANGES, Pinned};
 
-/// Changes the context: moves items between states, rewrites one, writes something down, walks its
+/// Changes the context: changes items' states, rewrites one, writes something down, walks its
 /// own changes back.
 ///
 /// note: it keeps the set of items it pinned itself, stopping a model from unpinning what a person
@@ -90,7 +90,7 @@ impl Journal {
     /// Takes what this tool just did to these items as the way it left them, in every entry.
     ///
     /// note: every change this tool makes, not only the ones it journals. Pinning a pinned item for
-    /// a new reason rewrites its note and moves nothing, so it is no step of its own. An entry
+    /// a new reason rewrites its note and changes no state, so it is no step of its own. An entry
     /// still holding the old note would read the model's own restating as somebody else's change,
     /// and refuse to walk back a pin the model had made.
     fn refresh(&mut self, kernel: &Kernel, ids: &[ContextId]) {
@@ -155,7 +155,7 @@ impl Entry {
 fn moved_since(left: &[(ContextId, Left)], item: &ContextItem) -> Option<String> {
     let (_, left) = left.iter().find(|(id, _)| *id == item.id)?;
     (*left != Left::of(item)).then(|| {
-        "has changed since this tool moved it - by the person you are working with, or by \
+        "has changed since this tool changed it - by the person you are working with, or by \
          compaction - so it stays as it is now"
             .to_owned()
     })
@@ -174,7 +174,7 @@ enum Undoing {
 }
 
 impl Undoing {
-    /// The items it would move.
+    /// The items whose state it would change.
     fn ids(&self) -> Vec<ContextId> {
         match self {
             Self::States(states) => states.iter().map(|(id, ..)| *id).collect(),
@@ -197,9 +197,9 @@ struct Applied {
 impl Undoing {
     /// Applies it, and returns the way back from where that leaves things to where they were.
     ///
-    /// note: `protected` is checked here too, as in every other move. Pinning an item after the
-    /// model elided it is a decision about that item. An `undo` that went straight to `set_state`
-    /// would remove the pin silently, which a pin promises will not happen.
+    /// note: `protected` is checked here too, as in every other state change. Pinning an item after
+    /// the model elided it is a decision about that item. An `undo` that went straight to
+    /// `set_state` would remove the pin silently, which a pin promises will not happen.
     ///
     /// note: one [`Kernel::set_states`] for the whole operation, not one `set_state` per item or
     /// state. One operation is one undo; otherwise walking back three items into two states would
@@ -310,16 +310,16 @@ impl Changes {
             "revise" => self.revise(kernel, call, args, reason),
             "note" => self.note(kernel, args, reason),
             "undo" => self.walk(kernel, reason),
-            // note: the four moves are separate operations named for what they do, not one `prune`
-            // action with a `state` argument. That would put one word over all four, including
-            // `pin` and `restore`, which are its opposite, so "prune to pin it" would mean
-            // protecting something. It would also disagree with every place the result is read
-            // back, which name the state. A model asks for `restore` as an action.
+            // note: the four state changes are separate operations named for what they do, not one
+            // `prune` action with a `state` argument. That would put one word over all four,
+            // including `pin` and `reset_state`, which are its opposite, so "prune to pin it" would
+            // mean protecting something. It would also disagree with every place the result is
+            // read back, which name the state.
             //
-            // note: the state is read here, where the four are named, not inside the move. Inside
-            // the move, an unknown word would need a listing of what to say instead, kept current
-            // in a branch nothing can reach. `CHANGES` gets a call this far; the four moves are the
-            // rest.
+            // note: the state is read here, where the four are named, not inside the change. Inside
+            // it, an unknown word would need a listing of what to say instead, kept current in a
+            // branch nothing can reach. `CHANGES` gets a call this far; the four state changes are
+            // the rest.
             other => match state_of(other) {
                 Some(state) => self.moved(kernel, call, args, reason, other, state),
                 None => ToolOutput::error(unknown(other, &CHANGES)),
@@ -383,7 +383,7 @@ fn wrote_anything_down(kernel: &Kernel) -> bool {
 }
 
 impl Changes {
-    /// Moves items to a state, refusing the ones that are not the model's to move.
+    /// Puts items into a state, refusing the ones that are not the model's to change.
     fn moved(
         &self,
         kernel: &Kernel,
@@ -420,7 +420,7 @@ impl Changes {
                 None => match args["label"].as_str() {
                     Some(label) => format!(
                         "`{action}` needs `ids`, or a `select` naming a class of them. `label` \
-                         names a `note`, not the items to move - to move the items called \
+                         names a `note`, not the items to change - to change the items called \
                          `{label}`, say `select: \"label:{label}\"`"
                     ),
                     None => format!("`{action}` needs `ids`, or a `select` naming a class of them"),
@@ -455,12 +455,12 @@ impl Changes {
         self.journal.lock().refresh(kernel, &changed.changed);
         // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
         // that was pinned and is being pinned again for a different reason comes back as changed,
-        // which is true of the note and false of the item. Read as a move, `pin [2]` on something
-        // already pinned would say "1 item(s) are now pinned: 2" over figures that had not moved,
-        // and put a step in the journal that `undo` would describe as "2 back to pinned" about an
-        // item that is still pinned. What happened is that the reason was rewritten, so that is
-        // what it says. `was` is read before the change and already holds the state each item had,
-        // so telling the two apart costs nothing.
+        // which is true of the note and false of the item. Read as a state change, `pin [2]` on
+        // something already pinned would say "1 item(s) are now pinned: 2" over figures that had
+        // not moved, and put a step in the journal that `undo` would describe as "2 back to pinned"
+        // about an item that is still pinned. What happened is that the reason was rewritten, so
+        // that is what it says. `was` is read before the change and already holds the state each
+        // item had, so telling the two apart costs nothing.
         let (moved, restated): (Vec<_>, Vec<_>) = was
             .into_iter()
             .filter(|(id, ..)| changed.changed.contains(id))
@@ -477,10 +477,10 @@ impl Changes {
             out.push_str(&format!(": {}", numbers_of(&moved)));
         }
         out.push('\n');
-        // everything that did not move, said once and in one place. The kernel splits it in two -
-        // `unchanged` is same state *and* same note, `restated` is same state with a new reason -
-        // and that is a distinction about the record rather than about the item, so it goes in the
-        // clause rather than in a second line of its own
+        // everything whose state did not change, said once and in one place. The kernel splits it
+        // in two - `unchanged` is same state *and* same note, `restated` is same state with a new
+        // reason - and that is a distinction about the record rather than about the item, so it
+        // goes in the clause rather than in a second line of its own
         let still = [numbers_of(&restated), numbers(&changed.unchanged)];
         let still: Vec<&str> = still
             .iter()
@@ -489,7 +489,7 @@ impl Changes {
             .collect();
         if !still.is_empty() {
             out.push_str(&format!(
-                "{} item(s) were already {state} and did not move: {}",
+                "{} item(s) were already {state}: {}",
                 restated.len() + changed.unchanged.len(),
                 still.join(", "),
             ));
@@ -510,11 +510,12 @@ impl Changes {
         // of items away otherwise spends calls guessing at how to put them back; a line here is
         // cheaper than that
         //
-        // note: `action`, which is what `restore` is. A `state` argument is one nothing reads and
-        // is refused by name, so a sentence that named one would cost the call it is there to save
+        // note: `action`, which is what `reset_state` is. A `state` argument is one nothing reads
+        // and is refused by name, so a sentence that named one would cost the call it is there to
+        // save
         if !moved.is_empty() && !state.sends_content() {
             out.push_str(
-                "back: the same ids with `action: \"restore\"`, or `undo` for all of it\n",
+                "back: the same ids with `action: \"reset_state\"`, or `undo` for all of it\n",
             );
             // the failure this closes: a model can gather its evidence in tool results, say nothing
             // about it in its own turns, put all of it away at once, and then answer from nothing -
@@ -537,8 +538,8 @@ impl Changes {
                         "`search` reads a line of one without putting it back",
                     ),
                     (
-                        Capability::parse("context:move").expect("a capability"),
-                        "`restore` returns the whole",
+                        Capability::parse("context:state").expect("a capability"),
+                        "`reset_state` returns the whole",
                     ),
                 ]);
                 out.push_str(&format!(
@@ -551,8 +552,8 @@ impl Changes {
                     &self.policy,
                     "context:note",
                     || {
-                        "`note` writes a finding down in an item of its own, which this move does \
-                         not touch.\n"
+                        "`note` writes a finding down in an item of its own, which this change \
+                         does not touch.\n"
                             .to_owned()
                     },
                 ));
@@ -565,7 +566,7 @@ impl Changes {
             kernel,
             before,
             match state {
-                // the only move whose growth is not the content itself
+                // the only state change whose growth is not the content itself
                 ContextState::Elided => Grew::Marker,
                 _ => Grew::Content,
             },
@@ -589,13 +590,13 @@ impl Changes {
         let Some(item) = kernel.item(id) else {
             return ToolOutput::error(format!("there is no context item {id}"));
         };
-        // note: said to be a refusal, as a move's is. `[11] pinned by the person ..., and a pin
-        // is a promise` on its own read as a remark about the item, and a model that got it told
-        // the person its revision had gone through
+        // note: said to be a refusal, as a state change's is. `[11] pinned by the person ..., and a
+        // pin is a promise` on its own read as a remark about the item, and a model that got it
+        // told the person its revision had gone through
         if let Some(why) = protected(&item, &self.pinned.lock(), own_turn(kernel, &call.id)) {
             return ToolOutput::error(format!("refused: [{id}] {why} - nothing was revised"));
         }
-        // note: here rather than in `protected`, because it is the one move that puts words in
+        // note: here rather than in `protected`, because it is the one change that puts words in
         // somebody's mouth. A message excluded or elided is still what the person said, and the
         // pane shows it so; one revised has every later request read them as having said the
         // model's text. A model meaning to revise its note and handed the id of the message asking
@@ -679,8 +680,8 @@ impl Changes {
                      read what it says now."
                 ),
                 None => format!(
-                    " It is `{}`, so the next request does not read what it says now; `restore` \
-                     puts it back.",
+                    " It is `{}`, so the next request does not read what it says now; \
+                     `reset_state` puts it back.",
                     now.state
                 ),
             },
@@ -804,7 +805,7 @@ impl Changes {
             match journal.done.pop() {
                 None => (None, Vec::new()),
                 Some(Entry { undoing, left }) => {
-                    // an item that has since gone, or is no longer this tool's to move, gives
+                    // an item that has since gone, or is no longer this tool's to change, gives
                     // nothing to walk to. The entry is spent either way rather than retried against
                     // a context it no longer describes
                     let step = undoing.apply(kernel, &mine, &left);
@@ -848,14 +849,15 @@ impl Changes {
             // opposites. An entry spent on a refusal existed; telling the model there was nothing
             // of yours to walk back reads as never having made the change. The only other evidence
             // is the counter moving under it
-            Some(None) => "your last change could not be walked back, and `undo` will not try it \
-                           again. `undo` only moves the changes this tool made; the person you \
-                           work with has an undo of their own, and it is not this one.\n"
+            Some(None) => "your last change could not be walked back, and `undo` will not try \
+                           it again. `undo` only takes back the changes this tool made; the \
+                           person you work with has an undo of their own, and it is not this \
+                           one.\n"
                 .to_owned(),
             None => {
-                let mut said = "there was nothing of yours to walk back. `undo` only moves the \
-                                changes this tool made; the person you work with has an undo of \
-                                their own, and it is not this one.\n"
+                let mut said = "there was nothing of yours to walk back. `undo` only takes \
+                                back the changes this tool made; the person you work with has an \
+                                undo of their own, and it is not this one.\n"
                     .to_owned();
                 // note: a snapshot written before the journal went into it carries none, so after a
                 // resume from one the model's earlier changes are not in it either. Without this,
@@ -863,7 +865,8 @@ impl Changes {
                 if super::reads::resumed(kernel) && !carried {
                     said.push_str(
                         "This session was resumed from a snapshot, and the changes this tool made \
-                         before that were not carried over; `restore` puts an item back by name.\n",
+                         before that were not carried over; `reset_state` puts an item back by \
+                         name.\n",
                     );
                 }
                 said
@@ -871,7 +874,7 @@ impl Changes {
         };
         if !left_alone.is_empty() {
             out.push_str(&format!(
-                "left alone, being no longer yours to move:\n  {}\n",
+                "left alone, being no longer yours to change:\n  {}\n",
                 left_alone.join("\n  ")
             ));
         }
@@ -926,7 +929,7 @@ fn hold(
     };
 }
 
-/// The state each of the four moves leaves an item in.
+/// The state each of the four state changes leaves an item in.
 ///
 /// note: four words for four states, and no second spelling of any of them. Accepting a synonym
 /// costs nothing for the word and something for the program: the schema advertises eleven
@@ -938,7 +941,7 @@ fn state_of(word: &str) -> Option<ContextState> {
         "exclude" => ContextState::Excluded,
         "elide" => ContextState::Elided,
         "pin" => ContextState::Pinned,
-        "restore" => ContextState::Active,
+        "reset_state" => ContextState::Active,
         _ => return None,
     })
 }

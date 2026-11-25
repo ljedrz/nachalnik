@@ -264,12 +264,12 @@ async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
     );
 }
 
-/// `/pin` pins, which is the one state `/exclude` and `/restore` cannot reach, and it says so.
+/// `/pin` pins, which is the one state `/exclude` and `/reset_state` cannot reach, and it says so.
 ///
 /// note: the three commands are one function and one match on the verb, so a verb that stops
 /// matching does not stop - it falls to the last arm and does that instead. `/pin` on an item
 /// would have reported a line, said the right count, and left the item restored, which is what
-/// `/restore` was asked to do. The state is the whole of what a pin is, so that is what is read
+/// `/reset_state` was asked to do. The state is the whole of what a pin is, so that is what is read
 /// back.
 #[tokio::test]
 async fn a_pin_pins() {

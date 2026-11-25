@@ -1980,11 +1980,11 @@ fn a_rule_nothing_is_judged_under_is_refused() {
         ("fs:grep", "`fs:read`"),
         ("fs:glob", "`fs:read`"),
         ("context:look", "`context:read`"),
-        ("context:exclude", "`context:move`"),
-        ("context:restore", "`context:move`"),
+        ("context:exclude", "`context:state`"),
+        ("context:reset_state", "`context:state`"),
         (
             "context:undo",
-            "`context:move`, `context:pin`, `context:note`, `context:revise`",
+            "`context:state`, `context:pin`, `context:note`, `context:revise`",
         ),
         ("setup:model", "`setup:read`"),
         ("fork:draft", "`fork:ask`"),
@@ -2679,7 +2679,7 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
     assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
 }
 
-/// The notice sends the model to `exclude` or `elide` while `context:move` is open, whatever else
+/// The notice sends the model to `exclude` or `elide` while `context:state` is open, whatever else
 /// is refused, and tells the person to make room once it is not.
 ///
 /// note: `move` is the one subject making room needs. A session that refused pinning, notes and
@@ -2720,7 +2720,7 @@ async fn the_notice_sends_the_model_to_make_room_while_moving_is_open() {
     assert!(!blind.contains("`look`"), "{blind}");
 
     // and the sentence about asking the person is for a session that cannot move items
-    let neither = notice(&["context:move"]);
+    let neither = notice(&["context:state"]);
     assert!(neither.contains("Tell the person"), "{neither}");
 }
 
@@ -3081,7 +3081,7 @@ fn a_key_is_asked_for_only_where_the_address_checks_one() {
 /// `setup` and a refusal can name them.
 ///
 /// note: the policy learns it from the tools, and only where they are installed; a session that
-/// skipped it would ask `always, for context:move` with nothing saying `restore` came with it.
+/// skipped it would ask `always, for context:state` with nothing saying `reset_state` came with it.
 #[test]
 fn a_wired_session_knows_which_actions_each_subject_covers() {
     use std::sync::Arc;
@@ -3104,7 +3104,7 @@ fn a_wired_session_knows_which_actions_each_subject_covers() {
         ["read", "glob", "grep"]
     );
     assert_eq!(
-        policy.actions_for(&kamchatka::tools::domains::context("move"), "context"),
-        ["elide", "exclude", "restore", "undo"]
+        policy.actions_for(&kamchatka::tools::domains::context("state"), "context"),
+        ["elide", "exclude", "reset_state", "undo"]
     );
 }

@@ -228,8 +228,8 @@ async fn the_file_selectors_advice_names_no_tool_that_has_been_taken_away() {
 /// note: the regression this is here for. These tools take their arguments inside a `call` object,
 /// and `Tool::needs` on `context` was reading the outside of it - so it found no `action`, took
 /// the branch meant for a call nobody can place, and declared every subject. A `look` at three
-/// items asked the person to allow `context:revise` and `context:move` along with it, and a session
-/// allowed to read the context and nothing else could not look at all.
+/// items asked the person to allow `context:revise` and `context:state` along with it, and a
+/// session allowed to read the context and nothing else could not look at all.
 ///
 /// note: over every tool this program installs rather than over `context`, because the bug was not
 /// `context`'s. It was that `needs` and `invoke` read the arguments two different ways, which is
@@ -255,7 +255,7 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
         (
             "context",
             json!({ "action": "exclude", "ids": [3], "reason": "y" }),
-            "context:move",
+            "context:state",
         ),
         (
             "context",
@@ -543,7 +543,7 @@ async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
         ),
         (
             "context",
-            json!({ "action": "restore", "ids": [2], "reason": "why" }),
+            json!({ "action": "reset_state", "ids": [2], "reason": "why" }),
         ),
         ("context", json!({ "action": "undo", "reason": "why" })),
     ];

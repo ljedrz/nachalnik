@@ -521,7 +521,7 @@ async fn request_reports_what_is_going_and_what_was_left_out() {
     assert!(said.contains("system"), "{said}");
     // and the way back is named beside it, because this is the half of the list a state change
     // reaches
-    assert!(said.contains("`restore`"), "{said}");
+    assert!(said.contains("`reset_state`"), "{said}");
     // the request is summarized, never quoted: printing it would double every token being asked
     // about, and the excluded item's contents would come back in the answer
     assert!(!said.contains("hunter2"), "{said}");
@@ -632,8 +632,8 @@ async fn request_sizes_a_message_by_what_it_sends() {
 ///
 /// note: an orphaned tool result is the case. Its state says `active` and it is costing nothing,
 /// because the projector repairs it out of a request whose assistant turn no longer asks for it -
-/// so `restore` on it does exactly nothing, and one undifferentiated list of what was left out is
-/// a list in which the cheap guess is the useless move. What there is to fix is the cause.
+/// so `reset_state` on it does exactly nothing, and one undifferentiated list of what was left out
+/// is a list in which the cheap guess is the useless move. What there is to fix is the cause.
 #[tokio::test]
 async fn request_says_which_rule_left_each_item_out() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -676,15 +676,15 @@ async fn request_says_which_rule_left_each_item_out() {
         "by the name it can be looked up under: {said}"
     );
     assert!(
-        said.contains("Restoring these changes nothing"),
-        "and says why `restore` is the wrong move on that half: {said}"
+        said.contains("Resetting their state changes nothing"),
+        "and says why `reset_state` is the wrong call on that half: {said}"
     );
     assert!(said.contains("orphaned tool result"), "{said}");
 
     // each half names what is in it, which is the only thing that tells the two apart: the item
-    // a state took out is reported under the state and beside `restore`, and the item the
+    // a state took out is reported under the state and beside `reset_state`, and the item the
     // projector took out under the projector and beside the sentence saying restoring it is the
-    // wrong move. One list holding the other's words would send a model to `restore` an orphan
+    // wrong move. One list holding the other's words would send a model to `reset_state` an orphan
     let half = |heading: &str| {
         let said = answered(&kernel);
         let (start, rest) = said
@@ -709,7 +709,7 @@ async fn request_says_which_rule_left_each_item_out() {
     );
     assert!(
         !by_projector.contains("too big"),
-        "an excluded item is in the other half, where `restore` would reach it: {by_projector}"
+        "an excluded item is in the other half, where `reset_state` would reach it: {by_projector}"
     );
 }
 
@@ -1085,8 +1085,8 @@ async fn the_running_column_of_the_expensive_list_is_the_sum_of_the_one_beside_i
 /// note: `budget` named `archived` among "three states you set" for as long as `archive` was an
 /// action, and went on naming it after `archive` was merged into `exclude` and the word left the
 /// vocabulary. A tool that tells a model about a state and gives it no way to reach one is the
-/// exact failure the moves were renamed to close - two models in a row spent a call each asking
-/// for an `action` called `restore` before it was one.
+/// exact failure the state changes were renamed to close - two models in a row spent a call each
+/// asking for an `action` called `restore` (now `reset_state`) before it was one.
 #[tokio::test]
 async fn budget_promises_no_state_the_vocabulary_cannot_reach() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -1546,7 +1546,10 @@ async fn the_models_own_notes_are_named_in_the_description_and_found_by_it() {
         ),
     ]));
     let description = kernel.tool("context").expect("offered").spec().description;
-    assert!(description.contains("`source:agent`"), "{description}");
+    assert!(
+        description.contains("`agent` (your notes)"),
+        "{description}"
+    );
 
     kernel.push(ContextItem::user("write it down"));
     kernel.turn().await.expect("the turn failed");

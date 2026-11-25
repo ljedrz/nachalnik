@@ -1932,7 +1932,7 @@ async fn a_waiting_question_can_be_left_and_come_back_to() {
     ]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("context", "elided")
-            .with_capabilities([kamchatka::tools::domains::context("move")]),
+            .with_capabilities([kamchatka::tools::domains::context("state")]),
     ));
     harness
         .app
@@ -2022,7 +2022,7 @@ async fn a_question_naming_its_items_twice_is_not_described_as_a_move() {
         ]);
         harness.app.kernel.add_tool(Arc::new(
             ConstTool::new("context", "elided")
-                .with_capabilities([kamchatka::tools::domains::context("move")]),
+                .with_capabilities([kamchatka::tools::domains::context("state")]),
         ));
         harness
             .app
@@ -3264,7 +3264,7 @@ async fn a_malformed_call_is_not_put_to_anybody() {
 /// A rule about a whole domain names what it lets run the way a rule about one operation does:
 /// the actions of a tool that has several, and the name of a tool that has one.
 ///
-/// note: the domain row named the operations, `context:move, context:note, ...`, beside an
+/// note: the domain row named the operations, `context:state, context:note, ...`, beside an
 /// operation row naming actions, `fs: read, glob, grep`, so the same column held two kinds of
 /// thing, and `read` could be either.
 #[tokio::test]
@@ -3393,8 +3393,8 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() 
         .app
         .policy
         .set(&Subject::parse("context:revise"), Verdict::Deny);
-    let said = "`context`'s `undo` needs all of `context:move`, `context:note`, \
-                `context:pin` and `context:revise`, so the strictest of those applies";
+    let said = "`context`'s `undo` needs all of `context:note`, `context:pin`, \
+                `context:revise` and `context:state`, so the strictest of those applies";
     assert!(
         harness.app.together().iter().any(|it| it.contains(said)),
         "{:?}",

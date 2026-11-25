@@ -12,8 +12,9 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
     // the failure this closes: a session elided twenty-two items, then spent two calls guessing
     // at how to put them back and gave up. The moment worth saying so is the one where something
     // has just been hidden - and the sentence has to name the spelling that works: it said
-    // `state: "restore"` from when the four moves were one argument, and an argument nothing
-    // reads is refused by name, so following the instruction cost the call it was there to save
+    // `state: "restore"` from when the four state changes were one argument, and an argument
+    // nothing reads is refused by name, so following the instruction cost the call it was there to
+    // save
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
@@ -24,7 +25,7 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
         call(
             "c2",
             "context",
-            json!({"action": "restore", "ids": [1], "reason": "wanted it after all"}),
+            json!({"action": "reset_state", "ids": [1], "reason": "wanted it after all"}),
         ),
     ]));
 
@@ -37,7 +38,7 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
 
     assert!(said[0].contains("now elided"), "{}", said[0]);
     assert!(
-        said[0].contains("`action: \"restore\"`"),
+        said[0].contains("`action: \"reset_state\"`"),
         "the way back is on the line, spelled the way it is sent: {}",
         said[0]
     );
@@ -127,7 +128,7 @@ async fn restoring_something_says_the_growth_is_the_content_itself() {
         ModelResponse::tool_calls(vec![call(
             "c2",
             "context",
-            json!({ "action": "restore", "ids": [1], "reason": "needed after all" }),
+            json!({ "action": "reset_state", "ids": [1], "reason": "needed after all" }),
         )]),
         ModelResponse::text("done"),
     ]);
@@ -227,7 +228,7 @@ async fn a_change_that_moves_the_figure_not_at_all_says_that_it_did_not() {
 /// could reasonably think it was, because `label` is in the same schema. So the refusal is the
 /// spelling of what they meant rather than a restatement of the arguments.
 #[tokio::test]
-async fn a_move_given_a_label_instead_of_ids_is_told_how_to_say_it() {
+async fn a_state_change_given_a_label_instead_of_ids_is_told_how_to_say_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
         "context",
@@ -307,7 +308,7 @@ async fn context_may_unpin_only_what_it_pinned_itself() {
         call(
             "c2",
             "context",
-            json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+            json!({ "action": "reset_state", "ids": [1], "reason": "no I do not" }),
         ),
     ]));
 
@@ -333,7 +334,7 @@ async fn context_may_unpin_only_what_it_pinned_itself() {
 ///
 /// note: what the model had pinned was kept as a list of identifiers written only by its own
 /// moves, so the person taking the pin off and putting one back left the item on the list - and
-/// the model's next `restore` took the person's pin away.
+/// the model's next `restore` (now `reset_state`) took the person's pin away.
 #[tokio::test]
 async fn a_pin_the_person_made_again_is_the_persons() {
     let mut script = one_turn(vec![call(
@@ -344,7 +345,7 @@ async fn a_pin_the_person_made_again_is_the_persons() {
     script.extend(one_turn(vec![call(
         "c2",
         "context",
-        json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+        json!({ "action": "reset_state", "ids": [1], "reason": "no I do not" }),
     )]));
     let (kernel, _provider, _anchor) = agent(script);
 
@@ -374,7 +375,7 @@ async fn a_pin_the_person_made_again_is_the_persons() {
 /// refuses it - `pinned by the person you are working with, and a pin is a promise` - while
 /// `look` with `ids` printed the item's own metadata under `attached:`, which still read
 /// `{"pinned":{"by":"context","note":"mine"}}` for the pin the model made. So the model was shown
-/// `by: context` in one call and "not yours to move" in the next, for one item, with nothing in
+/// `by: context` in one call and "not yours to change" in the next, for one item, with nothing in
 /// either saying the two are the same pin. A model that reads the metadata and believes it keeps
 /// believing the pin is its own and keeps being refused.
 ///
@@ -383,7 +384,7 @@ async fn a_pin_the_person_made_again_is_the_persons() {
 /// same `protected` the move consults, so the two cannot come apart - which is what a listing
 /// narrowed by a `select` already did, and the reason this is a bug at all.
 #[tokio::test]
-async fn reading_an_item_back_says_whos_the_pin_is_before_a_move_would_refuse_it() {
+async fn reading_an_item_back_says_whos_the_pin_is_before_a_state_change_would_refuse_it() {
     let mut script = one_turn(vec![call(
         "c1",
         "context",
@@ -394,7 +395,7 @@ async fn reading_an_item_back_says_whos_the_pin_is_before_a_move_would_refuse_it
         call(
             "c3",
             "context",
-            json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+            json!({ "action": "reset_state", "ids": [1], "reason": "no I do not" }),
         ),
     ]));
     let (kernel, _provider, _anchor) = agent(script);
@@ -416,7 +417,7 @@ async fn reading_an_item_back_says_whos_the_pin_is_before_a_move_would_refuse_it
         .find(|said| said.contains("attached:"))
         .expect("the item was read back in full");
     assert!(
-        read.contains("not yours to move: pinned by the person"),
+        read.contains("not yours to change: pinned by the person"),
         "the metadata on this item still reads `by: context`, and the sentence that says the move \
          will be refused is what keeps the two from contradicting each other: {read}"
     );
@@ -924,7 +925,7 @@ async fn an_undo_does_not_walk_back_over_a_decision_made_since() {
 /// what is being claimed is that the size of a move does not reach the person's stack - and a
 /// number here would be counting the pushes either session happens to make.
 #[tokio::test]
-async fn walking_back_one_move_is_one_undo_for_the_person() {
+async fn walking_back_one_state_change_is_one_undo_for_the_person() {
     async fn walked(moved: Vec<u64>) -> usize {
         let (kernel, _provider, _anchor) = agent(vec![
             ModelResponse::tool_calls(vec![call(
@@ -1056,8 +1057,8 @@ async fn walking_back_into_several_states_is_one_undo_for_the_person() {
 ///
 /// note: bought when `undo` took a `steps` and read which pins were the model's once, before the
 /// walk: a step that put the model's own pin back left the next step reading it as the person's -
-/// and walking back a `pin` and the `restore` after it stopped halfway, pinned, and called the pin
-/// a promise it could not break. Kept for two calls, where the same mistake would be the pin's
+/// and walking back a `pin` and the `restore` after it stopped halfway, pinned, and called the
+/// pin a promise it could not break. Kept for two calls, where the same mistake would be the pin's
 /// bookkeeping not reaching the second call.
 #[tokio::test]
 async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
@@ -1070,7 +1071,7 @@ async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
         call(
             "c2",
             "context",
-            json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+            json!({ "action": "reset_state", "ids": [1], "reason": "no I do not" }),
         ),
         call(
             "c3",
@@ -1247,7 +1248,7 @@ async fn undo_after_a_resume_says_the_earlier_changes_were_not_carried_over() {
     let said = answered(&kernel);
     assert!(said.contains("nothing of yours to walk back"), "{said}");
     assert!(said.contains("resumed from a snapshot"), "{said}");
-    assert!(said.contains("`restore`"), "{said}");
+    assert!(said.contains("`reset_state`"), "{said}");
     assert_eq!(kernel.item(read).unwrap().state, ContextState::Excluded);
 }
 
@@ -1255,8 +1256,8 @@ async fn undo_after_a_resume_says_the_earlier_changes_were_not_carried_over() {
 /// the history.
 ///
 /// note: the history `undo` walks was the process's alone, so a resumed session had nothing for
-/// the model to undo and an exclusion it had made could only come back by `restore`. It is written
-/// into the snapshot's file now, beside the runtime's fields, and read back on a resume.
+/// the model to undo and an exclusion it had made could only come back by `restore`. It is
+/// written into the snapshot's file now, beside the runtime's fields, and read back on a resume.
 #[tokio::test]
 async fn what_the_model_changed_before_a_resume_it_can_undo_after_one() {
     use std::sync::Arc;
@@ -1398,7 +1399,11 @@ async fn a_pin_the_model_made_is_still_its_own_after_a_resume() {
         vec![call(
             "c2",
             "context",
-            json!({ "action": "restore", "ids": [spec.0, theirs.0], "reason": "done with both" }),
+            json!({
+                "action": "reset_state",
+                "ids": [spec.0, theirs.0],
+                "reason": "done with both",
+            }),
         )],
     ))));
     let policy = Arc::new(kamchatka::tools::Careful::new());
@@ -1557,7 +1562,7 @@ async fn a_note_without_a_reason_says_it_was_not_written() {
     );
 }
 
-/// The word for the move is the action, and it is the word the result is read back in.
+/// Each state change is an action of its own.
 ///
 /// note: these five used to be one `prune` action with a `state` argument, which put the word for
 /// one of them over all five - `pin` and `restore` included, so "prune to pin it" was the
@@ -1565,7 +1570,7 @@ async fn a_note_without_a_reason_says_it_was_not_written() {
 /// models in a row spent a call each asking for `restore` as an action and being told it was a
 /// state; they were right and the levels were wrong.
 #[tokio::test]
-async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
+async fn each_state_change_is_an_action_of_its_own() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
@@ -1582,7 +1587,7 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
         call(
             "c3",
             "context",
-            json!({ "action": "restore", "ids": [1], "reason": "I want it after all" }),
+            json!({ "action": "reset_state", "ids": [1], "reason": "I want it after all" }),
         ),
     ]));
 
@@ -1606,7 +1611,7 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
         .find(|spec| spec.id == "context")
         .expect("it is offered");
     let offers = offers(&offered.schema);
-    for action in ["elide", "exclude", "pin", "restore"] {
+    for action in ["elide", "exclude", "pin", "reset_state"] {
         assert!(
             offers.contains(&action),
             "`{action}` is not offered as an action"
@@ -1739,14 +1744,14 @@ async fn naming_the_items_twice_in_one_call_is_refused_rather_than_half_done() {
     }
 }
 
-/// A class can be read off before anything moves, and says which of it a move would refuse.
+/// A class can be read off before any state changes, and says which of it a change would refuse.
 ///
 /// note: the selector grammar belongs to the half of this tool that changes things, and until
 /// `look` took one there was no way to resolve a selector except by using it on something. The
 /// preview is the same `Selector::matches` and the same [`protected`] the move consults, so the
 /// two cannot disagree about what a class comes to or about which of it is off limits.
 #[tokio::test]
-async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
+async fn a_class_lists_what_it_comes_to_before_a_state_change_takes_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
@@ -1808,7 +1813,7 @@ async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
     assert!(listing.contains("is the tool definitions"), "{listing}");
     // the one a move would refuse, marked here rather than found out by moving
     assert!(
-        listing.contains("not yours to move: pinned by the person"),
+        listing.contains("not yours to change: pinned by the person"),
         "{listing}"
     );
     assert!(
@@ -1830,7 +1835,7 @@ async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
     );
 }
 
-/// An item asked into the state it is already in did not move, and is not journalled as having.
+/// An item asked into the state it is already in did not change, and is not journalled as having.
 ///
 /// note: `StateChange::unchanged` is "already in that state *with that note*", so `pin [2]` on
 /// something already pinned, for a new reason, comes back as `changed` - which is true of the note
@@ -1838,9 +1843,9 @@ async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
 /// that had not moved by a token, and it put a step in this tool's journal that `undo` then
 /// described as `2 now pinned` about an item that was still pinned. Two calls that restated a
 /// pin were two things to walk back and neither walked anything. What actually happened is that
-/// the reason was rewritten, so that is what it says now, and the journal holds the moves.
+/// the reason was rewritten, so that is what it says now, and the journal holds the state changes.
 #[tokio::test]
-async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
+async fn restating_a_state_is_not_a_change_and_is_not_something_to_undo() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
@@ -1896,11 +1901,7 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
         "nothing moved, and the headline is the place that has to say so: {}",
         said[1]
     );
-    assert!(
-        said[1].contains("were already pinned and did not move: 2"),
-        "{}",
-        said[1]
-    );
+    assert!(said[1].contains("were already pinned: 2"), "{}", said[1]);
     assert!(
         said[1].contains("the reason, which now reads `still keeping it`"),
         "and what did happen is worth having: {}",
@@ -1913,11 +1914,7 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
         "{}",
         said[2]
     );
-    assert!(
-        said[2].contains("were already pinned and did not move: 2"),
-        "{}",
-        said[2]
-    );
+    assert!(said[2].contains("were already pinned: 2"), "{}", said[2]);
 
     // and there are two things to walk back, not four: `pin 2` and `pin 1`
     assert!(said[3].contains("1 now active"), "{}", said[3]);
@@ -2082,7 +2079,7 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
         said[0]
     );
     assert!(
-        said[0].contains("`restore` returns the whole"),
+        said[0].contains("`reset_state` returns the whole"),
         "{}",
         said[0]
     );
@@ -2099,7 +2096,8 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
     );
 }
 
-/// `by: "context"` on an item's metadata means the tool, and nothing else in this program writes it.
+/// `by: "context"` on an item's metadata means the tool, and nothing else in this program writes
+/// it.
 ///
 /// note: the other question the design left open - whether a person editing an item would also
 /// record `"context"`, which would have a model reading its own metadata and finding its own tool

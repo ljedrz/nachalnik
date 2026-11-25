@@ -304,7 +304,7 @@ pub(super) fn request_preview(kernel: &Kernel, keys: bool) -> String {
 /// the request and prints it above this sentence.
 ///
 /// note: `keys` is [`super::App::keys`]. The way back is a context-tab key where one exists, and
-/// `/restore` where the caller has no keys to press.
+/// `/reset_state` where the caller has no keys to press.
 pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String {
     match kernel.items().len() {
         0 => "nothing yet: there is nothing in the context to send. Whatever you type next goes \
@@ -316,7 +316,7 @@ pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String 
              and why; {} puts one back.",
             match keys {
                 true => "`space` on the context tab",
-                false => "`/restore` with its number",
+                false => "`/reset_state` with its number",
             }
         ),
     }

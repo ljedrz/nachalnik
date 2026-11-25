@@ -76,7 +76,7 @@ send. `/raw` shows the last response as it arrived.
 **Compaction you can see and undo.** No model is asked to summarize your history. A tool result the
 model has already used is replaced by a one-line placeholder. Once the context is full, the oldest
 exchanges are removed entirely. Every removed item is still listed on the context tab with a note
-explaining why, `/restore` brings it back, and pinned items are never removed. `/compact` shows what
+explaining why, `/reset_state` brings it back, and pinned items are never removed. `/compact` shows what
 it would do and waits for your answer.
 
 **An estimated token count.** `kamchatka` does not have the model's tokenizer, so the figure is

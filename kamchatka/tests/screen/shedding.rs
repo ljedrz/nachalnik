@@ -230,7 +230,7 @@ async fn a_result_unpinned_is_ordinary_again() {
 }
 
 /// A result brought back with `space` on the context tab is left alone, as one brought back with
-/// `/restore` is: the ring ends with a note saying who did it.
+/// `/reset_state` is: the ring ends with a note saying who did it.
 #[tokio::test]
 async fn a_result_brought_back_on_the_tab_is_left_alone() {
     let mut harness = Harness::new([]);

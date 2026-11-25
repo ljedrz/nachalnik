@@ -228,9 +228,9 @@ impl App {
         }
 
         // a file this session saved, or one forked from the same conversation, names calls this
-        // kernel already issued - and what is pinned, or put back by `/restore`, is still asking
-        // them. Pushed as they are, the next request would carry each such `tool_call_id` twice,
-        // so the loaded copies take new ones, the call and the results answering it alike
+        // kernel already issued - and what is pinned, or put back by `/reset_state`, is still
+        // asking them. Pushed as they are, the next request would carry each such `tool_call_id`
+        // twice, so the loaded copies take new ones, the call and the results answering it alike
         let mut snapshot = snapshot;
         let taken: HashSet<ToolCallId> = self.kernel.snapshot().used_calls.into_iter().collect();
         let renamed = rename_taken_calls(&mut snapshot, &taken);

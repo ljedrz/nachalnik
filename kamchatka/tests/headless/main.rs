@@ -1838,7 +1838,7 @@ async fn help_with_no_keys_is_the_commands() {
 ///
 /// note: `/limit`, `/note`, `/copy`, `/request` and a bare `/exclude` each ended on a key of the
 /// context tab - the way back to an excluded copy, a pin, a row to copy, an item to put back, a
-/// change to undo - down a pipe that has neither the tab nor the key. `/restore`, `/pin` and
+/// change to undo - down a pipe that has neither the tab nor the key. `/reset_state`, `/pin` and
 /// `/undo` are the same acts.
 #[tokio::test]
 async fn a_command_with_no_keys_names_no_key() {
@@ -1852,7 +1852,7 @@ async fn a_command_with_no_keys_names_no_key() {
     assert!(!run.prose.contains("context tab"), "{}", run.prose);
     assert!(run.prose.contains("`/undo` away"), "{}", run.prose);
     assert!(
-        run.prose.contains("`/restore` with its number"),
+        run.prose.contains("`/reset_state` with its number"),
         "{}",
         run.prose
     );

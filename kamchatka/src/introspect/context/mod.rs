@@ -34,26 +34,26 @@ use crate::tools::{
 use super::{Reach, action, ids, named, unknown};
 
 /// What a call to `op` needs, by what it does to the context: `read` for the four that only read
-/// it; `move` for `elide`, `exclude` and `restore`, which change what of an item goes into the
+/// it; `state` for `elide`, `exclude` and `reset_state`, which change what of an item goes into the
 /// request and never what it says; `pin` for keeping an item from the compactor; `note` for adding
 /// an item of the model's own; and `revise` for rewriting what one says. `undo` walks back
 /// through any of the changes, so it needs all four that change it, as does a word this tool does
 /// not have.
 ///
-/// note: `pin` on its own, though it is one of the four moves in the schema, because it decides
-/// something else: what the person's compactor may take, rather than what the model sends.
+/// note: `pin` on its own, though it is one of the four state changes in the schema, because it
+/// decides something else: what the person's compactor may take, rather than what the model sends.
 ///
-/// note: `move` with `read` is what a run that should decide what goes into its requests, and
+/// note: `state` with `read` is what a run that should decide what goes into its requests, and
 /// change nothing else, is granted.
 pub(crate) fn subjects(op: &str) -> Vec<Capability> {
     let one = |subject| vec![domains::context(subject)];
     match op {
         "look" | "budget" | "request" | "search" => one("read"),
-        "elide" | "exclude" | "restore" => one("move"),
+        "elide" | "exclude" | "reset_state" => one("state"),
         "pin" => one("pin"),
         "note" => one("note"),
         "revise" => one("revise"),
-        _ => ["move", "pin", "note", "revise"]
+        _ => ["state", "pin", "note", "revise"]
             .map(domains::context)
             .to_vec(),
     }
@@ -70,27 +70,32 @@ use reads::{budget, look, matched, request, search, taken};
 /// reports them.
 type Pinned = Arc<Mutex<super::Mine>>;
 
-/// The seven operations that change something, each named for what it leaves behind.
+/// The seven operations that change something.
 ///
-/// note: the result uses the same word as the move - an item you `elide` reads back as `elided`
-/// everywhere. One vocabulary at both ends, rather than a `prune` action with a `state` argument,
-/// which would put one move's word over all of them.
+/// note: three of the state changes are named for the state they leave - an item you `elide` reads
+/// back as `elided` everywhere - and `reset_state` for what it does to the other three. One
+/// vocabulary at both ends, rather than a `prune` action with a `state` argument, which would put
+/// one change's word over all of them.
 const CHANGES: [&str; 7] = [
-    "elide", "exclude", "pin", "restore", "revise", "note", "undo",
+    "elide",
+    "exclude",
+    "pin",
+    "reset_state",
+    "revise",
+    "note",
+    "undo",
 ];
 
 /// Why a call that changes something has to say why, which is the same sentence seven times.
-const WHY: &str = "why, in your own words; the person you work with reads this, and it becomes \
-                   the item's note";
+const WHY: &str = "why, in your own words; the person reads it, and it becomes the item's note";
 
 /// What a `select` is, said where the four that take one can read it.
 ///
 /// note: "instead of" is said in both directions - here and on each `ids` beside it - because a
 /// call giving both is refused and the schema cannot say so. `oneOf` would say it, and neither
 /// dialect this crate speaks has that keyword.
-const SELECT: &str = "a class of items instead of `ids`, never both in one call, in the selector \
-                      grammar this tool's description sets out: `all:tool_results`, \
-                      `state:elided`, `tool:shell:latest`";
+const SELECT: &str =
+    "a class of items instead of `ids` (never both), in the grammar from this tool's description";
 
 /// The eleven operations, what each is for, and what each reads.
 ///
@@ -98,9 +103,9 @@ const SELECT: &str = "a class of items instead of `ids`, never both in one call,
 /// branches per operation: in one flat property bag, `required` is all or nothing. Seven operations
 /// require it; four do not offer it.
 ///
-/// note: eleven operations, eight shapes. The four that move an item read one argument list because
-/// they are one function; they are one branch under an `action` of several words. Written per operation they would repeat `reason` and `select` on every request to
-/// say something true once.
+/// note: eleven operations, eight shapes. The four state changes read one argument list because
+/// they are one function; they are one branch under an `action` of several words. Written per
+/// operation they would repeat `reason` and `select` on every request to say something true once.
 fn ops() -> Vec<Op> {
     let mut ops = vec![
         Op::new(
@@ -183,31 +188,28 @@ fn ops() -> Vec<Op> {
     ];
 
     ops.push(Op::these(
-        &["elide", "exclude", "pin", "restore"],
-        "moves items, and each of the four is named for the state it leaves - which is the word \
-         you will read back on the item afterwards. Name them with `ids`, or a class of them with \
-         `select`; `look` with the same `select` lists what it comes to, if you want to see them \
-         before they move. `elide` replaces what an item says \
-         with a short marker: the call it answers stays answered and stops costing what it holds, \
-         which is what to reach for once a tool result has served its purpose. `exclude` takes it \
-         out of the request altogether, and takes down the call that asked for it - reach for it \
-         when you are done with something rather than merely finished reading it. `pin` protects \
-         it from being compacted away. `restore` is the way back from any of the other three, a \
-         `pin` of your own included - it puts an item back to plain active, so restoring something \
-         you pinned unpins it. On one of your own turns, `elide` replaces its text and \
-         reasoning with the marker and keeps its tool calls, so their results still answer them; \
-         `exclude` takes the turn out of the request, and its results are left out with it, \
-         since they would answer nothing.",
+        &["elide", "exclude", "pin", "reset_state"],
+        "change the state of items, named with `ids` or `select`. To see which items a `select` \
+         matches before changing them, call `look` with it.\n\
+         - `elide`: the item stays, but its content is replaced by a short marker. Use it on a \
+         tool result you no longer need; the call it answers still counts as answered.\n\
+         - `exclude`: the item is left out of the request entirely, along with the tool call it \
+         answers.\n\
+         - `pin`: compaction will not remove the item.\n\
+         - `reset_state`: makes the item active again, undoing `elide`, `exclude` or `pin`. It \
+         does not undo a `revise`.\n\
+         On one of your own replies, `elide` replaces its text and reasoning but keeps its tool \
+         calls, so their results stay; `exclude` leaves out the reply and its results together.",
         vec![
             Arg::list(
                 "ids",
                 "integer",
-                "the items to move, by the numbers `look` prints; not with `select`, which is the \
-                 other way of saying which",
+                "the items to change, by the numbers `look` prints; not with `select`, which is \
+                 the other way of saying which",
             ),
             Arg::text("select", SELECT),
-            // note: `label` is read but not offered because it is neither a way to move anything
-            // nor an argument to refuse. A model reaches for `label` to say which item, and
+            // note: `label` is read but not offered because it is neither a way to name items to
+            // change nor an argument to refuse. A model reaches for `label` to say which item, and
             // `Changes::moved` answers with the spelling it meant - which it cannot do if `unread`
             // has already refused the call, and should not have to do if the schema advertised
             // `label` as the way to name one
@@ -258,9 +260,11 @@ fn ops() -> Vec<Op> {
         Op::new(
             "undo",
             "takes back your most recent change that has not been undone yet, however many \
-             items it moved; call it again to take back the one before. Undoing a `note` \
-             excludes it; undoing a `revise` puts the old text back. Items somebody else changed \
-             since are left as they are. `undo` can go back at most 16 changes.",
+             items it changed; call it again to take back the one before. Undoing a `note` \
+             excludes it; undoing a `revise` puts back the item's contents as they were before \
+             that revision. Items somebody else changed since are left as they are. Only your 16 \
+             most recent changes can be undone. An older state change can still be reversed by \
+             hand with `reset_state`.",
             vec![Arg::text("reason", WHY).needed()],
         ),
     ]);
@@ -312,35 +316,23 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             format!(
-                "your own context: what is in it, what it costs, and what you carry into the next \
+                "your own context: what is in it, what it costs, and what goes into the next \
                  request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
-                 `pin`, `restore`, `revise`, `note` and `undo` change it. Nothing destroys \
-                 anything: every item keeps its number and can be restored. Every change, \
-                 `restore` included, is refused for a system instruction, for the turn you are \
-                 speaking in - your current reply, with its reasoning and its tool calls - and for \
-                 an item the person you work with pinned: those are not yours. A pin of your own \
-                 is, and `restore` undoes it.\n\
-                 Where an operation takes a `select`, it names a class of items instead of `ids`:\n\
-                 - `17` one item, never a label; `10-15` a range, both ends included; `all` every \
-                 item\n\
-                 - `tool:<name>` every result of that tool; `tool:<name>:first` the earliest of \
-                 them, `tool:<name>:latest` the most recent\n\
-                 - `kind:<kind>`, what an item is: `system`, `user_message`, `assistant_message`, \
-                 `tool_result` or `reference` (notes, attached files, summaries)\n\
-                 - `state:<state>`: `active`, `elided`, `excluded` or `pinned`\n\
-                 - `source:<name>`, also written `all:<name>`, where an item came from - finer \
-                 than its kind, since a `reference` can come from `file`, `memory`, `agent` or \
-                 `compaction`: `user` for the person's messages, `model` for your own turns, \
-                 `tool_result`, `file` for a file the person attached with `/attach` (a file you \
-                 read with a tool is a `tool_result`), `memory` for a note the person wrote with \
-                 `/note`, `agent` for a note you wrote (so `source:agent` lists your notes), \
-                 `compaction` for a summary that replaced older items\n\
-                 - `file:<path>` the attached file with exactly that path\n\
-                 - `label:<text>` every item whose label is exactly that text. Anything that is \
-                 none of the above is read as a label too; a label that starts like one of the \
-                 forms, such as `tool:x`, has to be written `label:tool:x`\n\
-                 A kind or state not in those lists is refused. A selector that matches nothing \
-                 changes nothing and says so.{}",
+                 `pin`, `reset_state`, `revise`, `note` and `undo` change it. Nothing is deleted: \
+                 an item keeps its number and its content whatever its state.\n\
+                 No change can touch a system instruction, an item the person pinned, or the \
+                 reply you are writing now (its text, reasoning and tool calls).\n\
+                 A `select` names a class of items instead of `ids`:\n\
+                 - `17`; `10-15`, both ends included; `all`\n\
+                 - `tool:<name>`, or `tool:<name>:first` / `tool:<name>:latest` for one result\n\
+                 - `kind:<kind>`: `system`, `user_message`, `assistant_message`, `tool_result`, \
+                 `reference`\n\
+                 - `state:<state>`: `active`, `elided`, `excluded`, `pinned`\n\
+                 - `source:<name>`: `user`, `model`, `tool_result`, `file` (attached with \
+                 `/attach`), `memory` (the person's `/note`), `agent` (your notes), `compaction` \
+                 (summaries)\n\
+                 - `file:<path>`, an attached file; `label:<text>`, items with that label\n\
+                 A selector that matches nothing changes nothing.{}",
                 shape(
                     Layout::of(&self.schema),
                     r#"{"action": "elide", "select": "tool:shell:latest", "reason": "it passed"}"#
@@ -348,7 +340,7 @@ impl Tool for Context {
             ),
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(["read", "move", "pin", "note", "revise"].map(domains::context))
+        .with_capabilities(["read", "state", "pin", "note", "revise"].map(domains::context))
     }
 
     /// note: decided by `action` and nothing else, so a rule about `context:read` covers reading
@@ -511,15 +503,15 @@ mod tests {
             ("budget", "context:read"),
             ("request", "context:read"),
             ("search", "context:read"),
-            ("elide", "context:move"),
-            ("exclude", "context:move"),
+            ("elide", "context:state"),
+            ("exclude", "context:state"),
             ("pin", "context:pin"),
-            ("restore", "context:move"),
+            ("reset_state", "context:state"),
             ("revise", "context:revise"),
             ("note", "context:note"),
             (
                 "undo",
-                "context:move context:pin context:note context:revise",
+                "context:state context:pin context:note context:revise",
             ),
         ];
         assert_eq!(
@@ -531,7 +523,7 @@ mod tests {
             declared,
             [
                 "context:read",
-                "context:move",
+                "context:state",
                 "context:pin",
                 "context:note",
                 "context:revise"

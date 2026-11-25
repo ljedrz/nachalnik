@@ -1,5 +1,5 @@
 //! The commands that act on the context or say what is in it: `/undo` and `/redo`, `/attach`,
-//! `/note`, `/exclude`, `/pin` and `/restore`, `/seams`, `/compact`, `/copy` and `/budget`.
+//! `/note`, `/exclude`, `/pin` and `/reset_state`, `/seams`, `/compact`, `/copy` and `/budget`.
 
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, selectors::Selector};
 
@@ -152,7 +152,7 @@ impl App {
             .push(ContextItem::memory("note", rest.to_owned()).because("written at the prompt"));
     }
 
-    /// Excludes, pins or restores whatever a selector names.
+    /// Excludes, pins or resets the state of whatever a selector names.
     ///
     /// note: with nothing to act on, this shows the language rather than reporting that the empty
     /// string is not a selector. Otherwise the grammar is only in the crate documentation.
@@ -191,12 +191,12 @@ impl App {
                 Some(format!("at the terminal, by `{input}`")),
             ),
             "pin" => (ContextState::Pinned, None),
-            // note: a note, where a restore used to clear one, because the compactor reads it: an
-            // item somebody brought back is left alone until the context is full, rather than
-            // elided again before the next request. See `tools::Shedder`
+            // note: a note, where resetting the state used to clear one, because the compactor
+            // reads it: an item somebody brought back is left alone until the context is full,
+            // rather than elided again before the next request. See `tools::Shedder`
             _ => (
                 ContextState::Active,
-                Some(format!("restored at the terminal, by `{input}`")),
+                Some(format!("state reset at the terminal, by `{input}`")),
             ),
         };
         let changed = self.kernel.set_state(ids, state, note);

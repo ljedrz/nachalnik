@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### breaking
 
+- **`restore` is now `reset_state`, and `context:move` is now `context:state`.** The `context`
+  tool's action and the person's `/restore` command are both renamed, because "restore" was also
+  used to mean bringing back old content, which this does not do: it only makes an item active
+  again. The permission that covers `elide`, `exclude` and `reset_state` is renamed to match. A
+  settings file or `--auto-allow` naming `context:move` has to name `context:state` instead.
 - **There is no default endpoint.** A session needs `KAMCHATKA_BASE_URL`, and one without it is
   refused at startup with a sentence naming the variable and giving `http://127.0.0.1:8080/v1`, a
   local llama-server, as an example. It used to be OpenRouter, which picked a service for everybody
@@ -75,6 +80,10 @@ minor bump may break you.
   plugs a `Shedder` in and gives `/compact` its threshold and target in one call.
 
 ### changed
+
+- **The `context` tool's description is shorter.** The four state changes are described as a list,
+  and the selector grammar leaves out the `all:<name>` spelling and the rule for labels that look
+  like selectors; both still work. The tool's answers say "change" where they said "move".
 
 - **`context`'s `revise` refuses a tool result.** A tool result is what the tool answered, and a
   rewritten one would be output no tool produced, read as the tool's by every later request and

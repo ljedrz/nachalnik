@@ -519,10 +519,10 @@ impl App {
                  number beside it, from the next call onwards; the whole of anything already \
                  shortened is excluded beside it, {} from being sent instead.{}",
                 table(&self.limits),
-                // `/restore` is the same act as the key: both make the excluded copy active
+                // `/reset_state` is the same act as the key: both make the excluded copy active
                 match self.keys {
                     true => "one `space` on the context tab away",
-                    false => "one `/restore` with its number away",
+                    false => "one `/reset_state` with its number away",
                 },
                 match self
                     .limits

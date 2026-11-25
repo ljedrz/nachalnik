@@ -1170,7 +1170,7 @@ async fn introspecting(
         // the most specific rule with an answer decides, so these stand over the allowed `context`;
         // they are the four subjects that change the context, which `undo` needs too
         for subject in [
-            "context:move",
+            "context:state",
             "context:pin",
             "context:note",
             "context:revise",
@@ -1621,10 +1621,10 @@ async fn the_question_about_a_real_change_names_the_item() {
     );
 }
 
-// ---------------------------------------------------------------- four moves, four action names
+// ---------------------------------------------------------- four state changes, four action names
 
-/// Each move is an action named for what it leaves behind, so a model that reads the schema can
-/// ask for one without being told twice that `restore` is not a thing.
+/// Each state change is an action of its own, so a model that reads the schema can ask for one
+/// without being told twice that it is not a thing.
 #[tokio::test]
 async fn a_real_model_asks_for_the_moves_by_name() {
     let _serial = SERIAL.lock().await;

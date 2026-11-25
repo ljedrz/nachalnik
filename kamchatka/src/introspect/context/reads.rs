@@ -325,7 +325,7 @@ pub(super) fn matched(
     for item in shown {
         let mut said = row(item, &going, own);
         if let Some(why) = protected(item, mine, own) {
-            said.push_str(&format!(" · not yours to move: {why}"));
+            said.push_str(&format!(" · not yours to change: {why}"));
         }
         out.push_str(&line(item, &going, &said));
     }
@@ -538,10 +538,10 @@ fn full(
     // records what was written when it was written - a pin this tool made, still reading
     // `by: context` on an item the person has since pinned again. A model reading it that way keeps
     // believing the pin is its own and keeps being refused. The refusal says whose it is, and this
-    // is the same [`protected`] the move consults, so the two cannot come apart. The metadata
+    // is the same [`protected`] a state change consults, so the two cannot come apart. The metadata
     // stays, because somebody may be asking for that record
     if let Some(why) = protected(item, mine, own) {
-        out.push_str(&format!("  not yours to move: {why}\n"));
+        out.push_str(&format!("  not yours to change: {why}\n"));
     }
     // a turn that was recorded as an order is read back as one, block by block. This is what
     // `context` exists for and the one view of it that is not available anywhere else: the request
@@ -885,7 +885,7 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> St
          program excludes too: a note you walked back, and the whole of a shortened answer; \
          thinking this endpoint will not take back, which is not yours to change; and calls of \
          yours with no result yet, this one among them, which go in once their results are back. \
-         `restore` puts an excluded or elided item back\n",
+         `reset_state` puts an excluded or elided item back\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
         thousands(budget.tool_tokens),
@@ -1052,10 +1052,10 @@ pub(super) fn request(kernel: &Kernel) -> String {
     }
 
     // note: split by what dropped it, because the two halves are answered differently and one list
-    // could not say which was which. An item left out by its own state is one `restore` puts
+    // could not say which was which. An item left out by its own state is one `reset_state` puts
     // straight back. An item the projector dropped is a consequence of something else in the
-    // context; restoring it does nothing, so move the cause. A model reading one undifferentiated
-    // list would guess `restore`, which changes nothing and costs a call.
+    // context; resetting its state does nothing, so change the cause. A model reading one
+    // undifferentiated list would guess `reset_state`, which changes nothing and costs a call.
     let (by_state, by_projector): (Vec<_>, Vec<_>) =
         projection
             .skipped
@@ -1067,7 +1067,7 @@ pub(super) fn request(kernel: &Kernel) -> String {
             });
 
     if !by_state.is_empty() {
-        out.push_str("\nleft out by its own state, which `restore` puts back:\n");
+        out.push_str("\nleft out by its own state, which `reset_state` puts back:\n");
         for left_out in &by_state {
             out.push_str(&format!("  [{}] {}\n", left_out.id, left_out.reason));
         }
@@ -1075,8 +1075,8 @@ pub(super) fn request(kernel: &Kernel) -> String {
     if !by_projector.is_empty() {
         out.push_str(&format!(
             "\nleft out by the projector (`{}`), the rule that turns your context into messages. \
-             Restoring these changes nothing - each is a consequence of something else, and the \
-             cause is what there is to move:\n",
+             Resetting their state changes nothing - each is a consequence of something else, \
+             and the cause is what there is to change:\n",
             kernel.projector().name(),
         ));
         for left_out in &by_projector {

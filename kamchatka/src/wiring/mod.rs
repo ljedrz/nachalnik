@@ -231,7 +231,7 @@ pub struct Wired {
 /// fills the context hears it inside the same turn - see `nachalnik::Kernel::set_full_notice`.
 ///
 /// note: the `context` tool is named only where the model could use it to make room now - offered,
-/// and with `context:move`, which `exclude` and `elide` need, not refused by a rule or by a
+/// and with `context:state`, which `exclude` and `elide` need, not refused by a rule or by a
 /// question nobody is there to answer - and `look` only where `context:read` is open too. A notice
 /// sending the model to a tool it does not have was followed to one that does not exist; the other
 /// wording asks it to tell the person, the one thing left that it can do. Worked out again
@@ -243,7 +243,7 @@ pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
     // because a model told only that the context was full went looking for tool results to elide,
     // and one told to ask the person wrote a file larger than the room. Both say what not to do,
     // since a request over the limit is not sent
-    let said = match (can("move"), can("read")) {
+    let said = match (can("state"), can("read")) {
         (true, looks) => format!(
             "The context is full, and nothing more will be taken from it automatically: what \
              fills it now is this turn's latest work, what is pinned and the notes you kept. \
