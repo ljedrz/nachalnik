@@ -17,7 +17,7 @@ use nachalnik::{
     Capability, ContextItem, ModelResponse,
     test::{ConstTool, call},
 };
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 use serde_json::json;
 
 use crate::harness::Harness;
@@ -1267,4 +1267,25 @@ async fn ctrl_alt_r_turns_the_window_blue_and_back() {
     assert!(!harness.app.retro);
     assert_eq!(harness.corners()[0], window);
     assert_eq!(harness.backdrop(), Color::Reset);
+}
+
+/// In Midnight Commander's colours, text in the terminal's own colour is MC's light grey, and only
+/// what is bold stands out in white.
+#[tokio::test]
+async fn in_retro_colours_plain_text_is_grey() {
+    let mut harness = Harness::new([nachalnik::ModelResponse::text(
+        "an answer of plain words, and **strong** ones",
+    )]);
+    harness.send("hello there").await;
+    harness.settle().await;
+    assert_eq!(
+        harness.style_of("an answer of plain words"),
+        (Color::Reset, Modifier::empty())
+    );
+    assert_eq!(harness.style_of("strong"), (Color::Reset, Modifier::BOLD));
+
+    harness.app.retro = true;
+
+    assert_eq!(harness.style_of("an answer of plain words").0, Color::Gray);
+    assert_eq!(harness.style_of("strong").0, Color::White);
 }
