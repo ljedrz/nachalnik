@@ -124,6 +124,13 @@ minor bump may break you.
   `--help` point at a llama-server on this machine and use model names that are not tied to one
   service. OpenRouter is still supported and documented, as one hosted service among others.
 
+### removed
+
+- **The `context` tool has no `redo`.** `undo` still walks back the model's own changes. A model
+  that wants an undone change back can make it again, so `redo` was not worth its place in the
+  schema, which goes out with every request. Snapshots that still hold a list of undone changes
+  load as before; the list is ignored. The person's own `/redo` and `U` are unchanged.
+
 ### fixed
 
 - **The `--web` page streams the model's thinking.** It used to stream only the answer, so while a

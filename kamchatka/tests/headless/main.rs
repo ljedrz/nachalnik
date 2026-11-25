@@ -3806,8 +3806,7 @@ async fn the_policy_page_says_which_actions_need_several_rows() {
     .await;
 
     assert!(
-        run.prose
-            .contains("`context`'s `undo` and `redo` need all of"),
+        run.prose.contains("`context`'s `undo` needs all of"),
         "{}",
         run.prose
     );

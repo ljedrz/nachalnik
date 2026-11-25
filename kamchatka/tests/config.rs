@@ -3105,6 +3105,6 @@ fn a_wired_session_knows_which_actions_each_subject_covers() {
     );
     assert_eq!(
         policy.actions_for(&kamchatka::tools::domains::context("move"), "context"),
-        ["elide", "exclude", "restore", "undo", "redo"]
+        ["elide", "exclude", "restore", "undo"]
     );
 }

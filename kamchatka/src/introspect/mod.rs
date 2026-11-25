@@ -8,7 +8,7 @@
 //! surface, not a kernel feature; these tools add which of it a model may do.
 //!
 //! note: one tool per noun, and the noun is what the tool is about rather than what it does to it.
-//! [`Context`] is the context: reading and changing it, twelve operations over one object. [`Log`]
+//! [`Context`] is the context: reading and changing it, eleven operations over one object. [`Log`]
 //! is the record beside it. [`Setup`] is what the session runs with. [`Fork`] is a copy of this
 //! session.
 //!
@@ -554,7 +554,7 @@ pub(crate) fn unmatched(kernel: &Kernel, select: &str) -> String {
 /// the answer says so.
 ///
 /// note: clamped rather than refused, and said in the answer either way. A refusal would be the
-/// stricter shape, and `undo`/`redo` refuse a `steps` above their own bound because a walk of
+/// stricter shape, and `undo` refuses a `steps` above their own bound because a walk of
 /// sixty-four where a hundred was asked for reads as though the hundred was undone. Here the answer
 /// opens with the true count and the true price of every match whatever the `take` was, so a
 /// clamped answer is still true, and only the number of lines in it is lost.

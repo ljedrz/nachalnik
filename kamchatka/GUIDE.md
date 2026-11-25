@@ -281,8 +281,8 @@ a tool's actions it uses, so actions with the same effect are one decision:
 | `setup:read` | `setup`'s `model`, `tools`, `permissions` and `policy` |
 | `fork:ask` | `fork`'s `draft` and `ask` |
 
-`context`'s `undo` and `redo` can replay any change, so they need all of `context:move`,
-`context:pin`, `context:note` and `context:revise`, and the strictest of those four applies to them:
+`context`'s `undo` can walk back any change, so it needs all of `context:move`,
+`context:pin`, `context:note` and `context:revise`, and the strictest of those four applies to it:
 with `context:move` allowed and `context:revise` refused, `undo` is refused. A refused `fs:write` also makes the working directory
 and the `--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell`
 reading, since a shell that can't read its working directory can do almost nothing; refuse
@@ -518,12 +518,12 @@ items into. Items are chosen by `ids` or by `select` (the selector language `/ex
 the other, never both, and `look` with a `select` previews which items a change would affect and
 which it would refuse. `revise` rewrites what an item says, but never a message you wrote. `note`
 writes down a plan, a conclusion or something not to try again, attributed to `agent`, and can pin
-it. `undo` and `redo` go through the tool's own history, not the kernel's undo history, which is
+it. `undo` goes through the tool's own history, not the kernel's undo history, which is
 yours. Every change takes a `reason`, which is what you see in the context tab.
 
 Three things are always refused: changing a **pinned** item (the agent can only unpin items it
 pinned itself), changing a **system instruction**, and changing the turn the agent is currently in.
-The twelve actions come under five permissions, in the table in the permissions section above:
+The eleven actions come under five permissions, in the table in the permissions section above:
 `context:read` and `context:revise` are separate rows, and `--auto-allow context` covers all five.
 
 **`fork`** is its own tool, because each use costs a request: `draft` and `ask`, both `fork:ask`,
