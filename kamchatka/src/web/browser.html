@@ -142,6 +142,17 @@
   #panel { display: none; }
   body:not(.chat) #log { display: none; }
   body:not(.chat) #panel { display: block; }
+  /* the context view's filter, above the panel rather than in it: the panel is drawn again on every
+     change, and a box drawn again is a box that loses what is being typed into it */
+  #sift { display: none; gap: 6px; padding: 8px 12px 0; align-items: center; }
+  body.context #sift { display: flex; }
+  #sift input {
+    flex: 1; min-width: 0; font: inherit; font-size: max(16px, var(--small)); padding: 6px 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit;
+    min-height: 40px;
+  }
+  #sift button { font-size: var(--small); padding: 4px 10px; min-height: 40px; }
+  #sift button[aria-pressed="true"] { border-color: currentColor; color: var(--fg); }
   /* note: no prompt anywhere but the chat, which is where the terminal keeps it too. A box that
      takes a line is a box on the chat, and a view that is a list of rows has nothing to say to one.
      What a waiting question does instead is colour the cycler, the way the tab strip goes red
@@ -171,6 +182,7 @@
     white-space: nowrap; flex: none;
   }
   .state.active { border-color: var(--user); color: var(--user); }
+  .state.pinned { border-color: var(--fg); color: var(--fg); font-weight: 600; }
   .state.elided { border-color: var(--call); color: var(--call); }
   .state.excluded { border-color: var(--bad); color: var(--bad); }
   /* the same shape as the state button beside it, and quieter: the state is a control somebody
@@ -210,6 +222,14 @@
     width: 100%; font: inherit; background: transparent; color: inherit; resize: vertical;
   }
   .row.open .body { display: block; }
+  /* a box and the button that copies it, side by side: the box takes the width and the button
+     keeps a size a thumb can hit */
+  .boxed { display: none; gap: 8px; margin-top: 8px; align-items: flex-start; }
+  .row.open .boxed { display: flex; }
+  .boxed .body { display: block; margin-top: 0; flex: 1; min-width: 0; }
+  .copy {
+    flex: none; min-width: 44px; min-height: 44px; padding: 4px 10px; font-size: var(--small);
+  }
   /* what a reply keeps beside its text: the thinking above the box, dim and italic as the chat
      draws it, and the calls under it. Both are read from the same answer as the text; see
      `Message::Item` */
@@ -378,6 +398,12 @@
 </div>
 
 <div id="log"></div>
+<div id="sift">
+  <input id="filter" type="search" placeholder="filter" autocomplete="off" spellcheck="false"
+         title="only the rows whose number, label, kind, state or start has this in it">
+  <button id="sent" type="button" aria-pressed="false"
+          title="only what the next request sends whole, leaving out the elided and the excluded">sent only</button>
+</div>
 <div id="panel"></div>
 
 <footer>
@@ -1128,6 +1154,32 @@ function traced(name) {
 }
 
 /**
+ * A context row's box with a button beside it that copies what the box holds, `absent` from the
+ * start where asked.
+ *
+ * note: what the box holds rather than a `/copy` of the item, so the reasoning and the text are
+ * copied apart, and an edit somebody has typed but not let go of is copied as it stands. The click
+ * is what lets a browser write to the clipboard, so this needs no round trip.
+ */
+function boxed(box, absent) {
+  const wrap = document.createElement("div");
+  wrap.className = absent ? "boxed absent" : "boxed";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "copy";
+  copy.textContent = "copy";
+  copy.title = "copy what this box holds to this browser's clipboard";
+  copy.onclick = async (e) => {
+    // inside the row, which a tap would otherwise close
+    e.stopPropagation();
+    copy.textContent = (await toClipboard(box.value)) ? "copied" : "not copied";
+    setTimeout(() => { copy.textContent = "copy"; }, 1500);
+  };
+  wrap.append(box, copy);
+  return wrap;
+}
+
+/**
  * Sizes a context row's box to what it holds, up to the eight rows it starts at. Past that it
  * scrolls, and it can still be dragged taller.
  *
@@ -1195,7 +1247,9 @@ function draw() {
 
   if (showing === "context") {
     if (!latest.items.length) return aside(panel, "the context is empty");
-    for (const item of latest.items) {
+    const rows = latest.items.filter(sifted);
+    if (!rows.length) return aside(panel, "no row is left by the filter above");
+    for (const item of rows) {
       // what it costs the request it is in, or why it is in none of it. The two are one answer:
       // every item is either going for some number of tokens or held back for a reason
       const held = item.going === null || item.going === undefined;
@@ -1223,12 +1277,17 @@ function draw() {
       state.type = "button";
       state.className = `state ${item.state}`;
       state.textContent = item.state;
-      state.title = "the next state: active, elided, excluded";
+      state.title = "the next state: active, pinned, elided, excluded";
       state.onclick = (e) => {
         // the row toggles its body and this is inside the row, so without this a tap that changes
         // a state also opens whatever it changed
         e.stopPropagation();
-        send({ do: "cycle", id: item.id });
+        // note: pinned is a step of this button's ring, right after active, because a page has no
+        // `p` to press. The session's ring goes from active to elided, and from pinned to elided
+        // too, so only the step into pinned is this page's own: the `/pin` a person would type.
+        // The terminal's `space` keeps the session's ring, beside its own `p`
+        if (item.state === "active") send({ do: "submit", line: `/pin ${item.id}` });
+        else send({ do: "cycle", id: item.id });
       };
       el.querySelector(".head").append(state);
 
@@ -1253,7 +1312,7 @@ function draw() {
       said.textContent =
         item.reasoning_sent === false ? "reasoning · not sent back to the model" : "reasoning";
       const thought = document.createElement("textarea");
-      thought.className = "body thought absent";
+      thought.className = "body thought";
       thought.rows = 6;
       thought.dataset.thought = item.id;
       if (item.reasoning_beyond) {
@@ -1262,12 +1321,13 @@ function draw() {
       }
       const calls = document.createElement("div");
       calls.className = "parts calls absent";
-      el.append(said, thought, body, calls);
+      // each box with its own copy button, the reasoning's absent until an answer brings some
+      el.append(said, boxed(thought, true), boxed(body, false), calls);
       // what the answer to this row's question says about the parts, kept here so the handler
       // can reach the row's own elements without knowing how the row is laid out
       thought.shown = (reasoning, called) => {
         said.classList.toggle("absent", reasoning === null);
-        thought.classList.toggle("absent", reasoning === null);
+        thought.parentElement.classList.toggle("absent", reasoning === null);
         thought.value = reasoning ?? "";
         thought.dataset.was = reasoning ?? "";
         sized(thought);
@@ -1275,7 +1335,10 @@ function draw() {
         calls.classList.toggle("absent", !called.length);
         // a turn that is only calls has no text, and an empty box that cannot be typed into
         // says nothing the calls under it do not
-        body.classList.toggle("absent", body.readOnly && !body.value && called.length > 0);
+        body.parentElement.classList.toggle(
+          "absent",
+          body.readOnly && !body.value && called.length > 0,
+        );
       };
       // note: `data-body` rather than `data-item`, which the chat uses for the line that *is* the
       // item. One `inspect` answer fills both, and a row opened here would otherwise overwrite
@@ -1606,6 +1669,38 @@ const openedParts = new Set();
 const verdicts = { allow: "allowed", deny: "denied", ask: "asks" };
 
 /** A line of the panel's own, for when there are no rows to draw. */
+/**
+ * Whether a context row is left in by the filter above the view and its `sent only`.
+ *
+ * note: over what the row shows - its number, label, kind, state and the start of a message the
+ * person wrote - because that is all a projection carries; the terminal's `/` also reads what an
+ * item says, which this page does not have until a row is opened. Plain text, not fuzzy, and case
+ * ignored.
+ *
+ * note: `sent only` is the terminal's `f`: what the next request sends whole, so neither what it
+ * leaves out nor what it sends as an elision marker.
+ */
+function sifted(item) {
+  if (sentOnly && (item.going === null || item.going === undefined || item.state === "elided")) {
+    return false;
+  }
+  const wanted = sift.value.trim().toLowerCase();
+  if (!wanted) return true;
+  return [item.id, item.label, item.kind, item.state, item.glimpse ?? ""]
+    .join(" ")
+    .toLowerCase()
+    .includes(wanted);
+}
+
+const sift = document.getElementById("filter");
+let sentOnly = false;
+sift.oninput = () => draw();
+document.getElementById("sent").onclick = (e) => {
+  sentOnly = !sentOnly;
+  e.currentTarget.setAttribute("aria-pressed", String(sentOnly));
+  draw();
+};
+
 function aside(into, text) {
   const el = document.createElement("p");
   el.className = "empty";
@@ -1951,7 +2046,7 @@ function heard(m) {
         // what the reply keeps beside its text, as it was at the version this box is on: a
         // rewrite of the reasoning is a version as a rewrite of the text is. A reading carries
         // neither, having both in its body already
-        const thought = el.parentElement?.querySelector(`[data-thought="${m.id}"]`);
+        const thought = el.closest(".row")?.querySelector(`[data-thought="${m.id}"]`);
         if (thought) thought.shown(m.raw ? (m.reasoning ?? null) : null, m.calls ?? []);
       }
       break;
