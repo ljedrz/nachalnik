@@ -884,6 +884,16 @@ pub struct Listed {
     /// note: most endpoints are not sent reasoning back, and a client showing a reply's reasoning
     /// says so beside it, so that rewriting it is not taken for steering the model.
     pub reasoning_sent: Option<bool>,
+    /// The start of a message the person wrote: its first line with text on it, cut at
+    /// [`GLIMPSE`] characters, and ending in `…` where there is more than that. `None` for
+    /// anything else.
+    ///
+    /// note: an exception to rows naming items rather than carrying them, and a small one. Every
+    /// message the person wrote has the label `user`, so a list of them is a list of the same word;
+    /// the terminal's context tab shows the start of what each says for the same reason. Only the
+    /// person's messages, because they are the rows somebody looks for, and a projection goes out
+    /// on every change.
+    pub glimpse: Option<String>,
     /// Whether this is a reply recorded as ordered blocks, whose thinking and calls are among its
     /// content rather than beside it.
     ///
@@ -917,8 +927,27 @@ impl Listed {
             reasoning_sent: item.reasoning().and_then(|_| going.sends_reasoning(item)),
             ordered: matches!(item.kind, nachalnik::ContextKind::AssistantMessage { .. })
                 && item.content.as_blocks().is_some(),
+            glimpse: matches!(item.kind, nachalnik::ContextKind::UserMessage)
+                .then(|| glimpse(&item.content.to_text()))
+                .flatten(),
         }
     }
+}
+
+/// The most characters of a message [`Listed::glimpse`] carries.
+pub const GLIMPSE: usize = 120;
+
+/// The first line of `text` with anything on it, cut at [`GLIMPSE`] characters, with a `…` where
+/// that is not all of it.
+fn glimpse(text: &str) -> Option<String> {
+    let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
+    let first = lines.next()?;
+    let cut = first.chars().count() > GLIMPSE;
+    let mut said: String = first.chars().take(GLIMPSE).collect();
+    if cut || lines.next().is_some() {
+        said.push('…');
+    }
+    Some(said)
 }
 
 /// One row of the permissions tab.

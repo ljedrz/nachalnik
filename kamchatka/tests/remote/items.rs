@@ -345,6 +345,52 @@ async fn a_replys_reasoning_arrives_beside_its_text_and_is_rewritten_on_its_own(
     assert_eq!(item.meta["reasoning_revised"]["by"], "user");
 }
 
+/// A row of a message the person wrote carries the start of it, which nothing else does: every
+/// one of them is labelled `user`.
+#[tokio::test]
+async fn a_message_the_person_wrote_is_listed_with_its_start() {
+    let long = "word ".repeat(40);
+    let session = served(vec![], |app| {
+        app.kernel
+            .push(nachalnik::ContextItem::user("\n  look it up  \n"));
+        app.kernel
+            .push(nachalnik::ContextItem::user("first line\nsecond line"));
+        app.kernel.push(nachalnik::ContextItem::user(long.clone()));
+        app.kernel
+            .push(nachalnik::ContextItem::assistant("an answer", Vec::new()));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let glimpses: Vec<Option<&str>> = attached
+        .items
+        .iter()
+        .map(|row| row.glimpse.as_deref())
+        .collect();
+    let cut = format!(
+        "{}…",
+        long.chars()
+            .take(kamchatka::remote::protocol::GLIMPSE)
+            .collect::<String>()
+    );
+    assert_eq!(
+        glimpses,
+        [
+            Some("look it up"),
+            // more than the first line is more than what is shown, and says so
+            Some("first line…"),
+            Some(cut.as_str()),
+            None,
+        ]
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// An item that has been rewritten says how many versions of it there are, and hands them back.
 ///
 /// note: the count is what a client draws a control from, so it has to mean the same thing as the

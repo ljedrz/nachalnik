@@ -43,6 +43,12 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page's context view names a message you wrote by its start.** Every such row is
+  labelled `user`, so the row now reads `user:` followed by the first line of the message, cut
+  with `…` where it does not fit. A served row carries it in `Listed`'s new `glimpse`, at most
+  `protocol::GLIMPSE` characters of the first line, ending in `…` when there is more.
+- **The `--web` page's context boxes fit what they hold**, so a one-line message has a one-line
+  box. A long item still stops at eight lines and scrolls, and a box grows as you type into it.
 - **The model can rewrite the reasoning of its earlier replies**, with the `context` tool's new
   `revise_reasoning` action, so that a reply corrected with `revise` does not keep the reasoning
   that led to the mistake. An empty `content` removes the reasoning. It needs the new
