@@ -330,6 +330,14 @@ mod tests {
         assert!(read.skipped(3), "record 4 is not here");
         assert!(!read.skipped(4), "and after 4 is 5, the oldest here");
     }
+
+    /// A log with no records in it has skipped nothing, whatever `since` is.
+    #[test]
+    fn an_empty_log_skips_nothing() {
+        let read = Read::default();
+        assert!(!read.skipped(0));
+        assert!(!read.skipped(u64::MAX));
+    }
 }
 
 /// What a call asked for, and how to say it back.
