@@ -17,6 +17,12 @@
 #
 # A worktree an earlier run was killed in may hold a mutation still; each is reset before use.
 #
+# Each shard has a TMPDIR of its own, $MUTANTS/mt/wI. Unit tests cannot have cargo's
+# CARGO_TARGET_TMPDIR, so some work in a directory of one fixed name under `temp_dir()`; with one
+# TMPDIR for every shard, two shards running such a test at once broke each other's directory, and
+# the test failed - in an unmutated baseline, which ended the shard, or under a mutant, which it
+# then counted as caught.
+#
 # WORKTREES says where the worktrees go, $REPO by default. Outside the repository is safer: a
 # mutant that escapes its test's directory and climbs, as one of `empty` once did, reaches the
 # worktrees' directory rather than the repository and its `.git`. It has to be writable by the
@@ -56,11 +62,13 @@ for i in $(seq 1 "$n"); do
         find "$wt/target/tmp" -mindepth 1 -delete || exit 1
     fi
     o=$MUTANTS/out/$out-$i
+    tmp=$MUTANTS/mt/w$i
+    mkdir -p "$tmp"
     if [ ! -d "$o" ] && [ -n "${SEED:-}" ]; then cp -r "$MUTANTS/out/$SEED" "$o"; fi
     (
         cd "$wt"
         ulimit -u "$cap"
-        exec env -u CARGO_TARGET_DIR TMPDIR="$MUTANTS/mt" RUST_TEST_THREADS=${RUST_TEST_THREADS:-8} \
+        exec env -u CARGO_TARGET_DIR TMPDIR="$tmp" RUST_TEST_THREADS=${RUST_TEST_THREADS:-8} \
             cargo mutants --in-place --shard "$((i - 1))/$n" "$@" --output "$o" -- --no-fail-fast -- "${skip_args[@]}"
     ) > "$MUTANTS/out/$out-$i.log" 2>&1 &
     pids+=($!)
