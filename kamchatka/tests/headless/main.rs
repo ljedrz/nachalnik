@@ -4771,6 +4771,12 @@ async fn the_permissions_page_lists_the_sandbox() {
         )),
         "{confined}"
     );
+    // the parts under the kind each is about, each kind named once
+    assert!(
+        confined.contains("\n  files\n    working directory: "),
+        "{confined}"
+    );
+    assert_eq!(confined.matches("\n  files\n").count(), 1, "{confined}");
 
     let open = page(false).await;
     assert!(!open.contains("the sandbox:"), "{open}");
