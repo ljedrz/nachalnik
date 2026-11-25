@@ -38,6 +38,10 @@ minor bump may break you.
   It disappears when a turn starts, whether from the button or from a new message. A served session says
   whether its last turn paused in `Message::Busy`'s new `paused` and in `Attached::paused`, so a
   page opened after the pause offers the button too.
+- **Addresses on the `--web` page are links.** A web or mail address anywhere in the chat - an
+  answer, the thinking, a message, a note - can be clicked, and opens in a new tab. Only `http`,
+  `https` and `mailto` addresses are linked, as before for markdown links. Punctuation after an
+  address, such as the full stop ending a sentence, is not part of the link.
 
 - **A session with no model takes the only one its endpoint serves.** Started without `-m`, a
   session asks the endpoint what it serves, and if the answer is exactly one model - a llama-server
