@@ -981,6 +981,14 @@ mod tests {
         assert!(shown.starts_with(r#"{"text":"🌶🌶"#), "{shown}");
         assert!(shown.ends_with('…'), "{shown}");
         assert_eq!(shown.chars().count(), HEAD_LINE + 1);
+
+        // note: the closest a cut comes to too short: four-byte characters from the second byte
+        // on, so the cap holds the fewest characters it can, and it still holds more than `head`
+        // shows
+        let tightest = serde_json::Value::String("🌶".repeat(100_000));
+        let tightest = Content::Json(std::sync::Arc::new(tightest));
+        let shown = head(&super::excerpt(&tightest), 6);
+        assert!(shown.ends_with('…'), "{shown}");
     }
 
     /// What one event says, as the trace pane and the `log` tool both read it.
