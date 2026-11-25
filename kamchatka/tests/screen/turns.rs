@@ -11,6 +11,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{app::Tab, tools::Limits};
 use nachalnik::{
     Block, Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
+    StopReason,
     test::{ConstTool, call},
 };
 use ratatui::style::{Color, Modifier};
@@ -73,6 +74,51 @@ async fn several_repairs_at_once_are_one_line_rather_than_a_wall_of_them() {
     // a command rather than a key, because this line reaches a headless run too and there is no
     // keyboard there; `/request` opens the same page `ctrl+p` does
     assert!(screen.contains("`/request` says where"), "{screen}");
+}
+
+/// A failed request is not timed, so a response whose own request was never seen is not timed
+/// from the one that failed.
+///
+/// note: a request's start can be lost to a receiver that lagged, and the start left on hand would
+/// then be the failed request's: the line would measure from the wrong moment.
+#[tokio::test]
+async fn a_failed_request_is_not_what_the_next_response_is_timed_from() {
+    let mut harness = Harness::new([]);
+    harness.app.response_stats = true;
+    let item = harness
+        .app
+        .kernel
+        .push(ContextItem::assistant(Content::text("an answer"), vec![]));
+    let requested = || Event::ModelRequested {
+        model: ModelInfo::new("scripted", "scripted"),
+        messages: 1,
+        tools: 0,
+        tokens: 4,
+        items: Default::default(),
+        skipped: Vec::new(),
+        repairs: Vec::new(),
+    };
+    let finished = || Event::ModelFinished {
+        stop: StopReason::EndTurn,
+        usage: None,
+        tool_calls: Vec::new(),
+        item,
+    };
+
+    harness.app.on_event(requested());
+    harness.app.on_event(Event::ModelFailed {
+        error: "the endpoint refused it".to_owned(),
+        overrun: None,
+    });
+    harness.app.on_event(finished());
+    let screen = harness.flat();
+    assert!(!screen.contains("this response took"), "{screen}");
+
+    // and the control: a response whose request was seen is timed
+    harness.app.on_event(requested());
+    harness.app.on_event(finished());
+    let screen = harness.flat();
+    assert!(screen.contains("this response took"), "{screen}");
 }
 
 /// A repair that stands is said once, not after every message.
