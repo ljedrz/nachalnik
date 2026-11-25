@@ -56,9 +56,10 @@ fn ops() -> Vec<Op> {
     vec![
         Op::new(
             "read",
-            "reads a text file, or some of its lines. If the output would pass the limit, it \
-             stops early and says which line number to pass as `from` to continue; a `from` past \
-             the end, or a file that is not UTF-8 text, is refused with the reason",
+            "reads a text file, or some of its lines. If the output would pass this tool's output \
+             limit, which `setup` with `tools` shows, it stops early and says which line number to \
+             pass as `from` to continue; a `from` past the end, or a file that is not UTF-8 text, \
+             is refused with the reason",
             vec![
                 Arg::text("path", "the file to read").needed(),
                 Arg::whole(
@@ -110,9 +111,9 @@ fn ops() -> Vec<Op> {
                 Arg::truth(
                     "files_only",
                     "`true` to list only the files that match and how many matches each has - \
-                     `path: 12`, most first - instead of the lines. Use it for a common word, or \
-                     when you do not know where something is: it costs far fewer tokens, and tells \
-                     you which file to search next",
+                     `path: 12`, most first - instead of the lines; false by default. Use it for a \
+                     common word, or when you do not know where something is: it costs far fewer \
+                     tokens, and tells you which file to search next",
                 ),
             ],
         ),
@@ -232,17 +233,17 @@ impl Tool for Fs {
                  The working directory is {}. Every `path` is {PATH_ARG}. `glob` and `grep` walk a \
                  directory themselves rather than running `find` or `grep`. They skip what \
                  `.gitignore` names and the `.git` directory without mentioning either, and they \
-                 include hidden files. Anything else they skip - a binary or unreadable file, a \
-                 pipe, a symbolic link to a place `fs` may not read - is counted on a `skipped:` \
-                 line. One call returns at most {MATCHES} matching lines from `grep`, or {PATHS} \
-                 files with `files_only`, and at most {PATHS} paths from `glob`. When a call \
-                 reaches one of these limits, the first line of the answer says so, and there may \
-                 be more. `grep` answers one match per line as `path:line:text`, and a line wider \
-                 than {WIDTH} characters is cut and ends in `…`. `glob` lists only the files that \
-                 matched, grouped by directory: a directory's path and a `:`, then the names in it \
-                 one to a line, so a file's path is its directory joined to its name. `edit` \
-                 changes nothing when `old` occurs nowhere in the file or more than once, and says \
-                 which, with the count.{}",
+                 include hidden files, whose names start with a dot. Anything else they skip - a \
+                 binary or unreadable file, a pipe, a symbolic link to a place `fs` may not read - \
+                 is counted on a `skipped:` line. One call returns at most {MATCHES} matching \
+                 lines from `grep`, or {PATHS} files with `files_only`, and at most {PATHS} paths \
+                 from `glob`. When a call reaches one of these limits, the first line of the \
+                 answer says so, and there may be more. `grep` answers one match per line as \
+                 `path:line:text`, and a line wider than {WIDTH} characters is cut and ends in \
+                 `…`. `glob` lists only the files that matched, grouped by directory: a \
+                 directory's path and a `:`, then the names in it one to a line, so a file's path \
+                 is its directory joined to its name. `edit` changes nothing when `old` occurs \
+                 nowhere in the file or more than once, and says which, with the count.{}",
                 self.read.0.workdir.display(),
                 shape(
                     Layout::of(&self.schema),

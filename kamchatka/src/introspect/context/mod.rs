@@ -142,8 +142,8 @@ fn ops() -> Vec<Op> {
                 Arg::truth(
                     "whole",
                     "`true`, together with `ids`, to show each item in full instead of its first \
-                     and last part. The full text goes into your context and costs its tokens \
-                     there",
+                     and last part; false by default. The full text goes into your context and \
+                     costs its tokens there",
                 ),
             ],
         ),
@@ -196,16 +196,17 @@ fn ops() -> Vec<Op> {
         "changes the state of items, named with `ids` or `select`. To see which items a `select` \
          matches before changing them, call `look` with it.\n\
          - `elide`: the item stays in the request, but its content there is replaced by a short \
-         marker. Use it on a tool result you no longer need; the tool call it answers stays in \
-         the request.\n\
-         - `exclude`: the item is left out of the request entirely; for a tool result, the \
-         call that asked for it is left out too.\n\
+         marker. Use it on a tool result you no longer need; the tool call it answers stays in the \
+         request.\n\
+         - `exclude`: the item is left out of the request entirely; for a tool result, the call \
+         that asked for it is left out too.\n\
          - `pin`: compaction, which elides or excludes older items on its own when the context \
          fills up, will not touch the item.\n\
          - `reset_state`: makes the item active again, undoing `elide`, `exclude` or your own \
          `pin`. It does not undo a `revise`.\n\
          On one of your own replies, `elide` replaces its text and reasoning but keeps its tool \
-         calls, so their results stay; `exclude` leaves out the reply and its results together.",
+         calls, so their results stay in the request as they are; `exclude` leaves out the reply \
+         and its results together.",
         vec![
             Arg::list(
                 "ids",
@@ -263,7 +264,8 @@ fn ops() -> Vec<Op> {
                 ),
                 Arg::truth(
                     "pin",
-                    "`true` to pin the note at once, so compaction will not elide or exclude it",
+                    "`true` to pin the note at once, so compaction will not elide or exclude it; \
+                     false by default",
                 ),
                 Arg::text("reason", WHY).needed(),
             ],
@@ -271,8 +273,8 @@ fn ops() -> Vec<Op> {
         Op::new(
             "undo",
             "takes back your most recent change that has not been undone yet. One change is one \
-             earlier `context` call, however many items it changed; call `undo` again to take \
-             back the one before. Undoing a `note` \
+             earlier `context` call, however many items it changed, including a call made earlier \
+             in this same reply; call `undo` again to take back the one before. Undoing a `note` \
              excludes it; undoing a `revise` puts back the item's contents as they were before \
              that revision. Items somebody else changed since are left as they are. Only your 16 \
              most recent changes can be undone. An older state change can still be reversed with \

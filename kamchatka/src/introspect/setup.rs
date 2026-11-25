@@ -99,8 +99,8 @@ impl Tool for Setup {
                  matters, because a resumed context can hold somebody else's earlier turns and \
                  nothing in them says so.\n\
                  - `tools`: every tool you are offered, the capabilities each needs (such as \
-                 `fs:read`; the permissions are about these), and how much of its output you are \
-                 shown. A tool taken away during the session is not listed.\n\
+                 `fs:read`; the permissions are about these), and its output limit: how many bytes \
+                 of an answer you are shown. A tool taken away during the session is not listed.\n\
                  - `permissions`: for each capability, such as `fs:read`, `fs:write` or `exec:run` \
                  (the shell), whether the policy allows it, refuses it, or will stop and ask, so \
                  you can tell a call that will be refused from one nobody has decided yet.\n\
