@@ -3519,6 +3519,18 @@ async fn the_permissions_tab_lists_the_sandbox() {
     assert!(!closed.contains("    /opened/rw"), "{closed}");
     assert!(closed.contains("▸ sandbox-write"), "{closed}");
 
+    // and on the part's own line, enter and left close it as enter and right open it
+    for (open, close) in [
+        (KeyCode::Enter, KeyCode::Enter),
+        (KeyCode::Right, KeyCode::Left),
+    ] {
+        harness.press(open).await;
+        assert!(harness.sized(110, 40).contains("▾ sandbox-write"));
+        harness.press(close).await;
+        let closed = harness.sized(110, 40);
+        assert!(closed.contains("▸ sandbox-write"), "{closed}");
+    }
+
     // the sandbox is read, not set: the rule keys on a line of it change nothing, even on the
     // working directory, which names the rule that decides it
     let writing = |harness: &Harness| {
