@@ -7,8 +7,8 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 /// The longest line either end will read before giving up on the connection.
 ///
 /// note: the limit is generous because a frame is whatever the session put in its log, not
-/// something somebody typed. `context.replaced` is the one event that carries content, so a
-/// rewritten tool result goes down the wire at whatever size it was. This defends against a peer
+/// something somebody typed. `context.replaced` and `context.reasoning_replaced` carry content, so
+/// a rewritten tool result goes down the wire at whatever size it was. This defends against a peer
 /// that never sends a newline, which would otherwise be read into memory for ever. A frame over the
 /// limit is a protocol error that closes the connection, not a truncation that leaves the reader
 /// parsing the second half of somebody's JSON.

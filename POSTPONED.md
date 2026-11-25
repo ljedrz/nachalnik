@@ -9,6 +9,21 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
 
 ---
 
+- **Rewritten reasoning has no earlier versions to page through.** An item's old text is kept for
+  the context tab's `←` and `→` and for a client's version button, but a turn's old reasoning is
+  only on the trace and in `log`, as `context.reasoning_replaced`. Keeping it would need the
+  viewer's version pages to hold reasoning beside content, and every place that numbers versions
+  to agree on how the two count. It waits on somebody wanting to page back through reasoning
+  rather than read it off the trace.
+
+- **A reconcile reads a turn whose reasoning one fork rewrote as where the forks part.**
+  `same_item` compares an item's kind, and a turn's reasoning is part of its kind, so a shared turn
+  whose reasoning one fork rewrote no longer matches the same turn in another fork. Everything
+  after it is then treated as the forks' own, not as the shared part. Comparing the kind without
+  the reasoning would need a rule for which fork's reasoning to keep, as `revision` has for
+  content. It waits on a reconcile of forks that rewrote reasoning, which needs this action in use
+  first.
+
 - **An `/endpoint` in a session with no model is not in the record.** `adopt_the_only_model`
   tells the kernel the provider changed when it moved and found no model to take, as `/endpoint`
   tells it after any move, so that the record says where the session went. But that path is only

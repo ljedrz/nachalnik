@@ -40,6 +40,16 @@ minor bump may break you.
 
 ### added
 
+- **The model can rewrite the reasoning of its earlier replies**, with the `context` tool's new
+  `revise_reasoning` action, so that a reply corrected with `revise` does not keep the reasoning
+  that led to the mistake. An empty `content` removes the reasoning. It needs the new
+  `context:revise_reasoning` permission, so allowing `context:revise` does not allow it, while
+  `--auto-allow context` covers both. The trace and `log` record what the reasoning was, as
+  `context.reasoning_replaced`, and the tool's `undo` puts it back. Thinking recorded as ordered
+  blocks, which is how Anthropic's, Gemini's and the Responses API's arrives and which the provider
+  may have signed, is refused. When the session does not send reasoning back to the model, the
+  answer says that no later request will read the change. `App::revise_reasoning` makes the same
+  change for a person, under the same refusals.
 - **The `--web` page has a `continue` button while a turn is paused.** A turn that stops at
   `--max-requests-per-turn` puts it to the left of the prompt, and a click sends `/continue`.
   It disappears when a turn starts, whether from the button or from a new message. A served session says
@@ -83,6 +93,10 @@ minor bump may break you.
 
 ### changed
 
+- **The `context` tool's `undo` also needs `context:revise_reasoning`**, since it can walk back a
+  `revise_reasoning`. A session that allowed `context:state`, `context:pin`, `context:note` and
+  `context:revise` one by one, rather than the whole `context` domain, is now asked about `undo`
+  until `context:revise_reasoning` is decided too.
 - **The dot in the `--web` page's header says what a turn is doing.** It pulses while a request
   is out and nothing has come back, which on a local server is the prompt being read or a queue.
   While the model answers it stays lit as long as text keeps arriving, and dims after two
@@ -165,6 +179,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`/limit` lines its figures up whatever the subjects are called.** The subject column had a
+  fixed width, and a name longer than it, such as `context:revise_reasoning`, pushed its figure out
+  of line with the rest.
 - **The `--web` page streams the model's thinking.** It used to stream only the answer, so while a
   model was thinking the page showed nothing but the dot in the corner until the response was
   done. That looked like a model that had stopped, and a model repeating itself in its thinking

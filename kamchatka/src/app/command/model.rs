@@ -485,11 +485,14 @@ impl App {
             // as wide as the widest number, so eight tools read `[1]` and a dozen do not jog the
             // column the figures are in
             let wide = rows.len().to_string().len() + 2;
+            // and the names as wide as the widest, for the same reason: `context:revise_reasoning`
+            // is longer than a fixed column was
+            let named = rows.iter().map(|(tool, _)| tool.len()).max().unwrap_or(0) + 1;
             rows.into_iter()
                 .enumerate()
                 .map(|(nth, (tool, bytes))| {
                     format!(
-                        "{:<wide$} {tool:<18}{:>9} bytes{}",
+                        "{:<wide$} {tool:<named$}{:>9} bytes{}",
                         format!("[{}]", nth + 1),
                         thousands(bytes),
                         match offered.contains(&tool) {

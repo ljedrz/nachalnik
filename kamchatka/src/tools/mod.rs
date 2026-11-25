@@ -359,7 +359,10 @@ impl Limits {
             .map(Capability::fs)
             .into_iter()
             .chain([Capability::exec("run")])
-            .chain(["read", "state", "pin", "note", "revise"].map(domains::context))
+            .chain(
+                ["read", "state", "pin", "note", "revise", "revise_reasoning"]
+                    .map(domains::context),
+            )
             .chain([domains::fork("ask")])
             .chain([domains::log("read")])
             .chain([domains::setup("read")])
@@ -367,7 +370,7 @@ impl Limits {
                 let subject = subject.to_string();
                 let bounded = matches!(
                     subject.as_str(),
-                    "fs:write" | "context:note" | "context:revise"
+                    "fs:write" | "context:note" | "context:revise" | "context:revise_reasoning"
                 );
 
                 (subject, if bounded { REPORT } else { CEILING })

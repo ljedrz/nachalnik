@@ -3394,7 +3394,8 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() 
         .policy
         .set(&Subject::parse("context:revise"), Verdict::Deny);
     let said = "`context`'s `undo` needs all of `context:note`, `context:pin`, \
-                `context:revise` and `context:state`, so the strictest of those applies";
+                `context:revise`, `context:revise_reasoning` and `context:state`, so the strictest \
+                of those applies";
     assert!(
         harness.app.together().iter().any(|it| it.contains(said)),
         "{:?}",

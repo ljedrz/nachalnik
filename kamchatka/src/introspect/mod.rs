@@ -8,7 +8,7 @@
 //! surface, not a kernel feature; these tools add which of it a model may do.
 //!
 //! note: one tool per noun, and the noun is what the tool is about rather than what it does to it.
-//! [`Context`] is the context: reading and changing it, eleven operations over one object. [`Log`]
+//! [`Context`] is the context: reading and changing it, twelve operations over one object. [`Log`]
 //! is the record beside it. [`Setup`] is what the session runs with. [`Fork`] is a copy of this
 //! session.
 //!

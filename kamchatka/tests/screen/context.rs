@@ -1780,10 +1780,10 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
 
     // the number the listing prints is a handle the command takes, or it is decoration: naming
-    // the row and naming the subject are the same instruction. `fs:read` is the eighth of the
+    // the row and naming the subject are the same instruction. `fs:read` is the ninth of the
     // sorted subjects - every `context:*`, `exec:*` and `fork:*` sorts before it, so the count
     // moves when those tools do
-    harness.send("/limit 8 48000").await;
+    harness.send("/limit 9 48000").await;
     assert_eq!(declared(&harness, "fs", "read"), Some(48_000));
     assert_eq!(
         declared(&harness, "fs", "write"),
@@ -1808,7 +1808,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     // and the listing is where the range is; every subject is in it, `exec:run` among them
     harness.send("/limit").await;
     let screen = harness.sized(120, 40).replace('\n', " ");
-    assert!(screen.contains("[6]  exec:run"), "{screen}");
+    assert!(screen.contains("[7]  exec:run"), "{screen}");
     harness.press(KeyCode::Esc).await;
 
     // and nought is not a limit, it is a tool that answers with a marker
@@ -1832,11 +1832,11 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "and every other subject: {screen}"
     );
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[8]  fs:read"), "{screen}");
+    assert!(screen.contains("[9]  fs:read"), "{screen}");
 }
 
 /// The limit table gives every subject the same room, so a two-digit row number does not push the
-/// subjects beside it out of line.
+/// subjects beside it out of line, and a long subject does not push its figure out of line either.
 ///
 /// note: the row number is padded to the width of the widest number in the table, so `[1]` and
 /// `[10]` are the same width and every subject begins in the same cell. That is what a person
@@ -1876,6 +1876,19 @@ async fn the_limit_table_lines_its_subjects_up() {
     assert!(
         columns.windows(2).all(|pair| pair[0].0 == pair[1].0),
         "every subject begins in the same column, and these do not: {columns:?}"
+    );
+
+    // and every figure ends in the same column: `context:revise_reasoning` is longer than the
+    // room a fixed width gave the names, and its figure stood further right than the rest
+    let ends: Vec<usize> = harness
+        .sized(120, 60)
+        .lines()
+        .filter(|line| line.contains(']') && line.contains(" bytes"))
+        .map(|line| line.find(" bytes").expect("a figure"))
+        .collect();
+    assert!(
+        ends.len() == columns.len() && ends.windows(2).all(|pair| pair[0] == pair[1]),
+        "every figure ends in the same column, and these do not: {ends:?}"
     );
 }
 

@@ -7,9 +7,9 @@
 //! `app/mod.rs`, which is this terminal's own state, because it is a reading of the kernel, and the
 //! model's account of its own budget and the person's are meant to be one piece of arithmetic.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use nachalnik::{ContextId, ContextItem, Kernel};
+use nachalnik::{Block, ContextId, ContextItem, Kernel, Message};
 
 /// What the next request does with each context item.
 ///
@@ -45,6 +45,14 @@ pub struct Going {
     /// inside them are from whoever elided it. A screen that adds its own version next to the one
     /// the model reads would show a third thing that is neither.
     pub marker: BTreeMap<ContextId, String>,
+    /// The turns whose reasoning the next request carries; `None` where the projection cannot say
+    /// which message is which item's.
+    ///
+    /// note: read off the messages, for the reason [`Going::marker`] is. Whether reasoning goes
+    /// back is the projector's decision, made from the provider's dialect and `--send-reasoning`,
+    /// and a turn that is elided loses its reasoning whatever was decided. Somebody rewriting a
+    /// turn's reasoning is told from here whether a later request will read what they wrote.
+    pub reasoning: Option<BTreeSet<ContextId>>,
 }
 
 impl Going {
@@ -76,6 +84,15 @@ impl Going {
         let paired = projection.included.len() == projection.messages.len();
 
         Going {
+            reasoning: paired.then(|| {
+                projection
+                    .included
+                    .iter()
+                    .zip(&projection.messages)
+                    .filter(|(_, message)| carries_reasoning(message))
+                    .map(|(id, _)| *id)
+                    .collect()
+            }),
             // what the model reads where an elided item's content was. Only a paired projection can
             // answer it: the message that came out, not anything the item holds
             marker: match paired {
@@ -157,6 +174,11 @@ impl Going {
             .saturating_sub(self.costs.get(&item.id).copied().unwrap_or(0))
     }
 
+    /// Whether the next request carries this turn's reasoning; `None` where that cannot be told.
+    pub fn sends_reasoning(&self, item: &ContextItem) -> Option<bool> {
+        Some(self.reasoning.as_ref()?.contains(&item.id))
+    }
+
     /// What this item holds, on the same scale as everything else here.
     pub fn holds(&self, item: &ContextItem) -> usize {
         self.holds
@@ -165,4 +187,18 @@ impl Going {
             // an item added since this was taken; its own figure is the best there is
             .unwrap_or(item.tokens)
     }
+}
+
+/// Whether a projected message carries reasoning, in its own slot or among its blocks.
+fn carries_reasoning(message: &Message) -> bool {
+    message.reasoning.is_some()
+        || message
+            .content
+            .as_ref()
+            .and_then(|content| content.as_blocks())
+            .is_some_and(|blocks| {
+                blocks
+                    .iter()
+                    .any(|block| matches!(block, Block::Reasoning(_)))
+            })
 }

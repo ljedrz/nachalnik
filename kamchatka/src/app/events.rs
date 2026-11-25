@@ -231,8 +231,9 @@ impl App {
                     self.say(Speaker::Note, format!("{tool}: {reason}"));
                 }
             }
-            // the only event that carries content, and the only place the old text exists once the
-            // undo window closes; the viewer reads it back off `←` and `→`
+            // the only place the old text exists once the undo window closes; the viewer reads it
+            // back off `←` and `→`. The reasoning a turn used to hold is on the trace and in `log`,
+            // and has no pages of its own here
             Event::ContextReplaced { id, was, .. } => self.remember(id, was),
             Event::ToolStarted { call, .. } => {
                 self.streamed_bytes.1.insert(call, 0);

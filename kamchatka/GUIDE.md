@@ -277,12 +277,14 @@ a tool's actions it uses, so actions with the same effect are one decision:
 | `context:pin` | `pin`, which keeps an item from the compactor |
 | `context:note` | `note`, which adds an item of the model's own |
 | `context:revise` | `revise`, which rewrites what an item says |
+| `context:revise_reasoning` | `revise_reasoning`, which rewrites what one of the model's replies thought |
 | `log:read` | `log` |
 | `setup:read` | `setup`'s `model`, `tools`, `permissions` and `policy` |
 | `fork:ask` | `fork`'s `draft` and `ask` |
 
 `context`'s `undo` can walk back any change, so it needs all of `context:state`,
-`context:pin`, `context:note` and `context:revise`, and the strictest of those four applies to it:
+`context:pin`, `context:note`, `context:revise` and `context:revise_reasoning`, and the strictest of
+those five applies to it:
 with `context:state` allowed and `context:revise` refused, `undo` is refused. A refused `fs:write` also makes the working directory
 and the `--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell`
 reading, since a shell that can't read its working directory can do almost nothing; refuse
@@ -324,7 +326,7 @@ These are all the domains, the tools that use them, and the operations in each:
 | `fs` | the `fs` tool | `read`, `write` |
 | `exec` | `shell` | `run` |
 | `net` | `shell`, when a command uses the internet | `reach` |
-| `context` | the `context` tool | `read`, `state`, `pin`, `note`, `revise` |
+| `context` | the `context` tool | `read`, `state`, `pin`, `note`, `revise`, `revise_reasoning` |
 | `log` | the `log` tool | `read` |
 | `setup` | the `setup` tool | `read` |
 | `fork` | the `fork` tool | `ask` |
@@ -440,7 +442,7 @@ including logs too large to hold in memory. The alternative, `sed -n` through `s
 
 **The output limit is set per permission**, so `fs:read` and `exec:run` each have their own. It
 starts at 32,000 bytes, and at 8,000 for fixed-format reports rather than session content:
-`fs:write`, `context:note` and `context:revise`. On a small model each limit is lower still, a tenth
+`fs:write`, `context:note`, `context:revise` and `context:revise_reasoning`. On a small model each limit is lower still, a tenth
 of the context window at about four bytes a token, so one answer cannot fill it. A limit set with
 `/limit` is kept whatever the window. `/limit` lists the limits numbered and changes one from its
 next call on, e.g. `/limit fs:read 64000`. A truncated result keeps the full version next to it,
@@ -516,15 +518,20 @@ The other operations change the context. `elide`, `exclude`, `pin` and `reset_st
 item's state, the same states the <kbd>space</kbd> and <kbd>p</kbd> keys set. The first three are
 named after the state they leave an item in; `reset_state` makes it active again. Items are chosen by `ids` or by `select` (the selector language `/exclude` uses), one or
 the other, never both, and `look` with a `select` previews which items a change would affect and
-which it would refuse. `revise` rewrites what an item says, but never a message you wrote. `note`
+which it would refuse. `revise` rewrites what an item says, but never a message you wrote.
+`revise_reasoning` rewrites the reasoning of one of the model's earlier replies, so that it can
+agree with a reply that was corrected. It has its own permission, so allowing `revise` does not
+allow it, and the trace keeps what the reasoning was. Reasoning that a provider may have signed or
+sealed, which is how Anthropic's, Gemini's and the Responses API's thinking arrives, is refused,
+because a signed block sent back altered gets the request refused. `note`
 writes down a plan, a conclusion or something not to try again, attributed to `agent`, and can pin
 it. `undo` goes through the tool's own history, not the kernel's undo history, which is
 yours. Every change takes a `reason`, which is what you see in the context tab.
 
 Three things are always refused: changing a **pinned** item (the agent can only unpin items it
 pinned itself), changing a **system instruction**, and changing the reply the agent is writing.
-The eleven actions come under five permissions, in the table in the permissions section above:
-`context:read` and `context:revise` are separate rows, and `--auto-allow context` covers all five.
+The twelve actions come under six permissions, in the table in the permissions section above:
+`context:read` and `context:revise` are separate rows, and `--auto-allow context` covers all six.
 
 **`fork`** is its own tool, because each use costs a request: `draft` and `ask`, both `fork:ask`,
 take a snapshot, resume it as a second kernel with **no tools**, ask it once, and return only its

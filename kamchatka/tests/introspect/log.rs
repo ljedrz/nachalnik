@@ -256,6 +256,46 @@ async fn take_counts_records_even_where_one_of_them_is_many_lines() {
     );
 }
 
+/// The reasoning a reply used to hold is found in the log by the reply's number, and `whole`
+/// shows all of it, as for an item's old text.
+#[tokio::test]
+async fn reasoning_a_reply_used_to_hold_is_found_by_its_number() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise_reasoning",
+                "ids": [1],
+                "content": "one line now",
+                "reason": "it was three",
+            }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "ids": [1], "whole": true }),
+        ),
+    ]));
+
+    kernel.push(
+        ContextItem::assistant("an answer", Vec::new()).with_reasoning(Some(
+            "the parser is in src/parser.rs\nthe lexer is in src/lex.rs\nthe kernel is next door"
+                .into(),
+        )),
+    );
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let read = said.last().unwrap();
+    assert!(read.contains("context.reasoning_replaced"), "{read}");
+    assert!(
+        read.contains("src/parser.rs") && read.contains("the kernel is next door"),
+        "a whole record is the whole of it: {read}"
+    );
+}
+
 /// What matched costs no more than the whole log it was matched in, `whole` or not.
 ///
 /// note: the total was priced from every record as a line, and the records that matched from

@@ -744,6 +744,166 @@ async fn revise_refuses_what_text_cannot_stand_for() {
     assert!(said[1].contains("tool call"), "{}", said[1]);
 }
 
+/// A reply's reasoning and nothing else of it is rewritten, the hand that did it is written down,
+/// the trace has what it was, and `undo` puts it back.
+#[tokio::test]
+async fn revise_reasoning_rewrites_a_reply_and_undo_brings_it_back() {
+    let revise = call(
+        "c1",
+        "context",
+        json!({
+            "action": "revise_reasoning",
+            "ids": [1],
+            "content": "the person said src/parse.rs",
+            "reason": "it agrees with the reply I corrected",
+        }),
+    );
+    let undo = call(
+        "c2",
+        "context",
+        json!({ "action": "undo", "reason": "I want the original back" }),
+    );
+    let reply = || {
+        ContextItem::assistant("the parser is in src/parse.rs", Vec::new())
+            .with_reasoning(Some("the person said src/parser.rs".into()))
+    };
+
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![revise.clone()]));
+    kernel.push(reply());
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let item = kernel.item(nachalnik::ContextId(1)).unwrap();
+    assert_eq!(
+        item.reasoning().unwrap().to_text(),
+        "the person said src/parse.rs"
+    );
+    assert_eq!(item.content.to_text(), "the parser is in src/parse.rs");
+    assert_eq!(item.meta["reasoning_revised"]["by"], "context");
+    // not `revised`, which says the content was rewritten, and a reconcile reads it so
+    assert!(item.meta["revised"].is_null(), "{}", item.meta);
+    assert!(kernel.history().iter().any(|record| matches!(
+        &record.event,
+        nachalnik::Event::ReasoningReplaced { was: Some(was), .. }
+            if was.to_text() == "the person said src/parser.rs"
+    )));
+    let said = answered(&kernel);
+    assert!(said.contains("now holds other reasoning"), "{said}");
+
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![revise, undo]));
+    kernel.push(reply());
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let item = kernel.item(nachalnik::ContextId(1)).unwrap();
+    assert_eq!(
+        item.reasoning().unwrap().to_text(),
+        "the person said src/parser.rs",
+        "{}",
+        answered(&kernel)
+    );
+    assert!(item.meta["reasoning_revised"].is_null(), "{}", item.meta);
+}
+
+/// Rewritten reasoning that no later request reads is said to be so.
+///
+/// note: most endpoints are not sent reasoning back. Without the sentence a model goes on
+/// correcting thinking that only the record holds.
+#[tokio::test]
+async fn revising_reasoning_that_is_not_sent_back_says_so() {
+    for sent in [false, true] {
+        let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise_reasoning",
+                "ids": [1],
+                "content": "a better thought",
+                "reason": "the first one was wrong",
+            }),
+        )]));
+        kernel.set_projector(std::sync::Arc::new(nachalnik::LinearProjector {
+            send_reasoning: sent,
+            ..Default::default()
+        }));
+        kernel.push(
+            ContextItem::assistant("an answer", Vec::new())
+                .with_reasoning(Some("a thought".into())),
+        );
+        kernel.push(ContextItem::user("carry on"));
+        kernel.turn().await.expect("the turn failed");
+
+        let said = answers_from(&kernel, &["context"])[0].clone();
+        assert!(said.contains("now holds other reasoning"), "{said}");
+        assert_eq!(
+            said.contains("not sent back"),
+            !sent,
+            "sent back: {sent}: {said}"
+        );
+    }
+}
+
+/// `revise_reasoning` refuses what has no reasoning of its own to rewrite, thinking a provider may
+/// have signed, and the reply making the call.
+#[tokio::test]
+async fn revise_reasoning_refuses_what_it_cannot_rewrite() {
+    let revise = |id: &str, item: u64| {
+        call(
+            id,
+            "context",
+            json!({
+                "action": "revise_reasoning",
+                "ids": [item],
+                "content": "another thought",
+                "reason": "shorter",
+            }),
+        )
+    };
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        revise("c1", 1),
+        revise("c2", 2),
+        revise("c3", 4),
+    ]));
+    kernel.push(ContextItem::user("what the person said"));
+    kernel.push(ContextItem::assistant(
+        nachalnik::Content::blocks([
+            nachalnik::Block::reasoning("a signed thought"),
+            nachalnik::Block::text("an answer"),
+        ]),
+        Vec::new(),
+    ));
+    kernel.push(ContextItem::user("tidy up"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    assert!(
+        said[0].contains("refused") && said[0].contains("Only a reply"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[1].contains("refused") && said[1].contains("signed"),
+        "{}",
+        said[1]
+    );
+    assert!(said[2].contains("refused"), "{}", said[2]);
+    assert!(
+        kernel
+            .items()
+            .iter()
+            .all(|item| item.meta["reasoning_revised"].is_null()),
+        "something was revised"
+    );
+    assert!(
+        !kernel
+            .history()
+            .iter()
+            .any(|record| matches!(record.event, nachalnik::Event::ReasoningReplaced { .. })),
+        "a refusal replaced something"
+    );
+}
+
 /// The journal keeps the last 16 changes, since it goes into every snapshot with each item's old
 /// content; a seventeenth undo finds nothing left.
 #[tokio::test]
