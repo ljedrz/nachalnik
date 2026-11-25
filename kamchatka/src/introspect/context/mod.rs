@@ -112,10 +112,12 @@ fn ops() -> Vec<Op> {
             "look",
             format!(
                 "lists the items - what each is, what it costs, whether it is going into the next \
-                 request and why not if it is not. At most the {} most recent are listed, with or \
-                 without a `select`; a line above the table says how many earlier ones were left \
-                 out and which range lists them. With `ids` it shows those items' content instead, \
-                 in any state: an elided or excluded item shows what it holds, not its marker",
+                 request and why not if it is not. One call lists at most the {} most recent, with \
+                 or without a `select`. When there are more, a line above the table says how many \
+                 earlier ones were left out and gives a `select` range, such as `1-50`, that lists \
+                 the ones just before; for older ones still, call it again with an earlier range. \
+                 With `ids` it shows those items' content instead, in any state: an elided or \
+                 excluded item shows what it holds, not its marker",
                 reads::ROWS
             ),
             vec![
@@ -123,8 +125,9 @@ fn ops() -> Vec<Op> {
                     "ids",
                     "integer",
                     format!(
-                        "show the content of these items instead of listing them, including your \
-                         reasoning in your own replies. An item longer than {} \
+                        "show the content of these items instead of listing them, including the \
+                         reasoning in your own replies, which is kept here even though it is not \
+                         sent back in later requests. An item longer than {} \
                          bytes shows its first and last {} bytes and says how much is between \
                          them, unless `whole` asks for all of it",
                         2 * reads::SAMPLE,
@@ -197,9 +200,10 @@ fn ops() -> Vec<Op> {
          the request.\n\
          - `exclude`: the item is left out of the request entirely; for a tool result, the \
          call that asked for it is left out too.\n\
-         - `pin`: compaction will not elide or exclude the item.\n\
-         - `reset_state`: makes the item active again, undoing `elide`, `exclude` or `pin`. It \
-         does not undo a `revise`.\n\
+         - `pin`: compaction, which elides or excludes older items on its own when the context \
+         fills up, will not touch the item.\n\
+         - `reset_state`: makes the item active again, undoing `elide`, `exclude` or your own \
+         `pin`. It does not undo a `revise`.\n\
          On one of your own replies, `elide` replaces its text and reasoning but keeps its tool \
          calls, so their results stay; `exclude` leaves out the reply and its results together.",
         vec![
@@ -266,12 +270,13 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "undo",
-            "takes back your most recent change that has not been undone yet, however many \
-             items it changed; call it again to take back the one before. Undoing a `note` \
+            "takes back your most recent change that has not been undone yet. One change is one \
+             earlier `context` call, however many items it changed; call `undo` again to take \
+             back the one before. Undoing a `note` \
              excludes it; undoing a `revise` puts back the item's contents as they were before \
              that revision. Items somebody else changed since are left as they are. Only your 16 \
-             most recent changes can be undone. An older state change can still be reversed by \
-             hand with `reset_state`.",
+             most recent changes can be undone. An older state change can still be reversed with \
+             `reset_state`.",
             vec![Arg::text("reason", WHY).needed()],
         ),
     ]);

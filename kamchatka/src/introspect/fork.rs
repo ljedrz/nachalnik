@@ -50,15 +50,16 @@ fn ops() -> Vec<Op> {
         Op::new(
             "ask",
             "puts a question of your own to the copy, rather than letting it answer the \
-             conversation - for weighing an approach, or, with `without`, for finding out whether \
-             a piece of your context is what is leading you astray",
+             conversation - for a second opinion on an approach, or, with `without`, for finding \
+             out whether a piece of your context is what is leading you astray",
             vec![
                 Arg::text("question", "the question to ask the copy").needed(),
                 Arg::list(
                     "without",
                     "integer",
-                    "item numbers the copy does not see. Use it to test whether those items \
-                     change the answer",
+                    "item numbers the copy does not see. To test whether those items change the \
+                     answer, ask the same question with and without them and compare the two \
+                     answers",
                 ),
             ],
         ),
@@ -123,8 +124,8 @@ impl Tool for Fork {
                  call. Forks called in the same reply do not see each other's answers, or the \
                  results of your other calls in that reply. The one exception: a `context` call \
                  earlier in the same reply that adds or rewrites an item, such as a `note`. Forks \
-                 called after it see that item, and their answer lists the items an earlier fork \
-                 in that reply did not have.{}",
+                 called after it do see that item. When that happens, the later fork's answer \
+                 says which items the earlier forks did not see.{}",
                 shape(
                     Layout::of(&self.schema),
                     r#"{"action": "ask", "question": "is the bug in the parser?", "without": [12]}"#
@@ -394,8 +395,8 @@ async fn branch(
         fork.push(
             ContextItem::system(
                 "You are a copy of this session, made to think and not to act. You have no tools \
-                 here, and nothing you ask for can be run: answer in words, from what is already in \
-                 front of you.",
+                 here, and nothing you ask for can be run: answer in words, from what is already \
+                 in front of you.",
             )
             .pinned(),
         );
@@ -521,8 +522,8 @@ async fn branch(
         (true, true) => out.push_str(
             ". Nothing you named with `without` was taken away, so this is the same context \
              answering again rather than a test of what any of it was doing. `without` takes items \
-             away from the copy, and a question that asks it to disregard something is not the same \
-             thing - it is still reading it.",
+             away from the copy, and a question that asks it to disregard something is not the \
+             same thing - it is still reading it.",
         ),
         (false, _) => {
             let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();

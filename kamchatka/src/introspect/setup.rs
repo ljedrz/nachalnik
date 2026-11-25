@@ -92,8 +92,8 @@ impl Tool for Setup {
         ToolSpec::new(
             "setup",
             format!(
-                "reads what you are running with, which you cannot otherwise find out, and \
-                 changes nothing. The `action` is one of:\n\
+                "reads what you are running with, which you cannot otherwise find out, and changes \
+                 nothing. The `action` is one of:\n\
                  - `model`: which model you are, what parameters it is being sent, how much \
                  context it has, and whether this conversation was resumed from a snapshot. That \
                  matters, because a resumed context can hold somebody else's earlier turns and \
@@ -101,12 +101,13 @@ impl Tool for Setup {
                  - `tools`: every tool you are offered, the capabilities each needs (such as \
                  `fs:read`; the permissions are about these), and how much of its output you are \
                  shown. A tool taken away during the session is not listed.\n\
-                 - `permissions`: what the policy allows, refuses, or will stop and ask about, so \
+                 - `permissions`: for each capability, such as `fs:read`, `fs:write` or `exec:run` \
+                 (the shell), whether the policy allows it, refuses it, or will stop and ask, so \
                  you can tell a call that will be refused from one nobody has decided yet.\n\
                  - `policy`: what will be done to your context without you asking. The compactor \
-                 elides or excludes older items once the context fills up; the projector turns \
-                 your items into the request and decides what of each goes into it, such as \
-                 whether your reasoning is sent back.{}",
+                 elides or excludes older items once the context fills up; the projector, a fixed \
+                 rule you cannot change, turns your items into the request and decides what of \
+                 each goes into it, such as whether your reasoning is sent back.{}",
                 shape(Layout::of(&self.schema), r#"{"action": "permissions"}"#)
             ),
         )

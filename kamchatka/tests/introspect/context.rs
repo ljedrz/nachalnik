@@ -427,8 +427,8 @@ async fn a_long_listing_shows_the_most_recent_rows_and_says_how_to_reach_the_res
     // and not a range, since a range would list every item numbered in it, in the class or not
     assert!(
         class.contains(
-            "the 50 before them are not here: they are numbered 1 to 50, and a narrower class \
-             lists them"
+            "the 50 before them are not here: they are numbered 1 to 50, and a narrower \
+             `select` lists them"
         ),
         "{class}"
     );

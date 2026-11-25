@@ -121,7 +121,7 @@ fn ops() -> Vec<Op> {
             "writes a whole file, replacing whatever was there",
             vec![
                 Arg::text("path", "the file to write; missing directories are created").needed(),
-                Arg::text("content", "the whole new file").needed(),
+                Arg::text("content", "the whole new file, written exactly as given").needed(),
             ],
         ),
         Op::new(
@@ -149,8 +149,8 @@ const WHERE_GLOB: &str = "one file, listed only if it matches `pattern`, or a di
 
 /// Where `grep` looks.
 const WHERE_GREP: &str = "a file to search, or a directory to search everything under; the \
-                          working directory if left out. With `glob`, a file that does not match \
-                          it is skipped, even one named here";
+                          working directory if left out. When the `glob` argument is given, a \
+                          file that does not match it is skipped, even one named here";
 
 /// Everything a session may do to a file, as one tool.
 pub(super) struct Fs {
@@ -228,21 +228,21 @@ impl Tool for Fs {
         ToolSpec::new(
             "fs",
             format!(
-                "the filesystem. The `action` is one of `read`, `glob`, `grep`, `write` or \
-                 `edit`. The working directory is {}. Every `path` is {PATH_ARG}. `glob` and \
-                 `grep` walk a directory themselves rather than running `find` or `grep`. They \
-                 skip what `.gitignore` names and the `.git` directory without mentioning either, \
-                 and they include hidden files. Anything else they skip - a binary or unreadable \
-                 file, a pipe, a link out of reach - is counted on a `skipped:` line. One call \
-                 returns at most {MATCHES} matching lines from `grep`, or {PATHS} files with \
-                 `files_only`, and at most {PATHS} paths from `glob`. When a call reaches one of \
-                 these limits, the first line of the answer says so, and there may be more. `grep` \
-                 answers one match per line as `path:line:text`, and a line wider than {WIDTH} \
-                 characters is cut and ends in `…`. `glob` lists only the files that matched, \
-                 grouped by directory: a directory's path and a `:`, then the names in it one to a \
-                 line, so a file's path is its directory joined to its name. `edit` changes \
-                 nothing when `old` occurs nowhere in the file or more than once, and says which, \
-                 with the count.{}",
+                "the filesystem. The `action` is one of `read`, `glob`, `grep`, `write` or `edit`. \
+                 The working directory is {}. Every `path` is {PATH_ARG}. `glob` and `grep` walk a \
+                 directory themselves rather than running `find` or `grep`. They skip what \
+                 `.gitignore` names and the `.git` directory without mentioning either, and they \
+                 include hidden files. Anything else they skip - a binary or unreadable file, a \
+                 pipe, a symbolic link to a place `fs` may not read - is counted on a `skipped:` \
+                 line. One call returns at most {MATCHES} matching lines from `grep`, or {PATHS} \
+                 files with `files_only`, and at most {PATHS} paths from `glob`. When a call \
+                 reaches one of these limits, the first line of the answer says so, and there may \
+                 be more. `grep` answers one match per line as `path:line:text`, and a line wider \
+                 than {WIDTH} characters is cut and ends in `…`. `glob` lists only the files that \
+                 matched, grouped by directory: a directory's path and a `:`, then the names in it \
+                 one to a line, so a file's path is its directory joined to its name. `edit` \
+                 changes nothing when `old` occurs nowhere in the file or more than once, and says \
+                 which, with the count.{}",
                 self.read.0.workdir.display(),
                 shape(
                     Layout::of(&self.schema),

@@ -161,7 +161,7 @@ fn unlisted(items: &[Arc<ContextItem>], shown: usize, class: bool) -> String {
 
     let reach = match class {
         true => format!(
-            "they are numbered {} to {}, and a narrower class lists them",
+            "they are numbered {} to {}, and a narrower `select` lists them",
             items[0].id,
             items[left - 1].id,
         ),
