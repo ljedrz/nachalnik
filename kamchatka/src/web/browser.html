@@ -44,6 +44,15 @@
 -->
 
 <style>
+  /* note: one size and one family for the page, which every other size is a share of, so the
+     text-size control scales the whole page at once and keeps its proportions. Set from script
+     out of what this browser saved; see `typeface` */
+  :root {
+    --size: 15px;
+    --family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --small: calc(var(--size) * 0.8);
+    --between: calc(var(--size) * 0.87);
+  }
   :root {
     color-scheme: light dark;
     --bg: #fbfaf8; --fg: #1c1b19; --dim: #6b6862; --line: #bdb6a9;
@@ -71,7 +80,7 @@
      sits underneath the keyboard, with the prompt in it */
   body {
     margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font: var(--size)/1.5 var(--family);
     height: var(--tall, 100dvh); display: flex; flex-direction: column;
     /* note: the *other* thing a keyboard does, and the one a height alone does not answer. A
        visual viewport can be moved down the page as well as made shorter - iOS scrolls one to
@@ -91,16 +100,35 @@
   header {
     padding: 8px 12px; border-bottom: 1px solid var(--line);
     display: flex; gap: 12px; flex-wrap: nowrap; align-items: baseline;
-    font-size: 12px; color: var(--dim);
+    font-size: var(--small); color: var(--dim);
   }
   header b { color: var(--fg); font-weight: 600; }
   #model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 3em; }
   #budget { white-space: nowrap; flex: none; }
-  /* the cycler sits in the corner the tab strip is in upstairs, and takes the space left over */
-  #view {
-    margin-left: auto; font-size: 12px; padding: 4px 10px; min-height: 0;
+  /* the cycler sits in the corner the tab strip is in upstairs, and the text control beside it
+     takes the space left over */
+  #view, #font {
+    font-size: var(--small); padding: 4px 10px; min-height: 0;
     color: var(--dim); white-space: nowrap;
   }
+  #font { margin-left: auto; }
+  #font[aria-expanded="true"] { border-color: currentColor; }
+  /* the text size and font, under the header's right-hand corner, over whatever view is open. A
+     setting of this browser's, so nothing in it is sent to the session */
+  #fonts {
+    position: absolute; right: 12px; z-index: 2;
+    padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font-size: var(--small);
+    display: flex; flex-direction: column; gap: 8px; max-width: calc(100% - 24px);
+  }
+  #fonts[hidden] { display: none; }
+  #fonts .steps { display: flex; gap: 6px; align-items: center; }
+  #fonts button { font-size: var(--small); padding: 2px 10px; min-height: 0; }
+  #fonts select, #fonts input {
+    font: inherit; font-size: max(16px, var(--small)); color: inherit; background: var(--bg);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; max-width: 100%;
+  }
+  #fonts label { display: flex; flex-direction: column; gap: 4px; }
   /* note: `min-height: 0` because a flex item will not shrink below its content without it, and
      the log is the one thing here that must: when the box grows to three lines the room comes out
      of the conversation, never out of the footer, which is the half of the page somebody is
@@ -136,7 +164,7 @@
   .name.tool { color: var(--code); }
   .name.asked { color: var(--changes); }
   .state {
-    font: inherit; font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 4px;
+    font: inherit; font-size: var(--small); padding: 2px 8px; min-height: 0; border-radius: 4px;
     white-space: nowrap; flex: none;
   }
   .state.active { border-color: var(--user); color: var(--user); }
@@ -145,13 +173,13 @@
   /* the same shape as the state button beside it, and quieter: the state is a control somebody
      reaches for and this is a label that happens to be one */
   .versions {
-    font: inherit; font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 4px;
+    font: inherit; font-size: var(--small); padding: 2px 8px; min-height: 0; border-radius: 4px;
     white-space: nowrap; flex: none; color: var(--dim);
   }
   /* anything but the current text, which is worth saying in the one colour the page keeps for
      "this is not what the next request sends" */
   .versions.past { border-color: var(--call); color: var(--call); }
-  .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .figures { font-size: var(--small); color: var(--dim); margin-top: 2px; }
   /* the headings over the rules and the sandbox; the word for how open a part is, and the paths a
      part lists, folded away until somebody opens them as the tab's `enter` does */
   .section { margin: 18px 0 4px; font-weight: 600; }
@@ -162,14 +190,14 @@
   /* the line along the bottom, with the toggle for what it asks about at its right-hand end */
   .bottom { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
   .bottom .empty { flex: 1; margin: 0; }
-  .bottom button { flex: none; font-size: 12px; padding: 2px 8px; min-height: 0; }
+  .bottom button { flex: none; font-size: var(--small); padding: 2px 8px; min-height: 0; }
   .bottom button[aria-pressed="true"] { border-color: currentColor; }
   .kind { margin: 12px 0 0; font-style: italic; }
-  .access { flex: none; font-size: 12px; margin-left: 8px; }
-  .paths { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .access { flex: none; font-size: var(--small); margin-left: 8px; }
+  .paths { font-size: var(--small); color: var(--dim); margin-top: 4px; }
   .paths summary { cursor: pointer; }
   .paths div { padding-left: 16px; overflow-wrap: anywhere; font-family: monospace; }
-  .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
+  .why { font-size: var(--small); color: var(--note); margin-top: 2px; font-style: italic; }
   /* note: a `textarea` rather than a `div`, which is all it takes to make an item editable: the
      box shows what the item says, reads as something you can type into, and has somewhere for the
      typing to go. See `Command::Revise` */
@@ -184,7 +212,7 @@
      `Message::Item` */
   .thought { font-style: italic; color: var(--dim); }
   .parts {
-    display: none; margin-top: 8px; font-size: 12px; color: var(--dim);
+    display: none; margin-top: 8px; font-size: var(--small); color: var(--dim);
     white-space: pre-wrap; overflow-wrap: anywhere;
   }
   .row.open .parts { display: block; }
@@ -198,7 +226,7 @@
   .body[readonly] { color: var(--dim); }
   .empty { color: var(--dim); white-space: pre-wrap; }
   .policy { margin: 0 0 10px; font-weight: 600; overflow-wrap: anywhere; }
-  .detail { font-size: 12px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
+  .detail { font-size: var(--small); color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
   /* the figure being looked for, so it keeps the right-hand edge and a colour of its own. The
      verdicts are in the terminal's green, yellow and red, which are the advisor's bands here, so a
      word on the tab and the same word on this page are one colour */
@@ -207,7 +235,7 @@
      verdicts', since that is what the row reads back in */
   .rules { display: flex; flex: none; }
   .rules button {
-    font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 0; color: var(--dim);
+    font-size: var(--small); padding: 2px 8px; min-height: 0; border-radius: 0; color: var(--dim);
   }
   /* neighbours share an edge by overlapping rather than by one of them losing its border, so the
      pressed one, drawn on top, has all four of its edges in its own colour */
@@ -228,7 +256,7 @@
   .call { color: var(--call); } .call::before { content: "\2329 "; }
   .result { color: var(--dim); } .result::before { content: "< "; }
   .note { color: var(--note); } .note::before { content: "\00b7 "; }
-  .note button { font-size: 13px; padding: 2px 10px; margin-left: 8px; }
+  .note button { font-size: var(--between); padding: 2px 10px; margin-left: 8px; }
   .error { color: var(--bad); } .error::before { content: "! "; }
   .pending { opacity: .45; }
   /* a model's answer, rendered as the terminal renders one: what the punctuation means rather than
@@ -259,15 +287,15 @@
   .model th { font-weight: 700; }
   /* the program's voice on the end of somebody's line, so drawn the way a note is and not the way
      a thought is: on a reasoning line a dim italic would read as more of what the model thought */
-  .clipped { color: var(--note); font-style: normal; font-size: 12px; }
+  .clipped { color: var(--note); font-style: normal; font-size: var(--small); }
   footer {
     flex: none; border-top: 1px solid var(--line); padding: 8px;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
   form { display: flex; gap: 8px; }
-  /* 16px or iOS zooms the whole page when the box is focused */
+  /* 16px at least, or iOS zooms the whole page when the box is focused */
   textarea {
-    flex: 1; resize: none; font: inherit; font-size: 16px; padding: 8px;
+    flex: 1; resize: none; font: inherit; font-size: max(16px, var(--size)); padding: 8px;
     background: transparent; color: inherit;
     border: 1px solid var(--line); border-radius: 6px; min-height: 42px;
     /* a third of what is *visible*, not of the screen: `vh` is the layout viewport, which a
@@ -276,7 +304,7 @@
     max-height: calc(var(--tall, 100dvh) * 0.3);
   }
   button {
-    font: inherit; font-size: 15px; padding: 8px 14px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-size: var(--size); padding: 8px 14px; border-radius: 6px; cursor: pointer;
     border: 1px solid var(--line); background: transparent; color: inherit; min-height: 42px;
   }
   button:disabled { opacity: .4; }
@@ -319,8 +347,28 @@
   <span id="pulse" hidden>&#9679;</span>
   <b id="model">connecting…</b>
   <span id="budget"></span>
+  <button id="font" type="button" aria-expanded="false" aria-controls="fonts"
+          title="text size and font, for this browser">Aa</button>
   <button id="view" type="button" title="the next view: chat, context, events, permissions">chat</button>
 </header>
+<div id="fonts" hidden>
+  <div class="steps">
+    <button type="button" data-step="-1" title="smaller text">A&minus;</button>
+    <span id="size"></span>
+    <button type="button" data-step="1" title="larger text">A+</button>
+    <button type="button" data-step="0" title="back to the size this page starts at">reset</button>
+  </div>
+  <label>font
+    <select id="family">
+      <option value="">monospace</option>
+      <option value="system-ui, sans-serif">sans-serif</option>
+      <option value="Georgia, 'Times New Roman', serif">serif</option>
+      <option value="other">another, by name…</option>
+    </select>
+  </label>
+  <input id="named" type="text" placeholder="a font on this device, e.g. Iosevka" hidden
+         autocomplete="off" spellcheck="false">
+</div>
 
 <div id="log"></div>
 <div id="panel"></div>
@@ -948,6 +996,109 @@ function show(next) {
 document.getElementById("view").onclick = () => {
   show(VIEWS[(VIEWS.indexOf(showing) + 1) % VIEWS.length]);
 };
+
+/**
+ * The text size and the font, which are this browser's and nobody else's.
+ *
+ * note: kept in `localStorage` rather than sent to the session. A phone and a laptop looking at
+ * one session want different sizes, and the terminal's font is the terminal emulator's, so there
+ * is nothing on the session's side for a setting to mean. Every read and write is guarded: a
+ * private window or blocked storage starts from the defaults and stays usable.
+ *
+ * note: the size is whole pixels from `SMALLEST` to `LARGEST`, and every other size on the page is
+ * a share of it (see `--small` in the stylesheet), so the page keeps its proportions. The family
+ * is a CSS font list; one typed by name goes first, with this page's monospace list after it for a
+ * name this device does not have.
+ */
+const typeface = (() => {
+  // the smallest keeps the header's text, a fifth smaller than the rest, from going below 10px
+  const SIZE = 15, SMALLEST = 12, LARGEST = 28;
+  const MONOSPACE = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  const KEYS = { size: "kamchatka.font.size", family: "kamchatka.font.family" };
+  const saved = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+  const save = (key, value) => {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch { /* not kept, and still applied for as long as the page is open */ }
+  };
+
+  const button = document.getElementById("font");
+  const panel = document.getElementById("fonts");
+  const shown = document.getElementById("size");
+  const family = document.getElementById("family");
+  const named = document.getElementById("named");
+
+  let size = Math.min(LARGEST, Math.max(SMALLEST, Number(saved(KEYS.size)) || SIZE));
+  // what was chosen: one of the list's values, or a name typed under `other`
+  let chosen = saved(KEYS.family) ?? "";
+
+  // a name somebody typed, with nothing in it that could end the quotes it goes between or the
+  // declaration it goes into. Kept as cleaned, so the box shows the name the page is using
+  const clean = (name) => name.replace(/["'\\;{}<>]/g, "").trim();
+  // cleaned again here, for a name read back from storage that this page did not write
+  const quoted = (name) => `"${clean(name)}"`;
+  const listed = () => [...family.options].some((option) => option.value === chosen);
+
+  function apply() {
+    const root = document.documentElement.style;
+    root.setProperty("--size", `${size}px`);
+    const custom = !listed();
+    root.setProperty("--family", custom ? `${quoted(chosen)}, ${MONOSPACE}` : chosen || MONOSPACE);
+    shown.textContent = `${size}px`;
+    family.value = custom ? "other" : chosen;
+    named.hidden = !custom;
+    if (custom) named.value = chosen;
+    // a context row's box is measured to its text, which has just changed size
+    if (showing !== "chat") draw();
+  }
+
+  function open(on) {
+    // under the header as tall as it is now, which the text size changes
+    panel.style.top = `${document.querySelector("header").offsetHeight}px`;
+    panel.hidden = !on;
+    button.setAttribute("aria-expanded", String(on));
+  }
+
+  button.onclick = (e) => {
+    e.stopPropagation();
+    open(panel.hidden);
+  };
+  panel.onclick = (e) => e.stopPropagation();
+  document.addEventListener("click", () => open(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !panel.hidden) open(false);
+  });
+
+  for (const step of panel.querySelectorAll("[data-step]")) {
+    step.onclick = () => {
+      const by = Number(step.dataset.step);
+      size = by === 0 ? SIZE : Math.min(LARGEST, Math.max(SMALLEST, size + by));
+      save(KEYS.size, size === SIZE ? null : String(size));
+      apply();
+    };
+  }
+  family.onchange = () => {
+    if (family.value === "other") {
+      // the box opens empty and the page keeps its font until a name is typed into it
+      named.hidden = false;
+      named.value = "";
+      named.focus();
+      return;
+    }
+    chosen = family.value;
+    save(KEYS.family, chosen || null);
+    apply();
+  };
+  named.onchange = () => {
+    chosen = clean(named.value);
+    save(KEYS.family, chosen || null);
+    apply();
+  };
+
+  return { apply };
+})();
+typeface.apply();
 
 /** One row: a name, a line of figures under it, and a reason where there is one. */
 /**

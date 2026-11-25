@@ -192,6 +192,10 @@ else on the screen is treated as markdown: a tool's output is shown exactly as t
 **<kbd>F1</kbd> opens on the page for the current tab**, with separate pages for slash commands,
 keys that work everywhere, and the waiting tool call, if there is one.
 
+**The font and its size are your terminal's.** A program running in a terminal can't change them,
+so change them in the terminal's own settings; most terminals also take <kbd>ctrl+=</kbd> and
+<kbd>ctrl+-</kbd>. The `--web` page has its own, under the **Aa** button in its header.
+
 If you scroll away from the end while a turn is still writing, the view stays where you left it,
 and the line at the bottom says how much has arrived below; <kbd>ctrl+e</kbd> or scrolling to the
 end follows the output again. Nothing is shortened to fit, except a tool's output while it's
