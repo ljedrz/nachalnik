@@ -151,10 +151,10 @@ impl Tool for Log {
             format!(
                 "reads this session's record: an append-only log of what happened, kept beside \
                  your context and not part of it. It records every item added, replaced, elided, \
-                 undone or compacted, every permission asked for and answered, and every tool \
-                 that appeared or went away. `read` with no other arguments gives a summary: how \
-                 many records of each kind there are and what reading them would cost. Add \
-                 `kinds`, `ids`, `since` or `take` to get the records themselves. \
+                 undone or compacted, every permission asked for and answered, and every tool that \
+                 appeared or went away. The `action` is always `read`. With no other arguments it \
+                 gives a summary: how many records of each kind there are and what reading them \
+                 would cost. Add `kinds`, `ids`, `since` or `take` to get the records themselves. \
                  Every answer starts with how many records the log holds and, when you picked \
                  some, how many of those match; if fewer are listed, that is because of your \
                  arguments, not because the rest are missing. You cannot write to it. A \

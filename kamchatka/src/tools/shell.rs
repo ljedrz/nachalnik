@@ -531,9 +531,9 @@ impl Tool for Shell {
         ToolSpec::new(
             "shell",
             format!(
-                "runs one command with `sh -c`. The answer is its exit status on an `exit:` \
-                 line, then its standard error under `--- stderr ---`, then its standard output \
-                 under `--- stdout ---`. Every call starts afresh in the working directory, {}, \
+                "runs one command with `sh -c`. The `action` is always `run`. The answer is its \
+                 exit status on an `exit:` line, then its standard error under `--- stderr ---`, \
+                 then its standard output under `--- stdout ---`. Every call starts afresh in the working directory, {}, \
                  so a `cd` lasts only as long as the command it is in.{cut} Nothing is typed at \
                  it: a command reading its input reads end-of-file.{}{}",
                 self.workdir.display(),
