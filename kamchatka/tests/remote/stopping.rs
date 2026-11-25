@@ -41,7 +41,7 @@ async fn a_turn_is_stopped_by_a_client_that_can_only_type() {
         line: "/stop".to_owned(),
     })
     .await;
-    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+    peer.until(|message| matches!(message, Message::Busy { busy: false, .. }))
         .await;
 
     peer.send(Command::Submit {
@@ -267,7 +267,7 @@ async fn an_interrupt_with_nothing_running_does_not_swallow_the_next_message() {
         line: "go".to_owned(),
     })
     .await;
-    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+    peer.until(|message| matches!(message, Message::Busy { busy: false, .. }))
         .await;
 
     peer.send(Command::Submit {
@@ -282,5 +282,103 @@ async fn an_interrupt_with_nothing_running_does_not_swallow_the_next_message() {
             .iter()
             .any(|item| item.content.to_text().contains("answered")),
         "the message went unanswered"
+    );
+}
+
+/// A turn that stops at its request budget says so on the wire, so a page can offer `continue`
+/// beside `send`; a client arriving afterwards is told in its projection, and carrying on clears
+/// it.
+///
+/// note: `paused` rides on `Message::Busy` rather than a message of its own; see the field for why.
+#[tokio::test]
+async fn a_turn_paused_at_its_budget_is_said_to_be_paused() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "look", json!({}))]),
+        ModelResponse::text("and there it was"),
+    ];
+    let session = served(script, |app| {
+        app.kernel
+            .add_tool(Arc::new(ConstTool::new("look", "nothing")));
+        app.kernel.set_max_requests_per_turn(Some(1));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    assert!(!attached.paused, "nothing has run yet");
+    peer.send(Command::Submit {
+        line: "look around".to_owned(),
+    })
+    .await;
+    peer.until(|message| {
+        matches!(
+            message,
+            Message::Busy {
+                busy: true,
+                paused: false
+            }
+        )
+    })
+    .await;
+    peer.until(|message| {
+        matches!(
+            message,
+            Message::Busy {
+                busy: false,
+                paused: true
+            }
+        )
+    })
+    .await;
+
+    // somebody opening the page now has missed the broadcast, and is told in what it starts from
+    let (mut late, attached) = Peer::attached(&session.at).await;
+    assert!(attached.paused, "a fresh attach was not told of the pause");
+    drop(peer);
+
+    late.send(Command::Submit {
+        line: "/continue".to_owned(),
+    })
+    .await;
+    // the turn carried on, and was never said to be paused again
+    let heard = late
+        .until(|message| {
+            matches!(
+                message,
+                Message::Busy {
+                    busy: false,
+                    paused: false
+                }
+            )
+        })
+        .await;
+    assert!(
+        heard.iter().any(|message| matches!(
+            message,
+            Message::Busy {
+                busy: true,
+                paused: false
+            }
+        )),
+        "the turn was not said to be running"
+    );
+    assert!(
+        !heard
+            .iter()
+            .any(|message| matches!(message, Message::Busy { paused: true, .. })),
+        "carried on, and still said to be paused"
+    );
+
+    late.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("and there it was")),
+        "the turn did not carry on"
     );
 }

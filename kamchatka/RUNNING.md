@@ -79,10 +79,11 @@ An endpoint that reports no usage at all is mentioned once, instead of silently 
 can never be reached, since someone who set a limit expects the run to be limited.
 
 `--max-requests-per-turn 8` is the default number of requests one turn sends before it pauses for
-`/continue`. `/requests` shows it, and `/requests N` changes it while the session runs, so raising
-it needs no restart. The new limit holds from the next request, including in a turn that is already
-running. `/requests 0` removes it, as `--max-requests-per-turn 0` does. A `/restart` or a resumed
-session starts from `--max-requests-per-turn` again.
+`/continue`, or for the `continue` button beside `send` on the `--web` page. `/requests` shows it,
+and `/requests N` changes it while the session runs, so raising it needs no restart. The new limit
+holds from the next request, including in a turn that is already running. `/requests 0` removes
+it, as `--max-requests-per-turn 0` does. A `/restart` or a resumed session starts from
+`--max-requests-per-turn` again.
 
 `--max-run-seconds` counts from program start, so it covers an endpoint that never answers and an
 MCP server that never finishes starting, and `/restart` does not reset it. It cannot interrupt a

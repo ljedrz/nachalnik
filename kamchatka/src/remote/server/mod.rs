@@ -755,8 +755,9 @@ pub struct Serving {
     said: usize,
     /// Which generation of that sequence, because `/cleanup` starts it again from nothing.
     cleared: u64,
-    /// Whether the session was busy the last time anybody was told.
-    announced: bool,
+    /// Whether the session was busy, and whether its last turn had paused, the last time anybody
+    /// was told; see [`Message::Busy`].
+    announced: (bool, bool),
     /// Which model it was talking to then, for the same reason and a worse one; see
     /// [`Message::Model`].
     model: Option<nachalnik::ModelInfo>,
@@ -796,7 +797,7 @@ impl Serving {
             asked,
             said: 0,
             cleared: app.cleared(),
-            announced: app.working(),
+            announced: (app.working(), app.paused()),
             model: app.kernel.model_info(),
             reaching: app.policy.reaching().waiting(),
             clients: 0,
@@ -902,10 +903,12 @@ impl Serving {
         // client asking for something and being told what came of it; every command has one, and it
         // carries this same figure - see `Message::Done`. A broadcast that also fired per command
         // would reach every other client as news about a session that had not changed
-        if self.announced != app.working() {
-            self.announced = app.working();
+        let now = (app.working(), app.paused());
+        if self.announced != now {
+            self.announced = now;
             let _ = self.voice.send(Arc::new(Message::Busy {
-                busy: self.announced,
+                busy: now.0,
+                paused: now.1,
             }));
         }
         // the same rule for the model: a switch finishes inside the provider the kernel already
@@ -970,6 +973,7 @@ impl Serving {
                 let mut said = standing(app);
                 said.push(Message::Busy {
                     busy: app.working(),
+                    paused: app.paused(),
                 });
                 let _ = answer.send(said);
             }
@@ -1486,6 +1490,7 @@ fn project(app: &App) -> Attached {
         session: app.kernel.session_name(),
         state: app.kernel.state(),
         busy: app.working(),
+        paused: app.paused(),
         stepping: app.stepping,
         model: app.kernel.provider().map(|provider| provider.info()),
         expected: Some(app.expected(&going, &budget)),
@@ -1767,7 +1772,7 @@ mod tests {
                 && said.iter().any(|it| matches!(it, Message::Reaching { .. }))
                 && said
                     .iter()
-                    .any(|it| matches!(it, Message::Busy { busy: false })),
+                    .any(|it| matches!(it, Message::Busy { busy: false, .. })),
             "{said:?}"
         );
     }

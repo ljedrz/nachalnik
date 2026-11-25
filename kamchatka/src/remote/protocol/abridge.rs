@@ -434,6 +434,7 @@ mod tests {
             seq: 0,
             state: State::Idle,
             busy: false,
+            paused: false,
             stepping: false,
             model: None,
             budget: Budget {

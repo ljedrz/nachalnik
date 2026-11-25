@@ -27,8 +27,17 @@ minor bump may break you.
   attribution is off without it.
 - **`Setup` has a `response_stats` field**, for `--response-stats` below, so code that builds one
   with every field spelled out must set it: `false` for what a session did before.
+- **`Message::Busy` has a `paused` field**, for the `continue` button below, so code that builds
+  or matches one with every field spelled out must name it. On the wire it is optional: a client
+  reads a session that predates it as not paused, and an older client skips it.
 
 ### added
+
+- **The `--web` page has a `continue` button while a turn is paused.** A turn that stops at
+  `--max-requests-per-turn` puts it between the prompt and `send`, and a click sends `/continue`.
+  It disappears when a turn starts, whether from the button or from a new message. A served session says
+  whether its last turn paused in `Message::Busy`'s new `paused` and in `Attached::paused`, so a
+  page opened after the pause offers the button too.
 
 - **A session with no model takes the only one its endpoint serves.** Started without `-m`, a
   session asks the endpoint what it serves, and if the answer is exactly one model - a llama-server

@@ -333,7 +333,7 @@ pub enum Message {
         /// Whether a turn is running, as of applying it.
         busy: bool,
     },
-    /// Whether a turn is running, sent whenever that changes.
+    /// Whether a turn is running, and whether the last one paused, sent whenever either changes.
     ///
     /// note: on the wire because it cannot be worked out from the records. A turn is a loop over
     /// transitions, so `state.changed` reaches `Idle` between two requests of one turn and `Ready`
@@ -345,6 +345,16 @@ pub enum Message {
         /// Whether a turn is running, or a command is still out at the endpoint; see
         /// [`App::working`](crate::app::App::working).
         busy: bool,
+        /// Whether the last turn stopped at its request budget with the model not done, waiting
+        /// for `/continue`; see [`App::paused`](crate::app::App::paused).
+        ///
+        /// note: carried here rather than in a message of its own because it changes when `busy`
+        /// does - a turn starting clears it, a turn pausing sets it - and because an older client
+        /// reads a message it does not know as [`Message::Unknown`], which it counts as the
+        /// answer to whatever it last sent. A field it does not know it skips. `false` from a
+        /// session that predates the field, which a client reads as nothing to carry on.
+        #[serde(default)]
+        paused: bool,
     },
     /// The running commands waiting to hear whether they may reach the network, sent whenever that
     /// changes and to a client that resumes: the whole list, oldest first, and empty once none are.
@@ -498,6 +508,11 @@ pub struct Attached {
     pub state: State,
     /// Whether a turn is running, or a command is still out at the endpoint.
     pub busy: bool,
+    /// Whether the last turn paused at its request budget; see [`Message::Busy`]'s `paused`.
+    ///
+    /// note: `false` from a session that predates the field.
+    #[serde(default)]
+    pub paused: bool,
     /// Whether the loop is being driven a transition at a time.
     pub stepping: bool,
     /// The model the requests are going to, if one is set.

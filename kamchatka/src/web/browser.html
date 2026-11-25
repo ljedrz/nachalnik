@@ -301,6 +301,8 @@
 <footer>
   <form id="prompt">
     <textarea id="line" rows="1" placeholder="ask for something, or /help" autocomplete="off"></textarea>
+    <!-- sends `/continue`; shown only while a turn is paused at its request budget, see `offer` -->
+    <button id="continue" type="button" title="carry on the paused turn, as /continue does" hidden>continue</button>
     <button type="submit">send</button>
   </form>
   <div id="question">
@@ -326,6 +328,7 @@ const line = document.getElementById("line");
 const question = document.getElementById("question");
 const asked = document.getElementById("asked");
 const rating = document.getElementById("rating");
+const resume = document.getElementById("continue");
 
 let asking = [];        // the questions waiting on somebody, oldest first
 let reaching = [];      // the running commands waiting to hear whether they may reach the network
@@ -340,6 +343,7 @@ let opened = new Set(); // the context rows the reader has expanded, which survi
 let owed = false;       // a rebuild held back because somebody is typing into an item
 let showing = "chat";   // which of the four is on screen
 let turning = false;    // whether a turn is running, which is half of what the one dot says
+let paused = false;     // whether the last turn stopped at its request budget, waiting to carry on
 let adrift = false;     // and whether the stream has gone, which is the other half
 
 /**
@@ -1377,6 +1381,7 @@ function heard(m) {
       asking = m.asking;
       reaching = m.reaching ?? [];
       showQuestion();
+      paused = !!m.paused;
       working(m.busy);
       break;
     }
@@ -1405,6 +1410,8 @@ function heard(m) {
       // the header saying whatever it said when this page attached
       named(m.model);
       budget(m);
+      paused = !!m.paused;
+      offer();
       if (showing !== "chat") draw();
       // and the chat, where something moved and the stream could not say what that did to it.
       // Held back while a model is typing or a line of this page's own has not become an item
@@ -1465,7 +1472,10 @@ function heard(m) {
       break;
     }
     case "copy": copied(m.id, m.text); break;
-    case "busy": working(m.busy); break;
+    // note: `paused` rides on `busy` because the two change together - a turn starting clears it
+    // and a turn pausing sets it - and a session that predates it sends neither, which reads as
+    // nothing to carry on
+    case "busy": paused = !!m.paused; working(m.busy); break;
     case "replied": {
       working(m.busy);
       if (m.did && m.did.asked !== undefined) claim(m.did.asked);
@@ -1587,8 +1597,21 @@ function working(busy) {
   if (!busy && stale) send({ do: "project" });
   turning = busy;
   indicator();
+  offer();
   line.disabled = false; // a line typed into a running turn waits for it, which is the session's job
 }
+
+/**
+ * Offers `continue` beside `send` while a turn is paused at its request budget.
+ *
+ * note: hidden while a turn is running. A click starts a turn, and the `busy` that follows hides
+ * the button, so a second click cannot start a second turn.
+ */
+function offer() {
+  resume.hidden = !paused || turning;
+}
+
+resume.onclick = () => send({ do: "submit", line: "/continue" });
 
 /**
  * Draws the one indicator there is.
