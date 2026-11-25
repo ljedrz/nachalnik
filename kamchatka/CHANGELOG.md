@@ -34,6 +34,9 @@ minor bump may break you.
   attribution is off without it.
 - **`Setup` has a `response_stats` field**, for `--response-stats` below, so code that builds one
   with every field spelled out must set it: `false` for what a session did before.
+- **`Message::Item` has `reasoning` and `calls` fields**, for the `--web` page's context view
+  below, so code that builds or matches one with every field spelled out must name them. On the
+  wire both are optional, and an older client skips them.
 - **`Message::Busy` has a `paused` field**, for the `continue` button below, so code that builds
   or matches one with every field spelled out must name it. On the wire it is optional: a client
   reads a session that predates it as not paused, and an older client skips it.
@@ -48,8 +51,13 @@ minor bump may break you.
   `context.reasoning_replaced`, and the tool's `undo` puts it back. Thinking recorded as ordered
   blocks, which is how Anthropic's, Gemini's and the Responses API's arrives and which the provider
   may have signed, is refused. When the session does not send reasoning back to the model, the
-  answer says that no later request will read the change. `App::revise_reasoning` makes the same
-  change for a person, under the same refusals.
+  answer says that no later request will read the change.
+- **A person can rewrite a reply's reasoning too.** <kbd>r</kbd> on the context tab opens it in
+  the prompt <kbd>e</kbd> uses, and a client sends the new `Command::ReviseReasoning`; both go
+  through `App::revise_reasoning`, under the same refusals as the model's. A served row says
+  whether its reasoning can be rewritten and whether it is sent back, in `Listed`'s new
+  `reasoning_beyond` and `reasoning_sent`, and whether the reply was recorded as ordered blocks, in
+  `ordered`. The terminal's "as stored" page says who rewrote the reasoning and why.
 - **The `--web` page has a `continue` button while a turn is paused.** A turn that stops at
   `--max-requests-per-turn` puts it to the left of the prompt, and a click sends `/continue`.
   It disappears when a turn starts, whether from the button or from a new message. A served session says
@@ -179,6 +187,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The `--web` page's context view shows the whole of a reply.** Opening an assistant turn that
+  was only tool calls showed an empty box, although the row counted it at hundreds of tokens: the
+  box held the turn's text, and its calls and reasoning are kept beside the text. A reply now shows
+  its reasoning above its text, in a box of its own that can be edited, marked when it is not sent
+  back to the model, and its calls below. A turn with no text shows no empty box. A turn recorded
+  as ordered blocks, and a file, show what the terminal's "as stored" page shows.
 - **`/limit` lines its figures up whatever the subjects are called.** The subject column had a
   fixed width, and a name longer than it, such as `context:revise_reasoning`, pushed its figure out
   of line with the rest.

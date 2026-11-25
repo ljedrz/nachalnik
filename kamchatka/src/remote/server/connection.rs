@@ -158,15 +158,29 @@ where
                         // the item's own text for a client about to edit it, and the reading for a
                         // reader. `Kernel::replace` writes content, so the reading must never come
                         // back as an edit
-                        Some(item) => Message::Item {
-                            id,
-                            body: match raw {
-                                true => item.content.to_text().into_owned(),
-                                false => text::stored(item),
-                            },
-                            raw,
-                            version: None,
-                        },
+                        Some(item) => {
+                            // the parts a reply keeps beside its text, for a client that asked
+                            // for the text and shows the rest around it
+                            let beside = raw && item.content.as_blocks().is_none();
+                            Message::Item {
+                                id,
+                                body: match raw {
+                                    true => item.content.to_text().into_owned(),
+                                    false => text::stored(item),
+                                },
+                                raw,
+                                version: None,
+                                reasoning: item
+                                    .reasoning()
+                                    .filter(|_| beside)
+                                    .map(|it| it.to_text().into_owned()),
+                                calls: item
+                                    .calls()
+                                    .filter(|_| beside)
+                                    .map(|call| format!("{}({})", call.tool, call.args))
+                                    .collect(),
+                            }
+                        }
                         None => Message::Failed {
                             about: "inspect".to_owned(),
                             error: format!("there is no item {id} in the context"),

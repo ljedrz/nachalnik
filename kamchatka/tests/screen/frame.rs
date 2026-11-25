@@ -414,6 +414,54 @@ async fn a_count_does_not_outlive_the_key_after_it() {
     assert_eq!(harness.app.kernel.items()[harness.app.selected].id.0, 12);
 }
 
+/// `r` edits a reply's reasoning in the prompt `e` uses, leaves its text alone, and is refused on
+/// an item that has no reasoning to rewrite, before the box opens.
+#[tokio::test]
+async fn r_edits_the_reasoning_of_a_reply_and_nothing_else() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(
+        ContextItem::assistant("the answer", Vec::new()).with_reasoning(Some("the thought".into())),
+    );
+    harness.app.kernel.push(ContextItem::user("a message"));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    harness.press(KeyCode::Char('r')).await;
+    assert!(harness.app.editing.is_some() && harness.app.editing_reasoning);
+    assert_eq!(harness.app.input.lines(), ["the thought"]);
+    assert!(
+        harness.screen().contains("editing the reasoning of [1]"),
+        "{}",
+        harness.screen()
+    );
+    for c in " again".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    harness.press(KeyCode::Enter).await;
+
+    let item = harness.app.kernel.items()[0].clone();
+    assert_eq!(item.reasoning().unwrap().to_text(), "the thought again");
+    assert_eq!(item.content.to_text(), "the answer");
+    assert_eq!(item.meta["reasoning_revised"]["by"], "user");
+    assert!(harness.app.editing.is_none() && !harness.app.editing_reasoning);
+
+    // and the next `e` edits the text, not the reasoning
+    harness.press(KeyCode::Char('e')).await;
+    assert!(!harness.app.editing_reasoning);
+    assert_eq!(harness.app.input.lines(), ["the answer"]);
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Esc).await;
+
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char('r')).await;
+    assert!(harness.app.editing.is_none(), "a message has no reasoning");
+    assert!(
+        harness.screen().contains("reasoning cannot be edited"),
+        "{}",
+        harness.screen()
+    );
+}
+
 #[tokio::test]
 async fn an_abandoned_edit_does_not_swallow_the_next_message() {
     let mut harness = Harness::new([ModelResponse::text("hello back")]);

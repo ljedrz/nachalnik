@@ -9,7 +9,7 @@ use ratatui_textarea::CursorMove;
 
 use super::{
     App, Focus, Overlay, Page, Search, Speaker, Tab,
-    text::{self, beyond_a_prompt, projected, stored, whole},
+    text::{self, beyond_a_prompt, projected, reasoning_beyond, stored, whole},
 };
 
 /// How many lines `pgup` and `pgdn` move an overlay.
@@ -52,6 +52,7 @@ impl App {
             KeyCode::Esc if self.editing.is_some() => {
                 self.clear_input();
                 self.editing = None;
+                self.editing_reasoning = false;
                 self.focus = Focus::Body;
             }
             // what `/stop` does there, which is the promise its help line makes: in `ready`
@@ -233,8 +234,12 @@ impl App {
             return;
         };
         self.focus = Focus::Body;
+        let revised = match std::mem::take(&mut self.editing_reasoning) {
+            true => self.revise_reasoning(id, text, "edited at the terminal"),
+            false => self.revise(id, text, "edited at the terminal"),
+        };
 
-        match self.revise(id, text, "edited at the terminal") {
+        match revised {
             Ok(true) => {}
             Ok(false) => self.say(Speaker::Note, format!("[{id}] is unchanged")),
             Err(e) => self.say(Speaker::Error, e),
@@ -338,6 +343,29 @@ impl App {
                     self.input.insert_str(picked.content.to_text());
                     self.input.move_cursor(CursorMove::End);
                     self.editing = Some(picked.id);
+                    self.editing_reasoning = false;
+                    self.focus = Focus::Input;
+                }
+            },
+            // changes what a reply thought, in the same prompt `e` uses. Emptying it and
+            // committing takes the reasoning away
+            //
+            // note: refused the way `e` is, before the box opens, and for the reasons
+            // `reasoning_beyond` gives, which are the ones the model's `revise_reasoning` is
+            // refused for
+            KeyCode::Char('r') => match reasoning_beyond(&picked) {
+                Some(why) => self.preview(
+                    format!("[{}]'s reasoning cannot be edited", picked.id),
+                    format!("{why}\n\n`enter` reads every face of it"),
+                ),
+                None => {
+                    self.clear_input();
+                    if let Some(reasoning) = picked.reasoning() {
+                        self.input.insert_str(reasoning.to_text());
+                    }
+                    self.input.move_cursor(CursorMove::End);
+                    self.editing = Some(picked.id);
+                    self.editing_reasoning = true;
                     self.focus = Focus::Input;
                 }
             },
@@ -414,17 +442,23 @@ impl App {
             },
             Page {
                 name: "as stored".into(),
-                body: match item.meta.get("revised") {
-                    // who rewrote it and why, which `context` records on the item itself; the trace
-                    // has the rest, and this is the line that sends somebody to it
-                    Some(revised) => format!(
-                        "rewritten by `{}`: {}\n\n{}",
+                // who rewrote it and why, which `context` records on the item itself; the trace
+                // has the rest, and this is the line that sends somebody to it
+                body: [
+                    ("revised", "rewritten"),
+                    ("reasoning_revised", "reasoning rewritten"),
+                ]
+                .into_iter()
+                .filter_map(|(key, what)| {
+                    let revised = item.meta.get(key)?;
+                    Some(format!(
+                        "{what} by `{}`: {}\n\n",
                         revised["by"].as_str().unwrap_or("something"),
                         revised["reason"].as_str().unwrap_or("no reason given"),
-                        stored(item)
-                    ),
-                    None => stored(item),
-                },
+                    ))
+                })
+                .chain([stored(item)])
+                .collect(),
             },
         ];
 
