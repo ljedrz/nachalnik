@@ -262,7 +262,7 @@ with allow, ask and deny for each rule.][shot-web]
 
 The **context** view shows the same rows as the context tab: what each item is, its estimated cost,
 and what the next request will do with it. Tapping a row loads the whole item, since the session
-only sends item summaries. A reply shows its reasoning above its text, dimmed and marked when it is
+only sends item summaries; a message you wrote is named by its start. A reply shows its reasoning above its text, dimmed and marked when it is
 not sent back to the model, and its tool calls below. The text and the reasoning are each in a box
 you can edit, and leaving a box you changed saves it. The button on the right of a row shows its
 state, and tapping it moves to

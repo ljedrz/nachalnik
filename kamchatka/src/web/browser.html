@@ -124,6 +124,13 @@
      squeezing the one control on the row down to nothing */
   .head { display: flex; gap: 8px; align-items: flex-start; }
   .name { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+  /* the start of a message the person wrote, on one line beside its label, cut where the state
+     button begins. The session already cut a long one, and says so with a `…`; this is the cut
+     the width of the screen makes */
+  .name.glimpsed { display: flex; white-space: nowrap; }
+  .glimpse {
+    overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: 0.5ch; color: var(--dim);
+  }
   /* the trace view's rows, in the colours the trace tab draws them in; see `traced` */
   .name.failed { color: var(--bad); }
   .name.tool { color: var(--code); }
@@ -956,6 +963,23 @@ function traced(name) {
   return null;
 }
 
+/**
+ * Sizes a context row's box to what it holds, up to the eight rows it starts at. Past that it
+ * scrolls, and it can still be dragged taller.
+ *
+ * note: measured, so a long line that wraps counts as the lines it takes. A box in a closed row is
+ * not drawn and has nothing to measure; it is fitted again when the row opens.
+ */
+function sized(box) {
+  if (!box.offsetParent) return;
+  box.style.height = "";
+  const most = box.offsetHeight;
+  box.style.height = "0px";
+  // the border, which `scrollHeight` leaves out and a border-box height counts
+  const need = box.scrollHeight + box.offsetHeight - box.clientHeight;
+  box.style.height = `${Math.min(need, most)}px`;
+}
+
 function row(into, name, figures, why) {
   const el = document.createElement("div");
   el.className = "row";
@@ -1016,6 +1040,17 @@ function draw() {
         (held ? "" : ` · ${item.going.toLocaleString()} in the next request`) +
         (item.uncounted ? ` · ${item.uncounted} unpriced` : "");
       const el = row(panel, `${item.id} ${item.label}`, figures, item.left_out ?? item.marker);
+      // which message this is, for rows that would otherwise all be called `user`
+      if (item.glimpse) {
+        const name = el.querySelector(".name");
+        name.classList.add("glimpsed");
+        name.textContent = `${item.id} ${item.label}:`;
+        const glimpse = document.createElement("span");
+        glimpse.className = "glimpse";
+        glimpse.textContent = item.glimpse;
+        glimpse.title = item.glimpse;
+        name.append(glimpse);
+      }
 
       // the state, and the way to change it. One button rather than three, because the session
       // owns the ring and what it writes beside each step - see `Command::Cycle`. What the button
@@ -1071,6 +1106,7 @@ function draw() {
         thought.classList.toggle("absent", reasoning === null);
         thought.value = reasoning ?? "";
         thought.dataset.was = reasoning ?? "";
+        sized(thought);
         calls.textContent = called.join("\n");
         calls.classList.toggle("absent", !called.length);
         // a turn that is only calls has no text, and an empty box that cannot be typed into
@@ -1104,6 +1140,7 @@ function draw() {
           wire === null &&
           (item.ordered || (!!item.beyond && item.kind !== "assistant_message"));
         body.value = "…";
+        sized(body);
         body.dataset.body = item.id;
         body.dataset.at = wire === null ? "" : String(wire);
         body.dataset.ask = reading ? "reading" : "raw";
@@ -1155,6 +1192,9 @@ function draw() {
         if (body.contains(e.target) || thought.contains(e.target)) return;
         if (el.classList.toggle("open")) opened.add(item.id);
         else opened.delete(item.id);
+        // a box filled while its row was closed could not be measured then
+        sized(body);
+        sized(thought);
         if (body.value) return;
         fill();
       };
@@ -1179,6 +1219,9 @@ function draw() {
         // standing in front of is still owed
         if (owed) draw();
       };
+      // and grows with what is typed into it, as far as the eight rows it starts at
+      body.oninput = () => sized(body);
+      thought.oninput = () => sized(thought);
       // the reasoning is committed the way the text is, and against what arrived for the same
       // reason. Emptying it takes the reasoning away, as `r` at the terminal does
       thought.onblur = () => {
@@ -1641,6 +1684,7 @@ function heard(m) {
         if (el.dataset.ask !== (m.raw ? "raw" : "reading")) continue;
         if (String(el.dataset.at ?? "") !== String(m.version ?? "")) continue;
         el.value = m.body;
+        sized(el);
         const now = m.version === null || m.version === undefined;
         // and a baseline only for the text an edit can be made of. An old version or a reading
         // is read-only, so letting go of it has nothing to compare against and nothing to send
