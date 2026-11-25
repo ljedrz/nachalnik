@@ -53,7 +53,8 @@ minor bump may break you.
   the text in it, and **sent only** keeps what the next request sends whole, as <kbd>f</kbd> does
   at the terminal.
 - **The `--web` page can stop a turn.** While a turn runs and the prompt is empty, the **send**
-  button is **stop**, and <kbd>esc</kbd> stops it too, as at the terminal; both send
+  button is **stop**, and <kbd>esc</kbd> stops it too, from the prompt or with no box in use, as
+  at the terminal; both send
   `Command::Interrupt`. Typing turns the button back into **send**, to queue a line for after the
   turn.
 - **The `--web` page says from another tab what it is waiting for.** Its title starts with `?`

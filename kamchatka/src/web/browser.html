@@ -130,7 +130,6 @@
   }
   #fonts label { display: flex; flex-direction: column; gap: 4px; }
   #fonts label.toggle { flex-direction: row; align-items: center; }
-  #fonts .heading { color: var(--dim); }
   #send.stop { border-color: var(--bad); color: var(--bad); }
   /* note: `min-height: 0` because a flex item will not shrink below its content without it, and
      the log is the one thing here that must: when the box grows to three lines the room comes out
@@ -1913,16 +1912,23 @@ function stop() {
  */
 function button() {
   const stopping = turning && !line.value.trim();
-  const send = document.getElementById("send");
-  send.textContent = stopping ? "stop" : "send";
-  send.classList.toggle("stop", stopping);
-  send.title = stopping ? "stop the turn and keep what has arrived, as esc does" : "";
+  const el = document.getElementById("send");
+  el.textContent = stopping ? "stop" : "send";
+  el.classList.toggle("stop", stopping);
+  el.title = stopping ? "stop the turn and keep what has arrived, as esc does" : "";
 }
 
-// `esc` stops a running turn wherever the keys are, as at the terminal, unless something on the
-// page has already used it
+// `esc` stops a running turn from the prompt or from nowhere in particular, as at the terminal,
+// unless something on the page has already used it.
+//
+// note: not from another box. In the filter `esc` is how a browser clears it, and at the terminal
+// `esc` in a search box closes the box rather than stopping anything; a turn ended by somebody
+// clearing a filter is a turn they did not mean to end
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !e.defaultPrevented && turning) stop();
+  if (e.key !== "Escape" || e.defaultPrevented || !turning) return;
+  const typing = e.target instanceof HTMLElement && e.target.matches("input, textarea, select");
+  if (typing && e.target !== line) return;
+  stop();
 });
 
 /** Everything the session says, one message at a time. */
