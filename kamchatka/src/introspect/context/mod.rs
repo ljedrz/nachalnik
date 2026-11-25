@@ -87,7 +87,7 @@ const CHANGES: [&str; 7] = [
 ];
 
 /// Why a call that changes something has to say why, which is the same sentence seven times.
-const WHY: &str = "why, in your own words; it is kept with the item, and the person reads it";
+const WHY: &str = "why, in your own words; the person reads it";
 
 /// What a `select` is, said where the four that take one can read it.
 ///
@@ -114,8 +114,8 @@ fn ops() -> Vec<Op> {
                 "lists the items - what each is, what it costs, whether it is going into the next \
                  request and why not if it is not. At most the {} most recent are listed, with or \
                  without a `select`; a line above the table says how many earlier ones were left \
-                 out and which range lists them. With `ids` it reads those items instead, in any \
-                 state: an elided or excluded item shows what it holds, not its marker",
+                 out and which range lists them. With `ids` it shows those items' content instead, \
+                 in any state: an elided or excluded item shows what it holds, not its marker",
                 reads::ROWS
             ),
             vec![
@@ -147,7 +147,7 @@ fn ops() -> Vec<Op> {
         Op::new(
             "budget",
             "shows what the next request will cost against the model's context limit, what the \
-             last request really cost, and which items are the expensive ones: read it before \
+             last request really cost, and which items are the expensive ones: call it before \
              deciding what to elide or exclude",
             vec![],
         ),
@@ -192,8 +192,9 @@ fn ops() -> Vec<Op> {
         &["elide", "exclude", "pin", "reset_state"],
         "changes the state of items, named with `ids` or `select`. To see which items a `select` \
          matches before changing them, call `look` with it.\n\
-         - `elide`: the item stays, but its content is replaced by a short marker. Use it on a \
-         tool result you no longer need; the tool call it answers stays in the request.\n\
+         - `elide`: the item stays in the request, but its content there is replaced by a short \
+         marker. Use it on a tool result you no longer need; the tool call it answers stays in \
+         the request.\n\
          - `exclude`: the item is left out of the request entirely; for a tool result, the \
          call that asked for it is left out too.\n\
          - `pin`: compaction will not elide or exclude the item.\n\
@@ -239,7 +240,7 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "note",
-            "writes something into your context - a plan, a conclusion, a thing not to try again. \
+            "adds a note to your context: a plan, a conclusion, a thing not to try again. \
              Your reasoning is not sent back in later requests, so a conclusion reached only \
              there is lost; a note is an item of its own that goes into every request and can be \
              pinned",
@@ -323,8 +324,9 @@ impl Tool for Context {
             "context",
             format!(
                 "your own context: what is in it, what it costs, and what goes into the next \
-                 request. The `action` `look`, `budget`, `request` or `search` reads it; \
-                 `elide`, `exclude`, `pin`, `reset_state`, `revise`, `note` or `undo` changes it.\n\
+                 request. The `action` is one of `look`, `budget`, `request` or `search`, which \
+                 read it, or `elide`, `exclude`, `pin`, `reset_state`, `revise`, `note` or \
+                 `undo`, which change it.\n\
                  Your context is a numbered list of items: the person's messages, your replies, \
                  tool results, notes, attached files and summaries. Each item has a state: \
                  `active`, `elided`, `excluded` or `pinned`. Nothing is deleted: an item keeps \
@@ -335,12 +337,12 @@ impl Tool for Context {
                  - `17`: item 17; `10-15`: items 10 to 15, both included; `all`: every item\n\
                  - `tool:<name>`: every result of that tool; `tool:<name>:latest`: only its most \
                  recent result\n\
-                 - `kind:<kind>`: `system`, `user_message`, `assistant_message` (your replies), \
-                 `tool_result`, `reference` (notes, attached files and summaries)\n\
+                 - `kind:<kind>`, what the item is: `system`, `user_message`, `assistant_message` \
+                 (your replies), `tool_result`, `reference` (notes, attached files and summaries)\n\
                  - `state:<state>`: `active`, `elided`, `excluded`, `pinned`\n\
-                 - `source:<name>`: `user` (the person's messages), `model` (your replies), \
-                 `tool_result`, `file` (attached with \
-                 `/attach`), `memory` (the person's `/note`), `agent` (your notes), `compaction` \
+                 - `source:<name>`, where the item came from: `user` (the person's messages), \
+                 `model` (your replies), `tool_result`, `file` (a file the person attached), \
+                 `memory` (a note the person wrote), `agent` (your notes), `compaction` \
                  (summaries)\n\
                  - `file:<path>`: the attached file with that path\n\
                  - `label:<text>`: items whose label, as `look` shows it, is exactly that text\n\

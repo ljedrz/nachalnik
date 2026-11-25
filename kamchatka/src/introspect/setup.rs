@@ -93,7 +93,7 @@ impl Tool for Setup {
             "setup",
             format!(
                 "reads what you are running with, which you cannot otherwise find out, and \
-                 changes nothing. One `action` per call:\n\
+                 changes nothing. The `action` is one of:\n\
                  - `model`: which model you are, what parameters it is being sent, how much \
                  context it has, and whether this conversation was resumed from a snapshot. That \
                  matters, because a resumed context can hold somebody else's earlier turns and \

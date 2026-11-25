@@ -120,11 +120,7 @@ fn ops() -> Vec<Op> {
             "write",
             "writes a whole file, replacing whatever was there",
             vec![
-                Arg::text(
-                    "path",
-                    "the file to write, made with any directory it needs",
-                )
-                .needed(),
+                Arg::text("path", "the file to write; missing directories are created").needed(),
                 Arg::text("content", "the whole new file").needed(),
             ],
         ),
@@ -232,7 +228,7 @@ impl Tool for Fs {
         ToolSpec::new(
             "fs",
             format!(
-                "the filesystem. The `action` is one of `read`, `glob`, `grep`, `write` and \
+                "the filesystem. The `action` is one of `read`, `glob`, `grep`, `write` or \
                  `edit`. The working directory is {}. Every `path` is {PATH_ARG}. `glob` and \
                  `grep` walk a directory themselves rather than running `find` or `grep`. They \
                  skip what `.gitignore` names and the `.git` directory without mentioning either, \
