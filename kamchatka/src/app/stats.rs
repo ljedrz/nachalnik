@@ -180,4 +180,33 @@ mod tests {
 
         assert!(!said.contains("a second"), "{said}");
     }
+
+    /// A count the endpoint left out or gave as zero is said as no more than it is: one side of
+    /// the counts is still counts, and no thinking, cache or output is no share or rate of them.
+    #[test]
+    fn a_count_left_out_or_zero_is_said_as_no_more_than_it_is() {
+        let said = stats(
+            Some(Usage {
+                output_tokens: Some(40),
+                ..Default::default()
+            }),
+            Duration::from_millis(1_000),
+            None,
+        );
+        assert_eq!(said, "this response took 1.0s; 40 out");
+
+        let said = stats(
+            Some(Usage {
+                reasoning_tokens: Some(0),
+                cached_input_tokens: Some(0),
+                ..usage(500, 0)
+            }),
+            Duration::from_millis(2_000),
+            Some((Duration::from_millis(500), Duration::from_millis(1_500))),
+        );
+        assert_eq!(
+            said,
+            "this response took 2.0s, the first of it after 0.5s; 0 out; 500 in"
+        );
+    }
 }
