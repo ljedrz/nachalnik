@@ -404,6 +404,55 @@ mod tests {
         assert_eq!(usage.input_tokens, Some(20));
         // and the looks are not requests for an answer
         assert_eq!(provider.attempts(), 1);
+        // the wait was said, as the batch's state when it was last looked at
+        let notice = crate::Endpoint::take_notice(&*provider).expect("the wait was said");
+        assert!(notice.contains("`b1`, which is in_progress"), "{notice}");
+    }
+
+    /// The answer's own usage is what it cost; the batch's stands in only where it has none.
+    #[tokio::test]
+    async fn an_answer_that_says_what_it_cost_is_taken_at_its_word() {
+        let mut answer = completed("answered");
+        answer["results"][0]["response"]["body"]["usage"] =
+            json!({ "prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14 });
+        let (at, _) = batch_api(vec![(200, answer)]).await;
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(batching(at));
+        kernel.push(ContextItem::user("go"));
+
+        kernel.step().await.expect("the batch was answered");
+
+        let usage = kernel
+            .last_response()
+            .and_then(|r| r.usage)
+            .expect("a cost");
+        assert_eq!(usage.input_tokens, Some(11));
+    }
+
+    /// A look refused after one has seen the batch is the answer, not the moment after it was
+    /// accepted, and is said as an error naming the batch rather than looked past.
+    #[tokio::test]
+    async fn a_batch_refused_after_it_was_seen_is_an_error() {
+        let (at, _) = batch_api(vec![
+            (200, json!({ "id": "b1", "status": "in_progress" })),
+            (
+                404,
+                json!({ "error": { "code": 404, "message": "Batch job b1 not found." } }),
+            ),
+        ])
+        .await;
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(batching(at));
+        kernel.push(ContextItem::user("go"));
+
+        // note: bounded, since a refusal looked past is looked at again for as long as the
+        // server answers
+        let failed = tokio::time::timeout(Duration::from_secs(10), kernel.step())
+            .await
+            .expect("a refusal after the batch was seen ends the wait")
+            .expect_err("a refused look is no answer");
+
+        assert!(failed.to_string().contains("batch `b1`"), "{failed}");
     }
 
     /// A batch that fails says which batch and why, rather than being taken for an answer.
