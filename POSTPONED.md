@@ -9,6 +9,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
 
 ---
 
+- **An `/endpoint` in a session with no model is not in the record.** `adopt_the_only_model`
+  tells the kernel the provider changed when it moved and found no model to take, as `/endpoint`
+  tells it after any move, so that the record says where the session went. But that path is only
+  taken where the kernel has no model, so it has never held a provider, and `provider_changed`
+  then finds nothing announced and nothing to announce: the call does nothing, and a session
+  resumed from such a record cannot say where it was pointed. It waits on choosing between
+  recording the move some other way and taking the call out as the no-op it is.
+
 - **The list of variables the shell removes can't be changed.** The `shell` tool removes
   kamchatka's own API keys (`endpoint::KEYS`) and any base URL with a `user:password@` in it.
   Nobody can add to that list, for example to hide `GH_TOKEN` or cloud credentials from the
