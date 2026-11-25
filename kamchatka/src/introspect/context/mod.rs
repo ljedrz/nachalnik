@@ -303,8 +303,8 @@ fn ops() -> Vec<Op> {
             "takes back your most recent change that has not been undone yet. One change is one \
              earlier `context` call, however many items it changed, including a call made earlier \
              in this same reply; call `undo` again to take back the one before. Undoing a `note` \
-             excludes it; undoing a `revise` puts back the item's contents as they were before \
-             that revision. Items somebody else changed since are left as they are. Only your 16 \
+             excludes it; undoing a `revise` or `revise_reasoning` puts back what that revision \
+             replaced. Items somebody else changed since are left as they are. Only your 16 \
              most recent changes can be undone. An older state change can still be reversed with \
              `reset_state`.",
             vec![Arg::text("reason", WHY).needed()],

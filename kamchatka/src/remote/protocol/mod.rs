@@ -876,9 +876,11 @@ pub struct Listed {
     /// decides - a row is a moment old by the time anybody acts on it - but a client that only
     /// learns from the refusal takes an edit it was never going to keep.
     pub beyond: Option<String>,
-    /// Why this one's reasoning cannot be rewritten, where it cannot be; see [`Listed::beyond`].
+    /// Why this reply's reasoning cannot be rewritten, where it cannot be; see [`Listed::beyond`].
     ///
-    /// note: `Some` for every item that is not a reply, which has no reasoning to rewrite.
+    /// note: `None` for anything that is not a reply as well, which has no reasoning to rewrite
+    /// and is refused if asked to. Saying so on every such row would send the same sentence once
+    /// per message and result with every projection.
     pub reasoning_beyond: Option<String>,
     /// Whether the next request carries this reply's reasoning; `None` where that cannot be told,
     /// and for anything without reasoning to carry.
@@ -925,7 +927,10 @@ impl Listed {
             marker: going.marker.get(&item.id).cloned(),
             versions,
             beyond: crate::app::text::beyond_a_prompt(item).map(str::to_owned),
-            reasoning_beyond: crate::app::text::reasoning_beyond(item).map(str::to_owned),
+            reasoning_beyond: matches!(item.kind, nachalnik::ContextKind::AssistantMessage { .. })
+                .then(|| crate::app::text::reasoning_beyond(item))
+                .flatten()
+                .map(str::to_owned),
             reasoning_sent: item.reasoning().and_then(|_| going.sends_reasoning(item)),
             ordered: matches!(item.kind, nachalnik::ContextKind::AssistantMessage { .. })
                 && item.content.as_blocks().is_some(),

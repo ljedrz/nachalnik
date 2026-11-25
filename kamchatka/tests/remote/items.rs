@@ -273,10 +273,8 @@ async fn a_replys_reasoning_arrives_beside_its_text_and_is_rewritten_on_its_own(
 
     let (mut peer, attached) = Peer::attached(&session.at).await;
     let (user, reply, ordered) = (&attached.items[0], &attached.items[1], &attached.items[2]);
-    assert!(
-        user.reasoning_beyond.is_some(),
-        "a message has no reasoning"
-    );
+    // a message has no reasoning, and its row does not spend a sentence saying so
+    assert!(user.reasoning_beyond.is_none());
     assert_eq!(
         reply.reasoning_beyond, None,
         "this reasoning can be rewritten"
