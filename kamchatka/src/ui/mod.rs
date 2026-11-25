@@ -605,7 +605,10 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     // that leaves the model out reads as a corner that has not caught up yet. The address is
     // still shown: it is settled, and it is what `/models` is about to list
     match app.kernel.model_info() {
-        Some(info) => add(format!("{} @ {}", info.model, app.provider.host()), dim),
+        Some(info) => add(
+            format!("{} @ {}", file_model(&info.model), app.provider.host()),
+            dim,
+        ),
         None => add(
             format!("no model @ {}", app.provider.host()),
             Style::default().fg(Color::Yellow),
@@ -698,6 +701,49 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     };
 
     frame.render_widget(Paragraph::new(line), area);
+}
+
+/// A model's name as the status line shows it: a name that is a path to a model file on the
+/// serving machine, which is what llama-server and vLLM report for a model they loaded from one,
+/// shortened to the file's name without `.gguf` and without the part number of a split file.
+/// Any other name is returned as it is.
+///
+/// note: only a name that ends in `.gguf` or starts the way a path does. `vendor/model` is how
+/// OpenRouter and Hugging Face name models, and the vendor is worth showing there. The full name is
+/// still what `/model` shows and what the record keeps.
+fn file_model(model: &str) -> &str {
+    let gguf = model
+        .len()
+        .checked_sub(".gguf".len())
+        .and_then(|start| model.get(start..))
+        .is_some_and(|end| end.eq_ignore_ascii_case(".gguf"));
+    // `C:\` as well, for a server on Windows
+    let path = model.starts_with(['/', '~', '.'])
+        || matches!(model.as_bytes(), [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic());
+    if !gguf && !path {
+        return model;
+    }
+
+    let trimmed = model.trim_end_matches(['/', '\\']);
+    let file = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
+    let stem = match gguf {
+        true => &file[..file.len() - ".gguf".len()],
+        false => file,
+    };
+    // llama.cpp names the parts of a split model `name-00001-of-00003.gguf`
+    let stem = split_part(stem).unwrap_or(stem);
+    match stem.is_empty() {
+        true => model,
+        false => stem,
+    }
+}
+
+/// `name` out of `name-00001-of-00003`, the way llama.cpp numbers the parts of a split model.
+fn split_part(stem: &str) -> Option<&str> {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let (head, total) = stem.rsplit_once("-of-")?;
+    let (name, part) = head.rsplit_once('-')?;
+    (digits(total) && digits(part) && !name.is_empty()).then_some(name)
 }
 
 /// The least of an address worth showing. Below this it goes entirely: `gen…` names nothing, and
@@ -817,5 +863,36 @@ fn state_name(kernel: &Kernel) -> &'static str {
         State::Deciding { .. } => "waiting on you",
         State::Finished { .. } => "done",
         _ => "?",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A model loaded from a file is shown by the file's name; a name that only looks like it has a
+    /// path in it, the way OpenRouter and Hugging Face name models, keeps its vendor.
+    #[test]
+    fn a_model_file_is_shown_by_its_name() {
+        for (name, shown) in [
+            ("/home/user/Model.gguf", "Model"),
+            ("/models/Qwen3-8B-Q4_K_M.GGUF", "Qwen3-8B-Q4_K_M"),
+            ("models/Model.gguf", "Model"),
+            ("Model.gguf", "Model"),
+            ("./Model.gguf", "Model"),
+            ("~/models/Model.gguf", "Model"),
+            (r"C:\models\Model.gguf", "Model"),
+            ("/models/Big-00001-of-00003.gguf", "Big"),
+            // a model vLLM loaded from a directory
+            ("/models/Qwen3-8B/", "Qwen3-8B"),
+            ("vendor/model", "vendor/model"),
+            ("ggml-org/Clef-Flash-GGUF", "ggml-org/Clef-Flash-GGUF"),
+            ("qwen3:8b", "qwen3:8b"),
+            ("parts-of-it", "parts-of-it"),
+            ("/", "/"),
+            (".gguf", ".gguf"),
+        ] {
+            assert_eq!(file_model(name), shown, "{name}");
+        }
     }
 }

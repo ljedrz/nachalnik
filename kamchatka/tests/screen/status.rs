@@ -455,6 +455,28 @@ async fn the_status_line_says_where_the_requests_go() {
     );
 }
 
+/// A model a local server loaded from a file is named in the status line by the file's name, since
+/// the directory it is in and the `.gguf` take room from the figures and tell nobody which model it
+/// is. `/model` still says the whole name.
+#[tokio::test]
+async fn the_status_line_names_a_model_file_by_its_name() {
+    let provider = OpenAiCompatible::new("/home/user/models/Model.gguf", "http://127.0.0.1:1", "");
+    let mut harness = Harness::served_by([], Arc::new(provider));
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("· Model @ 127.0.0.1:1"),
+        "the status line does not name the file: {screen}"
+    );
+
+    harness.send("/model").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("/home/user/models/Model.gguf"),
+        "`/model` does not say the whole name: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn a_session_that_is_working_says_so_with_something_that_moves() {
     let mut harness = Harness::new([]);

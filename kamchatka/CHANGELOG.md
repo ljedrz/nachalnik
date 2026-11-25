@@ -83,6 +83,11 @@ minor bump may break you.
 
 ### changed
 
+- **A model loaded from a file is named by the file's name** in the status line and in the web
+  page's header. llama-server and vLLM report such a model by its path, so
+  `/home/user/models/Model.gguf` is shown as `Model`, without the directory, the `.gguf` or the
+  part number of a split file. `/model` still shows the whole name, and so does hovering over it
+  in the web page.
 - **The `context` tool's description is shorter.** The four state changes are described as a list,
   and the selector grammar leaves out the `all:<name>` spelling and the rule for labels that look
   like selectors; both still work. The tool's answers say "change" where they said "move".

@@ -1674,9 +1674,30 @@ function happened(e) {
   }
 }
 
-/** What the session is talking to, in the corner where it says so. */
+/**
+ * What the session is talking to, in the corner where it says so. A name that is a path to a model
+ * file is shown as the file's name, as the terminal's status line shows it, and the whole name is
+ * kept for hovering.
+ */
 function named(model) {
-  document.getElementById("model").textContent = model ? model.model : "no model";
+  const corner = document.getElementById("model");
+  corner.textContent = model ? fileModel(model.model) : "no model";
+  corner.title = model ? model.model : "";
+}
+
+/**
+ * A model's name without the path and the `.gguf` that llama-server and vLLM put in it when they
+ * loaded the model from a file, and without the part number of a split file. Any other name is
+ * returned as it is. See `file_model` in `ui/mod.rs`, which this matches.
+ */
+function fileModel(name) {
+  const gguf = /\.gguf$/i.test(name);
+  const path = /^([\/~.]|[a-z]:[\/\\])/i.test(name);
+  if (!gguf && !path) return name;
+  let stem = name.replace(/[\/\\]+$/, "").split(/[\/\\]/).pop();
+  if (gguf) stem = stem.slice(0, -".gguf".length);
+  stem = stem.replace(/^(.+)-\d+-of-\d+$/, "$1");
+  return stem || name;
 }
 
 // note: the session's own figure, which is the terminal's status line's - anchored on what the
