@@ -382,7 +382,7 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
   file:src/parser.rs      the file attached by that path; one read with a tool is
                           that tool's result, as below
   tool:fs                 every result the `fs` tool produced
-  tool:fs:latest          the most recent one; also: tool:fs:first
+  tool:fs:latest          the most recent one
   tool_result:1842        the item numbered 1842, the same as `1842`
   label:cargo test        every item with exactly that label
   src/parser.rs           anything else is taken as a label";

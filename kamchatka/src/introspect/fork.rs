@@ -57,8 +57,8 @@ fn ops() -> Vec<Op> {
                 Arg::list(
                     "without",
                     "integer",
-                    "items the copy does not get to see, by number. Taking one away is what makes \
-                     this an experiment rather than the same context answering twice",
+                    "item numbers the copy does not see. Use it to test whether those items \
+                     change the answer",
                 ),
             ],
         ),
@@ -118,12 +118,12 @@ impl Tool for Fork {
                  request. The copy has your system instructions and your items but no tools: it \
                  can think, not act, and it answers once. Its answer comes back to you alone, \
                  followed by its reasoning where it produced any, to use or drop; nothing it does \
-                 reaches your context. A fork sees your context as it stood when your turn asked \
-                 for it, so forks asked in one turn do not see one another's answers or the \
-                 results of your other calls in that turn. A `context` call in the same turn that \
-                 adds or rewrites an item, such as a `note`, does reach the forks asked after it; \
-                 when that leaves two forks with different contexts, the later fork's answer names \
-                 the items the earlier one did not have.{}",
+                 reaches your context. A fork sees your context as it was when you made the \
+                 call. Forks called in the same reply do not see each other's answers, or the \
+                 results of your other calls in that reply. The one exception: a `context` call \
+                 earlier in the same reply that adds or rewrites an item, such as a `note`. Forks \
+                 called after it see that item, and their answer lists the items an earlier fork \
+                 in that reply did not have.{}",
                 shape(
                     Layout::of(&self.schema),
                     r#"{"action": "ask", "question": "is the bug in the parser?", "without": [12]}"#

@@ -56,9 +56,9 @@ fn ops() -> Vec<Op> {
     vec![
         Op::new(
             "read",
-            "reads a text file, or some of its lines. A read that would pass the output limit \
-             stops before the line that does not fit and says which line to go on `from`; a \
-             `from` past the end, or a file that is not UTF-8 text, is refused with the reason",
+            "reads a text file, or some of its lines. If the output would pass the limit, it \
+             stops early and says which line number to pass as `from` to continue; a `from` past \
+             the end, or a file that is not UTF-8 text, is refused with the reason",
             vec![
                 Arg::text("path", "the file to read").needed(),
                 Arg::whole(
@@ -78,7 +78,7 @@ fn ops() -> Vec<Op> {
              file you wanted",
             vec![
                 Arg::text("pattern", GLOB_ARG).needed(),
-                Arg::text("path", WHERE),
+                Arg::text("path", WHERE_GLOB),
             ],
         ),
         Op::new(
@@ -91,7 +91,7 @@ fn ops() -> Vec<Op> {
                      It has no look-around; escape anything you mean literally: `Vec<u8>\\(`",
                 )
                 .needed(),
-                Arg::text("path", WHERE),
+                Arg::text("path", WHERE_GREP),
                 Arg::text(
                     "glob",
                     "search only the files whose path matches this glob pattern, written and \
@@ -146,8 +146,15 @@ fn ops() -> Vec<Op> {
 }
 
 /// What `glob` and `grep` say about the path they are pointed at, which is the same thing twice.
-const WHERE: &str = "where to look - one file, which counts only if it matches, or a directory \
-                     and everything under it; the working directory if left out";
+/// Where `glob` looks.
+const WHERE_GLOB: &str = "one file, listed only if it matches `pattern`, or a directory whose \
+                          files at any depth are listed if they match; the working directory if \
+                          left out";
+
+/// Where `grep` looks.
+const WHERE_GREP: &str = "a file to search, or a directory to search everything under; the \
+                          working directory if left out. With `glob`, a file that does not match \
+                          it is skipped, even one named here";
 
 /// Everything a session may do to a file, as one tool.
 pub(super) struct Fs {

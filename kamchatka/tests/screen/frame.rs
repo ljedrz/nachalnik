@@ -362,7 +362,6 @@ async fn the_help_lists_the_keys_that_exist() {
         "kind:assistant_message",
         "state:excluded",
         "tool:grep",
-        "tool:grep:first",
         "tool:grep:latest",
         "source:mcp",
         "file:src/x.rs",

@@ -621,10 +621,11 @@ pub(crate) fn whole(content: &Content) -> String {
 pub(crate) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
     if item.content.as_blob().is_some() {
         return Some(
-            "This item is a picture, and editing changes what an item says.\n\nThere is no text \
-             here to put back. What an editor opens holding is the line that stands in for a \
-             picture on a screen - `[image/png, 12.05kB]` - and committing it would write that \
-             sentence over the picture itself.",
+            "This item is a file that is not text, such as a picture or a PDF, and editing \
+             changes what an item says.\n\nThere is no text here to put back. What an editor \
+             opens holding is the line that stands in for the file on a screen - \
+             `[image/png, 12.05kB]` - and committing it would write that sentence over the file \
+             itself.",
         );
     }
     if item.content.as_blocks().is_some() {

@@ -150,7 +150,6 @@ fn selectors_resolve_against_real_items() {
     assert_eq!(select(&kernel, "source:helix"), vec![ext]);
     assert_eq!(select(&kernel, "tool:grep"), vec![first, second]);
     assert_eq!(select(&kernel, "tool:grep:latest"), vec![second]);
-    assert_eq!(select(&kernel, "tool:grep:first"), vec![first]);
     assert_eq!(
         select(&kernel, "all:tool_results"),
         vec![first, second, other]
