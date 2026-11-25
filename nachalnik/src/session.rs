@@ -5,9 +5,10 @@
 //! [`Snapshot`] says what there is now, which is what resuming needs. The log names items rather
 //! than copying them, so it cannot rebuild a context.
 //!
-//! note: one standing exception: [`Event::ContextReplaced`] carries the text an item used to hold,
-//! because a replacement is the only operation that overwrites content, and once out of the undo
-//! window that text is in no snapshot or other record. [`Config::record_payloads`] (the rendered
+//! note: two standing exceptions: [`Event::ContextReplaced`] carries the text an item used to hold,
+//! and [`Event::ReasoningReplaced`] the reasoning a turn used to hold, because a replacement
+//! overwrites content, and once out of the undo window the old content is in no snapshot or other
+//! record. [`Config::record_payloads`] (the rendered
 //! request) and [`Config::record_progress`] (streaming fragments) add more on request; both are off
 //! by default, so unasked a log holds names plus what overwrites took.
 
@@ -185,8 +186,9 @@ impl Session {
 /// than carry them, which keeps it small enough to keep forever. Persist both: the snapshot to
 /// resume from, the log to answer how it got like this.
 ///
-/// note: a snapshot plus every [`Event::ContextReplaced`] since it was taken can wind an item back
-/// through its overwrites, which neither can alone; see the module note.
+/// note: a snapshot plus every [`Event::ContextReplaced`] and [`Event::ReasoningReplaced`] since it
+/// was taken can wind an item back through its overwrites, which neither can alone; see the module
+/// note.
 ///
 /// note: nothing transient is here. A resumed kernel starts [`State::Idle`](crate::State) with
 /// nothing pending, since a permission nobody is there to answer is not worth restoring; a tool

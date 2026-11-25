@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::{
     compaction::{Budget, CompactionPlan, CompactionReport, ReportItem},
-    context::{Context, ContextId, ContextItem, ContextState},
+    context::{Context, ContextId, ContextItem, ContextKind, ContextState},
     error::{Error, Result},
     event::Event,
     model::{Content, ModelRequest, ToolCallId},
@@ -254,6 +254,48 @@ impl Kernel {
         match context.replace(id, content, counter) {
             Some((was, tokens_before, tokens_after)) => {
                 self.emit(Event::ContextReplaced {
+                    id,
+                    tokens_before,
+                    tokens_after,
+                    was,
+                });
+                Ok(())
+            }
+            None => Err(Error::UnknownItem(id)),
+        }
+    }
+
+    /// Replaces the reasoning an assistant turn keeps beside its content, keeping its identifier.
+    /// `None` takes the reasoning away; a turn that had none can be given some.
+    ///
+    /// note: the slot [`ContextItem::reasoning`] reads and nothing else. A turn recorded as ordered
+    /// blocks keeps its thinking in its content, where [`Kernel::replace`] reaches it.
+    ///
+    /// note: the kernel does not look inside what it overwrites, here or anywhere. Some providers
+    /// sign or encrypt a turn's thinking and refuse a request that sends it back altered; whether
+    /// that is true of a given turn is the caller's to know, as it is for [`Kernel::replace`].
+    ///
+    /// note: replacing the reasoning with what it already is changes nothing, so nothing is
+    /// announced and no checkpoint is taken, as with [`Kernel::replace`].
+    pub fn replace_reasoning(&self, id: ContextId, reasoning: Option<Content>) -> Result<()> {
+        let held = self.0.counter.read();
+        let counter = &**held;
+        let mut context = self.0.context.write();
+        // an operation that is about to fail does not get a checkpoint
+        let Some(item) = context.item(id) else {
+            return Err(Error::UnknownItem(id));
+        };
+        let ContextKind::AssistantMessage { reasoning: now, .. } = &item.kind else {
+            return Err(Error::NotATurn(id));
+        };
+        if *now == reasoning {
+            return Ok(());
+        }
+        context.checkpoint();
+
+        match context.replace_reasoning(id, reasoning, counter) {
+            Some((was, tokens_before, tokens_after)) => {
+                self.emit(Event::ReasoningReplaced {
                     id,
                     tokens_before,
                     tokens_after,

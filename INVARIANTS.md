@@ -26,8 +26,8 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   so they are in the same order as each other and as the changes themselves. No logging that the
   user can't see.
 - **The log refers to things, it doesn't copy them.** `model.requested` records context ids, not
-  messages. `context.replaced` is the only event that carries content, because overwritten text
-  can't be recovered any other way. The rendered request (`model.payload`) and streamed fragments
+  messages. `context.replaced` and `context.reasoning_replaced` are the only events that carry
+  content, because overwritten text can't be recovered any other way. The rendered request (`model.payload`) and streamed fragments
   are only kept if `Config::record_payloads` and `Config::record_progress` are set. Item metadata is
   copied too (into `context.added`, and the replaced metadata into `context.annotated`), because
   compactors make decisions based on it and nothing else keeps the old value.

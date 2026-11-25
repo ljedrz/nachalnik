@@ -157,17 +157,34 @@ pub enum Event {
         tokens_after: usize,
         /// What it said before.
         ///
-        /// note: the only event that carries content unasked; [`Config::record_payloads`] and
-        /// [`Config::record_progress`] ask for more. A [`Event::ContextAdded`] needs none, because
-        /// the item is still in the context and in any [`Snapshot`](crate::Snapshot). A replacement
-        /// is the only operation that overwrites content, and without this the old text would be
-        /// gone once it left the undo window.
+        /// note: with [`Event::ReasoningReplaced`], the only event that carries content unasked;
+        /// [`Config::record_payloads`] and [`Config::record_progress`] ask for more. A
+        /// [`Event::ContextAdded`] needs none, because the item is still in the context and in any
+        /// [`Snapshot`](crate::Snapshot). A replacement overwrites content, and without this the old
+        /// text would be gone once it left the undo window.
         ///
         /// note: this is also what keeps [`Event::ModelRequested`] accurate: it names the items a
         /// request was built from rather than copying them, which only works if what it names
         /// cannot change unrecorded. With this, a snapshot and the log can be wound back to
         /// reconstruct exactly what any past request contained.
         was: Content,
+    },
+    /// The reasoning an assistant turn keeps beside its content was replaced in place.
+    ///
+    /// note: an event of its own rather than a field on [`Event::ContextReplaced`], whose `was` is
+    /// the content and could not say which of the two was overwritten. It carries what it
+    /// overwrote for the same reason that one does: nothing else keeps it once it leaves the undo
+    /// window.
+    #[serde(rename = "context.reasoning_replaced")]
+    ReasoningReplaced {
+        /// The item's identifier.
+        id: ContextId,
+        /// Its estimated size before.
+        tokens_before: usize,
+        /// Its estimated size after.
+        tokens_after: usize,
+        /// The reasoning it had before; `None` if it had none.
+        was: Option<Content>,
     },
     /// A context change was undone.
     ///
@@ -588,6 +605,7 @@ impl Event {
             Self::ContextAdded { .. } => "context.added",
             Self::ContextChanged { .. } => "context.changed",
             Self::ContextReplaced { .. } => "context.replaced",
+            Self::ReasoningReplaced { .. } => "context.reasoning_replaced",
             Self::ContextUndone { .. } => "context.undone",
             Self::ContextRedone { .. } => "context.redone",
             Self::ContextAnnotated { .. } => "context.annotated",
