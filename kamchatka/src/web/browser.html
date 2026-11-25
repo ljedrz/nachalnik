@@ -332,7 +332,8 @@ const resume = document.getElementById("continue");
 
 let asking = [];        // the questions waiting on somebody, oldest first
 let reaching = [];      // the running commands waiting to hear whether they may reach the network
-let open = null;        // the bubble a model is still writing into
+let open = null;        // the bubble a model is still writing into: its answer or its thinking
+let answer = null;      // the last bubble of the answer itself, which the item is put on
 let streaming = false;  // whether the fragments arriving still belong to anything
 let wanted = new Set(); // items already asked about, so nothing is asked about twice
 let pending = [];       // lines this page drew on sending, not yet tied to an item
@@ -419,7 +420,7 @@ function conversation(lines) {
   wanted.clear();
   pending = [];
   mine.clear();
-  open = null;
+  open = answer = null;
   for (const l of lines) {
     const el = say(l.speaker, l.text, l.item ?? undefined);
     if (l.clipped != null) clipped(el, l);
@@ -562,8 +563,11 @@ function grown(el) {
   el.owed = true;
   requestAnimationFrame(() => {
     el.owed = false;
+    // note: the same question `say` asks. A model can think for minutes, and a page that went to
+    // the bottom on every frame of it kept pulling back somebody who had scrolled up to read
+    const stuck = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
     fill(el, el.raw);
-    log.scrollTop = log.scrollHeight;
+    if (stuck) log.scrollTop = log.scrollHeight;
   });
 }
 
@@ -1396,9 +1400,19 @@ function heard(m) {
       // since, and show one answer twice, or in two pieces with a message typed in between them.
       // The terminal drops the same fragments under the name `Entry::transient`: once the item
       // exists, the item is what says what was said
-      if (m.event.event === "model.delta" && m.event.delta.text !== undefined && streaming) {
-        if (!open) open = say("model", "");
-        open.raw += m.event.delta.text;
+      //
+      // note: thinking as well as the answer, each in a line of its own, drawn the way the
+      // projection draws them. With only the answer streamed, a model thinking for a minute showed
+      // nothing but the dot, which looks the same as a model that has stopped - and a model going
+      // round in circles in its thinking could not be seen doing it until the turn was over
+      if (m.event.event === "model.delta" && streaming) {
+        const delta = m.event.delta;
+        const kind = delta.text !== undefined ? "model" : delta.reasoning !== undefined ? "reasoning" : null;
+        if (!kind) break;
+        // a change from thinking to answering, or back, starts a new line, as the item has them
+        if (!open || !open.classList.contains(kind)) open = say(kind, "");
+        if (kind === "model") answer = open;
+        open.raw += delta.text ?? delta.reasoning;
         grown(open);
       }
       break;
@@ -1537,7 +1551,7 @@ function happened(e) {
       if (e.kind === "user_message" && !claim(e.id)) inspect(e.id, "user");
       break;
     // a request is on its way, so whatever arrives next belongs to it and nothing before it does
-    case "model.requested": open = null; streaming = true; break;
+    case "model.requested": open = answer = null; streaming = true; break;
     case "tool.requested": say("call", `${e.tool}(${JSON.stringify(e.args)})`); break;
     case "tool.finished":
       say("result", `${e.tool}: ${e.tokens} tokens${e.is_error ? ", an error" : ""}`);
@@ -1566,7 +1580,11 @@ function happened(e) {
       // the fragments are what the provider sent, byte for byte, so an answer that began with two
       // blank lines would begin with two blank lines, where the context trims them
       streaming = false;
-      if (open) { open.dataset.item = e.item; open = null; }
+      // the answer's line only, even where the thinking came last: an `item` answer fills every
+      // line carrying the item with the answer, and a line of thinking filled with it would say
+      // the answer twice
+      if (answer) answer.dataset.item = e.item;
+      open = answer = null;
       restale();
       break;
     }

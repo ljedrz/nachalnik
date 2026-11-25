@@ -122,6 +122,13 @@ minor bump may break you.
 
 ### fixed
 
+- **The `--web` page streams the model's thinking.** It used to stream only the answer, so while a
+  model was thinking the page showed nothing but the dot in the corner until the response was
+  done. That looked like a model that had stopped, and a model repeating itself in its thinking
+  could not be seen until the turn ended. Thinking now arrives as it is generated, in the dim
+  italic line the finished turn draws it in. The page also no longer scrolls to the bottom on
+  every fragment when you have scrolled up to read.
+
 - **A tool result on the chat tab is cut by length as well as by lines.** Each of the six lines
   kept is cut at 240 characters, with a `…`. An MCP server's result is JSON on one line, and a web
   search's filled the screen under a limit that only counted lines. A JSON result is no longer
