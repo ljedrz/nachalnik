@@ -883,6 +883,10 @@ mod tests {
             ("~/models/Model.gguf", "Model"),
             (r"C:\models\Model.gguf", "Model"),
             ("/models/Big-00001-of-00003.gguf", "Big"),
+            // a part number has digits in it, and so does a count of parts
+            ("/models/Big--of-00003.gguf", "Big--of-00003"),
+            ("/models/Big-00001-of-.gguf", "Big-00001-of-"),
+            ("/models/Big-one-of-two.gguf", "Big-one-of-two"),
             // a model vLLM loaded from a directory
             ("/models/Qwen3-8B/", "Qwen3-8B"),
             ("vendor/model", "vendor/model"),
