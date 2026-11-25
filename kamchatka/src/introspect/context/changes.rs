@@ -24,7 +24,7 @@ use crate::{
 
 use super::{CHANGES, Pinned};
 
-/// How many of its own changes one call may walk back or forward.
+/// How many of its own changes one call may walk back.
 ///
 /// note: a bound because `undo` loops over a journal and "all of it" is a big number. Stated in the
 /// schema, and anything above it refused rather than clamped: clamped, a call for a hundred would
@@ -81,11 +81,13 @@ impl Changes {
 /// `undo`'s description in `context/mod.rs` gives the number.
 const DEPTH: usize = 16;
 
-/// What [`Changes`] has made, and what it has walked back.
+/// What [`Changes`] has made and not yet walked back.
+///
+/// note: a snapshot written while `context` still had `redo` also carries an `undone` list beside
+/// this one. It is ignored on reading: there is no operation left to walk it.
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct Journal {
     done: Vec<Entry>,
-    undone: Vec<Entry>,
     /// Whether this was read back out of a snapshot, rather than started empty.
     #[serde(skip)]
     pub(crate) carried: bool,
@@ -99,7 +101,7 @@ impl Journal {
     /// still holding the old note would read the model's own restating as somebody else's change,
     /// and refuse to walk back a pin the model had made.
     fn refresh(&mut self, kernel: &Kernel, ids: &[ContextId]) {
-        for entry in self.done.iter_mut().chain(self.undone.iter_mut()) {
+        for entry in &mut self.done {
             for (id, left) in &mut entry.left {
                 if ids.contains(id)
                     && let Some(item) = kernel.item(*id)
@@ -168,9 +170,8 @@ fn moved_since(left: &[(ContextId, Left)], item: &ContextItem) -> Option<String>
 
 /// One change, recorded as the way back from it.
 ///
-/// note: the way back rather than the change itself, because applying one returns the way back from
-/// that. Undo and redo are the same operation run against two stacks, with no second representation
-/// to keep in step.
+/// note: the way back rather than the change itself, because that is the one thing an entry is ever
+/// used for.
 #[derive(Serialize, Deserialize)]
 enum Undoing {
     /// Put these items into these states, with these notes.
@@ -291,10 +292,10 @@ impl Undoing {
 }
 
 impl Changes {
-    /// Runs one of the eight operations that change something.
+    /// Runs one of the seven operations that change something.
     ///
     /// note: the operation and reason are handed in rather than read here, because the vocabulary
-    /// belongs to the tool a model called. That tool holds the list of twelve and says when a call
+    /// belongs to the tool a model called. That tool holds the list of eleven and says when a call
     /// names none of them.
     ///
     /// note: one at a time, because under `--parallel-tool-calls` two calls run on two threads. An
@@ -315,8 +316,7 @@ impl Changes {
         match op {
             "revise" => self.revise(kernel, call, args, reason),
             "note" => self.note(kernel, args, reason),
-            "undo" => self.walk(kernel, args, reason, true),
-            "redo" => self.walk(kernel, args, reason, false),
+            "undo" => self.walk(kernel, args, reason),
             // note: the four moves are separate operations named for what they do, not one `prune`
             // action with a `state` argument. That would put one word over all four, including
             // `pin` and `restore`, which are its opposite, so "prune to pin it" would mean
@@ -799,12 +799,8 @@ impl Changes {
         ))
     }
 
-    /// Walks this tool's own changes back, or forward again.
-    ///
-    /// note: the two directions are one loop over two stacks, because an [`Undoing`] applied hands
-    /// back the way from where that left things to where they were. There is no separate "redo"
-    /// representation to be written, or to fall out of step with the first one.
-    fn walk(&self, kernel: &Kernel, args: &Value, reason: &str, back: bool) -> ToolOutput {
+    /// Walks this tool's own changes back.
+    fn walk(&self, kernel: &Kernel, args: &Value, reason: &str) -> ToolOutput {
         // note: read rather than clamped. Clamped, `steps` of 0, a negative number, or a word would
         // each walk one change back, and a hundred would walk sixty-four - each a call that did
         // something other than what it said
@@ -834,11 +830,7 @@ impl Changes {
         {
             let mut journal = self.journal.lock();
             for _ in 0..steps {
-                let taken = match back {
-                    true => journal.done.pop(),
-                    false => journal.undone.pop(),
-                };
-                let Some(Entry { undoing, left }) = taken else {
+                let Some(Entry { undoing, left }) = journal.done.pop() else {
                     break;
                 };
                 spent += 1;
@@ -863,15 +855,8 @@ impl Changes {
                         }
                     }
                 }
-                // What this step left items as, for the step that walks it back and for every other
-                // entry naming the same items
-                let inverse = Entry::now(kernel, inverse);
-                let ids: Vec<ContextId> = inverse.left.iter().map(|(id, _)| *id).collect();
-                journal.refresh(kernel, &ids);
-                match back {
-                    true => journal.undone.push(inverse),
-                    false => journal.done.push(inverse),
-                }
+                // what this step left items as, for every other entry naming the same items
+                journal.refresh(kernel, &inverse.ids());
             }
         }
         for id in touched {
@@ -880,13 +865,9 @@ impl Changes {
             }
         }
 
-        let (done, undone, carried) = {
+        let (done, carried) = {
             let journal = self.journal.lock();
-            (journal.done.len(), journal.undone.len(), journal.carried)
-        };
-        let direction = match back {
-            true => "back",
-            false => "forward again",
+            (journal.done.len(), journal.carried)
         };
 
         let mut out = match put_back.is_empty() {
@@ -895,17 +876,16 @@ impl Changes {
             // of yours to walk back reads as never having made the change. The only other evidence
             // is the counter moving under it
             true if spent > 0 => format!(
-                "none of your {} change(s) could be walked {direction}, and the {} of them there \
-                 were spent on it. `undo` and `redo` only move the changes this tool made; the \
-                 person you work with has an undo of their own, and it is not this one.\n",
+                "none of your {} change(s) could be walked back, and the {} of them there were \
+                 spent on it. `undo` only moves the changes this tool made; the person you work \
+                 with has an undo of their own, and it is not this one.\n",
                 spent, spent,
             ),
             true => {
-                let mut said = format!(
-                    "there was nothing of yours to walk {direction}. `undo` and `redo` only move \
-                     the changes this tool made; the person you work with has an undo of their \
-                     own, and it is not this one.\n"
-                );
+                let mut said = "there was nothing of yours to walk back. `undo` only moves the \
+                                changes this tool made; the person you work with has an undo of \
+                                their own, and it is not this one.\n"
+                    .to_owned();
                 // note: a snapshot written before the journal went into it carries none, so after a
                 // resume from one the model's earlier changes are not in it either. Without this,
                 // the answer reads as though they had been the person's
@@ -918,7 +898,7 @@ impl Changes {
                 said
             }
             false => format!(
-                "walked {} of your own change(s) {direction}, because: {reason}\n  {}\n",
+                "walked {} of your own change(s) back, because: {reason}\n  {}\n",
                 put_back.len(),
                 put_back.join("\n  "),
             ),
@@ -929,25 +909,18 @@ impl Changes {
                 left_alone.join("\n  ")
             ));
         }
-        out.push_str(&format!(
-            "{done} change(s) of yours can still be undone, {undone} redone.\n"
-        ));
-        // walking back an elision returns content; walking forward puts the marker back. A marker
-        // that grew the request is not what an undo asks about. Either way it is a state going
-        // back to what it was, which is the content
+        out.push_str(&format!("{done} change(s) of yours can still be undone.\n"));
+        // walking back an elision returns content, and a marker that grew the request is not what
+        // an undo asks about: it is a state going back to what it was, which is the content
         out.push_str(&cost(kernel, before, Grew::Content));
 
         ToolOutput::new(out)
     }
 
-    /// Records a change, and makes whatever had been walked back unreachable.
-    ///
-    /// note: the same rule as the kernel's redo stack, for the same reason: a redo that reached
-    /// across work done since would overwrite it rather than restore anything.
+    /// Records a change.
     fn record(&self, kernel: &Kernel, undoing: Undoing) {
         let entry = Entry::now(kernel, undoing);
         let mut journal = self.journal.lock();
-        journal.undone.clear();
         journal.done.push(entry);
         let over = journal.done.len().saturating_sub(DEPTH);
         journal.done.drain(..over);
@@ -990,9 +963,9 @@ fn hold(
 /// The state each of the four moves leaves an item in.
 ///
 /// note: four words for four states, and no second spelling of any of them. Accepting a synonym
-/// costs nothing for the word and something for the program: the schema advertises twelve
+/// costs nothing for the word and something for the program: the schema advertises eleven
 /// operations, so every place that answers "which operation is this call" would need a table of the
-/// words that are not in it, and `needs` would be reduced to declaring all twelve for a call it
+/// words that are not in it, and `needs` would be reduced to declaring all eleven for a call it
 /// could not place. The one list in the schema is the whole vocabulary.
 fn state_of(word: &str) -> Option<ContextState> {
     Some(match word {

@@ -451,7 +451,7 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
 
 /// The actions the table above lists under more than one row, which need every one of those rows.
 ///
-/// note: a model read `context:move  allow  context: elide, exclude, restore, undo, redo` as
+/// note: a model read `context:move  allow  context: elide, exclude, restore, undo` as
 /// allowing `undo`, while a refused `context:revise` two rows down refused it. After a blank line,
 /// so it does not read as one more row of the table.
 fn together(kernel: &Kernel, policy: &Careful) -> String {

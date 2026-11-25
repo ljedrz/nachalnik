@@ -546,7 +546,6 @@ async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
             json!({ "action": "restore", "ids": [2], "reason": "why" }),
         ),
         ("context", json!({ "action": "undo", "reason": "why" })),
-        ("context", json!({ "action": "redo", "reason": "why" })),
     ];
 
     for (id, args) in wanted {

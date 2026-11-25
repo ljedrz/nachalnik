@@ -1168,7 +1168,7 @@ async fn introspecting(
     }
     if ask_about_changes {
         // the most specific rule with an answer decides, so these stand over the allowed `context`;
-        // they are the four subjects that change the context, which `undo` and `redo` need too
+        // they are the four subjects that change the context, which `undo` needs too
         for subject in [
             "context:move",
             "context:pin",

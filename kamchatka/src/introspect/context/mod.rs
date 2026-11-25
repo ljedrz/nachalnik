@@ -9,7 +9,7 @@
 //! are separate questions with separate rows whether they arrive under one tool's name or two. Two
 //! tools would cost two descriptions in every request.
 //!
-//! note: four subjects for the twelve operations, named for what a call does to the context; see
+//! note: four subjects for the eleven operations, named for what a call does to the context; see
 //! [`subjects`]. One subject per operation let a refused `context:look` leave `search` reading the
 //! items somebody took out, as a refused `fs:read` once left `grep` printing files.
 //!
@@ -36,9 +36,9 @@ use super::{Reach, action, ids, named, unknown};
 /// What a call to `op` needs, by what it does to the context: `read` for the four that only read
 /// it; `move` for `elide`, `exclude` and `restore`, which change what of an item goes into the
 /// request and never what it says; `pin` for keeping an item from the compactor; `note` for adding
-/// an item of the model's own; and `revise` for rewriting what one says. `undo` and `redo` walk
-/// back and forth through any of the changes, so they need all four that change it, as does a word
-/// this tool does not have.
+/// an item of the model's own; and `revise` for rewriting what one says. `undo` walks back
+/// through any of the changes, so it needs all four that change it, as does a word this tool does
+/// not have.
 ///
 /// note: `pin` on its own, though it is one of the four moves in the schema, because it decides
 /// something else: what the person's compactor may take, rather than what the model sends.
@@ -70,16 +70,16 @@ use reads::{budget, look, matched, request, search, taken};
 /// reports them.
 type Pinned = Arc<Mutex<super::Mine>>;
 
-/// The eight operations that change something, each named for what it leaves behind.
+/// The seven operations that change something, each named for what it leaves behind.
 ///
 /// note: the result uses the same word as the move - an item you `elide` reads back as `elided`
 /// everywhere. One vocabulary at both ends, rather than a `prune` action with a `state` argument,
 /// which would put one move's word over all of them.
-const CHANGES: [&str; 8] = [
-    "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
+const CHANGES: [&str; 7] = [
+    "elide", "exclude", "pin", "restore", "revise", "note", "undo",
 ];
 
-/// Why a call that changes something has to say why, which is the same sentence eight times.
+/// Why a call that changes something has to say why, which is the same sentence seven times.
 const WHY: &str = "why, in your own words; the person you work with reads this, and it becomes \
                    the item's note";
 
@@ -92,15 +92,14 @@ const SELECT: &str = "a class of items instead of `ids`, never both in one call,
                       grammar this tool's description sets out: `all:tool_results`, \
                       `state:elided`, `tool:shell:latest`";
 
-/// The twelve operations, what each is for, and what each reads.
+/// The eleven operations, what each is for, and what each reads.
 ///
 /// note: `reason` is `needed()` wherever a call changes something. The schema can say so because it
-/// branches per operation: in one flat property bag, `required` is all or nothing. Eight operations
+/// branches per operation: in one flat property bag, `required` is all or nothing. Seven operations
 /// require it; four do not offer it.
 ///
-/// note: twelve operations, eight shapes. The four that move an item read one argument list because
-/// they are one function, as do `undo` and `redo`; each group is one branch under an `action` of
-/// several words. Written per operation they would repeat `reason` and `select` on every request to
+/// note: eleven operations, eight shapes. The four that move an item read one argument list because
+/// they are one function; they are one branch under an `action` of several words. Written per operation they would repeat `reason` and `select` on every request to
 /// say something true once.
 fn ops() -> Vec<Op> {
     let mut ops = vec![
@@ -256,15 +255,13 @@ fn ops() -> Vec<Op> {
                 Arg::text("reason", WHY).needed(),
             ],
         ),
-        Op::these(
-            &["undo", "redo"],
-            "`undo` walks back through the changes *you* made here, and `redo` walks forward \
-             again through what `undo` took back. One change is one call, however many items it \
-             moved. Undoing a `note` excludes it, and undoing a `revise` puts the old text back. \
-             Neither touches anything you did not do, and an item somebody else has changed since \
-             you did is left as it is now. Only your last 16 changes are kept, so a walk longer \
-             than that stops where they run out, and the answer says how many it walked. A new \
-             change empties what `redo` could walk forward through.",
+        Op::new(
+            "undo",
+            "walks back through the changes *you* made here. One change is one call, however many \
+             items it moved. Undoing a `note` excludes it, and undoing a `revise` puts the old \
+             text back. It touches nothing you did not do, and an item somebody else has changed \
+             since you did is left as it is now. Only your last 16 changes are kept, so a walk \
+             longer than that stops where they run out, and the answer says how many it walked.",
             vec![
                 Arg::whole(
                     "steps",
@@ -324,7 +321,7 @@ impl Tool for Context {
             format!(
                 "your own context: what is in it, what it costs, and what you carry into the next \
                  request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
-                 `pin`, `restore`, `revise`, `note`, `undo` and `redo` change it. Nothing destroys \
+                 `pin`, `restore`, `revise`, `note` and `undo` change it. Nothing destroys \
                  anything: every item keeps its number and can be restored. Every change, \
                  `restore` included, is refused for a system instruction, for the turn you are \
                  speaking in - your current reply, with its reasoning and its tool calls - and for \
@@ -463,8 +460,8 @@ impl Tool for Context {
                 let own = asking_turn(&kernel, &call.id);
                 Ok(ToolOutput::new(search(&kernel, text, &only, take, &own)))
             }
-            // note: asked for here *as well as* in the schema. A branch per operation lets eight
-            // of the twelve require it and four not offer it at all, but nothing is sent
+            // note: asked for here *as well as* in the schema. A branch per operation lets seven
+            // of the eleven require it and four not offer it at all, but nothing is sent
             // `strict`, so the schema is advice and this is what holds
             op if CHANGES.contains(&op) => {
                 let Some(reason) = args["reason"].as_str().filter(|it| !it.trim().is_empty())
@@ -531,10 +528,6 @@ mod tests {
                 "undo",
                 "context:move context:pin context:note context:revise",
             ),
-            (
-                "redo",
-                "context:move context:pin context:note context:revise",
-            ),
         ];
         assert_eq!(
             needed,
@@ -553,13 +546,13 @@ mod tests {
         );
     }
 
-    /// The eight changing branches require a `reason`; the four read-only branches do not mention
+    /// The seven changing branches require a `reason`; the four read-only branches do not mention
     /// one.
     ///
     /// note: the test checks the schema shown to the model, not a table bound to `CHANGES`, which
     /// could only check that the tool would ask.
     #[test]
-    fn the_eight_that_change_require_a_reason_and_the_four_that_read_do_not() {
+    fn the_seven_that_change_require_a_reason_and_the_four_that_read_do_not() {
         let spec = tool().spec();
         let branches = spec.schema["properties"]["call"]["anyOf"]
             .as_array()

@@ -112,8 +112,8 @@ pub struct Together {
 }
 
 impl Together {
-    /// The sentence every table puts under its rows: "`context`'s `undo` and `redo` need all of
-    /// `context:move`, ..., so the strictest of those applies to `undo` and `redo`".
+    /// The sentence every table puts under its rows: "`context`'s `undo` needs all of
+    /// `context:move`, ..., so the strictest of those applies to `undo`".
     pub fn sentence(&self) -> String {
         let actions: Vec<String> = self.actions.iter().map(|it| format!("`{it}`")).collect();
         let needed: Vec<String> = self.needed.iter().map(|it| format!("`{it}`")).collect();
@@ -1261,11 +1261,11 @@ mod tests {
              of those applies to `undo`"
         );
         assert!(
-            together(&["undo", "redo"])
+            together(&["undo", "elide"])
                 .sentence()
-                .starts_with("`context`'s `undo` and `redo` need all of"),
+                .starts_with("`context`'s `undo` and `elide` need all of"),
             "{}",
-            together(&["undo", "redo"]).sentence()
+            together(&["undo", "elide"]).sentence()
         );
     }
 }

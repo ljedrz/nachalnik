@@ -3393,7 +3393,7 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() 
         .app
         .policy
         .set(&Subject::parse("context:revise"), Verdict::Deny);
-    let said = "`context`'s `undo` and `redo` need all of `context:move`, `context:note`, \
+    let said = "`context`'s `undo` needs all of `context:move`, `context:note`, \
                 `context:pin` and `context:revise`, so the strictest of those applies";
     assert!(
         harness.app.together().iter().any(|it| it.contains(said)),
@@ -3408,10 +3408,7 @@ async fn an_action_under_several_rows_is_said_to_need_all_of_them_off_the_tab() 
         harness.app.together()
     );
     let screen = harness.flat();
-    assert!(
-        !screen.contains("`context`'s `undo` and `redo` need"),
-        "{screen}"
-    );
+    assert!(!screen.contains("`context`'s `undo` needs"), "{screen}");
 }
 
 /// The permissions tab lists the sandbox under the rules, a part to a line, and opens a part to list

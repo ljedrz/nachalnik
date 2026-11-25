@@ -674,14 +674,14 @@ async fn setup_permissions_lists_one_row_per_operation() {
         .find(|line| line.starts_with("context:move"))
         .expect("a row for moving items");
     assert!(
-        moving.contains("context: elide, exclude, restore, undo, redo"),
+        moving.contains("context: elide, exclude, restore, undo"),
         "{moving}"
     );
     // and an action under several rows is said to need all of them: a model read the row above as
     // allowing `undo` while a refused `context:revise` refused it
     assert!(
         said.contains(
-            "`context`'s `undo` and `redo` need all of `context:move`, `context:note`, \
+            "`context`'s `undo` needs all of `context:move`, `context:note`, \
              `context:pin` and `context:revise`, so the strictest of those applies"
         ),
         "{said}"
