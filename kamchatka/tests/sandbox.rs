@@ -223,6 +223,27 @@ fn a_temporary_directory_the_command_shut_is_removed_all_the_same() {
     assert_ne!(mode & 0o700, 0, "opened up through the link: {mode:o}");
 }
 
+/// A temporary directory nested deeper than its removal follows keeps what is down there, and the
+/// removal says it failed rather than that the directory is gone.
+///
+/// note: the removal holds a descriptor for every level it is below, so a command that nested
+/// directories without end would run this process out of them if it were followed to the bottom.
+#[test]
+fn a_temporary_directory_nested_without_end_is_not_followed_to_its_end() {
+    let tmpdir = common::scratch("nested-without-end").join("tmp");
+    let mut bottom = tmpdir.clone();
+    for _ in 0..300 {
+        bottom.push("d");
+    }
+    std::fs::create_dir_all(&bottom).expect("a deep tree");
+    std::fs::write(bottom.join("left.txt"), "left").expect("a file at its bottom");
+
+    let removed = kamchatka::sandbox::remove_scratch(&tmpdir);
+
+    assert!(removed.is_err(), "it is not gone");
+    assert!(bottom.join("left.txt").exists(), "the bottom was reached");
+}
+
 /// A root a command swapped for a link grants the next command nothing: not where the link
 /// points, and not through it - whether the root was one beneath the working directory or the
 /// working directory beneath a root.
