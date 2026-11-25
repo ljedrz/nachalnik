@@ -187,6 +187,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The `context` tool no longer tells the model its reasoning is never sent back.** `look` and
+  `note` said so outright, which is wrong with `--send-reasoning` and for Anthropic's and Gemini's
+  thinking. They now say it may not be. The answers to `revise` and `revise_reasoning` used to
+  send the model to "the trace", a tab only the person has; they now name `log` with the item's
+  number, where `log:read` is allowed.
 - **The `--web` page's context view shows the whole of a reply.** Opening an assistant turn that
   was only tool calls showed an empty box, although the row counted it at hundreds of tokens: the
   box held the turn's text, and its calls and reasoning are kept beside the text. A reply now shows

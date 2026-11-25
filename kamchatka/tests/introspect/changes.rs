@@ -544,6 +544,10 @@ async fn revise_rewrites_an_item_and_says_who_did_it() {
         "I wrote down the wrong path"
     );
 
+    // and the model is told where to read it back, which is `log` and not the person's trace tab
+    let said = answered(&kernel);
+    assert!(said.contains("`log` with `ids: [1]`"), "{said}");
+
     // and the whole of what it said before is on the record, because nothing else could recover it
     assert!(kernel.history().iter().any(|record| matches!(
         &record.event,
@@ -789,6 +793,8 @@ async fn revise_reasoning_rewrites_a_reply_and_undo_brings_it_back() {
     )));
     let said = answered(&kernel);
     assert!(said.contains("now holds other reasoning"), "{said}");
+    // the model has no trace tab; `log` is where it reads the old reasoning back
+    assert!(said.contains("`log` with `ids: [1]`"), "{said}");
 
     let (kernel, _provider, _anchor) = agent(one_turn(vec![revise, undo]));
     kernel.push(reply());
