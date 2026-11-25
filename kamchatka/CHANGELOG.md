@@ -83,6 +83,12 @@ minor bump may break you.
 
 ### changed
 
+- **The dot in the `--web` page's header says what a turn is doing.** It pulses while a request
+  is out and nothing has come back, which on a local server is the prompt being read or a queue.
+  While the model answers it stays lit as long as text keeps arriving, and dims after two
+  seconds of nothing, so a server that stops sending no longer looks the same as one that is
+  writing. It pulses in another colour while a tool runs, and is steady while a question waits.
+  Its tooltip says the same in words, with how long it has been.
 - **A model loaded from a file is named by the file's name** in the status line and in the web
   page's header. llama-server and vLLM report such a model by its path, so
   `/home/user/models/Model.gguf` is shown as `Model`, without the directory, the `.gguf` or the
