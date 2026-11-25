@@ -748,11 +748,15 @@ fn line(record: &Record, whole: bool) -> String {
     let (name, detail) = trace_line(&record.event);
     let mut out = format!("{:>5}  {name:<NAMES$}  {detail}", record.seq);
 
-    // the one event carrying content, and the only place this needs a word of its own. Without
+    // the two events carrying content, and the only place this needs a word of its own. Without
     // `whole` the line says how much is not on it, because a first line that does not admit to
     // being one is the shape of thing this tool exists not to produce
-    if let Event::ContextReplaced { was, .. } = &record.event {
-        let text = was.to_text();
+    let carried = match &record.event {
+        Event::ContextReplaced { was, .. } => Some(was.to_text()),
+        Event::ReasoningReplaced { was: Some(was), .. } => Some(was.to_text()),
+        _ => None,
+    };
+    if let Some(text) = carried {
         let first = detail.len();
         match whole {
             true => out.push_str(&format!("\n       --- what it said, entire ---\n{text}")),
@@ -778,6 +782,7 @@ fn names(event: &Event, id: ContextId) -> bool {
         Event::ContextAdded { id: at, .. }
         | Event::ContextChanged { id: at, .. }
         | Event::ContextReplaced { id: at, .. }
+        | Event::ReasoningReplaced { id: at, .. }
         | Event::ContextAnnotated { id: at, .. } => *at == id,
         Event::ContextUndone {
             removed, changed, ..

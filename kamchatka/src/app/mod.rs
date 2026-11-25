@@ -367,10 +367,9 @@ pub struct App {
     pub limits: Limits,
     /// What items used to say, oldest first, for the ones that have been rewritten.
     ///
-    /// note: kept here because the kernel does not keep it. A replacement is the one context
-    /// operation that overwrites something, which is why [`nachalnik::Event::ContextReplaced`] is
-    /// the one event that carries content: a client that wants the history can have it, and one
-    /// that does not pays nothing. Without it, a `context` rewrite of a tool result would leave the
+    /// note: kept here because the kernel does not keep it. A replacement overwrites something,
+    /// which is why [`nachalnik::Event::ContextReplaced`] carries the content it replaced: a client
+    /// that wants the history can have it, and one that does not pays nothing. Without it, a `context` rewrite of a tool result would leave the
     /// old text unreadable except as JSON on the trace and in an undo window that closes.
     ///
     /// note: a terminal edit replaces in place as `context: revise` does, so this is where the
@@ -1291,6 +1290,47 @@ impl App {
             false => serde_json::json!({}),
         };
         meta["revised"] = serde_json::json!({ "by": "user", "reason": reason });
+        let _ = self.kernel.annotate(id, meta);
+
+        Ok(true)
+    }
+
+    /// Puts edited reasoning on a turn in place of what it had, and says whether that changed
+    /// anything. Text that is empty or only whitespace takes the reasoning away.
+    ///
+    /// note: [`App::revise`] for the reasoning slot, with the same callers and the same answers:
+    /// `Ok(false)` where nothing would change, and a refusal from `text::reasoning_beyond` asked
+    /// here whatever the caller already asked.
+    ///
+    /// note: the metadata goes under `reasoning_revised` rather than `revised`. A reconcile reads
+    /// `revised` as "this item's content was rewritten", and a turn whose content nobody touched
+    /// must not read that way.
+    pub fn revise_reasoning(
+        &mut self,
+        id: ContextId,
+        text: &str,
+        reason: &str,
+    ) -> Result<bool, String> {
+        let Some(old) = self.kernel.item(id) else {
+            return Err(format!("[{id}] is no longer there"));
+        };
+        if let Some(why) = text::reasoning_beyond(&old) {
+            return Err(why.to_owned());
+        }
+        let new = (!text.trim().is_empty()).then(|| Content::text(text.to_owned()));
+        if old.reasoning().map(|was| was.to_text()) == new.as_ref().map(|now| now.to_text()) {
+            return Ok(false);
+        }
+
+        self.kernel
+            .replace_reasoning(id, new)
+            .map_err(|e| e.to_string())?;
+
+        let mut meta = match old.meta.is_object() {
+            true => old.meta.clone(),
+            false => serde_json::json!({}),
+        };
+        meta["reasoning_revised"] = serde_json::json!({ "by": "user", "reason": reason });
         let _ = self.kernel.annotate(id, meta);
 
         Ok(true)

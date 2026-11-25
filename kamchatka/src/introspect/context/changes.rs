@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use crate::{
     app::{
         Going,
-        text::{beyond_a_prompt, thousands},
+        text::{beyond_a_prompt, reasoning_beyond, thousands},
     },
     introspect::{ids, named, protected, unknown},
     tools::{Careful, yes_or_no},
@@ -117,15 +117,21 @@ struct Entry {
     left: Vec<(ContextId, Left)>,
 }
 
-/// What an item looked like: its state, its note and what it says.
+/// What an item looked like: its state, its note, what it says and what it thought.
 ///
 /// note: not its metadata, which this tool writes beside a pin, so a pin's own bookkeeping is not
 /// read as somebody else's change.
+///
+/// note: `serde(default)` on the reasoning, so a journal written before it was kept reads as one
+/// whose turns had none. An entry about a turn that did have some then reads as moved since and is
+/// left alone, which is the safe way to be wrong.
 #[derive(PartialEq, Serialize, Deserialize)]
 struct Left {
     state: ContextState,
     note: Option<String>,
     content: Content,
+    #[serde(default)]
+    reasoning: Option<Content>,
 }
 
 impl Left {
@@ -134,6 +140,7 @@ impl Left {
             state: item.state,
             note: item.note.clone(),
             content: item.content.clone(),
+            reasoning: item.reasoning().cloned(),
         }
     }
 }
@@ -171,6 +178,8 @@ enum Undoing {
     States(Vec<(ContextId, ContextState, Option<String>)>),
     /// Put this text and this metadata back on this item.
     Said(ContextId, Content, Value),
+    /// Put this reasoning and this metadata back on this turn.
+    Reasoned(ContextId, Option<Content>, Value),
 }
 
 impl Undoing {
@@ -178,7 +187,7 @@ impl Undoing {
     fn ids(&self) -> Vec<ContextId> {
         match self {
             Self::States(states) => states.iter().map(|(id, ..)| *id).collect(),
-            Self::Said(id, ..) => vec![*id],
+            Self::Said(id, ..) | Self::Reasoned(id, ..) => vec![*id],
         }
     }
 }
@@ -280,15 +289,39 @@ impl Undoing {
                     left: Vec::new(),
                 }
             }
+            Self::Reasoned(id, reasoning, meta) => {
+                let Some(item) = kernel.item(id) else {
+                    return Applied::default();
+                };
+                if let Some(why) =
+                    protected(&item, mine, None).or_else(|| moved_since(left_as, &item))
+                {
+                    return Applied {
+                        left: vec![format!("[{id}] {why}")],
+                        ..Applied::default()
+                    };
+                }
+                let back = Self::Reasoned(id, item.reasoning().cloned(), item.meta.clone());
+                if kernel.replace_reasoning(id, reasoning).is_err() {
+                    return Applied::default();
+                }
+                let _ = kernel.annotate(id, meta);
+
+                Applied {
+                    inverse: Some(back),
+                    did: Some(format!("the reasoning of [{id}]")),
+                    left: Vec::new(),
+                }
+            }
         }
     }
 }
 
 impl Changes {
-    /// Runs one of the seven operations that change something.
+    /// Runs one of the eight operations that change something.
     ///
     /// note: the operation and reason are handed in rather than read here, because the vocabulary
-    /// belongs to the tool a model called. That tool holds the list of eleven and says when a call
+    /// belongs to the tool a model called. That tool holds the list of twelve and says when a call
     /// names none of them.
     ///
     /// note: one at a time, because under `--parallel-tool-calls` two calls run on two threads. An
@@ -308,6 +341,7 @@ impl Changes {
         let _one = self.one_at_a_time.lock();
         match op {
             "revise" => self.revise(kernel, call, args, reason),
+            "revise_reasoning" => self.revise_reasoning(kernel, call, args, reason),
             "note" => self.note(kernel, args, reason),
             "undo" => self.walk(kernel, reason),
             // note: the four state changes are separate operations named for what they do, not one
@@ -700,6 +734,111 @@ impl Changes {
         ))
     }
 
+    /// Rewrites what one of the model's replies thought, or takes it away.
+    ///
+    /// note: [`Changes::revise`] for the reasoning slot, refused for the same items and for the
+    /// ones `reasoning_beyond` names. The person's messages and tool results need no refusal of
+    /// their own here: neither is a reply, so neither has reasoning.
+    ///
+    /// note: allowed at all because a reply corrected with `revise` otherwise keeps the reasoning
+    /// that led to the mistake, and a later request that carries reasoning reads the two as
+    /// disagreeing. It is a subject of its own, `context:revise_reasoning`, so a person can allow
+    /// one without the other, and it leaves `context.reasoning_replaced` on the trace with what the
+    /// reasoning was.
+    fn revise_reasoning(
+        &self,
+        kernel: &Kernel,
+        call: &ToolCall,
+        args: &Value,
+        reason: &str,
+    ) -> ToolOutput {
+        let ids = match ids(args, "ids") {
+            Ok(ids) => ids,
+            Err(why) => return ToolOutput::error(why),
+        };
+        let [id] = ids[..] else {
+            return ToolOutput::error("`revise_reasoning` takes exactly one id in `ids`");
+        };
+        let Some(content) = args["content"].as_str() else {
+            return ToolOutput::error(
+                "`revise_reasoning` needs the `content` to put there instead; an empty string \
+                 removes the reasoning",
+            );
+        };
+        let Some(item) = kernel.item(id) else {
+            return ToolOutput::error(format!("there is no context item {id}"));
+        };
+        if let Some(why) = protected(&item, &self.pinned.lock(), own_turn(kernel, &call.id)) {
+            return ToolOutput::error(format!("refused: [{id}] {why} - nothing was revised"));
+        }
+        if let Some(why) = reasoning_beyond(&item) {
+            return ToolOutput::error(format!("refused: [{id}] {why} Nothing was revised."));
+        }
+
+        let reasoning = (!content.trim().is_empty()).then(|| Content::text(content.to_owned()));
+        let had = item.reasoning().map(|was| was.to_text());
+        if had == reasoning.as_ref().map(|now| now.to_text()) {
+            return ToolOutput::new(format!(
+                "[{id}]'s reasoning is already exactly that, so nothing was changed"
+            ));
+        }
+
+        let before = kernel.budget().used();
+        let was = item.tokens;
+        if let Err(e) = kernel.replace_reasoning(id, reasoning.clone()) {
+            return ToolOutput::error(e.to_string());
+        }
+
+        // under a key of its own, for the reason `App::revise_reasoning` gives
+        let mut meta = match item.meta.is_object() {
+            true => item.meta.clone(),
+            false => json!({}),
+        };
+        meta["reasoning_revised"] =
+            json!({ "by": "context", "reason": reason, "call": call.id.to_string() });
+        let _ = kernel.annotate(id, meta);
+        self.journal.lock().refresh(kernel, &[id]);
+        self.record(
+            kernel,
+            Undoing::Reasoned(id, item.reasoning().cloned(), item.meta.clone()),
+        );
+
+        let now = kernel.item(id).map(|item| item.tokens).unwrap_or_default();
+        // note: whether anything reads it, which is a real question here rather than an edge case:
+        // most endpoints are not sent reasoning back at all. A model told only that the rewrite
+        // went through spends its next turns correcting thinking nobody will read
+        let going = Going::of(kernel);
+        let unread = match kernel.item(id) {
+            Some(now) if !going.sends_content(&now) => match going.left_out.get(&id) {
+                Some(why) => format!(
+                    " The reply is not going into the next request ({why}), so that request \
+                     does not read it."
+                ),
+                None => format!(
+                    " The reply is `{}`, so the next request does not read it.",
+                    now.state
+                ),
+            },
+            Some(now) if reasoning.is_some() && going.sends_reasoning(&now) == Some(false) => {
+                " Reasoning is not sent back to the model in this session, so no later request \
+                 reads it; what changed is the record the person reads."
+                    .to_owned()
+            }
+            _ => String::new(),
+        };
+        let did = match reasoning {
+            Some(_) => "now holds other reasoning",
+            None => "no longer has any reasoning",
+        };
+        ToolOutput::new(format!(
+            "[{id}] {did}: ~{} tokens instead of ~{}.{unread} What it was before is on the trace \
+             as `context.reasoning_replaced`, and one undo brings it back.\n{}",
+            thousands(now),
+            thousands(was),
+            cost(kernel, before, Grew::Asked),
+        ))
+    }
+
     /// Writes something into the context that will still be there later.
     ///
     /// note: the one thing here that *adds*, and it earns its place because everything else an
@@ -716,8 +855,8 @@ impl Changes {
     /// note: a note rather than a reasoning block, although a model can already think and thinking
     /// is free. Reasoning belongs to the turn that produced it, so excluding that turn takes the
     /// thought, necessarily, since for a signed thinking block nothing else is safe. Reasoning is
-    /// not addressable: it has no identifier, cannot be revised, cannot be pinned, and a compactor
-    /// cannot be told to leave it alone. Nor is it reliably carried back: this program's own
+    /// not addressable: it has no identifier of its own, cannot be pinned apart from its turn, and
+    /// a compactor cannot be told to leave it alone. Nor is it reliably carried back: this program's own
     /// OpenAI-compatible dialect does not put it on the wire and cannot, so on that endpoint a
     /// conclusion a model reached by thinking is gone by the next request. And reasoning is not on
     /// the context tab as a row of its own with a reason beside it, so a person cannot see what the
@@ -817,7 +956,7 @@ impl Changes {
                                 Undoing::States(states) => {
                                     states.iter().map(|(id, ..)| *id).collect()
                                 }
-                                Undoing::Said(..) => Vec::new(),
+                                Undoing::Said(..) | Undoing::Reasoned(..) => Vec::new(),
                             }
                         }
                         None => Vec::new(),
@@ -932,9 +1071,9 @@ fn hold(
 /// The state each of the four state changes leaves an item in.
 ///
 /// note: four words for four states, and no second spelling of any of them. Accepting a synonym
-/// costs nothing for the word and something for the program: the schema advertises eleven
+/// costs nothing for the word and something for the program: the schema advertises twelve
 /// operations, so every place that answers "which operation is this call" would need a table of the
-/// words that are not in it, and `needs` would be reduced to declaring all eleven for a call it
+/// words that are not in it, and `needs` would be reduced to declaring all twelve for a call it
 /// could not place. The one list in the schema is the whole vocabulary.
 fn state_of(word: &str) -> Option<ContextState> {
     Some(match word {

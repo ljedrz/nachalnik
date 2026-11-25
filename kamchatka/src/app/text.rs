@@ -145,8 +145,8 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        // the one event that carries content, because it is the only operation that overwrites
-        // something. The first line of what went is worth the room
+        // one of the two events that carry content, because a replacement overwrites something.
+        // The first line of what went is worth the room
         Event::ContextReplaced {
             id,
             tokens_before,
@@ -157,6 +157,20 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             thousands(*tokens_before),
             thousands(*tokens_after),
             one_line(&was.to_text())
+        ),
+        Event::ReasoningReplaced {
+            id,
+            tokens_before,
+            tokens_after,
+            was,
+        } => format!(
+            "[{id}] {} → {} tokens; its reasoning was: {}",
+            thousands(*tokens_before),
+            thousands(*tokens_after),
+            match was {
+                Some(was) => one_line(&was.to_text()),
+                None => "none".to_owned(),
+            }
         ),
         Event::ContextUndone {
             items,
@@ -647,6 +661,43 @@ pub(crate) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
                  and editing writes content. So there is nothing here for an editor to hold, \
                  and committing into one would write a sentence onto a turn whose call it had \
                  not touched.",
+            )
+        }
+        _ => None,
+    }
+}
+
+/// Why the reasoning of this item cannot be rewritten, if it cannot.
+///
+/// note: the counterpart of [`beyond_a_prompt`] for the reasoning slot, asked by every path that
+/// writes it - the terminal's editor, a client over [`crate::remote`] and the model's `context`
+/// tool - so the three refuse the same items for the same reasons.
+///
+/// note: plain reasoning is what an OpenAI-compatible endpoint hands back, and nothing checks it
+/// on the way back in, so rewriting it changes what a later request reads and nothing else. What
+/// is refused is reasoning a provider may have signed or sealed. Anthropic's and Gemini's thinking,
+/// and the Responses API's encrypted reasoning, arrive as ordered blocks with the provider's data
+/// attached; an altered signed block gets the next request refused, and an altered summary of a
+/// sealed one changes nothing the model reads. Those turns keep their thinking in their content,
+/// so a turn recorded as blocks is refused, and so is a reasoning slot holding blocks or a file.
+pub(crate) fn reasoning_beyond(item: &ContextItem) -> Option<&'static str> {
+    let ContextKind::AssistantMessage { reasoning, .. } = &item.kind else {
+        return Some("Only a reply of the model's has reasoning to rewrite.");
+    };
+    if item.content.as_blocks().is_some() {
+        return Some(
+            "This turn was recorded in the order it was produced, so its thinking is among its \
+             blocks, where the provider may have signed or sealed it. A signed block that comes \
+             back altered gets the next request refused, and a sealed one is not what the model \
+             reads back, so neither is rewritten.",
+        );
+    }
+    match reasoning {
+        Some(reasoning) if reasoning.as_blocks().is_some() || reasoning.as_blob().is_some() => {
+            Some(
+                "This reasoning is not plain text: it is held as the provider handed it over, \
+                 which may be signed, and a signed block that comes back altered gets the next \
+                 request refused.",
             )
         }
         _ => None,

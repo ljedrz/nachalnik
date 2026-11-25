@@ -50,7 +50,7 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     // and the ones the table ships holding to something else are named together rather than a
     // clause each, since they are one figure said once
     assert!(
-        said.contains("context:note, context:revise at 8,000"),
+        said.contains("context:note, context:revise, context:revise_reasoning at 8,000"),
         "{said}"
     );
     // and only the subjects this session's tools declare: no `fs` here, so no `fs:read` in the
@@ -682,7 +682,8 @@ async fn setup_permissions_lists_one_row_per_operation() {
     assert!(
         said.contains(
             "`context`'s `undo` needs all of `context:note`, `context:pin`, \
-             `context:revise` and `context:state`, so the strictest of those applies"
+             `context:revise`, `context:revise_reasoning` and `context:state`, so the strictest \
+             of those applies"
         ),
         "{said}"
     );

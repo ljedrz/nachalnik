@@ -9,7 +9,7 @@
 //! are separate questions with separate rows whether they arrive under one tool's name or two. Two
 //! tools would cost two descriptions in every request.
 //!
-//! note: four subjects for the eleven operations, named for what a call does to the context; see
+//! note: six subjects for the twelve operations, named for what a call does to the context; see
 //! [`subjects`]. One subject per operation let a refused `context:look` leave `search` reading the
 //! items somebody took out, as a refused `fs:read` once left `grep` printing files.
 //!
@@ -36,9 +36,13 @@ use super::{Reach, action, ids, named, unknown};
 /// What a call to `op` needs, by what it does to the context: `read` for the four that only read
 /// it; `state` for `elide`, `exclude` and `reset_state`, which change what of an item goes into the
 /// request and never what it says; `pin` for keeping an item from the compactor; `note` for adding
-/// an item of the model's own; and `revise` for rewriting what one says. `undo` walks back
-/// through any of the changes, so it needs all four that change it, as does a word this tool does
-/// not have.
+/// an item of the model's own; `revise` for rewriting what one says; and `revise_reasoning` for
+/// rewriting what a reply thought. `undo` walks back through any of the changes, so it needs all
+/// five that change it, as does a word this tool does not have.
+///
+/// note: `revise_reasoning` apart from `revise`, so that allowing a model to correct what it wrote
+/// does not also allow it to rewrite why it wrote it. A person who wants both allows both, or the
+/// domain.
 ///
 /// note: `pin` on its own, though it is one of the four state changes in the schema, because it
 /// decides something else: what the person's compactor may take, rather than what the model sends.
@@ -53,9 +57,8 @@ pub(crate) fn subjects(op: &str) -> Vec<Capability> {
         "pin" => one("pin"),
         "note" => one("note"),
         "revise" => one("revise"),
-        _ => ["state", "pin", "note", "revise"]
-            .map(domains::context)
-            .to_vec(),
+        "revise_reasoning" => one("revise_reasoning"),
+        _ => CHANGING.map(domains::context).to_vec(),
     }
 }
 
@@ -70,23 +73,27 @@ use reads::{budget, look, matched, request, search, taken};
 /// reports them.
 type Pinned = Arc<Mutex<super::Mine>>;
 
-/// The seven operations that change something.
+/// The subjects of the operations that change something, which `undo` needs all of.
+const CHANGING: [&str; 5] = ["state", "pin", "note", "revise", "revise_reasoning"];
+
+/// The eight operations that change something.
 ///
 /// note: three of the state changes are named for the state they leave - an item you `elide` reads
 /// back as `elided` everywhere - and `reset_state` for what it does to the other three. One
 /// vocabulary at both ends, rather than a `prune` action with a `state` argument, which would put
 /// one change's word over all of them.
-const CHANGES: [&str; 7] = [
+const CHANGES: [&str; 8] = [
     "elide",
     "exclude",
     "pin",
     "reset_state",
     "revise",
+    "revise_reasoning",
     "note",
     "undo",
 ];
 
-/// Why a call that changes something has to say why, which is the same sentence seven times.
+/// Why a call that changes something has to say why, which is the same sentence eight times.
 const WHY: &str = "why, in your own words; the person reads it";
 
 /// What a `select` is, said where the four that take one can read it.
@@ -97,13 +104,13 @@ const WHY: &str = "why, in your own words; the person reads it";
 const SELECT: &str = "a selector, written as this tool's description lists them, instead of \
                       `ids`; never both";
 
-/// The eleven operations, what each is for, and what each reads.
+/// The twelve operations, what each is for, and what each reads.
 ///
 /// note: `reason` is `needed()` wherever a call changes something. The schema can say so because it
-/// branches per operation: in one flat property bag, `required` is all or nothing. Seven operations
+/// branches per operation: in one flat property bag, `required` is all or nothing. Eight operations
 /// require it; four do not offer it.
 ///
-/// note: eleven operations, eight shapes. The four state changes read one argument list because
+/// note: twelve operations, nine shapes. The four state changes read one argument list because
 /// they are one function; they are one branch under an `action` of several words. Written per
 /// operation they would repeat `reason` and `select` on every request to say something true once.
 fn ops() -> Vec<Op> {
@@ -228,10 +235,10 @@ fn ops() -> Vec<Op> {
         Op::new(
             "revise",
             "rewrites the text of one item, for when something written down is wrong. Reasoning \
-             and tool calls stay as they were. It works on anything except the person's \
-             messages, tool results, pictures, PDFs and other files that are not text, and \
-             replies that hold only tool calls; if an item still cannot be revised, the refusal \
-             says why",
+             and tool calls stay as they were; `revise_reasoning` rewrites a reply's reasoning. \
+             It works on anything except the person's messages, tool results, pictures, PDFs and \
+             other files that are not text, and replies that hold only tool calls; if an item \
+             still cannot be revised, the refusal says why",
             vec![
                 Arg::one_of(
                     "ids",
@@ -240,6 +247,27 @@ fn ops() -> Vec<Op> {
                 )
                 .needed(),
                 Arg::text("content", "what the item should say instead").needed(),
+                Arg::text("reason", WHY).needed(),
+            ],
+        ),
+        Op::new(
+            "revise_reasoning",
+            "rewrites the reasoning of one of your earlier replies, for example so that it agrees \
+             with a reply you corrected with `revise`. The reply's text and tool calls stay as \
+             they were. Reasoning the provider signed or sealed cannot be rewritten; the refusal \
+             says so",
+            vec![
+                Arg::one_of(
+                    "ids",
+                    "integer",
+                    "a list holding the number of the one reply, such as `[12]`",
+                )
+                .needed(),
+                Arg::text(
+                    "content",
+                    "the reasoning it should hold instead; an empty string removes it",
+                )
+                .needed(),
                 Arg::text("reason", WHY).needed(),
             ],
         ),
@@ -332,8 +360,8 @@ impl Tool for Context {
             format!(
                 "your own context: what is in it, what it costs, and what goes into the next \
                  request. The `action` is one of `look`, `budget`, `request` or `search`, which \
-                 read it, or `elide`, `exclude`, `pin`, `reset_state`, `revise`, `note` or \
-                 `undo`, which change it.\n\
+                 read it, or `elide`, `exclude`, `pin`, `reset_state`, `revise`, \
+                 `revise_reasoning`, `note` or `undo`, which change it.\n\
                  Your context is a numbered list of items: the person's messages, your replies, \
                  tool results, notes, attached files and summaries. Each item has a state: \
                  `active`, `elided`, `excluded` or `pinned`. Nothing is deleted: an item keeps \
@@ -361,14 +389,16 @@ impl Tool for Context {
             ),
         )
         .with_schema(self.schema.clone())
-        .with_capabilities(["read", "state", "pin", "note", "revise"].map(domains::context))
+        .with_capabilities(
+            ["read", "state", "pin", "note", "revise", "revise_reasoning"].map(domains::context),
+        )
     }
 
     /// note: decided by `action` and nothing else, so a rule about `context:read` covers reading
     /// however a call asked for it, and the reading half and changing half stay separately
     /// grantable although they are one tool. A call naming no operation this tool has is refused by
-    /// `malformed` before the policy is asked; one that reaches here anyway declares all four
-    /// subjects, which is the strictest reading of a call nobody can place.
+    /// `malformed` before the policy is asked; one that reaches here anyway declares every
+    /// subject, which is the strictest reading of a call nobody can place.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
             Some(op) => subjects(&op),
@@ -466,8 +496,8 @@ impl Tool for Context {
                 let own = asking_turn(&kernel, &call.id);
                 Ok(ToolOutput::new(search(&kernel, text, &only, take, &own)))
             }
-            // note: asked for here *as well as* in the schema. A branch per operation lets seven
-            // of the eleven require it and four not offer it at all, but nothing is sent
+            // note: asked for here *as well as* in the schema. A branch per operation lets eight
+            // of the twelve require it and four not offer it at all, but nothing is sent
             // `strict`, so the schema is advice and this is what holds
             op if CHANGES.contains(&op) => {
                 let Some(reason) = args["reason"].as_str().filter(|it| !it.trim().is_empty())
@@ -529,10 +559,11 @@ mod tests {
             ("pin", "context:pin"),
             ("reset_state", "context:state"),
             ("revise", "context:revise"),
+            ("revise_reasoning", "context:revise_reasoning"),
             ("note", "context:note"),
             (
                 "undo",
-                "context:state context:pin context:note context:revise",
+                "context:state context:pin context:note context:revise context:revise_reasoning",
             ),
         ];
         assert_eq!(
@@ -547,18 +578,19 @@ mod tests {
                 "context:state",
                 "context:pin",
                 "context:note",
-                "context:revise"
+                "context:revise",
+                "context:revise_reasoning"
             ]
         );
     }
 
-    /// The seven changing branches require a `reason`; the four read-only branches do not mention
+    /// The eight changing branches require a `reason`; the four read-only branches do not mention
     /// one.
     ///
     /// note: the test checks the schema shown to the model, not a table bound to `CHANGES`, which
     /// could only check that the tool would ask.
     #[test]
-    fn the_seven_that_change_require_a_reason_and_the_four_that_read_do_not() {
+    fn the_eight_that_change_require_a_reason_and_the_four_that_read_do_not() {
         let spec = tool().spec();
         let branches = spec.schema["properties"]["call"]["anyOf"]
             .as_array()
