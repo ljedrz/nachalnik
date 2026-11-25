@@ -56,7 +56,7 @@ minor bump may break you.
   that led to the mistake. An empty `content` removes the reasoning. It needs the new
   `context:revise_reasoning` permission, so allowing `context:revise` does not allow it, while
   `--auto-allow context` covers both. The trace and `log` record what the reasoning was, as
-  `context.reasoning_replaced`, and the tool's `undo` puts it back. Thinking recorded as ordered
+  `context.reasoning_replaced`, and the tool's `undo` puts it back, as its description says. Thinking recorded as ordered
   blocks, which is how Anthropic's, Gemini's and the Responses API's arrives and which the provider
   may have signed, is refused. When the session does not send reasoning back to the model, the
   answer says that no later request will read the change.

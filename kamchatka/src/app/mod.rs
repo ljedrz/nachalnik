@@ -971,6 +971,10 @@ impl App {
     /// lives here rather than in the terminal's strip of faces, because a client counting versions
     /// for a button and a terminal counting them for a page must reach the same number.
     fn earlier_versions(&self, id: ContextId) -> Vec<Version> {
+        // nearly every item has none, and every row of every projection asks
+        let Some(history) = self.versions.get(&id).filter(|history| !history.is_empty()) else {
+            return Vec::new();
+        };
         let Some(item) = self.kernel.item(id) else {
             return Vec::new();
         };
@@ -978,7 +982,6 @@ impl App {
             content: item.content.clone(),
             reasoning: item.reasoning().cloned(),
         };
-        let history = self.versions.get(&id).map(Vec::as_slice).unwrap_or(&[]);
 
         let mut walked = now.clone();
         let mut earlier: Vec<Version> = history
