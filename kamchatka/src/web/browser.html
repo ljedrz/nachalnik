@@ -232,7 +232,7 @@
   .model hr { border: 0; border-top: 1px solid var(--line); }
   .model ul, .model ol { padding-left: 2ch; }
   .model :is(li, blockquote) > * { margin: 0; }
-  .model a { color: var(--user); }
+  .line a { color: var(--user); }
   .model .table { overflow-x: auto; }
   .model table { border-collapse: collapse; }
   .model th, .model td { border: 1px solid var(--line); padding: 2px 8px; vertical-align: top; }
@@ -500,7 +500,71 @@ function say(kind, text, item) {
 function fill(el, text) {
   el.raw = text;
   if (el.classList.contains("model")) el.replaceChildren(markdown(text));
-  else el.textContent = text;
+  else el.replaceChildren(linked(text));
+}
+
+/**
+ * A text with every web or mail address in it made a link, and nothing else changed.
+ *
+ * note: for the lines that are not markdown: a message, the thinking, a call, a note. Addresses are
+ * the only thing turned into anything; the rest of the text stays as it is.
+ */
+function linked(text) {
+  const out = document.createDocumentFragment();
+  const starts = /https?:\/\/|mailto:/gi;
+  let from = 0;
+  for (let m; (m = starts.exec(text)); ) {
+    const length = address(text, m.index);
+    if (!length) continue;
+    out.append(text.slice(from, m.index), link(text.slice(m.index, m.index + length)));
+    from = starts.lastIndex = m.index + length;
+  }
+  out.append(text.slice(from));
+  return out;
+}
+
+/**
+ * How long the web or mail address starting at `at` is, or `0` where none starts there.
+ *
+ * note: the punctuation a sentence puts after an address is left out of it - the full stop in
+ * "see https://example.com." - and so is a closing bracket with no opening one inside the address,
+ * so "(https://example.com)" links the address and a Wikipedia address ending in `_(film)` keeps
+ * its own. An address straight after a letter is part of a word and is not one.
+ */
+function address(text, at) {
+  if (/[\p{L}\p{N}_]/u.test(text[at - 1] ?? "")) return 0;
+  ADDRESS.lastIndex = at;
+  const m = ADDRESS.exec(text);
+  if (!m) return 0;
+  let said = m[0];
+  const count = (c) => said.split(c).length - 1;
+  while (
+    /[.,;:!?'"*_~]$/.test(said) ||
+    (said.endsWith(")") && count("(") < count(")")) ||
+    (said.endsWith("]") && count("[") < count("]"))
+  ) {
+    said = said.slice(0, -1);
+  }
+  // a scheme with nothing after it is a word, not an address
+  return /^(https?:\/\/|mailto:)./i.test(said) ? said.length : 0;
+}
+
+/** Where an address may start, and every character it may hold. */
+const ADDRESS = /(?:https?:\/\/|mailto:)[^\s<>"`]+/iy;
+
+/**
+ * A link to an address, opened in a tab of its own.
+ *
+ * note: only ever given an `http`, `https` or `mailto` address, which is the whole of what this
+ * page links to; see `markdown`. A new tab, so following a link does not close the session's page.
+ */
+function link(href, label = href) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.rel = "noopener noreferrer";
+  a.target = "_blank";
+  a.append(label);
+  return a;
 }
 
 /**
@@ -721,15 +785,20 @@ function markdown(text, depth = 0) {
   return out;
 }
 
-/** The inside of a line: code, links, emphasis and escapes. */
-function inline(text) {
+/**
+ * The inside of a line: code, links, emphasis and escapes.
+ *
+ * note: `links` is off inside a link's own text, so an address written as the text of a link is
+ * not made a second link inside the first.
+ */
+function inline(text, links = true) {
   const out = document.createDocumentFragment();
   let plain = "";
   const flush = () => { if (plain) out.append(document.createTextNode(plain)); plain = ""; };
   const wrapped = (tag, inner) => {
     flush();
     const el = document.createElement(tag);
-    el.append(inline(inner));
+    el.append(inline(inner, links));
     out.append(el);
   };
   // an underscore inside a word is part of the word - `snake_case` is not emphasis
@@ -746,12 +815,23 @@ function inline(text) {
     [/\[([^\]]*)\]\(\s*<?([^)\s>]*)>?(?:\s+"[^"]*")?\s*\)/y, (m) => {
       if (!/^(https?:|mailto:)/i.test(m[2])) { wrapped("span", m[1]); return; }
       flush();
-      const a = document.createElement("a");
-      a.href = m[2];
-      a.rel = "noopener noreferrer";
-      a.target = "_blank";
-      a.append(inline(m[1]));
-      out.append(a);
+      out.append(link(m[2], inline(m[1], false)));
+    }],
+    // `<https://example.com>`, which markdown writes an address it means as a link
+    [/<((?:https?:\/\/|mailto:)[^\s<>]+)>/iy, (m) => {
+      if (!links) return false;
+      flush();
+      out.append(link(m[1]));
+    }],
+    // and an address with nothing around it, before the emphasis patterns, which would otherwise
+    // read the underscores in one as emphasis. The length is the address's, without the
+    // punctuation after it; see `address`
+    [ADDRESS, (m) => {
+      const length = links && address(text, m.index);
+      if (!length) return false;
+      flush();
+      out.append(link(text.slice(m.index, m.index + length)));
+      return length;
     }],
     [/\*\*(?=\S)([\s\S]*?\S)\*\*/y, (m) => wrapped("strong", m[1])],
     [/__(?=\S)([\s\S]*?\S)__(?![\p{L}\p{N}])/uy, (m, before) => word(before) ? false : wrapped("strong", m[1])],
@@ -764,7 +844,8 @@ function inline(text) {
     for (const [pattern, draw] of patterns) {
       pattern.lastIndex = at;
       const m = pattern.exec(text);
-      if (m && draw(m, text[at - 1]) !== false) { at += m[0].length; continue next; }
+      const took = m && draw(m, text[at - 1]);
+      if (m && took !== false) { at += typeof took === "number" ? took : m[0].length; continue next; }
     }
     plain += text[at++];
   }
