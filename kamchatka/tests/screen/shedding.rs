@@ -710,11 +710,18 @@ async fn a_long_round_has_its_oldest_results_elided_once_it_is_full() {
         "{}",
         plan.reason
     );
+    let one = kernel.item(current.results[0]).unwrap().tokens;
     let report = kernel.apply_compaction(plan);
     assert!(report.refused.is_empty());
     assert!(
         report.tokens_after as f64 <= limit as f64 * 0.6 + 200.0,
         "down to about the target: {} of {limit}",
+        report.tokens_after
+    );
+    // and no further: one result fewer would have left it over the target
+    assert!(
+        (report.tokens_after + one) as f64 > limit as f64 * 0.6,
+        "past the target: {} of {limit}",
         report.tokens_after
     );
     assert!(kernel.project().repairs.is_empty());
