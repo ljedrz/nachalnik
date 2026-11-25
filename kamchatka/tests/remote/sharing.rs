@@ -303,7 +303,7 @@ async fn a_clients_copy_is_sent_back_to_the_client() {
     })
     .await;
     peer.until_words("worth keeping").await;
-    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+    peer.until(|message| matches!(message, Message::Busy { busy: false, .. }))
         .await;
 
     peer.send(Command::Submit {

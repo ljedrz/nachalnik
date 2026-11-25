@@ -158,7 +158,7 @@ async fn main() -> Result<(), String> {
                 println!("--- the session took it: {did:?} ---");
                 busy = now;
             }
-            Message::Busy { busy: now } => busy = now,
+            Message::Busy { busy: now, .. } => busy = now,
             // a fragment of a model still writing: unnumbered, best-effort, and gone once past
             Message::Progress {
                 event:

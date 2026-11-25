@@ -128,7 +128,13 @@ fn a_message_this_build_has_no_name_for_reads_as_one() {
 
     // and the ones it does know still read as themselves
     let known: Message = serde_json::from_str(r#"{"is":"busy","busy":true}"#).expect("a message");
-    assert_eq!(known, Message::Busy { busy: true });
+    assert_eq!(
+        known,
+        Message::Busy {
+            busy: true,
+            paused: false
+        }
+    );
 }
 
 /// Where a session listens is the whole of its authentication, so it refuses to listen elsewhere.
@@ -625,7 +631,7 @@ async fn a_fragment_too_long_to_send_is_missed_rather_than_sent() {
     loop {
         match socket.recv().await {
             Message::Missed { .. } => missed = true,
-            Message::Busy { busy: false } if missed => break,
+            Message::Busy { busy: false, .. } if missed => break,
             _ => {}
         }
     }

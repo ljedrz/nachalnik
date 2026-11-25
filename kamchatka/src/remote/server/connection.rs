@@ -713,7 +713,10 @@ mod tests {
         };
         let (voice, heard) = broadcast::channel(2);
         let _ = answer.send(Answered {
-            message: Some(Message::Busy { busy: false }),
+            message: Some(Message::Busy {
+                busy: false,
+                paused: false,
+            }),
             voice: Some(heard),
             standing: Vec::new(),
         });

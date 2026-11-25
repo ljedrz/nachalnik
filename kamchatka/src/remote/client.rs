@@ -621,7 +621,7 @@ impl<'a> Client<'a> {
                 writeln!(self.prose, "--- item {id} ---\n{body}").map_err(|e| e.to_string())?;
                 self.prose.flush().map_err(|e| e.to_string())
             }
-            Message::Busy { busy } => {
+            Message::Busy { busy, .. } => {
                 self.busy = busy;
 
                 Ok(())

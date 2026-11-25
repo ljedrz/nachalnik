@@ -1143,7 +1143,14 @@ async fn a_session_that_stays_gone_is_given_up_on() {
             // the first connection is answered, so that what follows is a session that was there
             // and went: one that never said a word is no session at all, and refused at once
             if std::mem::replace(&mut first, false) {
-                let _ = protocol::write(&mut connection, &Message::Busy { busy: false }).await;
+                let _ = protocol::write(
+                    &mut connection,
+                    &Message::Busy {
+                        busy: false,
+                        paused: false,
+                    },
+                )
+                .await;
             }
             // and then the connection is hung up on, which is a session that has gone
             drop(connection);

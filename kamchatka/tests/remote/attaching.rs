@@ -42,9 +42,9 @@ async fn a_projection_carries_the_figure_the_status_line_shows() {
         line: "go".to_owned(),
     })
     .await;
-    peer.until(|message| matches!(message, Message::Busy { busy: true }))
+    peer.until(|message| matches!(message, Message::Busy { busy: true, .. }))
         .await;
-    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+    peer.until(|message| matches!(message, Message::Busy { busy: false, .. }))
         .await;
     peer.send(Command::Project).await;
     let heard = peer
