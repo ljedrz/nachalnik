@@ -1157,6 +1157,40 @@ async fn between_turns_an_unread_result_kept_by_hand_stays() {
     }
 }
 
+/// Between turns, only as much of what was never read is taken as the request needs to fit, oldest
+/// first.
+#[tokio::test]
+async fn between_turns_only_what_the_request_needs_is_taken_unread() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    kernel.push(ContextItem::user("read all three"));
+    let calls: Vec<_> = (1..=3)
+        .map(|n| call(&format!("c{n}"), "read", json!({ "n": n })))
+        .collect();
+    kernel.push(ContextItem::assistant(Content::text(""), calls.clone()));
+    let results: Vec<_> = calls
+        .iter()
+        .map(|asked| {
+            kernel.push(ContextItem::tool_result(
+                asked.id.clone(),
+                "read",
+                "x".repeat(8_000),
+                false,
+            ))
+        })
+        .collect();
+    let one = kernel.item(results[0]).unwrap().tokens;
+
+    // over the limit by less than one result, and then by more than one
+    for (over, taken) in [(one / 2, &results[..1]), (one * 3 / 2, &results[..2])] {
+        let limit = kernel.budget().used() - over;
+        let between = Shedder::under(0.8)
+            .plan_between_turns(&kernel.items(), &against(kernel, Some(limit)))
+            .expect("a request too long to send");
+        assert_eq!(between.elide, taken, "over by {over}");
+    }
+}
+
 // ----------------------------------------------------------------- whole sessions, end to end
 
 /// A kernel with the sized `read`, a scripted model behind it at this limit, and this compactor.
