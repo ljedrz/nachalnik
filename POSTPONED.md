@@ -9,6 +9,18 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
 
 ---
 
+- **Reasoning is sent back for every turn or for none.** `LinearProjector::send_reasoning` and
+  `--send-reasoning` are on or off, so a session that sends reasoning back pays for every earlier
+  turn's thinking on every request. A third setting, `--send-reasoning turn`, would send only the
+  reasoning of the turn in progress, the replies since the person's last message. That keeps what
+  a model needs within its own round of tool calls and drops the thinking of finished turns, as
+  the chat templates of many reasoning models do. Leaving out a whole thinking block does not alter
+  it, so it is safe for signed reasoning where rewriting is not. It belongs in the projector rather
+  than in a per-item state or the Shedder: which turns' reasoning goes is a fixed rule, not a
+  decision about room. It waits on live runs against a model that needs `--send-reasoning`, to
+  check that it still answers with earlier turns' thinking gone, and on deciding whether `turn`
+  becomes the default when sending is on.
+
 - **Rewritten reasoning has no earlier versions to page through.** An item's old text is kept for
   the context tab's `←` and `→` and for a client's version button, but a turn's old reasoning is
   only on the trace and in `log`, as `context.reasoning_replaced`. Keeping it would need the
