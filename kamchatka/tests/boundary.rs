@@ -1136,6 +1136,12 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         .note_for("cat: /proc/1/environ: Permission denied\n")
         .expect("another process is outside the sandbox");
     assert!(note.contains("/proc/1/environ is outside"), "{note}");
+    // ... and only a process's own directory: a file of `/proc` that is no process's is in reach,
+    // and refused by its own permissions
+    assert_eq!(
+        confined.note_for("cat: /proc/kcore: Permission denied\n"),
+        None
+    );
 
     // nothing refused, nothing to say
     assert_eq!(confined.note_for("ls: no such file\n"), None);
