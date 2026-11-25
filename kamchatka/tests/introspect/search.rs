@@ -386,10 +386,8 @@ async fn search_reaches_what_compaction_elided_out_of_the_request() {
 /// compactor elided it on the way in, and the model was left holding a marker saying `compacted to
 /// make room` - the tool paid for the answer and then had it taken away.
 ///
-/// note: clamped rather than refused, and said. Refusing is what `undo`/`redo` do with a `steps`
-/// above their bound, and the reason there is that a walk of sixty-four where a hundred was asked
-/// for reads as though the hundred was undone. Here the header is the true count and the true
-/// price whatever the `take` was, so a clamped answer is still a true one.
+/// note: clamped rather than refused, and said. The header is the true count and the true price
+/// whatever the `take` was, so a clamped answer is still a true one.
 #[tokio::test]
 async fn a_take_wider_than_the_ceiling_is_clamped_and_says_so() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(

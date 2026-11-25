@@ -24,13 +24,6 @@ use crate::{
 
 use super::{CHANGES, Pinned};
 
-/// How many of its own changes one call may walk back.
-///
-/// note: a bound because `undo` loops over a journal and "all of it" is a big number. Stated in the
-/// schema, and anything above it refused rather than clamped: clamped, a call for a hundred would
-/// get sixty-four and read as though it had got a hundred.
-const WALK: u64 = 64;
-
 /// Changes the context: moves items between states, rewrites one, writes something down, walks its
 /// own changes back.
 ///
@@ -316,7 +309,7 @@ impl Changes {
         match op {
             "revise" => self.revise(kernel, call, args, reason),
             "note" => self.note(kernel, args, reason),
-            "undo" => self.walk(kernel, args, reason),
+            "undo" => self.walk(kernel, reason),
             // note: the four moves are separate operations named for what they do, not one `prune`
             // action with a `state` argument. That would put one word over all four, including
             // `pin` and `restore`, which are its opposite, so "prune to pin it" would mean
@@ -799,66 +792,39 @@ impl Changes {
         ))
     }
 
-    /// Walks this tool's own changes back.
-    fn walk(&self, kernel: &Kernel, args: &Value, reason: &str) -> ToolOutput {
-        // note: read rather than clamped. Clamped, `steps` of 0, a negative number, or a word would
-        // each walk one change back, and a hundred would walk sixty-four - each a call that did
-        // something other than what it said
-        let steps = match &args["steps"] {
-            Value::Null => 1,
-            Value::Number(given) if given.as_u64().is_some_and(|it| (1..=WALK).contains(&it)) => {
-                given.as_u64().unwrap_or(1) as usize
-            }
-            given => {
-                return ToolOutput::error(format!(
-                    "`steps` is `{given}`, and nothing was done. It is how many of your own \
-                     changes to walk, from 1 to {WALK}; left out, it is 1."
-                ));
-            }
-        };
+    /// Walks this tool's last change back.
+    fn walk(&self, kernel: &Kernel, reason: &str) -> ToolOutput {
         let before = kernel.budget().used();
 
-        let mut put_back = Vec::new();
-        let mut left_alone = Vec::new();
-        let mut touched = Vec::new();
-        // `spent` is how many of this tool's own entries the walk took. It distinguishes a walk
-        // that spent one on a refusal from one that spent none
-        let mut spent = 0;
         // taken before the journal and copied, so the two locks are never held in this order
         // anywhere; `note_pin` holds the other one on its own
-        let mut mine = self.pinned.lock().clone();
-        {
+        let mine = self.pinned.lock().clone();
+        let (step, touched) = {
             let mut journal = self.journal.lock();
-            for _ in 0..steps {
-                let Some(Entry { undoing, left }) = journal.done.pop() else {
-                    break;
-                };
-                spent += 1;
-                // an item that has since gone, or is no longer this tool's to move, gives nothing
-                // to walk to. The entry is spent either way rather than retried against a context
-                // it no longer describes
-                let step = undoing.apply(kernel, &mine, &left);
-                put_back.extend(step.did);
-                left_alone.extend(step.left);
-                let Some(inverse) = step.inverse else {
-                    continue;
-                };
-                // note: the copy is kept current as the walk goes, because the next step asks
-                // `protected` against it. Read once, a pin this step put back would be the person's
-                // to the next step, and walking back a `pin` and the `restore` that followed would
-                // stop halfway and call the model's own pin a promise
-                if let Undoing::States(states) = &inverse {
-                    for (id, ..) in states {
-                        touched.push(*id);
-                        if let Some(item) = kernel.item(*id) {
-                            hold(&mut mine, *id, item.state, item.note.clone());
+            match journal.done.pop() {
+                None => (None, Vec::new()),
+                Some(Entry { undoing, left }) => {
+                    // an item that has since gone, or is no longer this tool's to move, gives
+                    // nothing to walk to. The entry is spent either way rather than retried against
+                    // a context it no longer describes
+                    let step = undoing.apply(kernel, &mine, &left);
+                    let touched = match &step.inverse {
+                        Some(inverse) => {
+                            // what this left items as, for every other entry naming the same items
+                            journal.refresh(kernel, &inverse.ids());
+                            match inverse {
+                                Undoing::States(states) => {
+                                    states.iter().map(|(id, ..)| *id).collect()
+                                }
+                                Undoing::Said(..) => Vec::new(),
+                            }
                         }
-                    }
+                        None => Vec::new(),
+                    };
+                    (Some(step), touched)
                 }
-                // what this step left items as, for every other entry naming the same items
-                journal.refresh(kernel, &inverse.ids());
             }
-        }
+        };
         for id in touched {
             if let Some(item) = kernel.item(id) {
                 self.note_pin(kernel, id, item.state, item.note.clone());
@@ -870,18 +836,23 @@ impl Changes {
             (journal.done.len(), journal.carried)
         };
 
-        let mut out = match put_back.is_empty() {
+        let (did, left_alone) = match step {
+            Some(step) => (Some(step.did), step.left),
+            None => (None, Vec::new()),
+        };
+        let mut out = match did {
+            Some(Some(did)) => {
+                format!("walked back your last change, because: {reason}\n  {did}\n")
+            }
             // note: which of the two it was, because the model reads this sentence and the two are
             // opposites. An entry spent on a refusal existed; telling the model there was nothing
             // of yours to walk back reads as never having made the change. The only other evidence
             // is the counter moving under it
-            true if spent > 0 => format!(
-                "none of your {} change(s) could be walked back, and the {} of them there were \
-                 spent on it. `undo` only moves the changes this tool made; the person you work \
-                 with has an undo of their own, and it is not this one.\n",
-                spent, spent,
-            ),
-            true => {
+            Some(None) => "your last change could not be walked back, and `undo` will not try it \
+                           again. `undo` only moves the changes this tool made; the person you \
+                           work with has an undo of their own, and it is not this one.\n"
+                .to_owned(),
+            None => {
                 let mut said = "there was nothing of yours to walk back. `undo` only moves the \
                                 changes this tool made; the person you work with has an undo of \
                                 their own, and it is not this one.\n"
@@ -897,11 +868,6 @@ impl Changes {
                 }
                 said
             }
-            false => format!(
-                "walked {} of your own change(s) back, because: {reason}\n  {}\n",
-                put_back.len(),
-                put_back.join("\n  "),
-            ),
         };
         if !left_alone.is_empty() {
             out.push_str(&format!(

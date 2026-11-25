@@ -257,18 +257,11 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "undo",
-            "walks back through the changes *you* made here. One change is one call, however many \
-             items it moved. Undoing a `note` excludes it, and undoing a `revise` puts the old \
-             text back. It touches nothing you did not do, and an item somebody else has changed \
-             since you did is left as it is now. Only your last 16 changes are kept, so a walk \
-             longer than that stops where they run out, and the answer says how many it walked.",
-            vec![
-                Arg::whole(
-                    "steps",
-                    "how many of your own changes to walk, from 1 to 64; 1 by default",
-                ),
-                Arg::text("reason", WHY).needed(),
-            ],
+            "takes back your most recent change that has not been undone yet, however many \
+             items it moved; call it again to take back the one before. Undoing a `note` \
+             excludes it; undoing a `revise` puts the old text back. Items somebody else changed \
+             since are left as they are. `undo` can go back at most 16 changes.",
+            vec![Arg::text("reason", WHY).needed()],
         ),
     ]);
 

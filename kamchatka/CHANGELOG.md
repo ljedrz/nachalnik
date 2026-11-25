@@ -130,6 +130,9 @@ minor bump may break you.
   that wants an undone change back can make it again, so `redo` was not worth its place in the
   schema, which goes out with every request. Snapshots that still hold a list of undone changes
   load as before; the list is ignored. The person's own `/redo` and `U` are unchanged.
+- **`undo` has no `steps`.** Each call takes back one change, the most recent one not yet undone,
+  and `steps` is refused like any other argument it does not take. `steps` went up to 64, while
+  only the last 16 changes are kept.
 
 ### fixed
 

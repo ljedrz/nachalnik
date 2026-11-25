@@ -474,7 +474,7 @@ async fn an_undo_that_spent_an_entry_on_a_refusal_says_it_spent_one() {
     let (first, second) = (&said[1], &said[2]);
     // the first one had an entry and lost it to a refusal
     assert!(
-        first.contains("could be walked back") && first.contains("spent on it"),
+        first.contains("could not be walked back") && first.contains("will not try it again"),
         "an entry that was spent on a refusal is not the same as an entry that was never there: \
          {first}"
     );
@@ -744,7 +744,7 @@ async fn revise_refuses_what_text_cannot_stand_for() {
 }
 
 /// The journal keeps the last 16 changes, since it goes into every snapshot with each item's old
-/// content; an undo asking for more walks back those and says nothing is left.
+/// content; a seventeenth undo finds nothing left.
 #[tokio::test]
 async fn undo_walks_back_only_the_last_sixteen_changes() {
     let mut calls: Vec<_> = (0..20)
@@ -761,11 +761,13 @@ async fn undo_walks_back_only_the_last_sixteen_changes() {
             )
         })
         .collect();
-    calls.push(call(
-        "back",
-        "context",
-        json!({ "action": "undo", "steps": 64, "reason": "all of it" }),
-    ));
+    calls.extend((0..17).map(|n| {
+        call(
+            &format!("back{n}"),
+            "context",
+            json!({ "action": "undo", "reason": "all of it" }),
+        )
+    }));
     let (kernel, _provider, _anchor) = agent(one_turn(calls));
     kernel.push(ContextItem::memory("notes", "the original"));
     kernel.push(ContextItem::user("tidy up"));
@@ -773,14 +775,19 @@ async fn undo_walks_back_only_the_last_sixteen_changes() {
     kernel.turn().await.expect("the turn failed");
 
     let said = all_answers(&kernel);
-    let walked = said.last().unwrap();
+    let sixteenth = &said[said.len() - 2];
     assert!(
-        walked.contains("walked 16 of your own change(s) back"),
-        "{walked}"
+        sixteenth.contains("walked back your last change"),
+        "{sixteenth}"
     );
     assert!(
-        walked.contains("0 change(s) of yours can still be undone"),
-        "{walked}"
+        sixteenth.contains("0 change(s) of yours can still be undone"),
+        "{sixteenth}"
+    );
+    let seventeenth = said.last().unwrap();
+    assert!(
+        seventeenth.contains("there was nothing of yours to walk back"),
+        "{seventeenth}"
     );
     // back to what the fourth revision left, not to the original
     let notes = kernel.item(nachalnik::ContextId(1)).unwrap();
@@ -808,7 +815,17 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
         call(
             "c3",
             "context",
-            json!({ "action": "undo", "steps": 5, "reason": "I was wrong about both" }),
+            json!({ "action": "undo", "reason": "I was wrong about that" }),
+        ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "undo", "reason": "and about that" }),
+        ),
+        call(
+            "c5",
+            "context",
+            json!({ "action": "undo", "reason": "anything else?" }),
         ),
     ]));
 
@@ -821,14 +838,19 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
     kernel.turn().await.expect("the turn failed");
 
     let said = all_answers(&kernel);
-    let walked = said.last().unwrap();
+    for walked in &said[2..4] {
+        assert!(walked.contains("walked back your last change"), "{walked}");
+    }
     assert!(
-        walked.contains("walked 2 of your own change(s) back"),
-        "{walked}"
+        said[3].contains("0 change(s) of yours can still be undone"),
+        "{}",
+        said[3]
     );
+    // and the person's elision is not the model's to walk back
     assert!(
-        walked.contains("0 change(s) of yours can still be undone"),
-        "{walked}"
+        said[4].contains("there was nothing of yours to walk back"),
+        "{}",
+        said[4]
     );
 
     // both of its own changes are gone, including the note it wrote
@@ -1030,11 +1052,13 @@ async fn walking_back_into_several_states_is_one_undo_for_the_person() {
     );
 }
 
-/// A walk of several steps knows a pin it put back itself is its own, for the steps after it.
+/// An undo knows a pin the undo before it put back is the model's own.
 ///
-/// note: which pins are the model's was read once, before the walk, so a step that put the model's
-/// own pin back left the next step reading it as the person's - and walking back a `pin` and the
-/// `restore` after it stopped halfway, pinned, and called the pin a promise it could not break.
+/// note: bought when `undo` took a `steps` and read which pins were the model's once, before the
+/// walk: a step that put the model's own pin back left the next step reading it as the person's -
+/// and walking back a `pin` and the `restore` after it stopped halfway, pinned, and called the pin
+/// a promise it could not break. Kept for two calls, where the same mistake would be the pin's
+/// bookkeeping not reaching the second call.
 #[tokio::test]
 async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -1051,7 +1075,12 @@ async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
         call(
             "c3",
             "context",
-            json!({ "action": "undo", "steps": 2, "reason": "neither" }),
+            json!({ "action": "undo", "reason": "not the restore" }),
+        ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "undo", "reason": "nor the pin" }),
         ),
     ]));
 
@@ -1061,10 +1090,7 @@ async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
 
     let walked = all_answers(&kernel).last().unwrap().clone();
     assert!(!walked.contains("a pin is a promise"), "{walked}");
-    assert!(
-        walked.contains("walked 2 of your own change(s) back"),
-        "{walked}"
-    );
+    assert!(walked.contains("walked back your last change"), "{walked}");
     let item = kernel.item(file).unwrap();
     assert_eq!(item.state, ContextState::Active);
     assert_eq!(item.note, None);
@@ -1157,53 +1183,6 @@ async fn an_id_that_is_not_one_is_refused_rather_than_dropped() {
         said[3].contains("`ids` and `select` in one call"),
         "a number and a selector name items twice: {}",
         said[3]
-    );
-}
-
-/// A `steps` outside what a walk takes is refused, rather than walking some other number.
-///
-/// note: it was `as_u64().unwrap_or(1).clamp(1, 64)`, so nought walked one change back, a word
-/// walked one back, and a hundred walked sixty-four - each of them a call that did something other
-/// than what it said, and the schema advertised none of it.
-#[tokio::test]
-async fn a_walk_of_no_steps_walks_nothing() {
-    let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call(
-            "c1",
-            "context",
-            json!({ "action": "elide", "ids": [1], "reason": "done with it" }),
-        ),
-        call(
-            "c2",
-            "context",
-            json!({ "action": "undo", "steps": 0, "reason": "none of it" }),
-        ),
-        call(
-            "c3",
-            "context",
-            json!({ "action": "undo", "steps": "two", "reason": "a word" }),
-        ),
-        call(
-            "c4",
-            "context",
-            json!({ "action": "undo", "steps": 100, "reason": "all of it" }),
-        ),
-    ]));
-
-    let big = kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
-    kernel.push(ContextItem::user("go"));
-    kernel.turn().await.expect("the turn failed");
-
-    let said = all_answers(&kernel);
-    for refusal in &said[1..4] {
-        assert!(refusal.contains("`steps` is"), "{refusal}");
-        assert!(refusal.contains("from 1 to 64"), "{refusal}");
-        assert!(!refusal.contains("walked"), "{refusal}");
-    }
-    assert_eq!(
-        kernel.item(big).unwrap().state,
-        ContextState::Elided,
-        "a refused `steps` walked something back anyway"
     );
 }
 
@@ -1327,7 +1306,7 @@ async fn what_the_model_changed_before_a_resume_it_can_undo_after_one() {
     kernel.turn().await.expect("the turn failed");
 
     let said = answered(&kernel);
-    assert!(said.contains("walked 1 of your own change"), "{said}");
+    assert!(said.contains("walked back your last change"), "{said}");
     assert!(!said.contains("not carried over"), "{said}");
     assert_eq!(kernel.item(read).unwrap().state, ContextState::Active);
 }
