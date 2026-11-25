@@ -566,6 +566,32 @@ fn a_grant_does_not_outlive_the_session_it_was_made_in() {
     assert!(reached.clears_the_gate());
 }
 
+/// A question left open when a session ends is not answered by what the next session does.
+///
+/// note: the grant ends with the session, and so does the question. Otherwise a reach made before
+/// the new session is asked anything is attributed to a question from the session before it.
+#[test]
+fn a_question_does_not_outlive_the_session_it_was_asked_in() {
+    let steps = vec![
+        Step::Granted {
+            tools: vec!["inspect".to_owned()],
+            budget: 4,
+        },
+        asked(Some("unprompted")),
+        Step::Briefed { items: Vec::new() },
+        Step::Acted(Act::Looked { items: 7 }),
+    ];
+
+    let reached = Reached::over(&steps);
+
+    assert_eq!(reached.offered, 1);
+    assert_eq!(reached.looks, 1);
+    assert_eq!(
+        reached.instrumented, 0,
+        "the look came in the next session, before it was asked anything"
+    );
+}
+
 /// One battery of claims: `said` is the answer the subject gave, `truth` what came of the test,
 /// and `informed` whether it had been told how it was doing when it answered.
 fn battery(claims: &[(bool, bool)], informed: bool) -> Vec<Resolution> {
