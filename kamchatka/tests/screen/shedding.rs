@@ -720,6 +720,46 @@ async fn a_long_round_has_its_oldest_results_elided_once_it_is_full() {
     assert!(kernel.project().repairs.is_empty());
 }
 
+/// A result of the round in progress that somebody brought back by hand stays, as one in a
+/// finished turn does: the pass goes on to the next oldest.
+#[tokio::test]
+async fn a_long_round_keeps_a_result_brought_back_by_hand() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let current = exchange(
+        kernel,
+        "a",
+        "read them all",
+        &(0..8).map(|_| "x".repeat(4_000)).collect::<Vec<_>>(),
+    );
+    kernel.set_state(
+        [current.answer],
+        ContextState::Excluded,
+        Some("by hand".into()),
+    );
+    kernel.set_state(
+        [current.results[0]],
+        ContextState::Active,
+        Some("brought back by hand".into()),
+    );
+    assert!(kernel.item(current.results[0]).unwrap().note.is_some());
+    let limit = filled_to(kernel, 0.85);
+    let trim = Shedder {
+        threshold: 0.8,
+        target: 0.6,
+    };
+
+    let plan = planned(&trim, kernel, Some(limit))
+        .await
+        .expect("a full context with read results in it");
+    assert!(
+        !plan.elide.contains(&current.results[0]),
+        "{:?}",
+        plan.elide
+    );
+    assert_eq!(plan.elide.first(), Some(&current.results[1]));
+}
+
 /// Under the threshold, a round in progress keeps every result it has, however many.
 #[tokio::test]
 async fn a_long_round_short_of_the_threshold_keeps_its_results() {
