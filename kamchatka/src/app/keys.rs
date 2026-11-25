@@ -462,23 +462,24 @@ impl App {
             },
         ];
 
-        let history = self
-            .versions
-            .get(&item.id)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
         // note: asked rather than worked out again. An undo puts an old content back, and the
         // restored version becomes current too, so the last is dropped. A browser button counting
         // these must match the number in the strip
-        let keep = self.versions(item.id);
-        for (n, was) in history.iter().enumerate().take(keep).rev() {
+        let earlier = self.earlier_versions(item.id);
+        let total = earlier.len() + 1;
+        for (n, was) in earlier.iter().enumerate().rev() {
+            // the reasoning first, as `stored` puts it, since a version is the whole reply as it
+            // was and either part may be the one that changed
+            let thought = match &was.reasoning {
+                Some(reasoning) => format!("reasoning:\n{}\n\n", whole(reasoning)),
+                None => String::new(),
+            };
             pages.push(Page {
                 name: format!("v{}", n + 1),
                 body: format!(
-                    "version {} of {}, before it was rewritten\n\n{}",
+                    "version {} of {total}, before it was rewritten\n\n{thought}{}",
                     n + 1,
-                    keep + 1,
-                    whole(was)
+                    whole(&was.content)
                 ),
             });
         }

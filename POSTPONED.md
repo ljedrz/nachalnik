@@ -21,13 +21,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   check that it still answers with earlier turns' thinking gone, and on deciding whether `turn`
   becomes the default when sending is on.
 
-- **Rewritten reasoning has no earlier versions to page through.** An item's old text is kept for
-  the context tab's `←` and `→` and for a client's version button, but a turn's old reasoning is
-  only on the trace and in `log`, as `context.reasoning_replaced`. Keeping it would need the
-  viewer's version pages to hold reasoning beside content, and every place that numbers versions
-  to agree on how the two count. It waits on somebody wanting to page back through reasoning
-  rather than read it off the trace.
-
 - **A reconcile reads a turn whose reasoning one fork rewrote as where the forks part.**
   `same_item` compares an item's kind, and a turn's reasoning is part of its kind, so a shared turn
   whose reasoning one fork rewrote no longer matches the same turn in another fork. Everything

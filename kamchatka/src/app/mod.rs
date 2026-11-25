@@ -68,6 +68,25 @@ const TRACE_DEPTH: usize = 400;
 /// How many earlier versions of one item the viewer keeps.
 const VERSIONS: usize = 8;
 
+/// What one rewrite of an item overwrote.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Was {
+    /// Its text.
+    Said(Content),
+    /// Its reasoning; `None` where it had none.
+    Thought(Option<Content>),
+}
+
+/// One earlier version of an item: what it said and what it thought, both as they were then.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Version {
+    /// Its text.
+    pub content: Content,
+    /// Its reasoning, for a reply that had some.
+    pub reasoning: Option<Content>,
+}
+
 /// The transcript holds this much of a still-running tool's output.
 ///
 /// note: only the tool's output, nothing else. A command can produce megabytes and all of it is in
@@ -365,16 +384,24 @@ pub struct App {
     /// note: the same handle the tools were built with, so `/limit` changes the number they declare
     /// on the next request. A second handle would report success and do nothing.
     pub limits: Limits,
-    /// What items used to say, oldest first, for the ones that have been rewritten.
+    /// What each rewrite of an item overwrote, oldest first, for the items that have been
+    /// rewritten: its text or its reasoning, whichever the rewrite changed.
     ///
     /// note: kept here because the kernel does not keep it. A replacement overwrites something,
-    /// which is why [`nachalnik::Event::ContextReplaced`] carries the content it replaced: a client
-    /// that wants the history can have it, and one that does not pays nothing. Without it, a `context` rewrite of a tool result would leave the
-    /// old text unreadable except as JSON on the trace and in an undo window that closes.
+    /// which is why [`nachalnik::Event::ContextReplaced`] and
+    /// [`nachalnik::Event::ReasoningReplaced`] carry what they replaced: a client that wants the
+    /// history can have it, and one that does not pays nothing. Without it, a `context` rewrite of
+    /// a tool result would leave the old text unreadable except as JSON on the trace and in an undo
+    /// window that closes.
+    ///
+    /// note: the part that changed rather than the whole item, because that is what the events
+    /// carry. A version is the item with every later rewrite taken back, worked out from the item
+    /// as it is now; see [`App::earlier_versions`]. So a reply whose text and then reasoning were
+    /// rewritten has two versions, and each shows both parts as they were at that point.
     ///
     /// note: a terminal edit replaces in place as `context: revise` does, so this is where the
     /// words it changed are, with no second mechanism.
-    versions: BTreeMap<ContextId, Vec<Content>>,
+    versions: BTreeMap<ContextId, Vec<Was>>,
 
     /// The handle the introspection tools reach the kernel through, kept for as long as the session
     /// lasts.
@@ -917,8 +944,8 @@ impl App {
 
     // ------------------------------------------------------------------- what a caller asks of it
 
-    /// Keeps what an item used to say, so that the viewer can still show it.
-    pub(super) fn remember(&mut self, id: ContextId, was: Content) {
+    /// Keeps what a rewrite of an item overwrote, so that the viewer can still show it.
+    pub(super) fn remember(&mut self, id: ContextId, was: Was) {
         let versions = self.versions.entry(id).or_default();
         if versions.last() == Some(&was) {
             return;
@@ -932,35 +959,65 @@ impl App {
         }
     }
 
-    /// How many earlier versions of an item are still there to read.
+    /// Every earlier version of an item still there to read, oldest first.
     ///
-    /// note: the current content is not one of them, so an item nobody has rewritten answers `0`
-    /// and an item rewritten once answers `1` - `v1`, with what it says now as `v2`.
+    /// note: worked out backwards from the item as it is now, taking back one rewrite at a time,
+    /// newest first. That is exact whichever part each rewrite changed, and it needs nothing kept
+    /// beyond what the events carried.
     ///
-    /// note: an undo is why this is not `Vec::len`. Putting an old content back makes the newest
+    /// note: an undo is why the last ones may be dropped. Putting old content back makes the newest
     /// remembered version current as well, and two identical faces side by side say the same thing
-    /// twice, so the last is dropped when it matches. The rule lives here rather than in the
-    /// terminal's strip of faces, because a client counting versions for a button and a terminal
-    /// counting them for a page must reach the same number.
-    pub fn versions(&self, id: ContextId) -> usize {
+    /// twice, so versions at the end that match what the item holds now are not counted. The rule
+    /// lives here rather than in the terminal's strip of faces, because a client counting versions
+    /// for a button and a terminal counting them for a page must reach the same number.
+    fn earlier_versions(&self, id: ContextId) -> Vec<Version> {
+        let Some(item) = self.kernel.item(id) else {
+            return Vec::new();
+        };
+        let now = Version {
+            content: item.content.clone(),
+            reasoning: item.reasoning().cloned(),
+        };
         let history = self.versions.get(&id).map(Vec::as_slice).unwrap_or(&[]);
-        let same = self
-            .kernel
-            .item(id)
-            .is_some_and(|now| history.last() == Some(&now.content));
 
-        history.len() - usize::from(same)
+        let mut walked = now.clone();
+        let mut earlier: Vec<Version> = history
+            .iter()
+            .rev()
+            .map(|was| {
+                match was {
+                    Was::Said(content) => walked.content = content.clone(),
+                    Was::Thought(reasoning) => walked.reasoning = reasoning.clone(),
+                }
+                walked.clone()
+            })
+            .collect();
+        earlier.reverse();
+        while earlier.last() == Some(&now) {
+            earlier.pop();
+        }
+
+        earlier
     }
 
-    /// What one of them said, counting from `1` as the oldest.
+    /// How many earlier versions of an item are still there to read.
+    ///
+    /// note: the current one is not one of them, so an item nobody has rewritten answers `0` and
+    /// an item rewritten once answers `1` - `v1`, with what it holds now as `v2`. A rewrite of a
+    /// reply's reasoning counts as one, as a rewrite of its text does.
+    pub fn versions(&self, id: ContextId) -> usize {
+        self.earlier_versions(id).len()
+    }
+
+    /// One of them, counting from `1` as the oldest.
     ///
     /// note: `None` for `0`, for anything past [`App::versions`], and for an item with none - one
     /// answer for "there is no such version" rather than three. The number is the one on the face:
     /// `v1` is `at = 1`.
-    pub fn version(&self, id: ContextId, at: usize) -> Option<Content> {
-        (at >= 1 && at <= self.versions(id))
-            .then(|| self.versions.get(&id)?.get(at - 1).cloned())
-            .flatten()
+    pub fn version(&self, id: ContextId, at: usize) -> Option<Version> {
+        self.earlier_versions(id)
+            .into_iter()
+            .nth(at.checked_sub(1)?)
     }
 
     /// Whether a turn is being asked for before anything has been picked to ask, and says so if it

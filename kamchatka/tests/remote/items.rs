@@ -391,6 +391,153 @@ async fn a_message_the_person_wrote_is_listed_with_its_start() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A rewrite of a reply's reasoning is a version, as a rewrite of its text is, and each version is
+/// the whole reply as it was then: its text and its reasoning together.
+///
+/// note: text first, then reasoning, so the two versions differ in different parts. `v1` is
+/// both as they started; `v2` is the new text with the reasoning it still had.
+#[tokio::test]
+async fn a_reply_whose_reasoning_was_rewritten_has_a_version_holding_both_parts() {
+    let session = served(vec![], |app| {
+        app.kernel.push(
+            nachalnik::ContextItem::assistant("parser.rs", Vec::new())
+                .with_reasoning(Some("they said parser.rs".into())),
+        );
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let id = attached.items[0].id;
+
+    peer.send(Command::Revise {
+        id,
+        text: "parse.rs".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    peer.send(Command::ReviseReasoning {
+        id,
+        text: "they said parse.rs".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    // asked again, as the page does when the record of the rewrite arrives: the answer to the
+    // rewrite itself is drawn before the session has taken in what the rewrite overwrote
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(now)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(
+        now.items[0].versions, 2,
+        "two rewrites, two earlier versions"
+    );
+
+    for (at, text, thought) in [
+        (1, "parser.rs", "they said parser.rs"),
+        (2, "parse.rs", "they said parser.rs"),
+    ] {
+        peer.send(Command::Inspect {
+            id,
+            raw: true,
+            version: Some(at),
+        })
+        .await;
+        let heard = peer
+            .until(|message| {
+                matches!(
+                    message,
+                    Message::Item {
+                        version: Some(_),
+                        ..
+                    }
+                )
+            })
+            .await;
+        let Some(Message::Item {
+            body, reasoning, ..
+        }) = heard.last()
+        else {
+            unreachable!("just matched")
+        };
+        assert_eq!(
+            (body.as_str(), reasoning.as_deref()),
+            (text, Some(thought)),
+            "v{at}"
+        );
+    }
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// An undo of a reasoning rewrite leaves no version that is the same as what the reply holds.
+#[tokio::test]
+async fn an_undone_reasoning_rewrite_is_not_a_version_of_its_own() {
+    let session = served(vec![], |app| {
+        app.kernel.push(
+            nachalnik::ContextItem::assistant("an answer", Vec::new())
+                .with_reasoning(Some("a thought".into())),
+        );
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let id = attached.items[0].id;
+    peer.send(Command::ReviseReasoning {
+        id,
+        text: "another thought".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(now)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(now.items[0].versions, 1);
+
+    peer.send(Command::Submit {
+        line: "/undo".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Done { .. } | Message::Replied { .. }))
+        .await;
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(now)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(
+        now.items[0].versions, 0,
+        "the only version is what it holds again"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert_eq!(
+        app.kernel.item(id).unwrap().reasoning().unwrap().to_text(),
+        "a thought",
+        "the undo took"
+    );
+}
+
 /// An item that has been rewritten says how many versions of it there are, and hands them back.
 ///
 /// note: the count is what a client draws a control from, so it has to mean the same thing as the

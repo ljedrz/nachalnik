@@ -231,10 +231,10 @@ impl App {
                     self.say(Speaker::Note, format!("{tool}: {reason}"));
                 }
             }
-            // the only place the old text exists once the undo window closes; the viewer reads it
-            // back off `←` and `→`. The reasoning a turn used to hold is on the trace and in `log`,
-            // and has no pages of its own here
-            Event::ContextReplaced { id, was, .. } => self.remember(id, was),
+            // the only place the old text and reasoning exist once the undo window closes; the
+            // viewer reads them back off `←` and `→`
+            Event::ContextReplaced { id, was, .. } => self.remember(id, super::Was::Said(was)),
+            Event::ReasoningReplaced { id, was, .. } => self.remember(id, super::Was::Thought(was)),
             Event::ToolStarted { call, .. } => {
                 self.streamed_bytes.1.insert(call, 0);
             }

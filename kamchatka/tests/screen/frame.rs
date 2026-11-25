@@ -445,6 +445,13 @@ async fn r_edits_the_reasoning_of_a_reply_and_nothing_else() {
     assert_eq!(item.meta["reasoning_revised"]["by"], "user");
     assert!(harness.app.editing.is_none() && !harness.app.editing_reasoning);
 
+    // and the reply as it was is a version, as it would be after an `e`, with both its parts
+    harness.drain();
+    assert_eq!(harness.app.versions(item.id), 1);
+    let was = harness.app.version(item.id, 1).expect("a version");
+    assert_eq!(was.reasoning.unwrap().to_text(), "the thought");
+    assert_eq!(was.content.to_text(), "the answer");
+
     // and the next `e` edits the text, not the reasoning
     harness.press(KeyCode::Char('e')).await;
     assert!(!harness.app.editing_reasoning);

@@ -1389,16 +1389,26 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
         // channel
         Command::Inspect { id, raw, version } => version.map(|at| match app.version(id, at) {
             // note: the text, not a `stored` reading of it. What `stored` puts above an item is why
-            // it is here and what its turn was thinking - facts about the item as it stands, not
-            // what it used to say. Printed over an old version they would be dated wrongly, and
-            // confidently
+            // it is here - a fact about the item as it stands, not about what it used to say, and
+            // printed over an old version it would be dated wrongly, and confidently. What the
+            // reply thought at that version goes beside the text, as it does for the current one;
+            // its calls are the same in every version, since no rewrite reaches them
             Some(was) => Message::Item {
                 id,
-                body: was.to_text().into_owned(),
+                body: was.content.to_text().into_owned(),
                 raw,
                 version,
-                reasoning: None,
-                calls: Vec::new(),
+                reasoning: was.reasoning.map(|it| it.to_text().into_owned()),
+                calls: app
+                    .kernel
+                    .item(id)
+                    .filter(|item| item.content.as_blocks().is_none())
+                    .map(|item| {
+                        item.calls()
+                            .map(|call| format!("{}({})", call.tool, call.args))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             },
             None => Message::Failed {
                 about: "inspect".to_owned(),

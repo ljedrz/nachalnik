@@ -412,6 +412,7 @@ const MAX_LINE = 33554432;
 const RESHAPES = new Set([
   "context.changed",
   "context.replaced",
+  "context.reasoning_replaced",
   "context.undone",
   "context.redone",
   "context.compacted",
@@ -1148,6 +1149,9 @@ function draw() {
         // reasonable thing to want, and not this button: somebody cycling to see what a message
         // used to say has not asked for it to say that again
         body.readOnly = !!item.beyond || at !== total;
+        // and the reasoning of an old version for the same reason: the version is the whole
+        // reply as it was, and is there to be read
+        thought.readOnly = !!item.reasoning_beyond || at !== total;
         send({ do: "inspect", id: item.id, raw: !reading, version: wire });
       };
 
@@ -1690,11 +1694,11 @@ function heard(m) {
         // is read-only, so letting go of it has nothing to compare against and nothing to send
         if (m.raw && now) el.dataset.was = m.body;
         else delete el.dataset.was;
-        // what the reply keeps beside its text, which only an answer about what it says now
-        // carries. An earlier version is a version of the text alone, so the reasoning and the
-        // calls shown around it stay as they are
+        // what the reply keeps beside its text, as it was at the version this box is on: a
+        // rewrite of the reasoning is a version as a rewrite of the text is. A reading carries
+        // neither, having both in its body already
         const thought = el.parentElement?.querySelector(`[data-thought="${m.id}"]`);
-        if (now && thought) thought.shown(m.raw ? (m.reasoning ?? null) : null, m.calls ?? []);
+        if (thought) thought.shown(m.raw ? (m.reasoning ?? null) : null, m.calls ?? []);
       }
       break;
     }
