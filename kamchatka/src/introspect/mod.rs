@@ -554,10 +554,9 @@ pub(crate) fn unmatched(kernel: &Kernel, select: &str) -> String {
 /// the answer says so.
 ///
 /// note: clamped rather than refused, and said in the answer either way. A refusal would be the
-/// stricter shape, and `undo` refuses a `steps` above their own bound because a walk of
-/// sixty-four where a hundred was asked for reads as though the hundred was undone. Here the answer
-/// opens with the true count and the true price of every match whatever the `take` was, so a
-/// clamped answer is still true, and only the number of lines in it is lost.
+/// stricter shape, but the answer opens with the true count and the true price of every match
+/// whatever the `take` was, so a clamped answer is still true, and only the number of lines in it
+/// is lost.
 ///
 /// note: one number for both, because it is one word. `search` and `log` are the two tools that
 /// hand over pieces of the session, and a model that has learned what 64 buys from one of them has
