@@ -222,4 +222,40 @@ mod tests {
             .render(expected.area, &mut expected);
         terminal.backend().0.assert_buffer(&expected);
     }
+
+    /// Every call but a draw reaches the backend underneath as it was made, and answers as that
+    /// backend does.
+    #[test]
+    fn every_call_but_a_draw_is_the_backend_underneath() {
+        let start = || {
+            let mut backend = TestBackend::with_lines(["abcd", "efgh", "ijkl"]);
+            backend.set_cursor_position((1, 1)).unwrap();
+            backend.show_cursor().unwrap();
+            backend
+        };
+        // note: a sequence each, since a call that changed nothing would pass by doing nothing:
+        // the cursor is shown before it is hidden, and hidden before it is shown
+        macro_rules! passed_through {
+            ($($method:ident($($arg:expr),*)),+) => {{
+                let (mut bare, mut steady) = (start(), Steady(start()));
+                $(
+                    assert_eq!(
+                        steady.$method($($arg),*).unwrap(),
+                        bare.$method($($arg),*).unwrap(),
+                        stringify!($method)
+                    );
+                )+
+                assert_eq!(steady.0, bare);
+            }};
+        }
+
+        passed_through!(append_lines(2));
+        passed_through!(hide_cursor());
+        passed_through!(hide_cursor(), show_cursor());
+        passed_through!(get_cursor_position());
+        passed_through!(set_cursor_position(Position::new(2, 0)));
+        passed_through!(clear());
+        passed_through!(clear_region(ClearType::AfterCursor));
+        passed_through!(flush());
+    }
 }
