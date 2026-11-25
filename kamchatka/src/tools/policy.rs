@@ -113,7 +113,7 @@ pub struct Together {
 
 impl Together {
     /// The sentence every table puts under its rows: "`context`'s `undo` needs all of
-    /// `context:move`, ..., so the strictest of those applies to `undo`".
+    /// `context:state`, ..., so the strictest of those applies to `undo`".
     pub fn sentence(&self) -> String {
         let actions: Vec<String> = self.actions.iter().map(|it| format!("`{it}`")).collect();
         let needed: Vec<String> = self.needed.iter().map(|it| format!("`{it}`")).collect();
@@ -310,10 +310,11 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// replaceable.
 ///
 /// note: a domain is the whole of what is done in it, and a rule finer than one is about the
-/// operation it names. `context` allows every operation in that domain; `context:move` allows
-/// eliding, excluding and restoring and says nothing about the rest. Against that, the strictest of
-/// everything consulted wins: `fs:read` stays `allow` while `.env` is a question, and a refused
-/// domain stays refused however finely an operation in it is named. See [`Careful::judges`].
+/// operation it names. `context` allows every operation in that domain; `context:state` allows
+/// eliding, excluding and resetting the state and says nothing about the rest. Against that, the
+/// strictest of everything consulted wins: `fs:read` stays `allow` while `.env` is a question, and
+/// a refused domain stays refused however finely an operation in it is named. See
+/// [`Careful::judges`].
 ///
 /// note: path rules - see [`Subject`] - bind `fs`, and not `shell`. A command names its files
 /// inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"` and `base64 <.env`
@@ -792,8 +793,8 @@ impl Careful {
     /// note: for the tables that list actions under the subjects they need - `setup`'s and
     /// `/permissions` - where an action listed under several rows reads as allowed by any one of
     /// them. It needs all of them: `context`'s `undo` is under
-    /// `context:move` and `context:revise` both, and a refused `context:revise` refuses it however
-    /// `context:move` is answered. Worked out from what each tool says its actions need, so it
+    /// `context:state` and `context:revise` both, and a refused `context:revise` refuses it however
+    /// `context:state` is answered. Worked out from what each tool says its actions need, so it
     /// changes when they do.
     pub fn needed_together(&self, specs: &[nachalnik::ToolSpec]) -> Vec<Together> {
         let mut together: Vec<Together> = Vec::new();
@@ -1250,15 +1251,15 @@ mod tests {
         let together = |actions: &[&str]| Together {
             tool: "context".to_owned(),
             actions: actions.iter().map(|it| (*it).to_owned()).collect(),
-            needed: ["context:move", "context:revise"]
+            needed: ["context:state", "context:revise"]
                 .map(|it| Capability::parse(it).unwrap())
                 .to_vec(),
         };
 
         assert_eq!(
             together(&["undo"]).sentence(),
-            "`context`'s `undo` needs all of `context:move` and `context:revise`, so the strictest \
-             of those applies to `undo`"
+            "`context`'s `undo` needs all of `context:state` and `context:revise`, so the \
+             strictest of those applies to `undo`"
         );
         assert!(
             together(&["undo", "elide"])

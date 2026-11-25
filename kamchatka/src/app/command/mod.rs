@@ -409,7 +409,7 @@ impl App {
             // same word
             "exclude" => self.by_selector("exclude", rest),
             "pin" => self.by_selector("pin", rest),
-            "restore" => self.by_selector("restore", rest),
+            "reset_state" => self.by_selector("reset_state", rest),
             "model" => {
                 if !rest.is_empty() {
                     let (provider, model) = (self.provider.clone(), rest.to_owned());

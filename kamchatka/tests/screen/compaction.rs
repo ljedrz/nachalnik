@@ -111,8 +111,8 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
     );
 }
 
-/// A second pass with nothing left to elide is not a pass. `Shedder` runs before every request, so a
-/// pass that answers with a plan whatever the state of the context adds a summary and burns an
+/// A second pass with nothing left to elide is not a pass. `Shedder` runs before every request, so
+/// a pass that answers with a plan whatever the state of the context adds a summary and burns an
 /// undo on every one of them - and the context it is meant to shrink grows for the rest of the
 /// session.
 #[tokio::test]
@@ -1215,10 +1215,10 @@ async fn a_request_too_long_names_what_is_pinned() {
         "it names the attachment and its number: {told}"
     );
     assert!(
-        told.contains("`/restore N` unpins one"),
+        told.contains("`/reset_state N` unpins one"),
         "and says how to unpin it: {told}"
     );
-    // a pinned item is in the request already, so `/restore` does not put it back there
+    // a pinned item is in the request already, so `/reset_state` does not put it back there
     assert!(!told.contains("puts one back in the request"), "{told}");
     assert!(
         !told.contains("`/exclude` the oldest of those"),
@@ -2280,8 +2280,8 @@ async fn a_result_goes_once_its_turn_is_over() {
 /// request.
 ///
 /// note: a restore cleared the note, and an item with no note and a turn behind it is exactly what
-/// the first rule takes - so `/restore` on an elided result undid itself the moment anything was
-/// sent. A restore leaves a note now, and an item somebody has said something about is not the
+/// the first rule takes - so `/restore` on an elided result undid itself the moment anything
+/// was sent. A restore leaves a note now, and an item somebody has said something about is not the
 /// first rule's.
 #[tokio::test]
 async fn a_result_brought_back_by_the_person_is_left_alone() {
@@ -2303,7 +2303,7 @@ async fn a_result_brought_back_by_the_person_is_left_alone() {
         .expect("the turn is over");
     kernel.apply_compaction(plan);
 
-    harness.send(&format!("/restore {}", first[2])).await;
+    harness.send(&format!("/reset_state {}", first[2])).await;
     assert_eq!(kernel.item(first[2]).unwrap().state, ContextState::Active);
     assert!(
         trim.plan(&kernel.items(), &budget()).await.is_none(),

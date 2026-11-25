@@ -124,7 +124,7 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
 - **A turn too large is cut, not stopped.** A turn pauses every four requests, and one paused
   past its kind's size is sent a message of `drive.py`'s own saying so, which elides every tool
   result before it as any message does; the model's replies stay, and an elided result is a
-  marker it can `restore`, so a lead in progress costs one file read again rather than the lead.
+  marker it can `reset_state`, so a lead in progress costs one file read again rather than the lead.
   A request already over the window gets `/exclude tool_results` first. After its kind's number
   of cuts a sweep is wrapped up: sent its last message, which asks for its `FINDING:` lines and
   for `LEAD:` lines, what it suspected and did not verify. A stop loses what the model had not

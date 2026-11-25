@@ -1815,7 +1815,7 @@ async fn a_view_scrolled_back_stays_put_when_an_item_above_it_comes_and_goes() {
     harness.send("/exclude 2").await;
     harness.tab(kamchatka::app::Tab::Chat);
     let excluded = top(harness.sized(100, 30));
-    harness.send("/restore 2").await;
+    harness.send("/reset_state 2").await;
     harness.tab(kamchatka::app::Tab::Chat);
     let restored = top(harness.sized(100, 30));
 

@@ -85,7 +85,7 @@ because the request would not fit with it; its placeholder says that instead.
 
 Once the context is full, the compactor removes the oldest exchanges entirely (excluded, not
 elided), and a summary at the end of the context says how many were removed. Each is still listed
-here and can be restored with `/restore`. <kbd>p</kbd> protects a row, and the call it is paired
+here and can be made active again with `/reset_state`. <kbd>p</kbd> protects a row, and the call it is paired
 with, from every compaction.
 
 <kbd>tab</kbd> moves the keys between the prompt and the table:
@@ -119,7 +119,7 @@ it isn't copied, and the session tells you to type it again.
 
 An oversized tool result is kept as two items: the truncated copy the model saw, and the full output
 next to it, marked `- excluded` and not sent. <kbd>space</kbd> or <kbd>p</kbd> on that row (or
-`/restore` with its number) sends the full output; the row's token count is the cost.
+`/reset_state` with its number) sends the full output; the row's token count is the cost.
 
 <kbd>enter</kbd> opens the item in a box with pages; <kbd>←</kbd> / <kbd>→</kbd> switch between
 them:
@@ -273,7 +273,7 @@ a tool's actions it uses, so actions with the same effect are one decision:
 | `fs:write` | `fs`'s `write` and `edit` |
 | `exec:run` | `shell` |
 | `context:read` | `context`'s `look`, `budget`, `request` and `search` |
-| `context:move` | `elide`, `exclude` and `restore`, which change what of an item is sent and never what it says |
+| `context:state` | `elide`, `exclude` and `reset_state`, which change what of an item is sent and never what it says |
 | `context:pin` | `pin`, which keeps an item from the compactor |
 | `context:note` | `note`, which adds an item of the model's own |
 | `context:revise` | `revise`, which rewrites what an item says |
@@ -281,9 +281,9 @@ a tool's actions it uses, so actions with the same effect are one decision:
 | `setup:read` | `setup`'s `model`, `tools`, `permissions` and `policy` |
 | `fork:ask` | `fork`'s `draft` and `ask` |
 
-`context`'s `undo` can walk back any change, so it needs all of `context:move`,
+`context`'s `undo` can walk back any change, so it needs all of `context:state`,
 `context:pin`, `context:note` and `context:revise`, and the strictest of those four applies to it:
-with `context:move` allowed and `context:revise` refused, `undo` is refused. A refused `fs:write` also makes the working directory
+with `context:state` allowed and `context:revise` refused, `undo` is refused. A refused `fs:write` also makes the working directory
 and the `--sandbox-write` paths read-only for `shell`. A refused `fs:read` does not stop `shell`
 reading, since a shell that can't read its working directory can do almost nothing; refuse
 `exec:run` to keep commands away from the files. A **path rule** is about the file a call is given,
@@ -324,7 +324,7 @@ These are all the domains, the tools that use them, and the operations in each:
 | `fs` | the `fs` tool | `read`, `write` |
 | `exec` | `shell` | `run` |
 | `net` | `shell`, when a command uses the internet | `reach` |
-| `context` | the `context` tool | `read`, `move`, `pin`, `note`, `revise` |
+| `context` | the `context` tool | `read`, `state`, `pin`, `note`, `revise` |
 | `log` | the `log` tool | `read` |
 | `setup` | the `setup` tool | `read` |
 | `fork` | the `fork` tool | `ask` |
@@ -501,7 +501,7 @@ request, what it holds back and why), the hundred most recent of them and a line
 reach the rest, and reads any of them in full, block by block, including reasoning; a long item is
 shortened to its start and end unless `whole: true`, since reading it copies it into the context.
 `request` shows the request about to be sent, and for each item left out, whether its own state
-caused it (`restore` brings it back) or the projector removed it because of something else.
+caused it (`reset_state` brings it back) or the projector removed it because of something else.
 
 `budget` is the one to make decisions from: the estimate against the limit, split between the
 context and the tool definitions, what's held back, what the last request really cost, and how much
@@ -512,9 +512,9 @@ by what each *sends*, with a running total.
 taking them all would cost and which items they're in, and with `take`, up to 64 of the lines. It's
 case-insensitive, and when nothing is found it says what it searched.
 
-The other operations change the context. `elide`, `exclude`, `pin` and `restore` move items between
-the same states as the <kbd>space</kbd> and <kbd>p</kbd> keys, each named after the state it moves
-items into. Items are chosen by `ids` or by `select` (the selector language `/exclude` uses), one or
+The other operations change the context. `elide`, `exclude`, `pin` and `reset_state` change an
+item's state, the same states the <kbd>space</kbd> and <kbd>p</kbd> keys set. The first three are
+named after the state they leave an item in; `reset_state` makes it active again. Items are chosen by `ids` or by `select` (the selector language `/exclude` uses), one or
 the other, never both, and `look` with a `select` previews which items a change would affect and
 which it would refuse. `revise` rewrites what an item says, but never a message you wrote. `note`
 writes down a plan, a conclusion or something not to try again, attributed to `agent`, and can pin
@@ -522,7 +522,7 @@ it. `undo` goes through the tool's own history, not the kernel's undo history, w
 yours. Every change takes a `reason`, which is what you see in the context tab.
 
 Three things are always refused: changing a **pinned** item (the agent can only unpin items it
-pinned itself), changing a **system instruction**, and changing the turn the agent is currently in.
+pinned itself), changing a **system instruction**, and changing the reply the agent is writing.
 The eleven actions come under five permissions, in the table in the permissions section above:
 `context:read` and `context:revise` are separate rows, and `--auto-allow context` covers all five.
 

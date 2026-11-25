@@ -4,7 +4,7 @@
 /exclude 999
 /exclude abc
 /pin 0
-/restore all
+/reset_state all
 /limit fs:read 0
 /limit fs:read -5
 /limit nonsense 100

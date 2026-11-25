@@ -302,7 +302,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /exclude SELECTOR   take items out of the request. With no selector, the
                         whole selector language
     /pin SELECTOR       protect them from compaction
-    /restore SELECTOR   put them back
+    /reset_state SELECTOR
+                        make them active again: undoes /exclude, /pin and
+                        elision
     /undo              take the last change to the context back, whatever put
                         it there, and /redo puts it back again. u and U on
                         the context tab are the same two acts

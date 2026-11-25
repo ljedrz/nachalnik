@@ -45,7 +45,7 @@ sentence announcing what they will read, and the next message, a sweep's request
 was then answered with searches never made. Each is a line `idle` in NAME.carried.
 
 note: a cut and not a stop, because a stop loses what the model had not yet written down, and a
-cut loses nothing: its replies stay whole, an elided result is a marker it can `restore` by id,
+cut loses nothing: its replies stay whole, an elided result is a marker it can `reset_state` by id,
 and what a lead in progress costs is reading one file again.
 
 note: piped all at once, as `sweep.sh` used to, every line after a failed turn was a new message:
@@ -82,17 +82,17 @@ NUDGES = int(os.environ.get("DRIVE_NUDGES", 3))
 # what a cut sends; `sweeps.CARRIED`, how both start, is how a snapshot's copy is known
 CARRY = (
     "The context passed its ceiling, so the tool results you had read are now elided: each stands "
-    "as a marker you can `restore` by id with the `context` tool. Your FINDING lines stand; do "
+    "as a marker you can `reset_state` by id with the `context` tool. Your FINDING lines stand; do "
     "not repeat them. Carry on with the scope where you left off: first finish what you were in "
-    "the middle of, restoring only what it needs, then the parts not yet read."
+    "the middle of, bringing back only what it needs, then the parts not yet read."
 )
 # what a cut sends when the request was already over the model's limit, which kamchatka sends no
 # message past; `/exclude tool_results` goes first, being a command, which it still reads
 OVERRUN = (
     "The context passed its ceiling and the model's limit, so every tool result so far is now "
-    "excluded to make room: `look` with the `context` tool lists them by id, and `restore` brings "
+    "excluded to make room: `look` with the `context` tool lists them by id, and `reset_state` brings "
     "back one you need. Your FINDING lines stand; do not repeat them. Carry on with the scope "
-    "where you left off: first finish what you were in the middle of, restoring only what it "
+    "where you left off: first finish what you were in the middle of, bringing back only what it "
     "needs, then the parts not yet read."
 )
 # what a turn answered without a tool call is sent, where another message follows

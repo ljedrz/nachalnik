@@ -451,7 +451,7 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
 
 /// The actions the table above lists under more than one row, which need every one of those rows.
 ///
-/// note: a model read `context:move  allow  context: elide, exclude, restore, undo` as
+/// note: a model read `context:state  allow  context: elide, exclude, reset_state, undo` as
 /// allowing `undo`, while a refused `context:revise` two rows down refused it. After a blank line,
 /// so it does not read as one more row of the table.
 fn together(kernel: &Kernel, policy: &Careful) -> String {
@@ -713,19 +713,20 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
 
     out.push_str(&match kernel.compactor() {
         Some(compactor) => format!(
-            "\nthe compactor is `{}`. It is asked before every request, and may move items out \
-             of it without being asked - it cannot take anything pinned, it says exactly what it \
-             moved{}.{}\n",
+            "\nthe compactor is `{}`. It is asked before every request, and may elide or exclude \
+             items without being asked - it cannot take anything pinned, it says exactly what it \
+             changed{}.{}\n",
             short(compactor.name()),
-            if_reachable(kernel, policy, "context:move", || {
-                ", and `context` with `restore` puts any of it back".to_owned()
+            if_reachable(kernel, policy, "context:state", || {
+                ", and `context` with `reset_state` puts any of it back".to_owned()
             }),
             if_reachable(kernel, policy, "log:read", || {
                 " `log` with `kinds: [\"context.compacted\"]` is every pass it has made.".to_owned()
             }),
         ),
-        None => "\nthere is no compactor: nothing will be moved out of your context on its own, \
-                 and a context that outgrows the limit is a request the provider refuses.\n"
+        None => "\nthere is no compactor: nothing in your context will be elided or excluded on \
+                 its own, and a context that outgrows the limit is a request the provider \
+                 refuses.\n"
             .to_owned(),
     });
 

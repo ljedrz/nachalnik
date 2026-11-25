@@ -412,8 +412,8 @@ impl App {
         let mut said = String::new();
         if !pinned.is_empty() {
             said.push_str(&format!(
-                "{} pinned, and no pass may free {}: {}. `/restore N` unpins one, so a pass may \
-                 take it, and `/exclude N` takes it out of the request now, each one `/undo` \
+                "{} pinned, and no pass may free {}: {}. `/reset_state N` unpins one, so a pass \
+                 may take it, and `/exclude N` takes it out of the request now, each one `/undo` \
                  from coming back. Then ",
                 plural(pinned.len(), "item"),
                 if pinned.len() == 1 { "it" } else { "them" },

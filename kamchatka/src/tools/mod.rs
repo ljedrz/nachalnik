@@ -253,8 +253,8 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// small session and a large one with many more tools registered: `fs:write`'s, for `write` and
 /// `edit`, are one line; `context:revise`'s says what it replaced without quoting it; and
 /// `context:note`'s is a short paragraph. Every other subject has at least one operation whose
-/// answer grows with what the session holds: `context:read` has `look`, `context:move` and
-/// `context:pin` list what they moved, and `setup:read` has the tools and the permissions.
+/// answer grows with what the session holds: `context:read` has `look`, `context:state` and
+/// `context:pin` list what they changed, and `setup:read` has the tools and the permissions.
 ///
 /// note: a lower number buys a tripwire where the limit never fires anyway. The answers are bounded
 /// because of how each is built, so if one arrives cut, that has silently stopped being true: a
@@ -359,7 +359,7 @@ impl Limits {
             .map(Capability::fs)
             .into_iter()
             .chain([Capability::exec("run")])
-            .chain(["read", "move", "pin", "note", "revise"].map(domains::context))
+            .chain(["read", "state", "pin", "note", "revise"].map(domains::context))
             .chain([domains::fork("ask")])
             .chain([domains::log("read")])
             .chain([domains::setup("read")])

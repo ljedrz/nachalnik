@@ -771,7 +771,7 @@ fn every_command_that_exists_is_in_the_help() {
     let help = ui::everything();
     let mut listed = 0;
     for line in handler.lines() {
-        // a match arm whose pattern is one or more quoted names: `"exclude" | "restore" =>`
+        // a match arm whose pattern is one or more quoted names: `"exclude" | "reset_state" =>`
         let Some((arms, _)) = line.split_once("=>") else {
             continue;
         };

@@ -381,7 +381,7 @@ fn allowing_a_tool_allows_every_action_of_it() {
     let policy = Careful::new();
     policy.set(&Subject::parse("context"), Verdict::Allow);
 
-    for action in ["read", "move", "pin", "note", "revise"] {
+    for action in ["read", "state", "pin", "note", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Allow,
@@ -397,7 +397,7 @@ fn allowing_one_action_allows_only_that_action() {
     policy.set(&Subject::parse("context:note"), Verdict::Allow);
 
     assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
-    for action in ["read", "move", "pin", "revise"] {
+    for action in ["read", "state", "pin", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Ask,
@@ -431,9 +431,9 @@ fn refusing_one_action_refuses_only_that_action() {
 fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     let policy = Careful::new();
     policy.set(&Subject::parse("context"), Verdict::Deny);
-    policy.set(&Subject::parse("context:move"), Verdict::Allow);
+    policy.set(&Subject::parse("context:state"), Verdict::Allow);
 
-    assert_eq!(asking_about_action(&policy, "move"), Verdict::Deny);
+    assert_eq!(asking_about_action(&policy, "state"), Verdict::Deny);
 }
 
 /// A rule is spelled the way it is read out, so `--auto-deny "$(a row off the permissions tab)"`
@@ -525,7 +525,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     // the question was about one operation, so that is what the answer is about, and the rest of
     // the domain is untouched by it
     let policy = Careful::new();
-    let request = asked_about("move");
+    let request = asked_about("state");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
     assert_eq!(asking_about_action(&policy, "revise"), Verdict::Ask);
@@ -534,7 +534,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     // credential path survives an `always` for `read`
     let policy = Careful::new();
     policy.set(&Subject::parse("context:revise"), Verdict::Deny);
-    let request = asked_about("move");
+    let request = asked_about("state");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
     assert_eq!(
@@ -877,7 +877,7 @@ fn a_capability_is_reachable_only_where_the_model_could_use_it() {
 ///
 /// note: a subject is named for what a call does rather than for the action asking, so one
 /// answers for several. Named alone, an `always` for `fs:read` given to a `grep` allowed `read`
-/// with nobody having been told, and a model refused `elide` by `context:move` went on to try
+/// with nobody having been told, and a model refused `elide` by `context:state` went on to try
 /// `exclude`, which the same rule refuses.
 #[tokio::test]
 async fn a_subject_is_named_with_the_actions_it_covers() {

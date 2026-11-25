@@ -423,7 +423,7 @@ latest step are kept, because it is still working from them.
 
 None of the rules touches pinned items or notes the model wrote for itself, and none summarizes
 anything. Every item is still on the context tab: an elided one is a <kbd>space</kbd> away from
-coming back, a removed one a `/restore` away. A result you bring back by hand is not elided again by
+coming back, a removed one a `/reset_state` away. A result you bring back by hand is not elided again by
 the first rule. The placeholder says the content has been read, and the automatic pass never removes
 content the model has not seen. Only `/compact` does, as described below.
 
@@ -452,7 +452,7 @@ there's room again, the session says so and the note is excluded.
 In a headless run, making room is a permission question like any other: every `context` call is
 asked about, including `look`, and `--on-ask deny` refuses all of them, so the note doesn't send the
 model somewhere it can't go. `--auto-allow context` lets it make room, or
-`--auto-allow context:read,context:move` for a run that should only choose what goes into its
+`--auto-allow context:read,context:state` for a run that should only choose what goes into its
 requests, without pinning, writing notes or rewriting anything.
 
 The same applies to every message that points the model at a tool: a refusal from `fs` mentions

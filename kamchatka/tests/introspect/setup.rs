@@ -669,20 +669,20 @@ async fn setup_permissions_lists_one_row_per_operation() {
     assert!(said.contains("context:read"), "{said}");
     assert!(said.contains("context:revise"), "{said}");
     // and each names the actions it decides for, which is what a model plans a call by
-    let moving = said
+    let changing = said
         .lines()
-        .find(|line| line.starts_with("context:move"))
-        .expect("a row for moving items");
+        .find(|line| line.starts_with("context:state"))
+        .expect("a row for state changes");
     assert!(
-        moving.contains("context: elide, exclude, restore, undo"),
-        "{moving}"
+        changing.contains("context: elide, exclude, reset_state, undo"),
+        "{changing}"
     );
     // and an action under several rows is said to need all of them: a model read the row above as
     // allowing `undo` while a refused `context:revise` refused it
     assert!(
         said.contains(
-            "`context`'s `undo` needs all of `context:move`, `context:note`, \
-             `context:pin` and `context:revise`, so the strictest of those applies"
+            "`context`'s `undo` needs all of `context:note`, `context:pin`, \
+             `context:revise` and `context:state`, so the strictest of those applies"
         ),
         "{said}"
     );

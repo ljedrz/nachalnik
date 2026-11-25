@@ -25,9 +25,9 @@
 //! - [`introspect::Context`] is the context. It lists what is being carried and what each item
 //!   costs, reports the budget against what the last request really cost, shows the request about
 //!   to go out, and finds text anywhere in it - what is excluded included, which nothing else can
-//!   read without paying to carry it again. It also elides, excludes, pins, restores and rewrites
-//!   what is being carried, writes down something compaction cannot take, and walks its own
-//!   changes back.
+//!   read without paying to carry it again. It also elides, excludes, pins, resets the state of
+//!   and rewrites what is being carried, writes down something compaction cannot take, and walks
+//!   its own changes back.
 //! - [`introspect::Fork`] stands up a throwaway copy of the session and asks it something, so an
 //!   answer can be read before it is given, and a piece of context can be taken away to see what
 //!   it was doing.
@@ -93,8 +93,8 @@
 
 // note: Linux only, on the two architectures sandlock's seccomp filter is written for. The `shell`
 // tool is safe to hand to a model only because of Landlock, `openat2` beneath a directory, and
-// sandlock's supervisor; all are Linux-only. Elsewhere the shell ran unconfined, with only a question read off the
-// command's name. 0.15.1 is the last version that builds anywhere else.
+// sandlock's supervisor; all are Linux-only. Elsewhere the shell ran unconfined, with only a
+// question read off the command's name. 0.15.1 is the last version that builds anywhere else.
 #[cfg(not(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
