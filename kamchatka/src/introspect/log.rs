@@ -89,8 +89,8 @@ fn ops() -> Vec<Op> {
             Arg::truth(
                 "whole",
                 "`true` to print a replaced item's previous text in full instead of its first \
-                 line; other records are printed the same either way. The full text goes into \
-                 your context and costs its tokens there",
+                 line; false by default. Other records are printed the same either way. The full \
+                 text goes into your context and costs its tokens there",
             ),
         ],
     )]
