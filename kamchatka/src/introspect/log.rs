@@ -155,11 +155,11 @@ impl Tool for Log {
                  that appeared or went away. `read` with no other arguments gives a summary: how \
                  many records of each kind there are and what reading them would cost. Add \
                  `kinds`, `ids`, `since` or `take` to get the records themselves. \
-                 Every answer opens with how many records the log holds and, when the arguments \
-                 narrowed them, how many of those match, so an answer that lists fewer was cut \
-                 short by what you asked for, not because the rest do not exist. You cannot write \
-                 to it. A `context.replaced` record keeps an item's previous text. Once that \
-                 change is too old to undo, this log is the only place the text still exists.{}",
+                 Every answer starts with how many records the log holds and, when you picked \
+                 some, how many of those match; if fewer are listed, that is because of your \
+                 arguments, not because the rest are missing. You cannot write to it. A \
+                 `context.replaced` record keeps an item's previous text. Once that change is too \
+                 old to undo, this log is the only place the text still exists.{}",
                 shape(
                     Layout::of(&self.schema),
                     r#"{"action": "read", "kinds": ["permission.decided"], "take": 5}"#
