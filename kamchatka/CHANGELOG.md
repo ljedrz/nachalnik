@@ -89,8 +89,10 @@ minor bump may break you.
 - **The tool descriptions say more exactly what an argument does.** Among them: `grep`'s `path`
   no longer shares `glob`'s wording, `revise` says which items it works on instead of naming
   a case a model cannot recognise, `request` says what the projector is, and `log` says when it gives a
-  summary and when it gives records. A file that is not text is no longer called a picture when
-  `revise` or the `e` key refuses it.
+  summary and when it gives records. `context` says what an item is before it uses the word,
+  `setup` lists its four actions one to a line, and every true-or-false argument says what `true`
+  does. A file that is not text is no longer called a picture when `revise` or the `e` key refuses
+  it.
 
 - **`context`'s `revise` refuses a tool result.** A tool result is what the tool answered, and a
   rewritten one would be output no tool produced, read as the tool's by every later request and
