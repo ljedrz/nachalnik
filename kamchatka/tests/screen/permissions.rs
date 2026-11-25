@@ -3563,6 +3563,31 @@ async fn the_permissions_tab_lists_the_sandbox() {
         allowed.contains("read-write  /work · set by fs:write"),
         "{allowed}"
     );
+
+    // the network's line says what a command meets, which a gate changes, and the rule that
+    // decides it
+    let connections = |harness: &mut Harness| {
+        let screen = harness.sized(140, 40);
+        screen
+            .lines()
+            .find(|line| line.contains("connections"))
+            .unwrap_or_else(|| panic!("no line for the network: {screen}"))
+            .to_owned()
+    };
+    let ungated = connections(&mut harness);
+    assert!(
+        ungated.contains("asked before a command like curl runs · set by net:reach"),
+        "{ungated}"
+    );
+    harness.app.policy.gate_the_network();
+    let gated = connections(&mut harness);
+    assert!(
+        gated.contains("asked the first time a shell command connects · set by net:reach"),
+        "{gated}"
+    );
+    // and a session served on no port closes none to its commands, so there is no line for them
+    let screen = harness.sized(140, 40);
+    assert!(!screen.contains("closed ports"), "{screen}");
 }
 
 /// With nothing confined there is no part to list, and the tab is what it was.
