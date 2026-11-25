@@ -177,6 +177,8 @@ async fn stopping_nothing_says_there_was_nothing_to_stop() {
     };
     assert_eq!(*speaker, Speaker::Note);
     assert!(text.contains("nothing is running"), "{text}");
+    // and no switch is out to say is still settling
+    assert!(!text.contains("settling"), "{text}");
 
     peer.send(Command::Submit {
         line: "/quit".to_owned(),
