@@ -3497,6 +3497,12 @@ async fn the_permissions_tab_lists_the_sandbox() {
         !screen.contains("/opened/rw"),
         "a part lists its paths only once it is opened: {screen}"
     );
+    // the shell's own paths and devices are the ones the roots name, not the defaults
+    assert!(
+        screen.contains("1 path that shell commands can read"),
+        "{screen}"
+    );
+    assert!(screen.contains("1 device; everything else"), "{screen}");
 
     // nothing is decided, so the keys start on the first part: the working directory. Down to
     // `--sandbox-write`, and enter opens it
