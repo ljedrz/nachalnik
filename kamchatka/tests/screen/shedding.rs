@@ -949,6 +949,13 @@ async fn an_unread_result_in_an_older_exchange_goes_with_it_once() {
     assert!(!plan.elide.contains(&unread), "{plan:?}");
     // and the question past the limit is the person's, which no rule takes
     assert!(plan.elide.is_empty(), "{:?}", plan.elide);
+
+    // and between turns, the one pass that may take what was never read to make a request fit
+    let between = Shedder::under(0.8)
+        .plan_between_turns(&kernel.items(), &against(kernel, Some(1_000)))
+        .expect("over the limit");
+    assert!(between.remove.contains(&unread));
+    assert!(!between.elide.contains(&unread), "{between:?}");
 }
 
 /// What somebody else elided is priced at the marker it really is: a few words of theirs, not a
