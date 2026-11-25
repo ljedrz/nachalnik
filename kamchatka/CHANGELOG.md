@@ -41,7 +41,7 @@ minor bump may break you.
 ### added
 
 - **The `--web` page has a `continue` button while a turn is paused.** A turn that stops at
-  `--max-requests-per-turn` puts it between the prompt and `send`, and a click sends `/continue`.
+  `--max-requests-per-turn` puts it to the left of the prompt, and a click sends `/continue`.
   It disappears when a turn starts, whether from the button or from a new message. A served session says
   whether its last turn paused in `Message::Busy`'s new `paused` and in `Attached::paused`, so a
   page opened after the pause offers the button too.

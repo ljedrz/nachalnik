@@ -300,9 +300,10 @@
 
 <footer>
   <form id="prompt">
-    <textarea id="line" rows="1" placeholder="ask for something, or /help" autocomplete="off"></textarea>
-    <!-- sends `/continue`; shown only while a turn is paused at its request budget, see `offer` -->
+    <!-- sends `/continue`; shown only while a turn is paused at its request budget, see `offer`.
+         Left of the prompt rather than beside `send`, so it is the first thing seen -->
     <button id="continue" type="button" title="carry on the paused turn, as /continue does" hidden>continue</button>
+    <textarea id="line" rows="1" placeholder="ask for something, or /help" autocomplete="off"></textarea>
     <button type="submit">send</button>
   </form>
   <div id="question">
@@ -1722,7 +1723,7 @@ function working(busy) {
 }
 
 /**
- * Offers `continue` beside `send` while a turn is paused at its request budget.
+ * Offers `continue` left of the prompt while a turn is paused at its request budget.
  *
  * note: hidden while a turn is running. A click starts a turn, and the `busy` that follows hides
  * the button, so a second click cannot start a second turn.
