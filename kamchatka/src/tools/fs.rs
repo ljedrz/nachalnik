@@ -74,7 +74,7 @@ fn ops() -> Vec<Op> {
         Op::new(
             "glob",
             "finds paths without opening anything. Name the extension you are after - `*.rs` \
-             rather than `*` - since a listing of everything stops at the cap, often before the \
+             rather than `*` - since a listing of everything stops at the limit, often before the \
              file you wanted",
             vec![
                 Arg::text("pattern", GLOB_ARG).needed(),
@@ -105,7 +105,7 @@ fn ops() -> Vec<Op> {
                     "context",
                     "lines to show either side of each match, up to 10; none by default. They \
                      come as `path-line-text` where a match is `path:line:text`, and do not count \
-                     towards the cap on matches",
+                     towards the limit on matches",
                 ),
                 Arg::truth(
                     "files_only",
@@ -232,22 +232,21 @@ impl Tool for Fs {
         ToolSpec::new(
             "fs",
             format!(
-                "the filesystem, in five operations: `read`, `glob`, `grep`, `write` and `edit`. \
-                 The working directory is {}. Every `path` is {PATH_ARG}. `glob` and `grep` \
-                 walk a directory themselves rather than running `find` or `grep`. They skip \
-                 what `.gitignore` names and the `.git` directory without mentioning either, and \
-                 they include hidden files. Anything else they skip - a binary or unreadable \
+                "the filesystem. The `action` is one of `read`, `glob`, `grep`, `write` and \
+                 `edit`. The working directory is {}. Every `path` is {PATH_ARG}. `glob` and \
+                 `grep` walk a directory themselves rather than running `find` or `grep`. They \
+                 skip what `.gitignore` names and the `.git` directory without mentioning either, \
+                 and they include hidden files. Anything else they skip - a binary or unreadable \
                  file, a pipe, a link out of reach - is counted on a `skipped:` line. One call \
                  returns at most {MATCHES} matching lines from `grep`, or {PATHS} files with \
-                 `files_only`, and at most {PATHS} paths from `glob`. When a call reaches \
-                 one of these limits, the first line of the answer says so, and there may be \
-                 more. `grep` answers \
-                 one match per line as `path:line:text`, and a line wider than {WIDTH} \
+                 `files_only`, and at most {PATHS} paths from `glob`. When a call reaches one of \
+                 these limits, the first line of the answer says so, and there may be more. `grep` \
+                 answers one match per line as `path:line:text`, and a line wider than {WIDTH} \
                  characters is cut and ends in `…`. `glob` lists only the files that matched, \
-                 grouped by directory: a directory's path and a `:`, then the names in it one to \
-                 a line, so a file's path is its directory joined to its name. `edit` changes \
-                 nothing when `old` occurs nowhere in the file or more than once, and says \
-                 which, with the count.{}",
+                 grouped by directory: a directory's path and a `:`, then the names in it one to a \
+                 line, so a file's path is its directory joined to its name. `edit` changes \
+                 nothing when `old` occurs nowhere in the file or more than once, and says which, \
+                 with the count.{}",
                 self.read.0.workdir.display(),
                 shape(
                     Layout::of(&self.schema),

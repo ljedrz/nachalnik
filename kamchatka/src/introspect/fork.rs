@@ -115,8 +115,9 @@ impl Tool for Fork {
             "fork",
             format!(
                 "asks a copy of you, on a copy of your context, and costs one more model \
-                 request. The copy has your system instructions and your items but no tools: it \
-                 can think, not act, and it answers once. Its answer comes back to you alone, \
+                 request. The `action` is `draft` or `ask`. The copy has your system \
+                 instructions and your items but no tools: it can think, not act, and it answers \
+                 once. Its answer comes back to you alone, \
                  followed by its reasoning where it produced any, to use or drop; nothing it does \
                  reaches your context. A fork sees your context as it was when you made the \
                  call. Forks called in the same reply do not see each other's answers, or the \

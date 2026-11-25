@@ -87,7 +87,7 @@ const CHANGES: [&str; 7] = [
 ];
 
 /// Why a call that changes something has to say why, which is the same sentence seven times.
-const WHY: &str = "why, in your own words; the person reads it, and it becomes the item's note";
+const WHY: &str = "why, in your own words; it is kept with the item, and the person reads it";
 
 /// What a `select` is, said where the four that take one can read it.
 ///
@@ -162,9 +162,9 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "search",
-            "finds text anywhere in your context, excluded items included, except the turn you \
-             are asking from - the message that started it, your replies in it and their results \
-             - which you already have. Without `take` it shows no lines, only how many match and \
+            "finds text anywhere in your context, excluded items included, except the current \
+             turn - the person's latest message, your replies since then and their results - \
+             which you already have. Without `take` it shows no lines, only how many match and \
              what they would cost in tokens, so you can decide before reading them",
             vec![
                 // note: it says what it is *not*, because `fs`'s `grep` is offered in the same
@@ -178,7 +178,7 @@ fn ops() -> Vec<Op> {
                      one that takes a regular expression. Case is ignored",
                 )
                 .needed(),
-                Arg::list("ids", "integer", "look only in these items, by number"),
+                Arg::list("ids", "integer", "search only these items, by number"),
                 Arg::whole(
                     "take",
                     "show this many of the matching lines, up to 64; left out, you get only the \
@@ -323,11 +323,12 @@ impl Tool for Context {
             "context",
             format!(
                 "your own context: what is in it, what it costs, and what goes into the next \
-                 request. `look`, `budget`, `request` and `search` read it; `elide`, `exclude`, \
-                 `pin`, `reset_state`, `revise`, `note` and `undo` change it.\n\
+                 request. The `action` `look`, `budget`, `request` or `search` reads it; \
+                 `elide`, `exclude`, `pin`, `reset_state`, `revise`, `note` or `undo` changes it.\n\
                  Your context is a numbered list of items: the person's messages, your replies, \
-                 tool results, notes, attached files and summaries. Nothing is deleted: an item \
-                 keeps its number and its content whatever its state.\n\
+                 tool results, notes, attached files and summaries. Each item has a state: \
+                 `active`, `elided`, `excluded` or `pinned`. Nothing is deleted: an item keeps \
+                 its number and its content whatever its state.\n\
                  No change can touch a system instruction, an item the person pinned, or the \
                  reply you are writing now (its text, reasoning and tool calls).\n\
                  A `select` picks items by a rule instead of listing their numbers in `ids`:\n\
