@@ -436,7 +436,8 @@ pub enum Message {
         /// Which version this is, echoed from [`Command::Inspect`]; `None` is what it says now.
         #[serde(default)]
         version: Option<usize>,
-        /// A reply's reasoning, where `body` is the text of what the reply says now.
+        /// A reply's reasoning, where `body` is the reply's text: what it thinks now, or what it
+        /// thought at the version asked about.
         ///
         /// note: beside the text rather than in it, because the text is what an edit is made of
         /// and the reasoning is edited on its own, with [`Command::ReviseReasoning`]. A client that
@@ -863,7 +864,8 @@ pub struct Listed {
     /// How many earlier versions of it are still there to read.
     ///
     /// note: `0` for everything nobody has rewritten, which is nearly every row, so a client draws
-    /// the way back through an item's history only where there is one. What it says now is not
+    /// the way back through an item's history only where there is one. A rewrite of a reply's
+    /// reasoning makes a version as a rewrite of its text does. What it says now is not
     /// counted, because it has no fixed number: it is one past the last, and editing moves it. The
     /// cap is the viewer's, and the oldest goes first when it is reached.
     pub versions: usize,

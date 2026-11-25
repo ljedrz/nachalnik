@@ -565,9 +565,9 @@ impl App {
     /// Reads the record saved beside the snapshot this session resumed from, and fills in what the
     /// resumed items used to say from it; returns how many earlier versions it found.
     ///
-    /// note: a [`nachalnik::Snapshot`] carries items, not events, so the text a rewrite replaced is
-    /// in the session's log and nowhere else; [`Event::ContextReplaced`] is the one event that
-    /// carries content. `/save` writes that log beside the snapshot under the same name:
+    /// note: a [`nachalnik::Snapshot`] carries items, not events, so the text or reasoning a rewrite
+    /// replaced is in the session's log and nowhere else, in [`Event::ContextReplaced`] and
+    /// [`Event::ReasoningReplaced`]. `/save` writes that log beside the snapshot under the same name:
     /// `<name>.json` is what `-r` was handed, `<name>.jsonl` is what this reads, into
     /// [`App::earlier`], which this session's record and its `log` tool read. What it finds goes
     /// through the same `App::remember` the live path uses, in the order recorded, so a resumed
@@ -607,11 +607,13 @@ impl App {
 
         let mut recalled = 0;
         for record in self.earlier.records().iter() {
-            let Event::ContextReplaced { id, was, .. } = &record.event else {
-                continue;
+            let (id, was) = match &record.event {
+                Event::ContextReplaced { id, was, .. } => (id, super::Was::Said(was.clone())),
+                Event::ReasoningReplaced { id, was, .. } => (id, super::Was::Thought(was.clone())),
+                _ => continue,
             };
             if self.kernel.item(*id).is_some() {
-                self.remember(*id, was.clone());
+                self.remember(*id, was);
                 recalled += 1;
             }
         }

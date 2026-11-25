@@ -34,6 +34,8 @@ minor bump may break you.
   attribution is off without it.
 - **`Setup` has a `response_stats` field**, for `--response-stats` below, so code that builds one
   with every field spelled out must set it: `false` for what a session did before.
+- **`App::version` returns a `Version`**, holding the item's `content` and `reasoning` at that
+  version, rather than the content alone, since a version may differ from the next in either.
 - **`Message::Item` has `reasoning` and `calls` fields**, for the `--web` page's context view
   below, so code that builds or matches one with every field spelled out must name them. On the
   wire both are optional, and an older client skips them.
@@ -63,7 +65,12 @@ minor bump may break you.
   through `App::revise_reasoning`, under the same refusals as the model's. A served row says
   whether its reasoning can be rewritten and whether it is sent back, in `Listed`'s new
   `reasoning_beyond` and `reasoning_sent`, and whether the reply was recorded as ordered blocks, in
-  `ordered`. The terminal's "as stored" page says who rewrote the reasoning and why.
+  `ordered`. The terminal's "as stored" page says who rewrote the reasoning and why. A rewrite of
+  the reasoning makes a new version of the reply, as a rewrite of its text does, and each version
+  holds both parts as they were: the terminal's version pages show the reasoning above the text,
+  the web page's version button shows the old reasoning in its box, and a resumed session reads
+  both kinds of rewrite back from the record beside its snapshot. The web page's chat is redrawn
+  after a reasoning rewrite, as after any other.
 - **The `--web` page has a `continue` button while a turn is paused.** A turn that stops at
   `--max-requests-per-turn` puts it to the left of the prompt, and a click sends `/continue`.
   It disappears when a turn starts, whether from the button or from a new message. A served session says
