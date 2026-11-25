@@ -264,9 +264,12 @@ The **context** view shows the same rows as the context tab: what each item is, 
 and what the next request will do with it. Tapping a row loads the whole item, since the session
 only sends item summaries; a message you wrote is named by its start. A reply shows its reasoning
 above its text, dimmed and marked when it is not sent back to the model, and its tool calls below.
-The text and the reasoning are each in a box you can edit, and leaving a box you changed saves it.
-The button on the right of a row shows its state, and tapping it moves to the next one (active,
-elided, excluded, active again), like <kbd>space</kbd> on the context tab, note included. The **chat** updates with it, as in the terminal. The **events** view is the trace,
+The text and the reasoning are each in a box you can edit, and leaving a box you changed saves it;
+the **copy** button beside a box copies what it holds. The button on the right of a row shows its
+state, and tapping it moves to the next one: active, pinned, elided, excluded, active again. That
+is <kbd>space</kbd> on the context tab with <kbd>p</kbd>'s pin as a step of it, note included.
+Above the rows, **filter** keeps the rows whose number, label, kind, state or start has what you
+type in it, and **sent only** keeps what the next request sends whole, as <kbd>f</kbd> does. The **chat** updates with it, as in the terminal. The **events** view is the trace,
 with the time each step took; the **permissions** view lists the rules, each with **allow**, **ask**
 and **deny**, and **ask** undoes an `always`.
 

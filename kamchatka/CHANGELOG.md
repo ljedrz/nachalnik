@@ -45,6 +45,13 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page's context view does more of what the context tab does.** The state button's
+  cycle has pinned right after active, so an item can be pinned from a phone; the step into
+  pinned sends `/pin`, and the rest is the session's cycle as before. Each box in an open row has
+  a **copy** button beside it, so a reply's reasoning and text are copied apart, as they stand in
+  the box. Above the rows, **filter** keeps the rows whose number, label, kind, state or start has
+  the text in it, and **sent only** keeps what the next request sends whole, as <kbd>f</kbd> does
+  at the terminal.
 - **The `--web` page can stop a turn.** While a turn runs and the prompt is empty, the **send**
   button is **stop**, and <kbd>esc</kbd> stops it too, as at the terminal; both send
   `Command::Interrupt`. Typing turns the button back into **send**, to queue a line for after the
