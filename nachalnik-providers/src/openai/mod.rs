@@ -1080,6 +1080,13 @@ mod tests {
 
             assert_eq!(provider.info().context_limit, limit, "{body}");
         }
+
+        // and a cap on an answer of nothing is no cap
+        let body = r#"{"data":[{"id":"m","top_provider":{"max_completion_tokens":0}}]}"#;
+        let provider =
+            OpenAiCompatible::new("m", routed(&[("/models", body)]).await, "no key needed");
+        provider.probe().await;
+        assert_eq!(provider.info().max_output_tokens, None);
     }
 
     /// An ollama is measured against the context length its running model is served with, read off
