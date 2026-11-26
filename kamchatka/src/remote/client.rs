@@ -702,8 +702,6 @@ impl<'a> Client<'a> {
 
                 Ok(())
             }
-            // answers this client never asks for, since it has no filter and draws no question;
-            // counted, because answers they are
             // what this client's own `/compact` proposed, listed and then taken; see `taking`
             Message::Proposal {
                 proposed: Some(proposed),
@@ -718,6 +716,8 @@ impl<'a> Client<'a> {
                 Ok(())
             }
             Message::Proposal { .. } => Ok(()),
+            // answers this client never asks for, since it has no filter and draws no question;
+            // counted, because answers they are
             Message::Found { .. } | Message::Described { .. } => {
                 self.answered();
 
@@ -973,11 +973,11 @@ impl<'a> Client<'a> {
     /// Interprets one typed line.
     ///
     /// note: two of these are the client's own rather than the session's, and both are spelled the
-    /// way the terminal spells them. `y`, `n`, `a` and `v` are the keys the permission panel takes, with
-    /// the meanings they have there, so a *message* of `y` cannot be sent while a question is open,
-    /// just as it cannot be typed while the question holds the prompt. Everything else goes to the
-    /// session verbatim, because every verb this program has is a line handed to `App::submit`, and
-    /// a protocol with a message per verb would be a second vocabulary.
+    /// way the terminal spells them. `y`, `n`, `a` and `v` are the keys the permission panel takes,
+    /// with the meanings they have there, so a *message* of `y` cannot be sent while a question is
+    /// open, just as it cannot be typed while the question holds the prompt. Everything else goes
+    /// to the session verbatim, because every verb this program has is a line handed to
+    /// `App::submit`, and a protocol with a message per verb would be a second vocabulary.
     async fn typed<W: AsyncWrite + Unpin>(
         &mut self,
         write: &mut W,

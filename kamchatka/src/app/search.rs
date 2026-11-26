@@ -85,16 +85,16 @@ impl Search {
             .collect()
     }
 
-    #[cfg(feature = "tui")]
     /// Adds a character where the cursor is.
+    #[cfg(feature = "tui")]
     pub fn push(&mut self, c: char) {
         self.query.insert(self.at, c);
         self.at += c.len_utf8();
         self.reparse();
     }
 
-    #[cfg(feature = "tui")]
     /// Removes the character before the cursor; leaves an empty query empty.
+    #[cfg(feature = "tui")]
     pub fn backspace(&mut self) {
         let Some(start) = self.before() else {
             return;
@@ -104,10 +104,10 @@ impl Search {
         self.reparse();
     }
 
-    #[cfg(feature = "tui")]
     /// Removes the character under the cursor; at the end of the query, nothing.
     ///
     /// note: distinct from `backspace` only because there is a cursor for something to be under.
+    #[cfg(feature = "tui")]
     pub fn delete(&mut self) {
         if self.at < self.query.len() {
             self.query.remove(self.at);
@@ -115,46 +115,46 @@ impl Search {
         }
     }
 
-    #[cfg(feature = "tui")]
     /// Moves the cursor one character towards the start.
+    #[cfg(feature = "tui")]
     pub fn left(&mut self) {
         if let Some(start) = self.before() {
             self.at = start;
         }
     }
 
-    #[cfg(feature = "tui")]
     /// Moves the cursor one character towards the end.
+    #[cfg(feature = "tui")]
     pub fn right(&mut self) {
         if let Some(c) = self.query[self.at..].chars().next() {
             self.at += c.len_utf8();
         }
     }
 
-    #[cfg(feature = "tui")]
     /// Moves the cursor to the start of the query.
+    #[cfg(feature = "tui")]
     pub fn home(&mut self) {
         self.at = 0;
     }
 
-    #[cfg(feature = "tui")]
     /// Moves the cursor to the end of the query.
+    #[cfg(feature = "tui")]
     pub fn end(&mut self) {
         self.at = self.query.len();
     }
 
-    #[cfg(feature = "tui")]
     /// The query on either side of the cursor, for drawing.
     ///
     /// note: two slices rather than the offset, so that the only place that knows the cursor is a
     /// byte index is this file. A caller given the offset would have to trust that it lands on a
     /// character boundary; given the halves, it cannot get that wrong.
+    #[cfg(feature = "tui")]
     pub fn parts(&self) -> (&str, &str) {
         self.query.split_at(self.at)
     }
 
-    #[cfg(feature = "tui")]
     /// Where the character before the cursor starts, if there is one.
+    #[cfg(feature = "tui")]
     fn before(&self) -> Option<usize> {
         self.query[..self.at]
             .chars()

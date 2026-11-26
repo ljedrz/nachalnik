@@ -154,9 +154,9 @@ hour later gets the same session. When a client's input closes, it detaches; it 
 session. `/quit` ends it on purpose.
 
 `--connect` writes the same output as `--headless` and can replace it in a script. It sends each
-piped line only after the previous turn ends. It answers permission questions with `y`, `n`, `a` and `v` (never);
-`ctrl+c` stops the turn and a second one detaches; `?4` prints the actual content of item 4, which
-the record stream cannot show because [the log refers to items rather than copying
+piped line only after the previous turn ends. It answers permission questions with `y`, `n`, `a`
+and `v` (never); `ctrl+c` stops the turn and a second one detaches; `?4` prints the actual content
+of item 4, which the record stream cannot show because [the log refers to items rather than copying
 them](#-a-session-on-disk). A running command that [tries to use the
 network](#-the-network-when-a-command-tries) is answered with the same four letters, after any of
 the kernel's own questions.

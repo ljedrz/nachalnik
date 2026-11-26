@@ -1583,7 +1583,7 @@ fn project(app: &App) -> Attached {
         reaching: app.policy.reaching().waiting(),
         proposed: proposal(app),
         trace: tracing(app),
-        trace_from: app.traced - app.trace.len() as u64,
+        trace_from: app.trace_from(),
         policy: app.policy_name(),
         untold: crate::tools::Careful::untold(),
         permissions: app.permissions().iter().map(Stanced::of).collect(),

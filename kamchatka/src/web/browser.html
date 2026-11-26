@@ -141,8 +141,9 @@
   #panel { display: none; }
   body:not(.chat) #log { display: none; }
   body:not(.chat) #panel { display: block; }
-  /* the context view's filter, above the panel rather than in it: the panel is drawn again on every
-     change, and a box drawn again is a box that loses what is being typed into it */
+  /* the filter of the context and events views, above the panel rather than in it: the panel is
+     drawn again on every change, and a box drawn again is a box that loses what is being typed
+     into it */
   #sift { display: none; gap: 6px; padding: 8px 12px 0; align-items: center; }
   body.context #sift, body.events #sift { display: flex; }
   /* what the next request sends is a question about the context, not about what happened */
