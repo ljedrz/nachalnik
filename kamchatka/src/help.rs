@@ -157,6 +157,9 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
                          turn that is only a tool call declines the key;
                          esc here leaves it as it was, as it does in the
                          prompt)
+    r                   change what a reply thought, its reasoning, in the same
+                        prompt; emptying it takes the reasoning away
+                        (reasoning a provider may have signed declines the key)
     f                   list only what the next request sends whole, or everything
     y                   hand the whole of what it says to the terminal, for the
                         clipboard - unwrapped, and with no frame down the sides

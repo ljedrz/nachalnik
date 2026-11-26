@@ -469,6 +469,63 @@ async fn r_edits_the_reasoning_of_a_reply_and_nothing_else() {
     );
 }
 
+/// `e` on a reply points at `r` for its reasoning, where `r` would take it.
+///
+/// note: `e` is the key people know, and the web page shows a reply's text and reasoning together,
+/// so a reasoning that only `r` reaches was one people did not find. A reply that is only a call
+/// refuses `e`, and its reasoning is still `r`'s to rewrite.
+#[tokio::test]
+async fn e_on_a_reply_points_at_r_for_its_reasoning() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(
+        ContextItem::assistant("the answer", Vec::new()).with_reasoning(Some("the thought".into())),
+    );
+    harness.app.kernel.push(
+        ContextItem::assistant("", vec![call("c1", "dig", json!({ "where": "here" }))])
+            .with_reasoning(Some("dig there".into())),
+    );
+    harness
+        .app
+        .kernel
+        .push(ContextItem::assistant("no thought", Vec::new()));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    harness.press(KeyCode::Char('e')).await;
+    assert!(!harness.app.editing_reasoning);
+    let screen = harness.flat();
+    assert!(
+        screen.contains("r on the row edits its reasoning"),
+        "{screen}"
+    );
+    harness.press(KeyCode::Esc).await;
+
+    // the keys are back on the row, and `r` is what the title said it would be
+    harness.press(KeyCode::Char('r')).await;
+    assert!(harness.app.editing_reasoning);
+    assert_eq!(harness.app.input.lines(), ["the thought"]);
+    assert!(!harness.flat().contains("r on the row edits its reasoning"));
+    harness.press(KeyCode::Esc).await;
+
+    // a reply that is only a call refuses `e`, and says `r` still reaches its reasoning
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_none());
+    let panel = harness.flat();
+    assert!(panel.contains("[2] cannot be edited"), "{panel}");
+    assert!(panel.contains("`r` edits its reasoning"), "{panel}");
+    harness.press(KeyCode::Esc).await;
+    harness.press(KeyCode::Char('r')).await;
+    assert_eq!(harness.app.input.lines(), ["dig there"]);
+    harness.press(KeyCode::Esc).await;
+
+    // and a reply with no reasoning is not offered any
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_some() && !harness.app.editing_reasoning);
+    assert!(!harness.flat().contains("edits its reasoning"));
+}
+
 #[tokio::test]
 async fn an_abandoned_edit_does_not_swallow_the_next_message() {
     let mut harness = Harness::new([ModelResponse::text("hello back")]);

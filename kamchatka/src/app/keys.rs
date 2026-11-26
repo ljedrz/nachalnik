@@ -332,12 +332,22 @@ impl App {
                 // the answer to a key just pressed: the chat is not the tab being looked at, so a
                 // refused `e` would read as an `e` that did nothing. This one is about the row
                 // under it and is gone on the next key
-                Some(why) => self.preview(
-                    format!("[{}] cannot be edited", picked.id),
-                    format!(
-                        "{why}\n\n`enter` reads every face of it · `space` takes it out of view"
-                    ),
-                ),
+                // note: a reply that is only calls can still have reasoning, and that is a part
+                // of it `r` rewrites, so the refusal says so rather than leaving it to be found
+                Some(why) => {
+                    let thought =
+                        match picked.reasoning().is_some() && reasoning_beyond(&picked).is_none() {
+                            true => "`r` edits its reasoning · ",
+                            false => "",
+                        };
+                    self.preview(
+                        format!("[{}] cannot be edited", picked.id),
+                        format!(
+                            "{why}\n\n{thought}`enter` reads every face of it · `space` takes it \
+                             out of view"
+                        ),
+                    )
+                }
                 None => {
                     self.clear_input();
                     self.input.insert_str(picked.content.to_text());

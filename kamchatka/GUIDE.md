@@ -94,7 +94,7 @@ with, from every compaction.
 | --- | --- |
 | <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` placeholder → nothing → back |
 | <kbd>p</kbd> | pin it, so the compactor can't remove it |
-| <kbd>e</kbd> | edit what it **says**; a tool call isn't text, so a turn that's only a call can't be edited, and you're told why |
+| <kbd>e</kbd> | edit what it **says**; a tool call isn't text, so a turn that's only a call can't be edited, and you're told why. On a reply with reasoning, the prompt's title reminds you that <kbd>r</kbd> edits that |
 | <kbd>r</kbd> | edit what a reply **thought**, its reasoning; emptying it removes the reasoning. Reasoning a provider may have signed can't be edited, and you're told why |
 | <kbd>f</kbd> | show only what the next request sends whole, leaving out the elided as well as the excluded, or everything again |
 | <kbd>y</kbd> | copy its text to the clipboard through the terminal (see below) |

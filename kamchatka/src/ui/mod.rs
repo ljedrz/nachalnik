@@ -26,7 +26,7 @@ use ratatui::{
 
 use crate::app::{
     App, Focus, Going, Overlay, Tab,
-    text::{plural, thousands},
+    text::{plural, reasoning_beyond, thousands},
 };
 
 mod markdown;
@@ -504,8 +504,21 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
         true => "the reasoning of ",
         false => "",
     };
+    // note: the text of a reply is one of its two parts, and the other is a key away once this
+    // edit is over. Said here because `e` is the key people know, and the web page shows both
+    // parts at once
+    let thought = match app.editing.filter(|_| !app.editing_reasoning) {
+        Some(id) => app
+            .kernel
+            .item(id)
+            .filter(|item| item.reasoning().is_some() && reasoning_beyond(item).is_none())
+            .map_or("", |_| "· r on the row edits its reasoning "),
+        None => "",
+    };
     let title = match (app.editing, focused) {
-        (Some(id), true) => format!(" editing {what}[{id}] · enter commits · esc cancels "),
+        (Some(id), true) => {
+            format!(" editing {what}[{id}] · enter commits · esc cancels {thought}")
+        }
         (Some(id), false) => format!(" editing {what}[{id}] · tab "),
         (None, true) => " you ".to_owned(),
         (None, false) => " you · tab ".to_owned(),
