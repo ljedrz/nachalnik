@@ -12,6 +12,8 @@ minor bump may break you.
 - **`tool:<name>:first` is no longer a selector, and `Which::First` is gone.** It had no use that an
   item number does not cover. `tool:grep:first` is now refused as an unknown qualifier, and the
   refusal names `latest` as the only one.
+- **`Removed` is gone.** It has been a deprecated alias of `ReportItem` since 0.10.0; use
+  `ReportItem`.
 
 ### added
 

@@ -126,10 +126,6 @@ pub struct ReportItem {
     pub tokens: usize,
 }
 
-/// The old name of [`ReportItem`], from when the only items a report named were removed ones.
-#[deprecated(note = "renamed to `ReportItem`")]
-pub type Removed = ReportItem;
-
 /// Exactly what a compaction pass did.
 ///
 /// note: Automatic context management is allowed; invisible context management is not. Every field
