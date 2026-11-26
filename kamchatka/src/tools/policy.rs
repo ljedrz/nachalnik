@@ -578,6 +578,17 @@ impl Careful {
             .fold(Verdict::Allow, Verdict::strictest)
     }
 
+    /// The subjects a call is asked about: those it is judged by that nothing has decided yet.
+    ///
+    /// note: what `never` refuses. A call is a question only because some of what it is judged by
+    /// has no answer, so these are what the person was asked about; the rest are already allowed.
+    pub fn undecided_in(&self, request: &PermissionRequest) -> Vec<Subject> {
+        self.judges(request)
+            .into_iter()
+            .filter(|subject| self.stance(subject) == Verdict::Ask)
+            .collect()
+    }
+
     /// What it answers about one subject; anything unmentioned gets `Ask`.
     ///
     /// note: the most specific rule that has an answer decides, and a `deny` above it overrules.

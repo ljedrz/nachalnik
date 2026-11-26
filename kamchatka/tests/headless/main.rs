@@ -2123,14 +2123,15 @@ async fn a_swept_question_is_granted_the_network_the_way_an_answered_one_is() {
     );
 }
 
-/// A refusal is not remembered, and asking for one does not write the rules that allow the call.
+/// A refusal that is remembered is `never`: it refuses what the question asked about, writes no
+/// rule that allows anything, and refuses the call behind it that asked the same.
 ///
-/// note: `always` remembers every subject the policy consulted, as allowed, and it did so whatever
-/// the answer was. No client here sends a refusal with `remember` on, and the protocol takes one:
-/// a client of its own asking never to allow this wrote the rules that allow it, and the sweep
-/// behind it let the next such call through.
+/// note: `always` once remembered every subject the policy consulted, as allowed, whatever the
+/// answer was, so a client asking never to allow this wrote the rules that allow it, and the sweep
+/// behind it let the next such call through. A remembered refusal now writes refusals, and only for
+/// the subjects nothing had decided.
 #[tokio::test]
-async fn a_refusal_asked_to_be_remembered_is_refused_rather_than_allowed() {
+async fn a_refusal_asked_to_be_remembered_refuses_and_allows_nothing() {
     let curl = |id: &str, host: &str| {
         ToolCall::new(
             id,
@@ -2164,10 +2165,25 @@ async fn a_refusal_asked_to_be_remembered_is_refused_rather_than_allowed() {
     let waiting = app.kernel.pending_permissions();
     assert_eq!(waiting.len(), 2, "two calls did not raise two questions");
 
-    assert!(app.decide(waiting[0].id, Grant::Deny, true).is_err());
-    // nothing was allowed on the strength of it, and nothing was swept
-    assert_ne!(app.policy.verdict(&waiting[1]), Verdict::Allow);
-    assert_eq!(app.kernel.pending_permissions().len(), 2);
+    let asked = app.policy.undecided_in(&waiting[0]);
+    assert!(!asked.is_empty());
+    app.decide(waiting[0].id, Grant::Deny, true)
+        .expect("a remembered refusal is taken");
+    // what was asked about is refused, nothing was allowed on the strength of it, and the second
+    // call, asking the same, was swept as refused
+    for subject in &asked {
+        assert_eq!(app.policy.stance(subject), Verdict::Deny, "{subject}");
+    }
+    assert!(
+        app.policy
+            .stances()
+            .iter()
+            .all(|(_, verdict)| *verdict != Verdict::Allow),
+        "{:?}",
+        app.policy.stances()
+    );
+    assert_eq!(app.policy.verdict(&waiting[1]), Verdict::Deny);
+    assert!(app.kernel.pending_permissions().is_empty());
 }
 
 /// Every call in a batch keeps the answer it was given, however many of them there are.

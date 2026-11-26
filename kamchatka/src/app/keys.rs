@@ -760,6 +760,7 @@ impl App {
                 KeyCode::Char('y') => (Grant::Allow, false),
                 KeyCode::Char('a') => (Grant::Allow, true),
                 KeyCode::Char('n') => (Grant::Deny, false),
+                KeyCode::Char('v') => (Grant::Deny, true),
                 // stops the turn the command runs in, as `esc` does; `s` is the key that stops at a
                 // tool's question too
                 KeyCode::Char('s') => {
@@ -851,6 +852,11 @@ impl App {
                 return;
             }
             KeyCode::Char('n') | KeyCode::Esc => Grant::Deny,
+            // `never`. Not `N`: a question takes no capitals, so caps lock answers nothing
+            KeyCode::Char('v') => {
+                remembered = true;
+                Grant::Deny
+            }
             KeyCode::Char('d') => {
                 self.drop_pending("dropped at the terminal");
                 return;

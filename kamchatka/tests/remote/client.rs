@@ -1264,6 +1264,49 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// `v` at the client is `never`, as at the terminal: the call is refused, and so is what it asked
+/// about from then on.
+#[tokio::test]
+async fn the_client_answers_never_with_v() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("refused"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let kernel = session.kernel.clone();
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"go\n").await.expect("could not type");
+        until_session(&kernel, |kernel| !kernel.pending_permissions().is_empty()).await;
+        feed.write_all(b"v\n").await.expect("could not type");
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Allow, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(input))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("peek: deny"), "{prose}");
+
+    quit(&session.at).await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert_eq!(
+        app.policy
+            .stance(&kamchatka::tools::Subject::Capability(Capability::fs(
+                "read"
+            ))),
+        nachalnik::Verdict::Deny
+    );
+}
+
 /// A client whose input has closed answers a running command that reached for the network with
 /// its own `--on-ask`, as it answers the kernel's questions, and waits for the turn it let through.
 #[tokio::test]

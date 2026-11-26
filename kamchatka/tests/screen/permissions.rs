@@ -87,7 +87,7 @@ async fn a_capital_letter_does_not_answer_a_question() {
 
     harness.send("dig").await;
     harness.settle().await;
-    for capital in ['Y', 'A', 'N', 'D', 'I'] {
+    for capital in ['Y', 'A', 'N', 'V', 'D', 'I'] {
         harness.answer(KeyCode::Char(capital)).await;
         assert!(
             harness.app.overlay.is_none() && harness.screen().contains("dig wants: exec:run"),
@@ -166,6 +166,67 @@ async fn a_refusal_set_while_the_question_waits_is_kept() {
         .iter()
         .any(|item| item.content.to_text().contains("a bone"));
     assert!(!ran, "the call ran: {}", harness.flat());
+}
+
+/// `never` refuses the call and, from then on, what the question asked about - and only that.
+///
+/// note: a call is a question only because something it is judged by has no answer. Refusing all
+/// of what it is judged by would refuse whatever was already allowed too, so `never` to a call
+/// needing an allowed `fs:read` and an undecided `exec:run` refuses `exec:run` and leaves reading
+/// alone. The call queued behind it, refused by the new rule, is answered with it.
+#[tokio::test]
+async fn saying_never_refuses_what_the_question_asked_about_and_nothing_else() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "dig", json!({})),
+            call("c2", "dig", json!({})),
+        ]),
+        ModelResponse::text("I will stop digging"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone").with_capabilities(
+            [Capability::fs("read"), Capability::exec("run")],
+        )));
+    let read = Subject::Capability(Capability::fs("read"));
+    let run = Subject::Capability(Capability::exec("run"));
+    harness.app.policy.set(&read, Verdict::Allow);
+
+    harness.send("dig").await;
+    harness.settle().await;
+    let asked = harness.app.asked().expect("a question").id;
+    harness.press(KeyCode::Tab).await;
+    let panel = harness.flat();
+    assert!(panel.contains("[v] never, for exec:run"), "{panel}");
+
+    harness.answer(KeyCode::Char('v')).await;
+    harness.settle().await;
+
+    assert_eq!(harness.app.policy.stance(&run), Verdict::Deny);
+    assert_eq!(harness.app.policy.stance(&read), Verdict::Allow);
+    assert!(harness.app.kernel.pending_permissions().is_empty());
+    let ran = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .any(|item| item.content.to_text().contains("a bone"));
+    assert!(!ran, "a call ran: {}", harness.flat());
+    assert!(
+        harness.flat().contains("I will stop digging"),
+        "the turn carries on: {}",
+        harness.flat()
+    );
+    let ruled = ruled(&harness);
+    assert!(
+        ruled.contains(&("exec:run".to_owned(), Verdict::Deny, Some(asked), false)),
+        "{ruled:?}"
+    );
+    assert!(
+        !ruled.iter().any(|(subject, ..)| subject == "fs:read"),
+        "{ruled:?}"
+    );
 }
 
 #[tokio::test]

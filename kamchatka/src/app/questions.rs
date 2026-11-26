@@ -87,6 +87,12 @@ impl App {
     /// questions before the first is shown, and a promise about what happens next has to cover what
     /// is already waiting.
     ///
+    /// note: `remember` with a refusal is *never*, and what it remembers is narrower: only the
+    /// subjects the policy consulted and had no answer for, which are what the question was asked
+    /// about. A subject already allowed stays allowed, so `never` to a `cat .env` that is asked
+    /// about only because of a `.env*` path rule refuses that path and leaves reading files alone.
+    /// It then sweeps the queue the same way, answering what the new refusals now refuse.
+    ///
     /// note: what it returns is about the question the caller asked about, and nothing else. The
     /// sweep's own failures go to [`App::say`], because they are the program reporting on something
     /// nobody asked it to do, and a caller handed them as *its* error would be told its own answer
@@ -100,7 +106,6 @@ impl App {
         else {
             return Err(format!("there is no question {id} waiting to be answered"));
         };
-        rememberable(grant, remember)?;
         // note: asked again, because the question was asked about the rules as they stood, and a
         // rule set while it waited - cycled on the permissions tab, or a client's `/rule` - may
         // refuse the call now. Taken as it was given, `always` set that rule back to `allow`, and
@@ -120,15 +125,22 @@ impl App {
                 false => (grant, remember),
             };
 
+        let verdict = match grant {
+            Grant::Allow => Verdict::Allow,
+            Grant::Deny => Verdict::Deny,
+        };
         if remember {
-            // everything the policy actually consulted, not just what the tool declared. Each is
-            // recorded against the question it answered, so later calls show where their permission
-            // came from
-            let judged = self.policy.judges(&request);
-            self.policy.always(&judged);
-            for subject in &judged {
+            // for `always`, everything the policy actually consulted, not just what the tool
+            // declared; for `never`, the part of that it had no answer for. Each is recorded
+            // against the question it answered, so later calls show where their answer came from
+            let remembered: Vec<_> = match grant {
+                Grant::Allow => self.policy.judges(&request),
+                Grant::Deny => self.policy.undecided_in(&request),
+            };
+            for subject in &remembered {
+                self.policy.set(subject, verdict);
                 self.kernel
-                    .record_rule(subject.to_string(), Verdict::Allow, Some(id), false);
+                    .record_rule(subject.to_string(), verdict, Some(id), false);
             }
         }
         self.answer(&request, grant)?;
@@ -139,8 +151,8 @@ impl App {
                 // produces two questions, and `a` on the first lets the second through, so the
                 // second must go through the same door, network grant and all. Decided straight
                 // into the kernel, it would run with the network cut and nothing saying why
-                if self.policy.verdict(&waiting) == Verdict::Allow
-                    && let Err(e) = self.answer(&waiting, Grant::Allow)
+                if self.policy.verdict(&waiting) == verdict
+                    && let Err(e) = self.answer(&waiting, grant)
                 {
                     self.say(Speaker::Error, e);
                 }
@@ -174,16 +186,23 @@ impl App {
     /// note: the command reads the answer, not the model: its sockets open or come back
     /// `Permission denied`, and the result it hands the model says which was answered.
     pub fn decide_reach(&mut self, id: u64, grant: Grant, remember: bool) -> Result<(), String> {
-        rememberable(grant, remember)?;
         let allow = grant == Grant::Allow;
         self.policy.reaching().answer(id, allow)?;
 
         let subject = Subject::Capability(Capability::net("reach"));
+        // `never` as well as `always`: `net:reach` refused from here on refuses every command
+        // already waiting on the same question
         if remember {
-            self.policy.set(&subject, Verdict::Allow);
+            self.policy.set(
+                &subject,
+                match allow {
+                    true => Verdict::Allow,
+                    false => Verdict::Deny,
+                },
+            );
             self.refresh_full_notice();
             for waiting in self.policy.reaching().waiting() {
-                let _ = self.policy.reaching().answer(waiting.id, true);
+                let _ = self.policy.reaching().answer(waiting.id, allow);
             }
         }
         self.kernel.record_rule(
@@ -273,22 +292,5 @@ impl App {
                 "nothing left to take: everything the pass had listed is pinned now",
             ),
         });
-    }
-}
-
-/// Refuses `remember` on anything but an allow, for both kinds of question.
-///
-/// note: `always` is an allow. What it remembers is every subject the policy consulted, because
-/// that is what it takes to let such a call through; a refusal has no such set, and refusing
-/// every one of them would refuse every call sharing any. Taken as it came, a client asking never
-/// to allow this wrote the rules that allow it.
-fn rememberable(grant: Grant, remember: bool) -> Result<(), String> {
-    match remember && grant != Grant::Allow {
-        true => Err(
-            "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
-             or `--auto-deny`"
-                .to_owned(),
-        ),
-        false => Ok(()),
     }
 }

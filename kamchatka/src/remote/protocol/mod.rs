@@ -114,10 +114,11 @@ pub enum Command {
         id: PermissionId,
         /// The answer.
         grant: Grant,
-        /// Whether to remember it, so the policy stops asking. This is the `a` key.
+        /// Whether to remember it, so the policy stops asking: `a` with an allow, `v` with a refusal.
         ///
-        /// note: use it with an allow only. It remembers every subject the policy consulted, as
-        /// allowed. A refusal with this on is answered `failed` rather than taken.
+        /// note: an allow remembers every subject the policy consulted, as allowed. A refusal
+        /// remembers only the subjects nothing had decided, which are what the question was about,
+        /// as refused.
         remember: bool,
     },
     /// Answer a running command that reached for the network; see [`Message::Reaching`].
@@ -132,9 +133,8 @@ pub enum Command {
         id: u64,
         /// The answer.
         grant: Grant,
-        /// Whether to allow the network from here on. This is the `a` key.
-        ///
-        /// note: allow only, for the same reason as `Decide`.
+        /// Whether to keep the answer for the network from here on: `a` with an allow, `v` with a
+        /// refusal.
         remember: bool,
     },
     /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.

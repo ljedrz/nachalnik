@@ -93,10 +93,19 @@ fn question_parts(
     // anything. It goes when `tab` is pressed, when the options start being true. `y` is swallowed,
     // so `[y] once` is not listed beside it, which would promise a key that is not there. The one
     // key that works is named instead
+    // and what `never` would refuse, which is only what the question is asking about
+    let undecided: Vec<String> = app
+        .policy
+        .undecided_in(&request)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     let answers = format!(
-        "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}   [s] stop{}{}",
+        "{}[y] once   [a] always, for {}   [n] no   [v] never, for {}\n[i] the exact JSON   \
+         [d] {}   [s] stop{}{}",
         until_keys(app),
         judged.join(" and "),
+        undecided.join(" and "),
         match waiting > 1 {
             true => "drop them all",
             false => "drop it",
@@ -256,7 +265,8 @@ fn reach_parts(
     let waiting = app.policy.reaching().waiting().len();
 
     let answers = format!(
-        "{}[y] this command   [a] always, for net:reach   [n] no   [s] stop{}",
+        "{}[y] this command   [a] always, for net:reach   [n] no   [v] never, for net:reach   \
+         [s] stop{}",
         until_keys(app),
         match waiting > 1 {
             true => format!("\n\n{} more after this one", waiting - 1),

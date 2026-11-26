@@ -45,6 +45,13 @@ minor bump may break you.
 
 ### added
 
+- **A question can be answered `never`.** <kbd>v</kbd> at the terminal, a typed `v` at a
+  `--connect` client, and a **never** button on the `--web` page refuse the call and, from then on, what the question asked about: the subjects
+  the call is judged by that nothing had decided. A subject already allowed stays allowed. Calls
+  already waiting that the new rule refuses are refused with it, as `always` lets them through. For
+  a command that reached for the network, `never` refuses `net:reach`. Over the protocol it is
+  `Command::Decide` or `Command::Reach` with a refusal and `remember` set, which used to be
+  answered `failed`. `Careful::undecided_in` lists the subjects a call is asked about.
 - **The `--web` page's events view has a filter**, the same box as the context view's, matching
   as `/` on the trace tab does: fuzzy, over each event's name, detail, date and time, with a
   continuation line kept with the event it belongs to. The page sets the new `trace` field of
@@ -54,7 +61,7 @@ minor bump may break you.
   cleared when the view changes, as `/` is when the tab does. The `webui` feature now turns on
   `time`'s `local-offset`, so the times matched are local ones.
 - **The `--web` page's question has `details` and `drop all`**, the terminal's <kbd>i</kbd> and
-  <kbd>d</kbd>, as two smaller buttons in a row under the answers. **details** shows the arguments
+  <kbd>d</kbd>, the same size as the other answers. **details** shows the arguments
   laid out and the tool's definition, which the page asks for with the new `Command::Describe`,
   answered with `Message::Described`. **drop all** sends the new `/drop`, which drops every call
   waiting on an answer and tells the model, so it can try something else; at the terminal it is

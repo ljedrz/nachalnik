@@ -941,7 +941,7 @@ impl<'a> Client<'a> {
     /// Interprets one typed line.
     ///
     /// note: two of these are the client's own rather than the session's, and both are spelled the
-    /// way the terminal spells them. `y`, `n` and `a` are the keys the permission panel takes, with
+    /// way the terminal spells them. `y`, `n`, `a` and `v` are the keys the permission panel takes, with
     /// the meanings they have there, so a *message* of `y` cannot be sent while a question is open,
     /// just as it cannot be typed while the question holds the prompt. Everything else goes to the
     /// session verbatim, because every verb this program has is a line handed to `App::submit`, and
@@ -955,6 +955,7 @@ impl<'a> Client<'a> {
             "y" => Some((Grant::Allow, false)),
             "n" => Some((Grant::Deny, false)),
             "a" => Some((Grant::Allow, true)),
+            "v" => Some((Grant::Deny, true)),
             _ => None,
         };
         // taken off as it is answered, for the reason `settle` gives
@@ -1213,8 +1214,8 @@ impl<'a> Client<'a> {
     /// Answers whatever is still being asked, once there is nobody here to ask.
     ///
     /// note: nothing at all until the input has closed, which makes it safe to call on every
-    /// message. A client with somebody at it answers with `y`, `n` and `a`; a question settled from
-    /// under them would decide what they were about to.
+    /// message. A client with somebody at it answers with `y`, `n`, `a` and `v`; a question settled
+    /// from under them would decide what they were about to.
     ///
     /// note: taken off the queue as it is answered rather than when the session says so. The answer
     /// comes back as a `permission.decided` record and clears it there too, but that record arrives
