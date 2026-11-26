@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`system1::DEFAULT_BASE_URL` is gone.** It held OpenRouter's address, but nothing in the crate
+  used it as a default, so the name was misleading. Pass the engine's address to `Client::new`;
+  the module's docs list the engines, local ones first. OpenRouter's is
+  `https://openrouter.ai/api/v1`.
+
 ### added
 
 - **A llama-server's context size is read from its model listing.** llama.cpp's `/v1/models` gives
@@ -15,12 +22,6 @@ minor bump may break you.
   so nothing showed how full the context was and the compactor never ran. Its refusal of a request
   longer than that window ("exceeds the available context size") is now read as one, with the
   request's size, as other servers' refusals already were.
-
-### deprecated
-
-- **`system1::DEFAULT_BASE_URL`**, which is OpenRouter's address. Nothing in the crate defaulted to
-  it, and the name said otherwise: `Client::new` takes the engine's address, and the module's docs
-  list the engines, local ones first. The constant still holds the same address.
 
 ## [0.11.1] - 2026-11-11
 

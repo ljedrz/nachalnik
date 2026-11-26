@@ -145,15 +145,6 @@ use serde_json::{Value, json};
 
 use crate::{Attribution, Endpoint, Keyed, RETRIES, install_crypto};
 
-/// OpenRouter's address, which serves every System One model on its list from the same `/api/v1`
-/// its chat completions are on.
-///
-/// note: deprecated because nothing here defaults to it, and the name said otherwise.
-/// [`Client::new`] takes the engine's address, which is the caller's to choose; [the module's
-/// list](crate::system1#engines) names the engines known to work.
-#[deprecated(note = "there is no default engine: pass the engine's address to `Client::new`")]
-pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
-
 /// The path a question is posted to, under the base URL.
 const ROUTE: &str = "systemone";
 
