@@ -50,7 +50,9 @@ mcp = ["dep:nachalnik-mcp"]
 # `--web`: serves the session as a web page. No extra dependencies: the HTTP handling uses the
 # sockets `--serve` already needs, and the page is one embedded file. No authentication: it
 # listens on loopback, or on a private-network address with a warning; see `web`.
-webui = []
+# `time/local-offset` is a feature of a dependency already here, for the clock the page's events
+# filter matches on, as the terminal's trace filter does.
+webui = ["time/local-offset"]
 # the terminal interface: `ui`, the prompt, and the key bindings. Optional so that headless and
 # served builds don't compile the dependencies below, which nothing else uses
 tui = [

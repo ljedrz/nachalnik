@@ -32,7 +32,7 @@ use tokio::{
 };
 
 use crate::{
-    app::{App, NOTICES, Outcome, Overlay, Speaker},
+    app::{App, NOTICES, Outcome, Overlay, Search, Speaker},
     remote::protocol::{
         self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Sandboxing,
         Stanced, Tracing, Unjudged,
@@ -1418,6 +1418,13 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 },
             },
         }),
+        // the trace is this loop's, so a search of it is answered here
+        Command::Search { query, trace: true } => Some(Message::Found {
+            lines: app.trace_found(&Search::of(&query)),
+            query,
+            trace: true,
+            ids: Vec::new(),
+        }),
         // answered by the connection off the kernel, so they never reach this loop
         Command::Search { .. } | Command::Describe { .. } => None,
         // note: answered rather than closing the connection, because a client that sent something
@@ -1542,6 +1549,7 @@ fn project(app: &App) -> Attached {
         asking,
         reaching: app.policy.reaching().waiting(),
         trace: tracing(app),
+        trace_from: app.traced - app.trace.len() as u64,
         policy: app.policy_name(),
         untold: crate::tools::Careful::untold(),
         permissions: app.permissions().iter().map(Stanced::of).collect(),

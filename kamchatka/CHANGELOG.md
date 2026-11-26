@@ -45,6 +45,14 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page's events view has a filter**, the same box as the context view's, matching
+  as `/` on the trace tab does: fuzzy, over each event's name, detail, date and time, with a
+  continuation line kept with the event it belongs to. The page sets the new `trace` field of
+  `Command::Search`, and the answer lists the matching lines in the new `lines` field of
+  `Message::Found`. Lines are numbered from the session's first trace line, and the new
+  `Attached::trace_from` is the number of the first line a projection carries. The box is
+  cleared when the view changes, as `/` is when the tab does. The `webui` feature now turns on
+  `time`'s `local-offset`, so the times matched are local ones.
 - **The `--web` page's question has `details` and `drop all`**, the terminal's <kbd>i</kbd> and
   <kbd>d</kbd>, as two smaller buttons in a row under the answers. **details** shows the arguments
   laid out and the tool's definition, which the page asks for with the new `Command::Describe`,

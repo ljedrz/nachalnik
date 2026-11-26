@@ -249,9 +249,15 @@ pub enum Command {
     /// an item is and not what it says, and a filter worth having reads the whole of it - its
     /// reasoning and calls included. The session answers with the terminal's own matcher, so `/`
     /// on a screen and a browser's filter box leave the same rows for the same words.
+    ///
+    /// note: over the trace instead where `trace` says so, as `/` on the trace tab filters it,
+    /// clock and all. That one is answered by the session loop, which holds the trace.
     Search {
         /// What was typed, as typed: fuzzy, and case-sensitive only where it has a capital in it.
         query: String,
+        /// Search the trace rather than the context.
+        #[serde(default)]
+        trace: bool,
     },
     /// Ask for a tool's definition, answered with a [`Message::Described`].
     ///
@@ -477,8 +483,17 @@ pub enum Message {
         /// note: carried back because a client sends one per keystroke and they can cross. A
         /// client keeps the answer to what its box says now and drops the rest.
         query: String,
+        /// Whether this answers a search of the trace, echoed.
+        #[serde(default)]
+        trace: bool,
         /// The items that match, in the order the context has them; every item for an empty query.
+        /// Empty for a search of the trace.
+        #[serde(default)]
         ids: Vec<ContextId>,
+        /// The trace lines that match, by their numbers; see [`Attached::trace_from`]. Empty for a
+        /// search of the context.
+        #[serde(default)]
+        lines: Vec<u64>,
     },
     /// A tool's definition, answering a [`Command::Describe`].
     Described {
@@ -647,6 +662,12 @@ pub struct Attached {
     /// note: capped where `App` caps it and not otherwise trimmed. The session log is unbounded and
     /// is what `Command::Attach` streams; this pane is a ring of the last few hundred lines.
     pub trace: Vec<Tracing>,
+    /// The number of the first line of [`Attached::trace`], counted from the session's first.
+    ///
+    /// note: what a [`Message::Found`] for the trace names lines by. The trace drops its oldest
+    /// line as each new one arrives, so a position in it would mean another line a moment later.
+    #[serde(default)]
+    pub trace_from: u64,
     /// How many more it will ask about.
     ///
     /// note: a count beside the rows, as the permissions tab gives along its bottom: a client

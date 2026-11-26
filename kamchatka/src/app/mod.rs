@@ -50,7 +50,6 @@ pub use views::{PartKind, SandboxPart, SandboxView, Stance};
 #[cfg(feature = "tui")]
 mod keys;
 pub(crate) mod text;
-#[cfg(feature = "tui")]
 pub mod when;
 
 pub(crate) use session::{beside, stem};
@@ -479,6 +478,12 @@ pub struct App {
     pub(crate) aside: Vec<String>,
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
+    /// How many trace lines there have been, including those [`App::trace`] has dropped.
+    ///
+    /// note: what numbers a line for a client filtering the trace. The ring drops its oldest line
+    /// as each new one arrives, so a position in it means a different line a moment later, and a
+    /// number counted from the start does not.
+    pub(crate) traced: u64,
     /// The prompt.
     #[cfg(feature = "tui")]
     pub input: TextArea<'static>,
@@ -855,6 +860,7 @@ impl App {
             greeting: false,
             aside: Vec::new(),
             trace: VecDeque::new(),
+            traced: 0,
             #[cfg(feature = "tui")]
             input,
             // note: the same colour the program draws with by default, so an embedder's window and

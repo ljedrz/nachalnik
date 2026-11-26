@@ -672,3 +672,42 @@ async fn a_rule_on_the_trace_is_the_colour_of_a_permission() {
         harness.screen()
     );
 }
+
+/// A client filtering the trace is told the same lines `/` leaves, by numbers that keep naming
+/// the same lines while the oldest drop off the ring.
+///
+/// note: the numbers are counted from the session's first line, so a line keeps its number after
+/// the four hundred before it have gone; a position in the ring would name another line by then.
+#[tokio::test]
+async fn a_client_filtering_the_trace_names_the_lines_by_number() {
+    let mut harness = Harness::new([]);
+    let from = harness.app.trace.len() as u64;
+    harness.app.trace("thing.happened", "a walrus went by");
+    // a continuation is kept with the line it continues
+    harness.app.trace("", "and it was large");
+    harness.app.trace("thing.happened", "nothing to see");
+
+    let walrus = kamchatka::app::Search::of("walrus");
+    assert_eq!(harness.app.trace_found(&walrus), vec![from, from + 1]);
+    // the same lines as the trace tab's own filter
+    harness.tab(Tab::Trace);
+    harness.press(KeyCode::Char('/')).await;
+    for c in "walrus".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    let shown: Vec<_> = harness
+        .app
+        .traced()
+        .iter()
+        .map(|event| event.detail.clone())
+        .collect();
+    assert_eq!(shown, ["a walrus went by", "and it was large"]);
+
+    // push the first walrus off the ring, and add another: the new one is numbered past the end,
+    // and the old numbers are gone rather than reused
+    for _ in 0..400 {
+        harness.app.trace("thing.happened", "filler");
+    }
+    harness.app.trace("thing.happened", "a second walrus");
+    assert_eq!(harness.app.trace_found(&walrus), vec![from + 403]);
+}
