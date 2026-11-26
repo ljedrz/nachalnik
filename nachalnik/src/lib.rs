@@ -218,9 +218,6 @@ pub mod test;
 
 pub use async_trait::async_trait;
 
-#[allow(deprecated)]
-pub use crate::compaction::Removed;
-
 pub use crate::{
     compaction::{Budget, CompactionPlan, CompactionReport, Compactor, ReportItem},
     config::Config,
