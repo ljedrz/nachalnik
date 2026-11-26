@@ -852,7 +852,7 @@ impl App {
             }
             KeyCode::Char('n') | KeyCode::Esc => Grant::Deny,
             KeyCode::Char('d') => {
-                self.drop_pending();
+                self.drop_pending("dropped at the terminal");
                 return;
             }
             KeyCode::Char('s') => {
@@ -879,28 +879,6 @@ impl App {
         if self.kernel.pending_permissions().is_empty() {
             self.focus = Focus::Input;
             self.question_scroll = 0;
-        }
-    }
-
-    /// Drops every call the model is waiting on an answer for, and tells it so.
-    ///
-    /// note: denying them one at a time says no to each; this says no to all of them with one
-    /// reason, which is the answer when the model has gone off down the wrong path entirely. Either
-    /// way the model is told; a call that simply vanished would leave it waiting.
-    fn drop_pending(&mut self) {
-        let dropped = self.kernel.cancel_pending_calls("dropped at the terminal");
-        self.overlay = None;
-        self.say(
-            Speaker::Note,
-            format!("{dropped} call(s) dropped; the model is told, and can try something else"),
-        );
-
-        // the model then says something about it. Answering `n` to every request ends at
-        // `start_turn`; dropping them all leaves the kernel idle with the refusals recorded and
-        // nobody driving, and without this the session would stop until somebody typed `/continue`
-        match self.stepping {
-            true => self.say(Speaker::Note, "/step or /continue when you are ready"),
-            false => self.start_turn(),
         }
     }
 

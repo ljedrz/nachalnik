@@ -370,8 +370,12 @@ the arguments, and ends with the answers.
 | <kbd>a</kbd> | always, for everything the question names |
 | <kbd>n</kbd> / <kbd>esc</kbd> | no |
 | <kbd>i</kbd> | the exact JSON, and the tool's own definition |
-| <kbd>d</kbd> | drop every call it's waiting on, and tell the model why |
+| <kbd>d</kbd> | drop every call it's waiting on, and tell the model why, as `/drop` does |
 | <kbd>s</kbd> | the same, and end the turn there, as `/stop` does; the model reads why with your next message |
+
+On the `--web` page the question has **allow**, **always**, **deny** and **stop** buttons, and
+under them two smaller ones: **details** shows the arguments laid out and the tool's definition, as
+<kbd>i</kbd> does, and **drop all** does what <kbd>d</kbd> does.
 
 The question does not block anything: <kbd>ctrl+t</kbd> to the context tab, read the item it is
 about, <kbd>alt+1</kbd> back, and answer. The **chat** tab turns red in the tab bar while a question

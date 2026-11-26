@@ -45,6 +45,12 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page's question has `details` and `drop all`**, the terminal's <kbd>i</kbd> and
+  <kbd>d</kbd>, as two smaller buttons in a row under the answers. **details** shows the arguments
+  laid out and the tool's definition, which the page asks for with the new `Command::Describe`,
+  answered with `Message::Described`. **drop all** sends the new `/drop`, which drops every call
+  waiting on an answer and tells the model, so it can try something else; at the terminal it is
+  the same as <kbd>d</kbd>.
 - **The `--web` page's context view does more of what the context tab does.** The state button's
   cycle has pinned right after active, so an item can be pinned from a phone; the step into
   pinned sends `/pin`, and the rest is the session's cycle as before. Each box in an open row has

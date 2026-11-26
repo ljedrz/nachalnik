@@ -346,6 +346,16 @@
   .reads { color: var(--reads); } .changes { color: var(--changes); } .grave { color: var(--bad); }
   #answers { display: flex; gap: 8px; flex-wrap: wrap; }
   #answers button { flex: 1; }
+  /* the answers the terminal has on `d` and `i`, in a row of their own under the four and smaller
+     than them, so they neither push the question out of view nor sit where a thumb lands */
+  #extras { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  #extras[hidden] { display: none; }
+  #extras button { font-size: var(--small); padding: 2px 10px; min-height: 32px; }
+  #details {
+    margin: 0 0 8px; padding: 8px; font: inherit; font-size: var(--small); white-space: pre-wrap;
+    overflow-wrap: anywhere; overflow: auto; border: 1px solid var(--line); border-radius: 6px;
+    max-height: calc(var(--tall, 100dvh) * 0.3);
+  }
   .allow { border-color: var(--user); } .deny { border-color: var(--bad); }
   /* note: the corner a person's eye is already in, because the model's name is there and it is the
      first thing read. A turn can be a minute of nothing arriving - a model thinking, a command
@@ -421,11 +431,19 @@
   <div id="question">
     <p id="rating" hidden></p>
     <p id="asked"></p>
+    <pre id="details" hidden></pre>
     <div id="answers">
       <button class="allow" data-grant="allow">allow</button>
       <button class="allow" data-grant="always">always</button>
       <button class="deny" data-grant="deny">deny</button>
       <button class="deny" data-grant="stop">stop</button>
+    </div>
+    <!-- only for a tool's question; a command that reached for the network has neither -->
+    <div id="extras" hidden>
+      <button type="button" id="detail" aria-expanded="false" aria-controls="details"
+              title="the arguments in full, and the tool's definition">details</button>
+      <button type="button" id="drop" class="deny"
+              title="drop every call waiting on an answer and tell the model, so it can try something else">drop all</button>
     </div>
   </div>
 </footer>
@@ -1765,6 +1783,13 @@ function showQuestion() {
       `${reached.cmd}\nis running and has reached for the network; the answer holds for the rest ` +
       "of it, and \"always\" allows the network from now on";
   }
+  document.getElementById("extras").hidden = !next;
+  // the details belong to one question, and close when it is answered
+  if (!next || detailing !== next.id) {
+    detailing = null;
+    detail.setAttribute("aria-expanded", "false");
+    details.hidden = true;
+  }
   band(next);
   attention.asked(next ? `q${next.id}` : reached ? `r${reached.id}` : null, asked.textContent);
 }
@@ -1858,6 +1883,45 @@ function band(next) {
   sure.textContent = ` · ${Math.round(seen.confidence * 100)}% sure`;
   rating.append(sure);
 }
+
+const detail = document.getElementById("detail");
+const details = document.getElementById("details");
+/** Which question's details are open, by its id; `null` for none. */
+let detailing = null;
+
+/**
+ * Fills the details of the question on the panel: its arguments laid out, and the tool's
+ * definition once the session has sent it, as `i` shows them at the terminal.
+ */
+function described(spec) {
+  const next = asking[0];
+  if (!next) return;
+  const tool =
+    spec === undefined
+      ? "…"
+      : spec === null
+        ? "this tool is not registered"
+        : JSON.stringify(spec, null, 2);
+  details.textContent = `${JSON.stringify(next.args, null, 2)}\n\n--- the tool ---\n${tool}`;
+}
+
+detail.onclick = () => {
+  const next = asking[0];
+  if (!next) return;
+  const opening = detailing !== next.id;
+  detailing = opening ? next.id : null;
+  detail.setAttribute("aria-expanded", String(opening));
+  details.hidden = !opening;
+  if (!opening) return;
+  // asked each time it opens rather than kept, because the tools a session offers can change
+  described(undefined);
+  send({ do: "describe", tool: next.tool });
+};
+
+// `d` at the terminal
+document.getElementById("drop").onclick = () => {
+  if (asking.length) send({ do: "submit", line: "/drop" });
+};
 
 document.getElementById("answers").onclick = (e) => {
   const grant = e.target.dataset.grant;
@@ -2095,6 +2159,11 @@ function heard(m) {
         const thought = el.closest(".row")?.querySelector(`[data-thought="${m.id}"]`);
         if (thought) thought.shown(m.raw ? (m.reasoning ?? null) : null, m.calls ?? []);
       }
+      break;
+    }
+    // a definition for the details, where they are still open on the question that asked for it
+    case "described": {
+      if (detailing !== null && asking[0]?.tool === m.tool) described(m.spec ?? null);
       break;
     }
     // only the answer to what the box says now: one goes out per keystroke, and they can cross

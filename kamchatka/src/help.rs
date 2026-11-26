@@ -290,6 +290,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         where there are keys to press, and ctrl+c for a
                         running turn; typing it is how a client with no keys
                         - a browser - reaches the same act
+    /drop               at a question, drop every call waiting on it and tell
+                        the model why, letting it try something else; d where
+                        there are keys to press
     /request            the request that would go next
     /payload            the provider's own rendering of it, field for field
     /raw                the provider's own last answer

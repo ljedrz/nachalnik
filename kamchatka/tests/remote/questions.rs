@@ -291,3 +291,74 @@ async fn a_client_coming_back_hears_what_the_voice_said_while_it_was_away() {
     .await;
     session.ended().await.1.expect("the session failed");
 }
+
+/// A client at a question can read the tool's definition, and drop every waiting call with
+/// `/drop`, as `i` and `d` do at the terminal; the turn then carries on.
+#[tokio::test]
+async fn a_client_reads_a_questions_tool_and_drops_its_calls() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![
+            call("c1", "peek", json!({ "at": "here" })),
+            call("c2", "peek", json!({ "at": "there" })),
+        ]),
+        ModelResponse::text("trying something else"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until_record("permission.requested").await;
+
+    for (tool, known) in [("peek", true), ("nothing", false)] {
+        peer.send(Command::Describe {
+            tool: tool.to_owned(),
+        })
+        .await;
+        let heard = peer
+            .until(|message| matches!(message, Message::Described { .. }))
+            .await;
+        let Some(Message::Described { tool: echoed, spec }) = heard.last() else {
+            unreachable!("just matched")
+        };
+        assert_eq!(echoed, tool);
+        assert_eq!(
+            spec.as_ref().map(|spec| spec.id.as_str()),
+            known.then_some("peek")
+        );
+    }
+
+    peer.send(Command::Submit {
+        line: "/drop".to_owned(),
+    })
+    .await;
+    peer.until_words("trying something else").await;
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(app.kernel.pending_permissions().is_empty());
+    // both calls answered with the refusal, and neither run: the tool's answer is nowhere
+    let results: Vec<_> = app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(results.len(), 2, "{results:?}");
+    assert!(
+        results.iter().all(|result| !result.contains("the answer")),
+        "{results:?}"
+    );
+}

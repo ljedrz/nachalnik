@@ -684,9 +684,9 @@ impl<'a> Client<'a> {
 
                 Ok(())
             }
-            // an answer this client never asks for, since it has no filter to type into; counted,
-            // because an answer it is
-            Message::Found { .. } => {
+            // answers this client never asks for, since it has no filter and draws no question;
+            // counted, because answers they are
+            Message::Found { .. } | Message::Described { .. } => {
                 self.answered();
 
                 Ok(())

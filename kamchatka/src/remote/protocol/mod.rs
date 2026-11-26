@@ -253,6 +253,14 @@ pub enum Command {
         /// What was typed, as typed: fuzzy, and case-sensitive only where it has a capital in it.
         query: String,
     },
+    /// Ask for a tool's definition, answered with a [`Message::Described`].
+    ///
+    /// note: for a client showing a question, which names the tool and its arguments but not what
+    /// the tool is. `i` at the terminal shows the same definition beside the arguments.
+    Describe {
+        /// The tool's name, as a call names it.
+        tool: String,
+    },
     /// Something this build has no name for.
     ///
     /// note: a newer client's verb, answered with a [`Message::Failed`] rather than by closing the
@@ -471,6 +479,13 @@ pub enum Message {
         query: String,
         /// The items that match, in the order the context has them; every item for an empty query.
         ids: Vec<ContextId>,
+    },
+    /// A tool's definition, answering a [`Command::Describe`].
+    Described {
+        /// The tool asked about, echoed.
+        tool: String,
+        /// Its definition; `None` where no tool by that name is registered.
+        spec: Option<nachalnik::ToolSpec>,
     },
     /// The text of an item this client asked `/copy` for, to put on its own clipboard.
     ///

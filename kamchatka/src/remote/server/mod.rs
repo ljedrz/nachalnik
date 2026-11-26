@@ -1418,8 +1418,8 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 },
             },
         }),
-        // answered by the connection off the kernel, so it never reaches this loop
-        Command::Search { .. } => None,
+        // answered by the connection off the kernel, so they never reach this loop
+        Command::Search { .. } | Command::Describe { .. } => None,
         // note: answered rather than closing the connection, because a client that sent something
         // is owed one answer whether or not this end knows what it was - see `Message::Done`. What
         // reaches here is a client newer than this session
@@ -1588,6 +1588,7 @@ fn name(command: &Command) -> &'static str {
         Command::Reach { .. } => "reach",
         Command::Inspect { .. } => "inspect",
         Command::Search { .. } => "search",
+        Command::Describe { .. } => "describe",
         Command::Project => "project",
         Command::Cycle { .. } => "cycle",
         Command::Rule { .. } => "rule",

@@ -194,6 +194,10 @@ where
                     let ids = Search::of(&query).found(kernel.items().iter());
                     answer(write, &Message::Found { query, ids }, "search").await?;
                 }
+                Some(Command::Describe { tool }) => {
+                    let spec = kernel.tool(&tool).map(|it| it.spec());
+                    answer(write, &Message::Described { tool, spec }, "describe").await?;
+                }
                 Some(command) => {
                     let about = name(&command);
                     match ask(asks, client, command).await {
