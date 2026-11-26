@@ -488,6 +488,10 @@ async fn e_on_a_reply_points_at_r_for_its_reasoning() {
         .app
         .kernel
         .push(ContextItem::assistant("no thought", Vec::new()));
+    harness.app.kernel.push(ContextItem::assistant(
+        "",
+        vec![call("c2", "dig", json!({ "where": "there" }))],
+    ));
     harness.tab(Tab::Context);
     harness.press(KeyCode::Home).await;
 
@@ -524,6 +528,15 @@ async fn e_on_a_reply_points_at_r_for_its_reasoning() {
     harness.press(KeyCode::Char('e')).await;
     assert!(harness.app.editing.is_some() && !harness.app.editing_reasoning);
     assert!(!harness.flat().contains("edits its reasoning"));
+    harness.press(KeyCode::Esc).await;
+
+    // a reply that is only a call and has no reasoning is refused, and `r` is not offered for it
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_none());
+    let panel = harness.flat();
+    assert!(panel.contains("[4] cannot be edited"), "{panel}");
+    assert!(!panel.contains("`r` edits its reasoning"), "{panel}");
 }
 
 #[tokio::test]
