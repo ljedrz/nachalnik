@@ -849,6 +849,34 @@ async fn revising_reasoning_that_is_not_sent_back_says_so() {
     }
 }
 
+/// Rewritten reasoning of a reply that is left out of the next request says why it is left out.
+///
+/// note: an excluded reply is not sent at all, so neither is its new reasoning. Told only that the
+/// rewrite went through, a model would expect the next request to read it.
+#[tokio::test]
+async fn revising_reasoning_of_a_reply_left_out_says_why() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({
+            "action": "revise_reasoning",
+            "ids": [1],
+            "content": "a better thought",
+            "reason": "the first one was wrong",
+        }),
+    )]));
+    let reply = kernel.push(
+        ContextItem::assistant("an answer", Vec::new()).with_reasoning(Some("a thought".into())),
+    );
+    kernel.set_state([reply], ContextState::Excluded, None);
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"])[0].clone();
+    assert!(said.contains("now holds other reasoning"), "{said}");
+    assert!(said.contains("not going into the next request"), "{said}");
+}
+
 /// `revise_reasoning` refuses what has no reasoning of its own to rewrite, thinking a provider may
 /// have signed, and the reply making the call.
 #[tokio::test]
