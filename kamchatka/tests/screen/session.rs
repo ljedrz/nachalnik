@@ -1184,6 +1184,49 @@ async fn a_resumed_session_reads_back_what_its_items_used_to_say() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A resumed session reads back what its items used to think, off the record beside the snapshot.
+///
+/// note: the reasoning a rewrite replaced is `context.reasoning_replaced`, which `recall` reads as
+/// well as `context.replaced`. Dropping it would leave `r`'s earlier versions empty after a resume
+/// while the text came back.
+#[tokio::test]
+async fn a_resumed_session_reads_back_what_its_items_used_to_think() {
+    let first = Harness::new([]);
+    let id = first.app.kernel.push(
+        ContextItem::assistant("the answer", Vec::new()).with_reasoning(Some("the thought".into())),
+    );
+    first
+        .app
+        .kernel
+        .replace_reasoning(id, Some("the second thought".into()))
+        .expect("the item is there");
+
+    let dir = common::scratch("recall-thought");
+    let log = dir.join("s.jsonl");
+    let state = dir.join("s.json");
+    first.app.write_session(&log, &state).expect("written");
+
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&state).expect("the snapshot is there"))
+            .expect("the snapshot parses");
+    let mut second = Harness::new([]);
+    second.app.kernel = Kernel::resume(Config::default(), snapshot);
+
+    assert_eq!(
+        second.app.recall(&state),
+        1,
+        "the reasoning rewrite is in the log beside the snapshot"
+    );
+    assert_eq!(second.app.versions(id), 1);
+    let was = second.app.version(id, 1).expect("an earlier version");
+    assert_eq!(
+        was.reasoning.expect("it had reasoning").to_text(),
+        "the thought"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// A record that is not past the snapshot says nothing about the run that wrote it.
 ///
 /// note: the other half of the notice in the test above. `recall` says the record runs past the
