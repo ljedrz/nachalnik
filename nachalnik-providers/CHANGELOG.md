@@ -12,7 +12,9 @@ minor bump may break you.
 - **A llama-server's context size is read from its model listing.** llama.cpp's `/v1/models` gives
   the window the server was started with as `meta.n_ctx`, which `OpenAiCompatible` now takes as
   the model's limit. Before, a session at a llama-server had no limit unless one was set by hand,
-  so nothing showed how full the context was and the compactor never ran.
+  so nothing showed how full the context was and the compactor never ran. Its refusal of a request
+  longer than that window ("exceeds the available context size") is now read as one, with the
+  request's size, as other servers' refusals already were.
 
 ### deprecated
 

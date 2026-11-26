@@ -199,9 +199,10 @@ pub fn out_of_quota(error: &str) -> bool {
 /// server's own sentence, which names the problem in words.
 pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
     /// What names this kind of refusal, whoever phrased it.
-    const COMPLAINTS: [&str; 5] = [
+    const COMPLAINTS: [&str; 6] = [
         "context length",
         "context_length",
+        "context size",
         "too long",
         "token count",
         "tokens allowed",
@@ -640,6 +641,13 @@ mod tests {
                  (1048576).",
                 1_048_576,
                 1_050_000,
+            ),
+            // llama.cpp's, which names the window the server was started with
+            (
+                "400 Bad Request: request (327707 tokens) exceeds the available context size \
+                 (262144 tokens), try increasing it",
+                262_144,
+                327_707,
             ),
             // the aggregator refusing in its own units, and the reading this is for: the counter
             // had put the same request at 71231, which is the correction arriving
