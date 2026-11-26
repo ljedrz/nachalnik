@@ -138,6 +138,10 @@ minor bump may break you.
 
 ### changed
 
+- **The `--web` page marks a reply that said nothing.** A turn stopped while the model was still
+  thinking leaves a reply with reasoning and no text, and its row showed an empty box under the
+  reasoning. The box now reads *no message was sent* until it is clicked into, and a text typed
+  there is saved as an edit as before.
 - **<kbd>/</kbd> on the context tab also matches what a reply thought and the calls it made**,
   wherever the turn keeps them, so a reply can be found by its reasoning. `nucleo-matcher` is no
   longer behind the `tui` feature, since a served session matches the `--web` page's filter with

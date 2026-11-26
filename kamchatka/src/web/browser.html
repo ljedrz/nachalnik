@@ -221,6 +221,10 @@
     width: 100%; font: inherit; background: transparent; color: inherit; resize: vertical;
   }
   .row.open .body { display: block; }
+  /* the marker in a reply's empty box, gone once the box is clicked into so that the text can be
+     typed where it stood */
+  .body::placeholder { color: var(--dim); font-style: italic; }
+  .body:focus::placeholder { color: transparent; }
   /* a box and the button that copies it, side by side: the box takes the width and the button
      keeps a size a thumb can hit */
   .boxed { display: none; gap: 8px; margin-top: 8px; align-items: flex-start; }
@@ -1338,6 +1342,11 @@ function draw() {
           "absent",
           body.readOnly && !body.value && called.length > 0,
         );
+        // a reply stopped before it said anything, while it was still thinking, has no text, and
+        // an empty box does not say that. A placeholder rather than a value, so the box is still
+        // empty to edit and to commit, and the marker goes when the box is clicked into
+        body.placeholder =
+          item.kind === "assistant_message" && !body.value ? "no message was sent" : "";
       };
       // note: `data-body` rather than `data-item`, which the chat uses for the line that *is* the
       // item. One `inspect` answer fills both, and a row opened here would otherwise overwrite
