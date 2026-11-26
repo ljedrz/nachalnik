@@ -7,9 +7,15 @@
 all-features = true
 
 # note: the defaults, which fail on known vulnerabilities, unmaintained crates and yanked versions.
-# Nothing is ignored; an exception would need the advisory's id and a reason it doesn't affect us.
+# An exception needs the advisory's id and a reason it doesn't affect us.
 [advisories]
 version = 2
+ignore = [
+    # `chrono` is unmaintained. It comes only from `rmcp`, which turns on `schemars`' `chrono04`
+    # feature whatever its own features are; no crate of ours names `chrono`, and the advisory
+    # reports no flaw in it. To go once `rmcp` stops requiring it.
+    { id = "RUSTSEC-2026-0543", reason = "only through rmcp's schemars feature; unmaintained, not vulnerable" },
+]
 
 # note: only the licences the tree actually uses, so adding a new one is a deliberate decision.
 # Dual-licensed crates are covered by MIT or Apache-2.0; the rest are for crates without that
