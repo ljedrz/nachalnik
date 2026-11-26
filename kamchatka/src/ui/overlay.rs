@@ -85,6 +85,13 @@ fn question_parts(
             subject => subject.to_string(),
         })
         .collect();
+    // and what `never` would refuse, which is only what the question is asking about
+    let undecided: Vec<String> = app
+        .policy
+        .undecided_in(&request)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     // two lines of options: answers on the first, and the options for looking closer or giving up
     // on the lot on the second. `pgup / pgdn` joins them when there are arguments below the fold
     // instead of taking a line of its own, which costs two rows.
@@ -93,13 +100,6 @@ fn question_parts(
     // anything. It goes when `tab` is pressed, when the options start being true. `y` is swallowed,
     // so `[y] once` is not listed beside it, which would promise a key that is not there. The one
     // key that works is named instead
-    // and what `never` would refuse, which is only what the question is asking about
-    let undecided: Vec<String> = app
-        .policy
-        .undecided_in(&request)
-        .iter()
-        .map(ToString::to_string)
-        .collect();
     let answers = format!(
         "{}[y] once   [a] always, for {}   [n] no   [v] never, for {}\n[i] the exact JSON   \
          [d] {}   [s] stop{}{}",

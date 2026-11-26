@@ -297,6 +297,14 @@ impl App {
                 ),
                 (false, false) => self.say(Speaker::Note, "nothing is running"),
             },
+            // `d` at a question, typed: the browser's way to it, as `/stop` is for `s`
+            "drop" => match self.kernel.pending_permissions().is_empty() {
+                false => self.drop_pending("dropped by the user"),
+                true => self.say(
+                    Speaker::Note,
+                    "nothing is waiting on an answer; `/stop` drops calls already decided",
+                ),
+            },
             // note: a command as well as `ctrl+l`, because two of the three loops have no keys to
             // press and one of them is the browser, where a pile of notices is the whole screen
             // rather than a quarter of a tall one. It says nothing when it is done, which is
@@ -308,14 +316,6 @@ impl App {
             // alone, so the one thing somebody would be typing it for is the one thing it does not
             // do. It is the same trap `/load` avoids by not calling itself `/resume`, and `/clear`
             // is answered by `no_such_command`
-            // `d` at a question, typed: the browser's way to it, as `/stop` is for `s`
-            "drop" => match self.kernel.pending_permissions().is_empty() {
-                false => self.drop_pending("dropped by the user"),
-                true => self.say(
-                    Speaker::Note,
-                    "nothing is waiting on an answer; `/stop` drops calls already decided",
-                ),
-            },
             "cleanup" => self.clear_notices(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one, which runs the whole turn and leaves nothing to step through

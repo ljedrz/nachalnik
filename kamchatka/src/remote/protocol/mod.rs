@@ -114,7 +114,8 @@ pub enum Command {
         id: PermissionId,
         /// The answer.
         grant: Grant,
-        /// Whether to remember it, so the policy stops asking: `a` with an allow, `v` with a refusal.
+        /// Whether to remember it, so the policy stops asking: `a` with an allow, `v` with a
+        /// refusal.
         ///
         /// note: an allow remembers every subject the policy consulted, as allowed. A refusal
         /// remembers only the subjects nothing had decided, which are what the question was about,
@@ -494,7 +495,8 @@ pub enum Message {
         #[serde(default)]
         calls: Vec<String>,
     },
-    /// The context items a [`Command::Search`] leaves.
+    /// What a [`Command::Search`] leaves: context items, or trace lines where it searched the
+    /// trace.
     Found {
         /// The query it answers, echoed.
         ///

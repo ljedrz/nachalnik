@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### breaking
 
+- **A client's `/compact` waits for an answer.** It used to be taken at once. A client now gets
+  `Message::Proposal` and answers it with `Command::Compact`; one that never answers leaves the
+  proposal waiting, and nothing is compacted. `--connect` answers its own; see **added**.
 - **`restore` is now `reset_state`, and `context:move` is now `context:state`.** The `context`
   tool's action and the person's `/restore` command are both renamed, because "restore" was also
   used to mean bringing back old content, which this does not do: it only makes an item active
@@ -53,12 +56,13 @@ minor bump may break you.
   shows the question there too, and either place can answer it. A `--connect` client still takes
   its own `/compact` straight away, after printing the list, as `--headless` does.
 - **A question can be answered `never`.** <kbd>v</kbd> at the terminal, a typed `v` at a
-  `--connect` client, and a **never** button on the `--web` page refuse the call and, from then on, what the question asked about: the subjects
-  the call is judged by that nothing had decided. A subject already allowed stays allowed. Calls
-  already waiting that the new rule refuses are refused with it, as `always` lets them through. For
-  a command that reached for the network, `never` refuses `net:reach`. Over the protocol it is
-  `Command::Decide` or `Command::Reach` with a refusal and `remember` set, which used to be
-  answered `failed`. `Careful::undecided_in` lists the subjects a call is asked about.
+  `--connect` client, and a **never** button on the `--web` page refuse the call and, from then on,
+  what the question asked about: the subjects the call is judged by that nothing had decided. A
+  subject already allowed stays allowed. Calls already waiting that the new rule refuses are
+  refused with it, as `always` lets them through. For a command that reached for the network,
+  `never` refuses `net:reach`. Over the protocol it is `Command::Decide` or `Command::Reach` with a
+  refusal and `remember` set, which used to be answered `failed`. `Careful::undecided_in` lists the
+  subjects a call is asked about.
 - **The `--web` page's events view has a filter**, the same box as the context view's, matching
   as `/` on the trace tab does: fuzzy, over each event's name, detail, date and time, with a
   continuation line kept with the event it belongs to. The page sets the new `trace` field of
@@ -169,8 +173,8 @@ minor bump may break you.
 - **<kbd>e</kbd> on a reply points to <kbd>r</kbd> for its reasoning.** While a reply's text is
   being edited, the prompt's title says that <kbd>r</kbd> on the row edits its reasoning. When
   <kbd>e</kbd> refuses a reply that is only a tool call, the refusal says that <kbd>r</kbd> still
-  edits its reasoning. <kbd>r</kbd> is also listed in the context tab's <kbd>F1</kbd> help, where it was
-  missing.
+  edits its reasoning. <kbd>r</kbd> is also listed in the context tab's <kbd>F1</kbd> help, where
+  it was missing.
 - **The `--web` page marks a reply that said nothing.** A turn stopped while the model was still
   thinking leaves a reply with reasoning and no text, and its row showed an empty box under the
   reasoning. The box now reads *no message was sent* until it is clicked into, and a text typed

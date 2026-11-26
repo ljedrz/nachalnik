@@ -487,15 +487,22 @@ impl App {
     }
 
     /// The numbers of the trace lines `search` leaves, counted from the session's first line, for
-    /// a client filtering the trace; see [`App::traced`](App#structfield.traced) and
-    /// `Attached::trace_from`.
+    /// a client filtering the trace; see `Attached::trace_from`.
     pub fn trace_found(&self, search: &Search) -> Vec<u64> {
-        let first = self.traced - self.trace.len() as u64;
+        let first = self.trace_from();
 
         Self::kept(&self.trace, search)
             .into_iter()
             .map(|at| first + at as u64)
             .collect()
+    }
+
+    /// The number of the first line [`App::trace`] still holds, counted from the session's first.
+    ///
+    /// note: saturating, because `trace` is public and a line pushed onto it directly, as a test
+    /// does, is not counted: the count would then be behind the ring rather than past it.
+    pub fn trace_from(&self) -> u64 {
+        self.traced.saturating_sub(self.trace.len() as u64)
     }
 
     /// Where in `trace` the lines `search` leaves are.
