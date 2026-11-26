@@ -138,17 +138,35 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
         ),
         // note: added under `v5` without a bump, by the same rule: two templates and a set of
         // material nothing else reads, so no fingerprint above moved when `provenance` arrived.
+        // Its two moved under `v6` when the call's identifier went into the digest; no other did.
         (
             suite::Provenance::new().instrument(),
-            "v6/listing #9e7eb874c3884412",
+            "v6/listing #dac556da39bd28c9",
         ),
         (
             suite::Provenance::new().on(&suite::CONFIG).instrument(),
-            "v6/config #2c3b08b31a11fd40",
+            "v6/config #140b6f97f1492b61",
         ),
     ] {
         assert_eq!(experiment.to_string(), pinned);
     }
+}
+
+/// Two errands that differ only in their call's identifier are different material.
+///
+/// note: the copies read the identifier and it goes out on the wire, so it is part of what was
+/// asked. Left out of the digest, `compare` would put a run on one beside a run on the other.
+#[test]
+fn an_errand_s_call_identifier_is_part_of_its_fingerprint() {
+    let renamed: &'static suite::Errand = Box::leak(Box::new(suite::Errand {
+        call: "call_0000000000000000000a",
+        ..suite::LISTING
+    }));
+
+    assert_ne!(
+        suite::Provenance::new().on(renamed).instrument().digest,
+        suite::Provenance::new().instrument().digest
+    );
 }
 
 #[test]
