@@ -9,7 +9,7 @@
 use std::{path::PathBuf, process::Command, sync::Arc};
 
 use kamchatka::{
-    sandbox::Sandbox,
+    sandbox::{Roots, Sandbox},
     tools::{Careful, Limits, Shell},
 };
 
@@ -639,7 +639,15 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
         .content
         .to_text()
         .into_owned();
-    let confined = Sandbox::of(&policy, dir.clone(), vec![opened], Vec::new(), false).to_string();
+    let confined = Sandbox::of(
+        &policy,
+        &Roots {
+            writable: vec![opened],
+            ..Roots::new(dir.clone())
+        },
+        false,
+    )
+    .to_string();
     for said in [
         format!("{} read-only", dir.display()),
         "/usr/share read-only".to_owned(),
@@ -948,7 +956,7 @@ fn the_network_a_command_is_handed_follows_the_stance_and_the_grant() {
     let dir = common::workdir("network-of");
     let policy = Arc::new(Careful::new());
     policy.gate_the_network();
-    let network = |granted| Sandbox::of(&policy, dir.clone(), Vec::new(), Vec::new(), granted);
+    let network = |granted| Sandbox::of(&policy, &Roots::new(dir.clone()), granted);
     let stance = |verdict| policy.set(&Subject::Capability(Capability::net("reach")), verdict);
 
     assert_eq!(network(false).network, Network::Asked);
@@ -964,7 +972,7 @@ fn the_network_a_command_is_handed_follows_the_stance_and_the_grant() {
 #[tokio::test]
 async fn a_served_port_is_closed_to_commands_while_it_is_served() {
     let dir = common::workdir("served-port-closed");
-    let closed = || Sandbox::of(&Careful::new(), dir.clone(), Vec::new(), Vec::new(), true).closed;
+    let closed = || Sandbox::of(&Careful::new(), &Roots::new(dir.clone()), true).closed;
 
     let server = kamchatka::remote::Server::bind("tcp:127.0.0.1:0")
         .await
@@ -987,7 +995,7 @@ async fn a_served_port_is_closed_to_commands_while_it_is_served() {
 #[tokio::test]
 async fn the_page_is_closed_to_commands_and_listens_only_on_loopback() {
     let dir = common::workdir("page-port-closed");
-    let closed = || Sandbox::of(&Careful::new(), dir.clone(), Vec::new(), Vec::new(), true).closed;
+    let closed = || Sandbox::of(&Careful::new(), &Roots::new(dir.clone()), true).closed;
 
     let web = kamchatka::web::Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
         .await

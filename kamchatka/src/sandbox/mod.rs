@@ -181,13 +181,14 @@ impl Sandbox {
     /// there rather than asking them. Asked, the refusal reached the model as an answer to one
     /// command, and a model told to say why it needs the network and try again ran the same
     /// command into the same refusal for the rest of the run.
-    pub fn of(
-        policy: &Careful,
-        workdir: PathBuf,
-        writable: Vec<PathBuf>,
-        readable: Vec<PathBuf>,
-        granted: bool,
-    ) -> Self {
+    pub fn of(policy: &Careful, roots: &Roots, granted: bool) -> Self {
+        let Roots {
+            workdir,
+            writable,
+            readable,
+            shell_readable,
+            devices,
+        } = roots.clone();
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
         let workdir_writable = writes(policy);
         // note: it reaches the paths `--sandbox-write` opened, which stay readable. `fs` is refused
@@ -208,8 +209,8 @@ impl Sandbox {
                 granted || stance == Verdict::Allow,
                 !policy.permits(&Capability::net("reach")),
             ),
-            shell_readable: SYSTEM.iter().map(PathBuf::from).collect(),
-            devices: DEVICES.iter().map(PathBuf::from).collect(),
+            shell_readable,
+            devices,
             closed: SERVED
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -662,20 +663,22 @@ pub struct Roots {
 }
 
 impl Roots {
+    /// A working directory and nothing else opened, with the system paths and devices every
+    /// command gets unless somebody says otherwise: [`SYSTEM`] and [`DEVICES`].
+    pub fn new(workdir: PathBuf) -> Self {
+        Self {
+            workdir,
+            writable: Vec::new(),
+            readable: Vec::new(),
+            shell_readable: SYSTEM.iter().map(PathBuf::from).collect(),
+            devices: DEVICES.iter().map(PathBuf::from).collect(),
+        }
+    }
+
     /// The sandbox a command started now would run in, before anybody is asked about the network:
     /// what [`crate::tools::Shell`] builds for one.
     pub fn sandbox(&self, policy: &Careful) -> Sandbox {
-        Sandbox {
-            shell_readable: self.shell_readable.clone(),
-            devices: self.devices.clone(),
-            ..Sandbox::of(
-                policy,
-                self.workdir.clone(),
-                self.writable.clone(),
-                self.readable.clone(),
-                false,
-            )
-        }
+        Sandbox::of(policy, self, false)
     }
 }
 
