@@ -346,13 +346,11 @@
   #rating { font-weight: 600; }
   #rating .sure, #rating .why { font-weight: 400; color: var(--dim); }
   .reads { color: var(--reads); } .changes { color: var(--changes); } .grave { color: var(--bad); }
-  #answers { display: flex; gap: 8px; flex-wrap: wrap; }
-  #answers button { flex: 1; }
-  /* the answers the terminal has on `d` and `i`, in a row of their own under the four and smaller
-     than them, so they neither push the question out of view nor sit where a thumb lands */
-  #extras { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
-  #extras[hidden] { display: none; }
-  #extras button { font-size: var(--small); padding: 2px 10px; min-height: 32px; }
+  /* every answer the same size, four to a row: the four answers to the call, then the ways out */
+  #answers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  #answers button { padding: 8px 4px; }
+  /* a command that reached for the network has no tool to describe and no calls to drop */
+  #question.reach #detail, #question.reach #drop { display: none; }
   #details {
     margin: 0 0 8px; padding: 8px; font: inherit; font-size: var(--small); white-space: pre-wrap;
     overflow-wrap: anywhere; overflow: auto; border: 1px solid var(--line); border-radius: 6px;
@@ -438,14 +436,13 @@
       <button class="allow" data-grant="allow">allow</button>
       <button class="allow" data-grant="always">always</button>
       <button class="deny" data-grant="deny">deny</button>
-      <button class="deny" data-grant="stop">stop</button>
-    </div>
-    <!-- only for a tool's question; a command that reached for the network has neither -->
-    <div id="extras" hidden>
+      <button class="deny" data-grant="never"
+              title="no, and refuse from now on what this asks about">never</button>
       <button type="button" id="detail" aria-expanded="false" aria-controls="details"
               title="the arguments in full, and the tool's definition">details</button>
       <button type="button" id="drop" class="deny"
               title="drop every call waiting on an answer and tell the model, so it can try something else">drop all</button>
+      <button class="deny" data-grant="stop">stop</button>
     </div>
   </div>
 </footer>
@@ -1800,7 +1797,7 @@ function showQuestion() {
       `${reached.cmd}\nis running and has reached for the network; the answer holds for the rest ` +
       "of it, and \"always\" allows the network from now on";
   }
-  document.getElementById("extras").hidden = !next;
+  question.classList.toggle("reach", !next);
   // the details belong to one question, and close when it is answered
   if (!next || detailing !== next.id) {
     detailing = null;
@@ -1955,8 +1952,8 @@ document.getElementById("answers").onclick = (e) => {
     // the one being answered
     do: asking.length ? "decide" : "reach",
     id: asking.length ? asking[0].id : reaching[0].id,
-    grant: grant === "deny" ? "deny" : "allow",
-    remember: grant === "always",
+    grant: grant === "deny" || grant === "never" ? "deny" : "allow",
+    remember: grant === "always" || grant === "never",
   });
 };
 

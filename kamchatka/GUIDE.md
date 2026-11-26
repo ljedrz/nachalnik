@@ -369,13 +369,14 @@ the arguments, and ends with the answers.
 | <kbd>y</kbd> | run this call, once |
 | <kbd>a</kbd> | always, for everything the question names |
 | <kbd>n</kbd> / <kbd>esc</kbd> | no |
+| <kbd>v</kbd> | never: no, and refuse from now on what the question is asking about. Only that: a subject the call is judged by that is already allowed stays allowed |
 | <kbd>i</kbd> | the exact JSON, and the tool's own definition |
 | <kbd>d</kbd> | drop every call it's waiting on, and tell the model why, as `/drop` does |
 | <kbd>s</kbd> | the same, and end the turn there, as `/stop` does; the model reads why with your next message |
 
-On the `--web` page the question has **allow**, **always**, **deny** and **stop** buttons, and
-under them two smaller ones: **details** shows the arguments laid out and the tool's definition, as
-<kbd>i</kbd> does, and **drop all** does what <kbd>d</kbd> does.
+On the `--web` page the question has a button for each answer: **allow**, **always**, **deny**,
+**never**, **details** (the arguments laid out and the tool's definition, as <kbd>i</kbd> shows
+them), **drop all** (<kbd>d</kbd>) and **stop** (<kbd>s</kbd>).
 
 The question does not block anything: <kbd>ctrl+t</kbd> to the context tab, read the item it is
 about, <kbd>alt+1</kbd> back, and answer. The **chat** tab turns red in the tab bar while a question

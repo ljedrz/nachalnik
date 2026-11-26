@@ -224,14 +224,17 @@ pub const QUESTION: &str =
     up / down, pgup / pgdn   scroll arguments too long for the panel
     a                   always, for everything the question names - and for
                         the calls already waiting behind it
+    v                   never: no, and refuse what the question asks about from
+                        now on. What is already allowed stays allowed. Calls
+                        waiting behind it that this refuses are refused too
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
     s                   the same, and end the turn there, as /stop does: the
                         model reads why with the next message
-    (a command reaching for the network takes y, a and n, and the answer
+    (a command reaching for the network takes y, a, n and v, and the answer
      holds for the rest of that command; a is net:reach allowed from then
-     on. esc or s stops the turn it is running in, which takes the question
-     too)
+     on, and v is net:reach refused. esc or s stops the turn it is running
+     in, which takes the question too)
     (a compaction takes y, n, esc and the scrolling keys, and nothing else.
      It is holding nothing up: alt+2 to the context tab, p on what should
      stay, back, and answer - the pass is worked out again, so what you kept
