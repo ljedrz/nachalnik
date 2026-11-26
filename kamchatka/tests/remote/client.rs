@@ -1322,6 +1322,81 @@ async fn the_client_takes_its_own_compaction() {
     assert!(app.proposed.is_none());
 }
 
+/// A client that attaches while somebody else's compaction waits on an answer does not take it.
+///
+/// note: a proposal is sent to every client on attaching, whoever made it, so this is how a client
+/// is handed one it did not ask for. Answering it with `Command::Compact` would take a pass that
+/// the client that typed `/compact` has not yet been asked about, so only the client's own `/compact`
+/// may be answered.
+#[tokio::test]
+async fn a_client_does_not_take_a_compaction_it_did_not_propose() {
+    use nachalnik::{Content, ContextItem, ContextState, ToolCall};
+
+    let session = served(vec![], |app| {
+        app.kernel
+            .set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
+                threshold: 0.0,
+                target: 0.0,
+            })));
+        let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
+        app.kernel.push(ContextItem::user("what is in big.rs?"));
+        app.kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![call.clone()],
+        ));
+        app.kernel.push(ContextItem::tool_result(
+            call.id,
+            "read",
+            Content::text("x".repeat(40_000)),
+            false,
+        ));
+        app.kernel
+            .push(ContextItem::assistant(Content::text("it is x"), vec![]));
+        app.kernel.push(ContextItem::user("and now?"));
+    })
+    .await;
+
+    // a compaction proposed by a client that then leaves without answering it
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "/compact".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Proposal { proposed: Some(_) }))
+        .await;
+    peer.drop_it().await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(&b""[..])),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        !prose.contains("[3] elide"),
+        "the client listed a compaction it did not propose: {prose}"
+    );
+
+    quit(&session.at).await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.proposed.is_some(),
+        "the client answered a compaction it did not propose"
+    );
+    assert!(
+        !app.kernel
+            .items()
+            .iter()
+            .any(|item| item.state == ContextState::Elided),
+        "the client took a compaction it did not propose: {prose}"
+    );
+}
+
 /// `v` at the client is `never`, as at the terminal: the call is refused, and so is what it asked
 /// about from then on.
 #[tokio::test]
