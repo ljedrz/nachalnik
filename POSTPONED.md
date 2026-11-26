@@ -493,3 +493,19 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   lines each in their own words, and the faint bar down a code block is built three times. One
   `App` method returning the open question first, since it is the one with three copies. A
   refactor for the next change to the screen.
+
+- **A copy's preamble is a system message at the end of the conversation, which some chat
+  templates refuse.** `Fork` pushes `PREAMBLE` as a system item after the copied context, so the
+  request carries a system message after user and assistant turns. A llama-server whose model's
+  template allows a system message only first answers 500 ("System message must be at the
+  beginning"), and every experiment that asks a copy fails there; other endpoints accept it. Fixes
+  are sending the preamble in the user message that asks the question, or a projector that folds a
+  late system message into the first one, and either changes what a copy reads, so every digest
+  moves. It waits on deciding whether such templates are worth supporting at that price.
+
+- **A llama-server's limit may be more than one request can use.** `listed_limit` reads
+  `meta.n_ctx` from `/v1/models`, the server's whole context. A server started with several slots
+  and no shared cache (`-np 2 --no-kv-unified`) gives each request only its slot's share, which
+  `/slots` reports as that slot's `n_ctx`; the limit would then be too high, and the compactor
+  would start too late. Unblocked by such a server, to compare the two numbers, and then reading
+  `/slots` when they differ.
