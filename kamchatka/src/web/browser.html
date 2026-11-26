@@ -1671,10 +1671,11 @@ const verdicts = { allow: "allowed", deny: "denied", ask: "asks" };
 /**
  * Whether a context row is left in by the filter above the view and its `sent only`.
  *
- * note: over what the row shows - its number, label, kind, state and the start of a message the
- * person wrote - because that is all a projection carries; the terminal's `/` also reads what an
- * item says, which this page does not have until a row is opened. Plain text, not fuzzy, and case
- * ignored.
+ * note: the session decides what the filter leaves, not this page, because a row carries what an
+ * item is and not what it says - and a filter worth having reads the whole of an item, its
+ * reasoning and calls among it. The session answers with the terminal's own matcher, so `/` there
+ * and the box here leave the same rows: fuzzy, and case ignored unless there is a capital in it.
+ * Until the first answer arrives nothing is hidden, and until a newer one does the last stands.
  *
  * note: `sent only` is the terminal's `f`: what the next request sends whole, so neither what it
  * leaves out nor what it sends as an elision marker.
@@ -1683,17 +1684,30 @@ function sifted(item) {
   if (sentOnly && (item.going === null || item.going === undefined || item.state === "elided")) {
     return false;
   }
-  const wanted = sift.value.trim().toLowerCase();
-  if (!wanted) return true;
-  return [item.id, item.label, item.kind, item.state, item.glimpse ?? ""]
-    .join(" ")
-    .toLowerCase()
-    .includes(wanted);
+  if (!sift.value.trim() || !found) return true;
+  return found.has(item.id);
 }
 
 const sift = document.getElementById("filter");
 let sentOnly = false;
-sift.oninput = () => draw();
+/** The items the session last said the filter leaves, by identifier; `null` for none asked yet. */
+let found = null;
+
+/**
+ * Asks the session what the filter leaves, where it says anything.
+ *
+ * note: asked again on every projection while the box has something in it, because a projection
+ * is what an item changing looks like from here, and a match is about what the item says.
+ */
+function search() {
+  const query = sift.value.trim();
+  if (!query) {
+    found = null;
+    return draw();
+  }
+  send({ do: "search", query });
+}
+sift.oninput = search;
 document.getElementById("sent").onclick = (e) => {
   sentOnly = !sentOnly;
   e.currentTarget.setAttribute("aria-pressed", String(sentOnly));
@@ -1943,6 +1957,7 @@ function heard(m) {
       named(m.model);
       budget(m);
       if (showing !== "chat") draw();
+      if (sift.value.trim()) search();
       streaming = m.busy;
       conversation(m.conversation);
       asking = m.asking;
@@ -1992,6 +2007,7 @@ function heard(m) {
       paused = !!m.paused;
       offer();
       if (showing !== "chat") draw();
+      if (sift.value.trim()) search();
       // and the chat, where something moved and the stream could not say what that did to it.
       // Held back while a model is typing or a line of this page's own has not become an item
       // yet, because a rebuild takes both away: the bubble the fragments are going into is
@@ -2055,6 +2071,13 @@ function heard(m) {
         const thought = el.closest(".row")?.querySelector(`[data-thought="${m.id}"]`);
         if (thought) thought.shown(m.raw ? (m.reasoning ?? null) : null, m.calls ?? []);
       }
+      break;
+    }
+    // only the answer to what the box says now: one goes out per keystroke, and they can cross
+    case "found": {
+      if (m.query !== sift.value.trim()) break;
+      found = new Set(m.ids);
+      if (showing === "context") draw();
       break;
     }
     case "copy": copied(m.id, m.text); break;

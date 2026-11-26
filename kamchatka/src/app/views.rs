@@ -457,7 +457,7 @@ impl App {
 
         items
             .into_iter()
-            .filter(|item| search.matches_item(item, Self::item_text))
+            .filter(|item| search.matches_item(item, super::search::item_text))
             .collect()
     }
 
@@ -465,29 +465,6 @@ impl App {
     #[cfg(not(feature = "tui"))]
     fn searched(&self, items: Vec<Arc<ContextItem>>) -> Vec<Arc<ContextItem>> {
         items
-    }
-
-    /// What a search over the context matches an item on.
-    ///
-    /// note: the whole of what the item holds, not just the preview line, which would miss a word
-    /// rarely on the first line. The row still shows its preview; the match may be about more than
-    /// the row can show.
-    ///
-    /// note: the kind column, too. Without it, `/tool_result` would match only words in somebody's
-    /// *content*. `ContextKind::name` is used, so what is typed is what the column shows, and it is
-    /// matched whether or not the column is drawn: it is dropped below 84 columns, and a filter
-    /// that found less on a narrow terminal would be a worse surprise.
-    ///
-    /// note: the state is not in here. It is a mark on the row, not a word, so nothing would be
-    /// typed to match it; `/exclude state:excluded` is the language for that question.
-    #[cfg(feature = "tui")]
-    fn item_text(item: &ContextItem) -> String {
-        format!(
-            "{} {} {}",
-            item.label,
-            item.kind.name(),
-            item.content.to_text()
-        )
     }
 
     /// The trace as the pane should show it: everything, or what the search left.

@@ -684,6 +684,13 @@ impl<'a> Client<'a> {
 
                 Ok(())
             }
+            // an answer this client never asks for, since it has no filter to type into; counted,
+            // because an answer it is
+            Message::Found { .. } => {
+                self.answered();
+
+                Ok(())
+            }
             Message::Failed { about, error } => {
                 self.answered();
                 // note: three failures nothing here can mend. A version refusal is said again,

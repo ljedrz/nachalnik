@@ -48,8 +48,8 @@ to a client. `going.rs` works out what the next request does with each item; it'
 because the screen, the `context` tool and a served session's protocol all use it, so the model and
 the person always see the same budget. `keys.rs` is what the keys do, `command/` the slash commands,
 `session.rs` saving and loading sessions, and `text.rs` formatting values as lines. `search.rs` (the
-`/` filter) and `when.rs` (trace timestamps) are here rather than in `ui/` so a pane searches the
-same text it draws.
+`/` filter, which also answers the `--web` page's) and `when.rs` (trace timestamps) are here rather
+than in `ui/` so a pane searches the same text it draws.
 
 **`ui/`** draws and decides nothing: `mod.rs` the frame, `tabs.rs` the tab contents, `overlay.rs`
 the floating panel, `markdown.rs` and `table.rs` render a model's answers as styled lines, and
@@ -98,8 +98,8 @@ file to the context, `clipboard.rs` OSC 52, `stopping.rs` <kbd>ctrl+c</kbd>, `qr
 `webui`) the QR code of the `--web` address, and `mcp.rs` (feature `mcp`) MCP servers.
 
 **Features.** `tui` (default) covers `ui/`, `app/keys.rs` and the prompt: anything using a
-`KeyEvent` or a `ratatui` type goes behind it, and so does `app/search.rs`, the `/` filter.
-Nothing a *command* can reach may go behind it.
+`KeyEvent` or a `ratatui` type goes behind it, and so does the editing half of `app/search.rs`;
+its matching is not, because a served session answers the `--web` page's filter with it. Nothing a *command* can reach may go behind it.
 `cargo test -p kamchatka --no-default-features` is the check, and builds a headless binary.
 `remote/` has no feature, since all it needs beyond the rest is `socket2` and one more `tokio`
 feature. `webui` (default) is `web/` and `qr.rs`.

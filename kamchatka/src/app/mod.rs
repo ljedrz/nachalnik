@@ -30,7 +30,6 @@ mod command;
 mod events;
 mod going;
 mod questions;
-#[cfg(feature = "tui")]
 mod search;
 mod session;
 mod spend;
@@ -40,7 +39,6 @@ mod turn;
 mod views;
 
 pub use going::Going;
-#[cfg(feature = "tui")]
 pub use search::Search;
 pub(crate) use session::named_calls;
 pub use transcript::{Entry, Said, Speaker};
