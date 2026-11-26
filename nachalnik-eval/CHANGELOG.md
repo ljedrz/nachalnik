@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`provenance`'s digest covers the call's identifier.** `Errand::text` left out `Errand::call`,
+  though the copies read it and it goes out on the wire, so two errands that differed only in it
+  fingerprinted the same and `compare` put their runs side by side. The two `provenance` digests
+  move (`listing` and `config`); no other experiment's does. A `provenance` run taken before this
+  is not comparable with one taken after, though both were asked the same questions about the
+  same errand.
+
 ## [0.10.1] - 2026-11-11
 
 ### changed

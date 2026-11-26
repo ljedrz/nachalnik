@@ -185,13 +185,6 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   which is a core change for one client's sake. Unblocked by deciding whether the runtime should
   offer one.
 
-- **`provenance`'s digest leaves out the call's identifier.** `Errand::call` is fixed in the
-  material because the copies read it and it goes out on the wire, but `Errand::text` omits it, so
-  two errands that differ only in their call identifier have the same digest and `compare` treats
-  their runs as comparable. Adding it moves the `provenance` fingerprint, so every run taken so far
-  stops being comparable with later ones although none of them read different material. It waits
-  on choosing between that break and leaving it until the material changes for another reason.
-
 - **A call whose arguments are exactly `{"_unparsed": "..."}` reads back as an unparsed call.**
   `ToolCall` reads a call recorded before `unparsed` existed by recognising the old wrapper: an
   object whose only key is `_unparsed`, holding text that does not parse. A call written today

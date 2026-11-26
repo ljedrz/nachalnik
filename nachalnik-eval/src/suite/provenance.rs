@@ -104,10 +104,11 @@ impl Errand {
     }
 
     /// Every sentence of the material, for the digest.
-    pub fn text(&self) -> [&'static str; 6] {
+    pub fn text(&self) -> [&'static str; 7] {
         [
             self.asked,
             self.tool,
+            self.call,
             self.args,
             self.result,
             self.answered,
