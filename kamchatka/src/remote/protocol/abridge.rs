@@ -458,6 +458,7 @@ mod tests {
             untold: nachalnik::Verdict::Ask,
             permissions: Vec::new(),
             trace: Vec::new(),
+            trace_from: 0,
             undecided: 0,
             all_permissions: Vec::new(),
             together: Vec::new(),

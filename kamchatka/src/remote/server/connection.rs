@@ -190,9 +190,18 @@ where
                 }
                 // answered off the kernel as well, and for the same reason: it reads what the items
                 // say now and changes nothing
-                Some(Command::Search { query }) => {
+                Some(Command::Search {
+                    query,
+                    trace: false,
+                }) => {
                     let ids = Search::of(&query).found(kernel.items().iter());
-                    answer(write, &Message::Found { query, ids }, "search").await?;
+                    let found = Message::Found {
+                        query,
+                        trace: false,
+                        ids,
+                        lines: Vec::new(),
+                    };
+                    answer(write, &found, "search").await?;
                 }
                 Some(Command::Describe { tool }) => {
                     let spec = kernel.tool(&tool).map(|it| it.spec());

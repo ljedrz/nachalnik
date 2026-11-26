@@ -144,7 +144,9 @@
   /* the context view's filter, above the panel rather than in it: the panel is drawn again on every
      change, and a box drawn again is a box that loses what is being typed into it */
   #sift { display: none; gap: 6px; padding: 8px 12px 0; align-items: center; }
-  body.context #sift { display: flex; }
+  body.context #sift, body.events #sift { display: flex; }
+  /* what the next request sends is a question about the context, not about what happened */
+  body.events #sent { display: none; }
   #sift input {
     flex: 1; min-width: 0; font: inherit; font-size: max(16px, var(--small)); padding: 6px 8px;
     border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit;
@@ -413,7 +415,7 @@
 <div id="log"></div>
 <div id="sift">
   <input id="filter" type="search" placeholder="filter" autocomplete="off" spellcheck="false"
-         title="show only the items that match: fuzzy, over all of each item, reasoning included, like / at the terminal">
+         title="show only what matches: fuzzy, over all of each item, reasoning included, or of each event, its time included - like / at the terminal">
   <button id="sent" type="button" aria-pressed="false"
           title="only what the next request sends whole, leaving out the elided and the excluded">sent only</button>
 </div>
@@ -1039,6 +1041,12 @@ function inspect(id, kind) {
  * typing.
  */
 function show(next) {
+  // the filter is about the view it was typed on, so it is cleared on the way to another, as
+  // the terminal clears `/` when the tab changes
+  if (next !== showing && sift.value) {
+    sift.value = "";
+    found = null;
+  }
   showing = next;
   document.body.className = next;
   document.getElementById("view").textContent = next;
@@ -1512,7 +1520,13 @@ function draw() {
   // the other end could see
   if (showing === "events") {
     if (!latest.trace.length) return aside(panel, "nothing has happened yet");
-    for (const event of latest.trace) {
+    // the lines the session said the filter leaves, by number; see `sifted`
+    const from = latest.trace_from ?? 0;
+    const shown = latest.trace.filter(
+      (_, at) => !sift.value.trim() || !found || found.has(from + at),
+    );
+    if (!shown.length) return aside(panel, "nothing matches the filter");
+    for (const event of shown) {
       const when = new Date(event.at).toLocaleTimeString();
       // a line with no name is more of what the one above had to say, so it is drawn under it
       // rather than as an event of its own
@@ -1732,7 +1746,10 @@ function sifted(item) {
 
 const sift = document.getElementById("filter");
 let sentOnly = false;
-/** The items the session last said the filter leaves, by identifier; `null` for none asked yet. */
+/**
+ * What the session last said the filter leaves: items by identifier on the context view, trace
+ * lines by number on the events view. `null` for none asked yet.
+ */
 let found = null;
 
 /**
@@ -1747,7 +1764,7 @@ function search() {
     found = null;
     return draw();
   }
-  send({ do: "search", query });
+  send({ do: "search", query, trace: showing === "events" });
 }
 sift.oninput = search;
 document.getElementById("sent").onclick = (e) => {
@@ -2168,9 +2185,10 @@ function heard(m) {
     }
     // only the answer to what the box says now: one goes out per keystroke, and they can cross
     case "found": {
-      if (m.query !== sift.value.trim()) break;
-      found = new Set(m.ids);
-      if (showing === "context") draw();
+      const events = showing === "events";
+      if (m.query !== sift.value.trim() || !!m.trace !== events) break;
+      found = new Set(events ? m.lines : m.ids);
+      if (events || showing === "context") draw();
       break;
     }
     case "copy": copied(m.id, m.text); break;

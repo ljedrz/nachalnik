@@ -961,5 +961,6 @@ impl App {
             detail: detail.into(),
             wall: SystemTime::now(),
         });
+        self.traced += 1;
     }
 }

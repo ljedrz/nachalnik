@@ -8,7 +8,7 @@
 //! the moment anything moved.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 
@@ -16,9 +16,9 @@ use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, Domain, Grant, PermissionRequest, Verdict,
 };
 
-use super::{App, Going, Traced, text::thousands};
 #[cfg(feature = "tui")]
-use super::{Tab, when};
+use super::Tab;
+use super::{App, Going, Search, Traced, text::thousands, when};
 use crate::{sandbox::Confinement, tools::Subject};
 
 /// One row of the permissions tab: a capability, a path rule or a rule about one tool action, what
@@ -468,28 +468,16 @@ impl App {
     }
 
     /// The trace as the pane should show it: everything, or what the search left.
-    ///
-    /// note: a continuation (an event with no name) is kept or dropped with the event it belongs
-    /// to, not matched on its own. Otherwise the pane shows the second half of a message whose
-    /// first half was filtered out.
     #[cfg(feature = "tui")]
     pub fn traced(&self) -> Vec<&Traced> {
         let Some(search) = self.search.as_ref().filter(|_| self.tab == Tab::Trace) else {
             return self.trace.iter().collect();
         };
 
-        let mut kept = Vec::new();
-        let mut keeping = false;
-        for event in &self.trace {
-            if !event.name.is_empty() {
-                keeping = search.matches(&Self::event_text(event));
-            }
-            if keeping {
-                kept.push(event);
-            }
-        }
-
-        kept
+        Self::kept(&self.trace, search)
+            .into_iter()
+            .map(|at| &self.trace[at])
+            .collect()
     }
 
     /// The same where there is no screen, and so no box to type a search into.
@@ -498,12 +486,43 @@ impl App {
         self.trace.iter().collect()
     }
 
+    /// The numbers of the trace lines `search` leaves, counted from the session's first line, for
+    /// a client filtering the trace; see [`App::traced`](App#structfield.traced) and
+    /// `Attached::trace_from`.
+    pub fn trace_found(&self, search: &Search) -> Vec<u64> {
+        let first = self.traced - self.trace.len() as u64;
+
+        Self::kept(&self.trace, search)
+            .into_iter()
+            .map(|at| first + at as u64)
+            .collect()
+    }
+
+    /// Where in `trace` the lines `search` leaves are.
+    ///
+    /// note: a continuation (an event with no name) is kept or dropped with the event it belongs
+    /// to, not matched on its own. Otherwise the pane shows the second half of a message whose
+    /// first half was filtered out.
+    fn kept(trace: &VecDeque<Traced>, search: &Search) -> Vec<usize> {
+        let mut kept = Vec::new();
+        let mut keeping = false;
+        for (at, event) in trace.iter().enumerate() {
+            if !event.name.is_empty() {
+                keeping = search.matches(&Self::event_text(event));
+            }
+            if keeping {
+                kept.push(at);
+            }
+        }
+
+        kept
+    }
+
     /// What a search over the trace matches an event on.
     ///
     /// note: the clock is in it, so the stamp is built here rather than in the pane. "the hour it
     /// broke" is the question somebody brings to a long run, and `14:` or a date answers it only if
     /// the date and the time are among the things being matched.
-    #[cfg(feature = "tui")]
     fn event_text(event: &Traced) -> String {
         let read = when::read_off(event.wall);
 

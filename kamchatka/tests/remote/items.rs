@@ -857,15 +857,51 @@ async fn a_clients_filter_reads_the_whole_of_an_item() {
     ] {
         peer.send(Command::Search {
             query: query.to_owned(),
+            trace: false,
         })
         .await;
         let heard = peer
             .until(|message| matches!(message, Message::Found { .. }))
             .await;
-        let Some(Message::Found { query: echoed, ids }) = heard.last() else {
+        let Some(Message::Found {
+            query: echoed, ids, ..
+        }) = heard.last()
+        else {
             unreachable!("just matched")
         };
         assert_eq!(echoed, query);
         assert_eq!(ids, &expected, "{query}");
+    }
+
+    // and the trace, by line numbers the projection's `trace_from` places
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(projected)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    let named: Vec<u64> = projected
+        .trace
+        .iter()
+        .zip(projected.trace_from..)
+        .filter(|(line, _)| line.name == "context.added")
+        .map(|(_, number)| number)
+        .collect();
+    assert!(!named.is_empty(), "{:?}", projected.trace);
+    peer.send(Command::Search {
+        query: "context.added".to_owned(),
+        trace: true,
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Found { trace: true, .. }))
+        .await;
+    let Some(Message::Found { lines, ids, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert!(ids.is_empty());
+    for number in &named {
+        assert!(lines.contains(number), "{named:?} in {lines:?}");
     }
 }
