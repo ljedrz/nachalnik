@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.12, which is released beside it. Nothing here uses what changed in it,
+  but `Subject` wraps the runtime's `Kernel`, so this release cannot be mixed with a 0.11-series
+  runtime.
 - **`provenance`'s digest covers the call's identifier.** `Errand::text` left out `Errand::call`,
   though the copies read it and it goes out on the wire, so two errands that differed only in it
   fingerprinted the same and `compare` put their runs side by side. The two `provenance` digests
