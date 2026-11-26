@@ -403,7 +403,7 @@
 <div id="log"></div>
 <div id="sift">
   <input id="filter" type="search" placeholder="filter" autocomplete="off" spellcheck="false"
-         title="only the rows whose number, label, kind, state or start has this in it">
+         title="show only the items that match: fuzzy, over all of each item, reasoning included, like / at the terminal">
   <button id="sent" type="button" aria-pressed="false"
           title="only what the next request sends whole, leaving out the elided and the excluded">sent only</button>
 </div>
@@ -1251,7 +1251,22 @@ function draw() {
   if (showing === "context") {
     if (!latest.items.length) return aside(panel, "the context is empty");
     const rows = latest.items.filter(sifted);
-    if (!rows.length) return aside(panel, "no row is left by the filter above");
+    if (!rows.length) {
+      // say which of the two hid everything, as the terminal does, so an empty list with an
+      // empty filter box is not a puzzle
+      const filtered = !!sift.value.trim();
+      const unsent = latest.items.filter(
+        (item) => item.going === null || item.going === undefined || item.state === "elided",
+      ).length;
+      return aside(
+        panel,
+        filtered && sentOnly
+          ? "nothing matches the filter, and sent only is hiding some items too"
+          : filtered
+            ? "nothing matches the filter"
+            : `nothing is being sent; sent only is hiding ${unsent} item(s)`,
+      );
+    }
     for (const item of rows) {
       // what it costs the request it is in, or why it is in none of it. The two are one answer:
       // every item is either going for some number of tokens or held back for a reason
