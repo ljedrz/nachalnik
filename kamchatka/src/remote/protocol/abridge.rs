@@ -452,6 +452,7 @@ mod tests {
             items: Vec::new(),
             asking: Vec::new(),
             reaching: Vec::new(),
+            proposed: None,
             rated: Vec::new(),
             unrated: Vec::new(),
             policy: "p".repeat(fixed),

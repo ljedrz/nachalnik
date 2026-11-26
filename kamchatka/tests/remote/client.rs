@@ -1264,6 +1264,64 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A `/compact` typed at the client is listed and taken, as `--headless` takes its own: nothing
+/// here asks a person, though the session now asks the client.
+#[tokio::test]
+async fn the_client_takes_its_own_compaction() {
+    use nachalnik::{Content, ContextItem, ContextState, ToolCall};
+
+    let session = served(vec![], |app| {
+        app.kernel
+            .set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
+                threshold: 0.0,
+                target: 0.0,
+            })));
+        let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
+        app.kernel.push(ContextItem::user("what is in big.rs?"));
+        app.kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![call.clone()],
+        ));
+        app.kernel.push(ContextItem::tool_result(
+            call.id,
+            "read",
+            Content::text("x".repeat(40_000)),
+            false,
+        ));
+        app.kernel
+            .push(ContextItem::assistant(Content::text("it is x"), vec![]));
+        app.kernel.push(ContextItem::user("and now?"));
+    })
+    .await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(&b"/compact\n"[..])),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("[3] elide"),
+        "the list was not said: {prose}"
+    );
+
+    quit(&session.at).await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.state == ContextState::Elided),
+        "the client left its own compaction standing: {prose}"
+    );
+    assert!(app.proposed.is_none());
+}
+
 /// `v` at the client is `never`, as at the terminal: the call is refused, and so is what it asked
 /// about from then on.
 #[tokio::test]

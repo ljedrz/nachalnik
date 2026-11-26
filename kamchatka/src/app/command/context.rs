@@ -334,7 +334,8 @@ impl App {
         };
 
         let (items, budget) = (self.kernel.items(), self.kernel.budget());
-        let keys = self.keys;
+        // somebody who can answer: at the keys, or at a client, which is sent the question
+        let askable = self.keys || self.remote;
         self.errand(
             "the compaction pass",
             async move {
@@ -342,23 +343,24 @@ impl App {
                 (plan, items, budget, compactor)
             },
             move |app, (plan, items, budget, compactor)| {
-                app.planned(plan, &items, &budget, &*compactor, keys)
+                app.planned(plan, &items, &budget, &*compactor, askable)
             },
         );
     }
 
     /// Asks about the pass `/compact` worked out, or takes it for somebody who cannot be asked.
     ///
-    /// note: taken where whoever asked has no keys of this program's to answer with - down a pipe,
-    /// or from a client. A line answered with a question nobody can reach has been refused the
-    /// thing it asked for. The list is said first, so what was taken was said.
+    /// note: taken where whoever asked has nothing to answer with - down a pipe, under
+    /// `--headless`. A line answered with a question nobody can reach has been refused the thing
+    /// it asked for. The list is said first, so what was taken was said. A client is asked: the
+    /// question goes to it as `Message::Proposal`, and `Command::Compact` answers it.
     pub(super) fn planned(
         &mut self,
         plan: Option<nachalnik::CompactionPlan>,
         items: &[std::sync::Arc<ContextItem>],
         budget: &nachalnik::Budget,
         compactor: &dyn nachalnik::Compactor,
-        keys: bool,
+        askable: bool,
     ) {
         let Some(plan) = plan else {
             // note: `under` rather than `nothing it may take`, because finding no plan while the
@@ -452,7 +454,7 @@ impl App {
                 thousands(holding),
             ),
         );
-        if !keys {
+        if !askable {
             for row in rows {
                 self.say(Speaker::Note, row);
             }

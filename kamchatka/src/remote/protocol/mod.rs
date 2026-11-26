@@ -259,6 +259,14 @@ pub enum Command {
         #[serde(default)]
         trace: bool,
     },
+    /// Answer the compaction `/compact` proposed: take it, or leave the context as it is.
+    ///
+    /// note: `y` and `n` at the terminal's panel. Taking it works the pass out again, so an item
+    /// pinned while the list was being read is kept. Answered `failed` where nothing is proposed.
+    Compact {
+        /// Whether to take it.
+        take: bool,
+    },
     /// Ask for a tool's definition, answered with a [`Message::Described`].
     ///
     /// note: for a client showing a question, which names the tool and its arguments but not what
@@ -408,6 +416,16 @@ pub enum Message {
     Reaching {
         /// The questions, oldest first.
         waiting: Vec<Reached>,
+    },
+    /// The compaction `/compact` proposed and nobody has answered yet, sent whenever that changes
+    /// and to a client that resumes; `None` once it is answered. [`Command::Compact`] answers it.
+    ///
+    /// note: in no record, like [`Message::Reaching`]: the proposal is this program's, not the
+    /// kernel's, and nothing is compacted until it is taken. [`Attached::proposed`] is the same
+    /// for a client that has just arrived.
+    Proposal {
+        /// What is proposed.
+        proposed: Option<Proposal>,
     },
     /// Which model the requests are going to, sent whenever that changes and to a client that
     /// resumes.
@@ -628,6 +646,9 @@ pub struct Attached {
     /// note: empty from a session that predates the field, which has no such question to ask.
     #[serde(default)]
     pub reaching: Vec<Reached>,
+    /// The compaction waiting on an answer, if one is; see [`Message::Proposal`].
+    #[serde(default)]
+    pub proposed: Option<Proposal>,
     /// What the advisor made of the ones it was asked about; see [`Judged`].
     ///
     /// note: a list beside the questions rather than a field on them, and empty in every session
@@ -1011,6 +1032,31 @@ fn glimpse(text: &str) -> Option<String> {
         said.push('…');
     }
     Some(said)
+}
+
+/// A compaction `/compact` worked out, waiting to be taken or left.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Proposal {
+    /// One line per item, in the order the compactor chose them, and a last line naming the
+    /// summary that goes in their place where there is one.
+    pub rows: Vec<String>,
+    /// How many items it would take.
+    pub count: usize,
+    /// The tokens those items hold. Not what the request falls by: an elided item leaves a marker,
+    /// and the marker costs something.
+    pub holding: usize,
+}
+
+impl Proposal {
+    /// Copies one off what the terminal's panel shows.
+    pub(crate) fn of(proposed: &crate::app::Proposed) -> Self {
+        Self {
+            rows: proposed.rows.clone(),
+            count: proposed.count,
+            holding: proposed.holding,
+        }
+    }
 }
 
 /// One row of the permissions tab.
