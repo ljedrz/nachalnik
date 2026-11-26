@@ -320,6 +320,12 @@ minor bump may break you.
   which nothing could take before. Their placeholder says they went because the request would not
   fit, not that they were read. The automatic pass is unchanged.
 
+### security
+
+- **The binaries are built with `url` 2.5.9.** In 2.5.8, `Url::origin()` could overflow the stack
+  on a URL with many nested `blob:` prefixes (RUSTSEC-2026-0592). Nothing here calls it; `url`
+  comes in through `reqwest`.
+
 ## [0.23.1] - 2026-11-11
 
 ### added
