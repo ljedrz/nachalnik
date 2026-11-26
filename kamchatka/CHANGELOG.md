@@ -173,6 +173,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.12, `nachalnik-mcp` 0.13 and `nachalnik-providers` 0.12, released beside
+  it. Rewriting a reply's reasoning uses the runtime's new `Kernel::replace_reasoning` and
+  `Event::ReasoningReplaced`, and a session at a llama-server gets its limit from the providers.
 - **`always` sets a rule only for what the question asked about**, as `never` does: the subjects
   nothing had decided yet. It used to write a rule for every subject the call needed, including ones
   already allowed. That could keep something allowed by mistake: an `fs:read` allowed because all of
