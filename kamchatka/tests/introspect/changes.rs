@@ -1683,6 +1683,65 @@ async fn an_undo_leaves_what_the_person_rewrote_since() {
     );
 }
 
+/// The same for reasoning: an undo of a rewritten reply leaves the reasoning the person rewrote
+/// after the model did, and says so.
+///
+/// note: `an_undo_leaves_what_the_person_rewrote_since` covers the text of an item. Reasoning has
+/// its own undo entry and its own check against what the item held when the model changed it.
+#[tokio::test]
+async fn an_undo_leaves_the_reasoning_the_person_rewrote_since() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise_reasoning",
+                "ids": [1],
+                "content": "the model's thought",
+                "reason": "shorter",
+            }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "put it back" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    let reply = kernel.push(
+        ContextItem::assistant("an answer", Vec::new())
+            .with_reasoning(Some("the original thought".into())),
+    );
+    kernel.push(ContextItem::user("tidy the reasoning"));
+    kernel.turn().await.expect("the turn failed");
+    assert_eq!(
+        kernel.item(reply).unwrap().reasoning().unwrap().to_text(),
+        "the model's thought"
+    );
+
+    kernel
+        .replace_reasoning(
+            reply,
+            Some(nachalnik::Content::text("the person's thought")),
+        )
+        .expect("an edit");
+    kernel.push(ContextItem::user("undo that"));
+    kernel.turn().await.expect("the turn failed");
+
+    assert_eq!(
+        kernel.item(reply).unwrap().reasoning().unwrap().to_text(),
+        "the person's thought",
+        "{}",
+        answered(&kernel)
+    );
+    assert!(
+        answered(&kernel).contains(&format!("[{reply}] has changed since")),
+        "{}",
+        answered(&kernel)
+    );
+}
+
 #[tokio::test]
 async fn a_reason_is_required_before_anything_changes() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
