@@ -348,12 +348,14 @@ async fn a_replys_reasoning_arrives_beside_its_text_and_is_rewritten_on_its_own(
 #[tokio::test]
 async fn a_message_the_person_wrote_is_listed_with_its_start() {
     let long = "word ".repeat(40);
+    let exact = "x".repeat(kamchatka::remote::protocol::GLIMPSE);
     let session = served(vec![], |app| {
         app.kernel
             .push(nachalnik::ContextItem::user("\n  look it up  \n"));
         app.kernel
             .push(nachalnik::ContextItem::user("first line\nsecond line"));
         app.kernel.push(nachalnik::ContextItem::user(long.clone()));
+        app.kernel.push(nachalnik::ContextItem::user(exact.clone()));
         app.kernel
             .push(nachalnik::ContextItem::assistant("an answer", Vec::new()));
     })
@@ -378,6 +380,8 @@ async fn a_message_the_person_wrote_is_listed_with_its_start() {
             // more than the first line is more than what is shown, and says so
             Some("first line…"),
             Some(cut.as_str()),
+            // one exactly as long as a glimpse is all of it
+            Some(exact.as_str()),
             None,
         ]
     );
