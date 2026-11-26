@@ -3062,6 +3062,46 @@ async fn always_is_the_network_from_here_on_and_no_is_this_command() {
     );
 }
 
+/// `never` at a network question refuses the network from here on, and refuses every command
+/// already waiting on the same question, recorded as a rule rather than a once.
+///
+/// note: `never` is the answer that writes a standing rule, so it is what makes a later command
+/// refused without asking. A once is `n`, which refuses this command and no more.
+#[tokio::test]
+async fn never_at_a_network_question_is_the_network_from_here_on_and_refuses_the_waiting() {
+    let mut harness = Harness::new(Vec::new());
+
+    let first = reaching(&harness, "c1", "curl a");
+    until_reached(&harness, 1).await;
+    let second = reaching(&harness, "c2", "curl b");
+    until_reached(&harness, 2).await;
+
+    harness.answer(KeyCode::Char('v')).await;
+    // a command still waiting after the answer would hang the test, so each wait has a deadline
+    let deadline = std::time::Duration::from_secs(5);
+    let first = tokio::time::timeout(deadline, first)
+        .await
+        .expect("the first command was not answered by never")
+        .expect("it ran");
+    assert_eq!(first, Some(false));
+    let second = tokio::time::timeout(deadline, second)
+        .await
+        .expect("the second command, waiting on the same question, was not swept by never")
+        .expect("it ran");
+    assert_eq!(second, Some(false), "swept");
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::net("reach"))),
+        Verdict::Deny
+    );
+    assert_eq!(
+        ruled(&harness),
+        [("net:reach".to_owned(), Verdict::Deny, None, false)]
+    );
+}
+
 /// A row that leaves the tab under the cursor leaves the keys on the row that has taken its place.
 ///
 /// note: the tab lists decisions, so taking one back - `ask` is what the policy does when nobody
