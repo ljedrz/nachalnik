@@ -23,7 +23,7 @@ use std::{
 };
 
 use kamchatka::{
-    sandbox::{Confinement, Network, Sandbox, available, make_scratch},
+    sandbox::{Confinement, Network, Roots, Sandbox, available, make_scratch},
     tools::{Careful, Limits, Shell, Subject},
 };
 use nachalnik::{
@@ -873,7 +873,14 @@ fn a_refused_write_stance_reaches_the_paths_opened_for_writing() {
 
     let policy = Careful::new();
     policy.set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
-    let sandbox = Sandbox::of(&policy, dir, vec![opened.clone()], Vec::new(), false);
+    let sandbox = Sandbox::of(
+        &policy,
+        &Roots {
+            writable: vec![opened.clone()],
+            ..Roots::new(dir)
+        },
+        false,
+    );
 
     assert!(sandbox.writable.is_empty(), "{sandbox}");
     assert!(

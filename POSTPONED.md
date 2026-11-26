@@ -406,10 +406,7 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   gatekeeper beside the tool; each could be a module, the gatekeeper beside `reaching.rs`, whose
   queue it answers. `advice.rs`'s rating algebra is pure and tested on its own, apart from the
   questions it sends; `policy.rs`'s path-pattern language and its network heuristic sit beside
-  `Careful`. `shedder.rs`'s `plan` works out its sets of items and runs both rules in one body.
-  And `Sandbox { shell_readable, devices, ..Sandbox::of(..) }` is written twice because
-  `Sandbox::of` defaults those two fields, so a field added to `Sandbox` would keep its default at
-  both without a word; `Sandbox::of` taking them would end that, at the cost of its signature. A
+  `Careful`. `shedder.rs`'s `plan` works out its sets of items and runs both rules in one body. A
   refactor for the next change to any of them.
 
 - **nachalnik's `model/mod.rs` holds a tool call beside the messages, and its selectors keep their

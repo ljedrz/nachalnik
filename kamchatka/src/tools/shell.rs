@@ -12,7 +12,7 @@ use nachalnik::{
     async_trait,
 };
 
-use crate::sandbox::{Network, Sandbox};
+use crate::sandbox::{Network, Roots, Sandbox};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::tools::{
@@ -450,6 +450,19 @@ fn ops() -> Vec<Op> {
     )]
 }
 
+impl Shell {
+    /// What a command's sandbox is built from beside the policy.
+    fn roots(&self) -> Roots {
+        Roots {
+            workdir: self.workdir.clone(),
+            writable: self.writable.clone(),
+            readable: self.readable.clone(),
+            shell_readable: self.shell_readable.clone(),
+            devices: self.devices.clone(),
+        }
+    }
+}
+
 #[async_trait]
 impl Tool for Shell {
     fn spec(&self) -> ToolSpec {
@@ -479,15 +492,9 @@ impl Tool for Shell {
         // then every write inside the working directory hits the boundary and reads the same way.
         // Standard error does not say whether a refusal was a read or a write, so the only sentence
         // that can be certain is this one, before anything is run
-        let confined = self.confined.then(|| {
-            Sandbox::of(
-                &self.policy,
-                self.workdir.clone(),
-                self.writable.clone(),
-                self.readable.clone(),
-                false,
-            )
-        });
+        let confined = self
+            .confined
+            .then(|| Sandbox::of(&self.policy, &self.roots(), false));
         let read_only = confined
             .as_ref()
             .is_some_and(|sandbox| !sandbox.workdir_writable);
@@ -631,14 +638,10 @@ impl Tool for Shell {
         //
         // note: kept rather than built and dropped, because it can tell afterwards whether a
         // permission error came from this boundary; see `Sandbox::note_for`
-        let sandbox = self.confined.then(|| Sandbox {
-            shell_readable: self.shell_readable.clone(),
-            devices: self.devices.clone(),
-            ..Sandbox::of(
+        let sandbox = self.confined.then(|| {
+            Sandbox::of(
                 &self.policy,
-                self.workdir.clone(),
-                self.writable.clone(),
-                self.readable.clone(),
+                &self.roots(),
                 self.policy.was_granted_the_network(&call.id),
             )
         });

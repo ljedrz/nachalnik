@@ -45,6 +45,10 @@ minor bump may break you.
 - **`Message::Busy` has a `paused` field**, for the `continue` button below, so code that builds
   or matches one with every field spelled out must name it. On the wire it is optional: a client
   reads a session that predates it as not paused, and an older client skips it.
+- **`Sandbox::of` takes a `&Roots`** in place of the working directory and the opened paths, so
+  the shell's own system paths and devices are part of what it builds. Before, it filled them with
+  the defaults and each caller with different ones had to put its own back over them. The new
+  `Roots::new(workdir)` is a working directory with the defaults and nothing opened.
 
 ### added
 
