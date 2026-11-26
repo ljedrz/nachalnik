@@ -138,6 +138,11 @@ minor bump may break you.
 
 ### changed
 
+- **<kbd>e</kbd> on a reply points to <kbd>r</kbd> for its reasoning.** While a reply's text is
+  being edited, the prompt's title says that <kbd>r</kbd> on the row edits its reasoning. When
+  <kbd>e</kbd> refuses a reply that is only a tool call, the refusal says that <kbd>r</kbd> still
+  edits its reasoning. <kbd>r</kbd> is also listed in the context tab's <kbd>F1</kbd> help, where it was
+  missing.
 - **The `--web` page marks a reply that said nothing.** A turn stopped while the model was still
   thinking leaves a reply with reasoning and no text, and its row showed an empty box under the
   reasoning. The box now reads *no message was sent* until it is clicked into, and a text typed
