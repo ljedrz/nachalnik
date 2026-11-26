@@ -184,7 +184,7 @@ impl Search {
 
     /// Whether a context item matches, on the text `text` makes of it, asked once per item.
     ///
-    /// note: [`item_text`] is the text everything here matches on; the parameter is for tests.
+    /// note: `item_text` is the text everything here matches on; the parameter is for tests.
     pub fn matches_item(
         &self,
         item: &Arc<ContextItem>,
