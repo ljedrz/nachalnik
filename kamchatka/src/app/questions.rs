@@ -27,6 +27,29 @@ impl App {
         );
     }
 
+    /// Drops every call the model is waiting on an answer for, and tells it so, with `why`.
+    ///
+    /// note: denying them one at a time says no to each; this says no to all of them with one
+    /// reason, which is the answer when the model has gone off down the wrong path entirely. Either
+    /// way the model is told; a call that simply vanished would leave it waiting. `d` at a question
+    /// and `/drop` both come here; the command is how a browser reaches it.
+    pub(super) fn drop_pending(&mut self, why: &str) {
+        let dropped = self.kernel.cancel_pending_calls(why);
+        self.overlay = None;
+        self.say(
+            Speaker::Note,
+            format!("{dropped} call(s) dropped; the model is told, and can try something else"),
+        );
+
+        // the model then says something about it. Answering `n` to every request ends at
+        // `start_turn`; dropping them all leaves the kernel idle with the refusals recorded and
+        // nobody driving, and without this the session would stop until somebody typed `/continue`
+        match self.stepping {
+            true => self.say(Speaker::Note, "/step or /continue when you are ready"),
+            false => self.start_turn(),
+        }
+    }
+
     /// Drops every call the model is waiting on an answer for, tells it so, and ends the turn there.
     ///
     /// note: `d` at a question gives the model a turn to answer the refusals, and it often
