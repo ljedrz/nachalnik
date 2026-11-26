@@ -80,18 +80,22 @@ impl App {
     /// because a decision leaves the kernel resting with nobody driving it. Without the last, a
     /// headless run answers and then sits there.
     ///
-    /// note: `remember` is what the `a` key means - *always* - and what it remembers is everything
-    /// the policy actually consulted rather than what the tool declared, so a `yes, always` to a
-    /// `curl` that left `network` on `ask` does not ask again on the next call. It then sweeps what
-    /// is already in the queue, because a model asking for three things at once produces three
-    /// questions before the first is shown, and a promise about what happens next has to cover what
-    /// is already waiting.
+    /// note: `remember` turns the answer into a rule: `a` (*always*) with an allow, `v` (*never*)
+    /// with a refusal. Both set the rule for the same subjects: the ones the policy checked and had
+    /// no answer for. Those are what the question is about.
     ///
-    /// note: `remember` with a refusal is *never*, and what it remembers is narrower: only the
-    /// subjects the policy consulted and had no answer for, which are what the question was asked
-    /// about. A subject already allowed stays allowed, so `never` to a `cat .env` that is asked
-    /// about only because of a `.env*` path rule refuses that path and leaves reading files alone.
-    /// It then sweeps the queue the same way, answering what the new refusals now refuse.
+    /// note: why only those. A question is only asked when nothing the call needs is refused, so
+    /// every other subject is already allowed, by its own rule or a broader one. `never` must not
+    /// refuse them: `never` to a `cat .env`, asked about only because of a `.env*` path rule,
+    /// should refuse that path, not all file reading. And `always` has no reason to write them: a
+    /// rule allowing `fs:read`, under an `fs` that is allowed, would keep `fs:read` allowed after
+    /// `fs` went back to `ask`.
+    ///
+    /// note: the subjects the policy checked, not just the ones the tool declared. So `always` to a
+    /// `curl` covers `network` as well, and the next `curl` is not asked about.
+    ///
+    /// note: then it answers the questions already waiting that the new rule decides, because a
+    /// model asking for three things at once produces three questions before the first is shown.
     ///
     /// note: what it returns is about the question the caller asked about, and nothing else. The
     /// sweep's own failures go to [`App::say`], because they are the program reporting on something
@@ -130,14 +134,9 @@ impl App {
             Grant::Deny => Verdict::Deny,
         };
         if remember {
-            // for `always`, everything the policy actually consulted, not just what the tool
-            // declared; for `never`, the part of that it had no answer for. Each is recorded
+            // what the question was asked about, for `always` and `never` alike. Each is recorded
             // against the question it answered, so later calls show where their answer came from
-            let remembered: Vec<_> = match grant {
-                Grant::Allow => self.policy.judges(&request),
-                Grant::Deny => self.policy.undecided_in(&request),
-            };
-            for subject in &remembered {
+            for subject in &self.policy.undecided_in(&request) {
                 self.policy.set(subject, verdict);
                 self.kernel
                     .record_rule(subject.to_string(), verdict, Some(id), false);

@@ -367,9 +367,9 @@ the arguments, and ends with the answers.
 | key | what happens |
 | --- | --- |
 | <kbd>y</kbd> | run this call, once |
-| <kbd>a</kbd> | always, for everything the question names |
+| <kbd>a</kbd> | always: yes, and allow from now on what the question is asking about |
 | <kbd>n</kbd> / <kbd>esc</kbd> | no |
-| <kbd>v</kbd> | never: no, and refuse from now on what the question is asking about. Only that: a subject the call is judged by that is already allowed stays allowed |
+| <kbd>v</kbd> | never: no, and refuse from now on what the question is asking about |
 | <kbd>i</kbd> | the exact JSON, and the tool's own definition |
 | <kbd>d</kbd> | drop every call it's waiting on, and tell the model why, as `/drop` does |
 | <kbd>s</kbd> | the same, and end the turn there, as `/stop` does; the model reads why with your next message |
@@ -387,8 +387,10 @@ the keys to it. Until then, none of the answer keys work, and neither does <kbd>
 typing meant for the prompt cannot answer it by accident. Whatever was in the prompt is restored
 when the question is gone.
 
-It lists everything the policy checked, not just what the tool declared, and <kbd>a</kbd> answers
-for all of it, including calls already queued behind this one. <kbd>y</kbd> is for this call only.
+It lists everything the policy checked, not just what the tool declared. <kbd>y</kbd> is for this
+call only. <kbd>a</kbd> and <kbd>v</kbd> set a rule for what is still undecided, and nothing else;
+the panel lists those subjects after the two keys. Anything already allowed stays as it was. The
+new rule also answers any calls already waiting that it covers.
 Arguments too long for the box scroll with <kbd>pgup</kbd> and <kbd>pgdn</kbd> while the answers
 stay in place.
 
@@ -412,6 +414,7 @@ prompt, headed `a command wants the network`, with the command below it:
 | <kbd>y</kbd> | this command may use the network, until it finishes |
 | <kbd>a</kbd> | always: `net:reach` is allowed from now on, including for commands already waiting |
 | <kbd>n</kbd> | this command may not, and every socket it opens is refused |
+| <kbd>v</kbd> | never: `net:reach` is refused from now on, including for commands already waiting |
 
 It is asked once per command, and the command waits while the question is open; <kbd>s</kbd> or
 <kbd>esc</kbd> stops the turn, the command and the question. The model is told near the top of the

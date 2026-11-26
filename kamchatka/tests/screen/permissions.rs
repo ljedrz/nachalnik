@@ -168,6 +168,54 @@ async fn a_refusal_set_while_the_question_waits_is_kept() {
     assert!(!ran, "the call ran: {}", harness.flat());
 }
 
+/// `always` allows what the question asked about, and writes nothing for what was allowed already.
+///
+/// note: it used to write a rule for every subject the call was judged by. A subject allowed only
+/// through a broader rule - `fs:read` under an allowed `fs` - then had a rule of its own, which
+/// kept it allowed after `fs` went back to `ask`, on the strength of a question about `exec:run`.
+#[tokio::test]
+async fn saying_always_writes_rules_only_for_what_the_question_asked_about() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone").with_capabilities(
+            [Capability::fs("read"), Capability::exec("run")],
+        )));
+    let files = Subject::Domain(Domain::Fs);
+    let read = Subject::Capability(Capability::fs("read"));
+    let run = Subject::Capability(Capability::exec("run"));
+    harness.app.policy.set(&files, Verdict::Allow);
+
+    harness.send("dig").await;
+    harness.settle().await;
+    let asked = harness.app.asked().expect("a question").id;
+    harness.press(KeyCode::Tab).await;
+    let panel = harness.flat();
+    assert!(panel.contains("[a] always, for exec:run "), "{panel}");
+
+    harness.answer(KeyCode::Char('a')).await;
+    harness.settle().await;
+    assert!(harness.flat().contains("dug"), "{}", harness.flat());
+    assert_eq!(harness.app.policy.stance(&run), Verdict::Allow);
+    let ruled = ruled(&harness);
+    assert!(
+        ruled.contains(&("exec:run".to_owned(), Verdict::Allow, Some(asked), false)),
+        "{ruled:?}"
+    );
+    assert!(
+        !ruled.iter().any(|(subject, ..)| subject == "fs:read"),
+        "{ruled:?}"
+    );
+
+    // and `fs` going back to a question takes `fs:read` with it
+    harness.app.policy.set(&files, Verdict::Ask);
+    assert_eq!(harness.app.policy.stance(&read), Verdict::Ask);
+}
+
 /// `never` refuses the call and, from then on, what the question asked about - and only that.
 ///
 /// note: a call is a question only because something it is judged by has no answer. Refusing all

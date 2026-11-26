@@ -114,12 +114,11 @@ pub enum Command {
         id: PermissionId,
         /// The answer.
         grant: Grant,
-        /// Whether to remember it, so the policy stops asking: `a` with an allow, `v` with a
-        /// refusal.
+        /// Whether to turn the answer into a rule, so the policy stops asking: `a` with an allow,
+        /// `v` with a refusal.
         ///
-        /// note: an allow remembers every subject the policy consulted, as allowed. A refusal
-        /// remembers only the subjects nothing had decided, which are what the question was about,
-        /// as refused.
+        /// note: the rule covers the subjects the policy checked and had no answer for, which are
+        /// what the question is about. Subjects already allowed stay as they were.
         remember: bool,
     },
     /// Answer a running command that reached for the network; see [`Message::Reaching`].
@@ -134,7 +133,7 @@ pub enum Command {
         id: u64,
         /// The answer.
         grant: Grant,
-        /// Whether to keep the answer for the network from here on: `a` with an allow, `v` with a
+        /// Whether to turn the answer into a rule for the network: `a` with an allow, `v` with a
         /// refusal.
         remember: bool,
     },

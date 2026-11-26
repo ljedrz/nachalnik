@@ -268,10 +268,16 @@ The text and the reasoning are each in a box you can edit, and leaving a box you
 the **copy** button beside a box copies what it holds. The button on the right of a row shows its
 state, and tapping it moves to the next one: active, pinned, elided, excluded, active again. That
 is <kbd>space</kbd> on the context tab with <kbd>p</kbd>'s pin as a step of it, note included.
-Above the rows, **filter** keeps the rows whose number, label, kind, state or start has what you
-type in it, and **sent only** keeps what the next request sends whole, as <kbd>f</kbd> does. The **chat** updates with it, as in the terminal. The **events** view is the trace,
-with the time each step took; the **permissions** view lists the rules, each with **allow**, **ask**
-and **deny**, and **ask** undoes an `always`.
+Above the rows, **filter** keeps the rows that match what you type, as <kbd>/</kbd> on the context
+tab does: fuzzy, and over the whole of each item, its reasoning included. **sent only** keeps what
+the next request sends whole, as <kbd>f</kbd> does. A reply stopped before it said anything shows
+*no message was sent* in its text box until you click into it. The **chat** updates with it, as in
+the terminal. The **events** view is the trace, with the time each step took, and has the same
+filter box, which matches as <kbd>/</kbd> on the trace tab does. The **permissions** view lists the
+rules, each with **allow**, **ask** and **deny**, and **ask** undoes an `always` or a `never`.
+
+A question takes the prompt's place, with a button for each answer the terminal has. A
+`/compact` asks there too, with its list and **take it** and **leave it**.
 
 The prompt is only on the chat. With a mouse, <kbd>enter</kbd> sends and <kbd>shift+enter</kbd>
 starts a new line, as in the terminal; on a touch screen, <kbd>enter</kbd> starts a new line and the
