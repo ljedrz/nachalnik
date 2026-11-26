@@ -1334,4 +1334,42 @@ mod tests {
             "none → Shedder"
         );
     }
+
+    /// A rewritten reasoning says how its size moved and what it said before, or that there was
+    /// none.
+    #[test]
+    fn a_rewritten_reasoning_says_what_it_was() {
+        let replaced = |was: Option<&str>| {
+            said(&Event::ReasoningReplaced {
+                id: ContextId(4),
+                tokens_before: 1200,
+                tokens_after: 30,
+                was: was.map(Into::into),
+            })
+        };
+
+        assert_eq!(
+            replaced(Some("it said parser.rs")),
+            "[4] 1,200 → 30 tokens; its reasoning was: it said parser.rs"
+        );
+        assert_eq!(
+            replaced(None),
+            "[4] 1,200 → 30 tokens; its reasoning was: none"
+        );
+    }
+
+    /// Plain reasoning can be rewritten; reasoning held as blocks or as a file cannot, each alone.
+    #[test]
+    fn only_plain_reasoning_can_be_rewritten() {
+        let reply = |reasoning: Option<nachalnik::Content>| {
+            ContextItem::assistant("an answer", Vec::new()).with_reasoning(reasoning)
+        };
+
+        assert_eq!(reasoning_beyond(&reply(None)), None);
+        assert_eq!(reasoning_beyond(&reply(Some("a thought".into()))), None);
+        let blocks = nachalnik::Content::blocks([nachalnik::Block::reasoning("a signed thought")]);
+        assert!(reasoning_beyond(&reply(Some(blocks))).is_some());
+        let blob = nachalnik::Content::blob("application/octet-stream", "c2VhbGVk");
+        assert!(reasoning_beyond(&reply(Some(blob))).is_some());
+    }
 }
