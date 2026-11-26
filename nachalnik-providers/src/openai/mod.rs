@@ -709,10 +709,14 @@ impl OpenAiCompatible {
 
         // a limit of nothing is a listing that did not know, which the kernel already declines to
         // measure against - and reported as a limit it is a window of `0` on every screen
+        //
+        // note: `meta.n_ctx` is llama.cpp's: the window the server was started with, not the most
+        // the model was trained on, which it gives beside it as `n_ctx_train`
         [
             &entry["context_length"],
             &entry["top_provider"]["context_length"],
             &entry["inputTokenLimit"],
+            &entry["meta"]["n_ctx"],
         ]
         .into_iter()
         .find_map(|limit| limit.as_u64().filter(|limit| *limit > 0))
@@ -1059,6 +1063,21 @@ mod tests {
 
         assert_eq!(provider.info().context_limit, Some(4096));
         assert!(provider.info().parameters.is_empty());
+    }
+
+    /// A llama-server's listing gives the window it was started with, which is the limit, and
+    /// not the larger one the model was trained on.
+    ///
+    /// note: the shape is llama.cpp's, trimmed to the fields that matter here.
+    #[tokio::test]
+    async fn a_llama_servers_listing_gives_the_window_it_serves() {
+        let body = r#"{"data":[{"id":"m","owned_by":"llamacpp",
+            "meta":{"n_ctx":32768,"n_ctx_train":262144}}]}"#;
+        let provider =
+            OpenAiCompatible::new("m", routed(&[("/models", body)]).await, "no key needed");
+        provider.probe().await;
+
+        assert_eq!(provider.info().context_limit, Some(32768));
     }
 
     /// A listing that gives a limit of nothing has given no limit.

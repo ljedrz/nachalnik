@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **A llama-server's context size is read from its model listing.** llama.cpp's `/v1/models` gives
+  the window the server was started with as `meta.n_ctx`, which `OpenAiCompatible` now takes as
+  the model's limit. Before, a session at a llama-server had no limit unless one was set by hand,
+  so nothing showed how full the context was and the compactor never ran.
+
 ### deprecated
 
 - **`system1::DEFAULT_BASE_URL`**, which is OpenRouter's address. Nothing in the crate defaulted to
