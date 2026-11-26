@@ -23,6 +23,12 @@ minor bump may break you.
   longer than that window ("exceeds the available context size") is now read as one, with the
   request's size, as other servers' refusals already were.
 
+### changed
+
+- Requires `nachalnik` 0.12, which is released beside it. Nothing here uses what changed in it, but
+  every provider implements the runtime's `Provider`, so this release cannot be mixed with a
+  0.11-series runtime.
+
 ## [0.11.1] - 2026-11-11
 
 ### added
