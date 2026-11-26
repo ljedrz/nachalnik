@@ -55,14 +55,13 @@ minor bump may break you.
   list in the question panel with **take it** and **leave it**. A served session with a screen
   shows the question there too, and either place can answer it. A `--connect` client still takes
   its own `/compact` straight away, after printing the list, as `--headless` does.
-- **A question can be answered `never`.** <kbd>v</kbd> at the terminal, a typed `v` at a
-  `--connect` client, and a **never** button on the `--web` page refuse the call and, from then on,
-  what the question asked about: the subjects the call is judged by that nothing had decided. A
-  subject already allowed stays allowed. Calls already waiting that the new rule refuses are
-  refused with it, as `always` lets them through. For a command that reached for the network,
-  `never` refuses `net:reach`. Over the protocol it is `Command::Decide` or `Command::Reach` with a
-  refusal and `remember` set, which used to be answered `failed`. `Careful::undecided_in` lists the
-  subjects a call is asked about.
+- **A question can be answered `never`.** It is <kbd>v</kbd> at the terminal, a typed `v` at a
+  `--connect` client, and a **never** button on the `--web` page. It refuses the call, and sets a
+  rule refusing what the question asked about: the subjects nothing had decided yet. Anything
+  already allowed stays allowed. Calls already waiting that the rule refuses are refused too. For a
+  command that reached for the network, `never` refuses `net:reach`. Over the protocol it is
+  `Command::Decide` or `Command::Reach` with a refusal and `remember` set, which used to be answered
+  `failed`. The new `Careful::undecided_in` lists the subjects a question is about.
 - **The `--web` page's events view has a filter**, the same box as the context view's, matching
   as `/` on the trace tab does: fuzzy, over each event's name, detail, date and time, with a
   continuation line kept with the event it belongs to. The page sets the new `trace` field of
@@ -170,6 +169,11 @@ minor bump may break you.
 
 ### changed
 
+- **`always` sets a rule only for what the question asked about**, as `never` does: the subjects
+  nothing had decided yet. It used to write a rule for every subject the call needed, including ones
+  already allowed. That could keep something allowed by mistake: an `fs:read` allowed because all of
+  `fs` was allowed got a rule of its own, so it stayed allowed after `fs` went back to `ask`. The
+  question panel now names the same subjects after `[a]` and `[v]`.
 - **<kbd>e</kbd> on a reply points to <kbd>r</kbd> for its reasoning.** While a reply's text is
   being edited, the prompt's title says that <kbd>r</kbd> on the row edits its reasoning. When
   <kbd>e</kbd> refuses a reply that is only a tool call, the refusal says that <kbd>r</kbd> still

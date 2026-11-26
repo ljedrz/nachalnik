@@ -69,28 +69,26 @@ fn question_parts(
     // spec does not mention. A question naming only the spec answers for less than it decides
     //
     // note: with the actions of this tool a subject covers, where it covers several, because `a`
-    // answers for all of them: an `always` for `fs:read` given to a `grep` allows `read` as well
-    let judged: Vec<String> = app
-        .policy
-        .judges(&request)
-        .iter()
-        .map(|subject| match subject {
-            Subject::Capability(capability) => {
-                let actions = app.policy.actions_for(capability, &request.tool);
-                match actions.is_empty() {
-                    true => subject.to_string(),
-                    false => format!("{subject} ({})", actions.join(", ")),
-                }
+    // and `v` answer for all of them: an `always` for `fs:read` given to a `grep` allows `read` as
+    // well
+    let named = |subject: &Subject| match subject {
+        Subject::Capability(capability) => {
+            let actions = app.policy.actions_for(capability, &request.tool);
+            match actions.is_empty() {
+                true => subject.to_string(),
+                false => format!("{subject} ({})", actions.join(", ")),
             }
-            subject => subject.to_string(),
-        })
-        .collect();
-    // and what `never` would refuse, which is only what the question is asking about
-    let undecided: Vec<String> = app
+        }
+        subject => subject.to_string(),
+    };
+    let judged: Vec<String> = app.policy.judges(&request).iter().map(named).collect();
+    // and what `a` and `v` remember: what the question is asking about, which leaves out what is
+    // allowed already
+    let asked: Vec<String> = app
         .policy
         .undecided_in(&request)
         .iter()
-        .map(ToString::to_string)
+        .map(named)
         .collect();
     // two lines of options: answers on the first, and the options for looking closer or giving up
     // on the lot on the second. `pgup / pgdn` joins them when there are arguments below the fold
@@ -104,8 +102,8 @@ fn question_parts(
         "{}[y] once   [a] always, for {}   [n] no   [v] never, for {}\n[i] the exact JSON   \
          [d] {}   [s] stop{}{}",
         until_keys(app),
-        judged.join(" and "),
-        undecided.join(" and "),
+        asked.join(" and "),
+        asked.join(" and "),
         match waiting > 1 {
             true => "drop them all",
             false => "drop it",

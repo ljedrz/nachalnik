@@ -439,10 +439,11 @@
     <pre id="details" hidden></pre>
     <div id="answers">
       <button class="allow" data-grant="allow">allow</button>
-      <button class="allow" data-grant="always">always</button>
+      <button class="allow" data-grant="always"
+              title="yes, and allow what this asks about from now on">always</button>
       <button class="deny" data-grant="deny">deny</button>
       <button class="deny" data-grant="never"
-              title="no, and refuse from now on what this asks about">never</button>
+              title="no, and refuse what this asks about from now on">never</button>
       <button type="button" id="detail" aria-expanded="false" aria-controls="details"
               title="the arguments in full, and the tool's definition">details</button>
       <button type="button" id="drop" class="deny"
@@ -1808,7 +1809,7 @@ function showQuestion() {
   } else if (reached) {
     asked.textContent =
       `${reached.cmd}\nis running and has reached for the network; the answer holds for the rest ` +
-      "of it, and \"always\" allows the network from now on";
+      "of it. \"always\" allows the network from now on, and \"never\" refuses it";
   } else if (compaction) {
     // the list in the box the details use, which scrolls, so a long one leaves the answers in view
     asked.textContent =

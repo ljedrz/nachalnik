@@ -222,11 +222,14 @@ pub const QUESTION: &str =
     y / n               once / no
     esc                 no
     up / down, pgup / pgdn   scroll arguments too long for the panel
-    a                   always, for everything the question names - and for
-                        the calls already waiting behind it
+    a                   always: yes, and allow what the question asks about from
+                        now on. Calls already waiting that this allows go
+                        through too
     v                   never: no, and refuse what the question asks about from
-                        now on. What is already allowed stays allowed. Calls
-                        waiting behind it that this refuses are refused too
+                        now on. Calls already waiting that this refuses are
+                        refused too
+    (a and v set a rule only for what the question asks about, which the panel
+     names after them. Anything already allowed stays as it was)
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
     s                   the same, and end the turn there, as /stop does: the
