@@ -1892,6 +1892,28 @@ async fn the_limit_table_lines_its_subjects_up() {
     );
 }
 
+/// A figure wider than its column is still a word apart from the subject beside it.
+///
+/// note: the names are padded to the widest subject plus one, so the gap after the widest name is
+/// the space the padding adds. A figure of nine digits or more is not padded at all, so without
+/// that space the longest subject runs straight into its figure, and the number reads as part of
+/// the name.
+#[tokio::test]
+async fn a_long_figure_is_not_run_into_the_subject_beside_it() {
+    let mut harness = Harness::new([]);
+
+    harness
+        .send("/limit context:revise_reasoning 100000000")
+        .await;
+    harness.send("/limit").await;
+    let screen = harness.sized(120, 60).replace('\n', " ");
+    assert!(
+        screen.contains("context:revise_reasoning 100,000,000 bytes"),
+        "the widest subject ran into a figure wider than its column: {screen}"
+    );
+    harness.press(KeyCode::Esc).await;
+}
+
 /// A limit nothing in this session declares says so, in the listing and on the change.
 ///
 /// note: found by reading a headless run. `/tools` said "4 offered: edit, read, shell, write" and
