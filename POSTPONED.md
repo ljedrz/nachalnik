@@ -341,6 +341,14 @@ removes it. A fix that closes part of an entry leaves only the remaining part.
   docs - and having the rest summarise and link would make a change land once. It waits for the
   next change to one of these facts.
 
+- **`/compact` from the `--web` page doesn't ask before it compacts.** At the terminal `/compact`
+  lists what the pass would take and waits for `y` or `n`, and you can pin items on the context tab
+  before answering, which works the pass out again. A client has no question for it to wait on, so
+  a served session takes the pass at once and lists it afterwards (see `App::planned`). Asking would
+  need the proposal sent over the protocol as a question, with its list, answered by a new command
+  or a new kind of `Command::Decide`, and the page showing it in the question panel with yes and
+  no. It waits on deciding that protocol change.
+
 - **The browser page, the web module and the examples each carry what a split or a shared piece
   would hold once.** `kamchatka/src/web/browser.html` is styles, markup and script in one file of
   seventeen hundred lines; the styles and its markdown renderer are self-contained and could be
