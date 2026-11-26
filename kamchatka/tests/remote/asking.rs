@@ -291,13 +291,14 @@ async fn a_client_can_arrive_in_the_middle_of_an_answer() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// A client's `/compact` is taken, as it is down a pipe, rather than left as a question.
+/// A client's `/compact` is a question the client answers, as it is at the terminal.
 ///
-/// note: a client has no keys to answer the proposal with, and a served session with no screen has
-/// nobody who does. Left standing, the question also refused every later `/compact` as "already
-/// waiting for an answer", for the rest of the session.
+/// note: it used to be taken at once, because a client had no keys to answer with. The proposal is
+/// now sent to clients as `Message::Proposal` and answered with `Command::Compact`, so a browser
+/// can read the list and say no. Leaving it must leave nothing standing in the way of the next
+/// `/compact`, which was the old reason for taking it.
 #[tokio::test]
-async fn a_compact_from_a_client_is_taken_and_said() {
+async fn a_compact_from_a_client_is_proposed_and_answered() {
     use nachalnik::{Content, ContextItem, ContextState, ToolCall};
 
     let session = served(vec![], |app| {
@@ -327,42 +328,67 @@ async fn a_compact_from_a_client_is_taken_and_said() {
         app.kernel.push(ContextItem::user("and now?"));
     })
     .await;
-
-    let said = |wanted: &'static [&'static str]| {
-        move |message: &Message| {
-            matches!(message, Message::Said { text, .. }
-                if wanted.iter().any(|it| text.contains(it)))
-        }
+    let elided = |kernel: &nachalnik::Kernel| {
+        kernel
+            .items()
+            .iter()
+            .any(|item| item.state == ContextState::Elided)
     };
 
     let (mut peer, _) = Peer::attached(&session.at).await;
-    peer.send(Command::Submit {
-        line: "/compact".to_owned(),
-    })
-    .await;
-    // the list, in the session's voice, which is what says what was taken
-    peer.until(said(&["[3] elide"])).await;
-    assert!(
-        session
-            .kernel
-            .items()
-            .iter()
-            .any(|item| item.state == ContextState::Elided),
-        "and it was taken"
-    );
 
-    // and nothing is left standing in the way of the next one
-    peer.send(Command::Submit {
-        line: "/compact".to_owned(),
-    })
-    .await;
+    // nothing proposed, so nothing to answer
+    peer.send(Command::Compact { take: true }).await;
     let heard = peer
-        .until(said(&["already waiting", "found nothing", "would take"]))
+        .until(|message| matches!(message, Message::Failed { about, .. } if about == "compact"))
         .await;
-    assert!(
-        !matches!(heard.last(), Some(Message::Said { text, .. }) if text.contains("already waiting")),
-        "{heard:?}"
-    );
+    assert!(matches!(heard.last(), Some(Message::Failed { .. })));
+
+    for take in [false, true] {
+        peer.send(Command::Submit {
+            line: "/compact".to_owned(),
+        })
+        .await;
+        let heard = peer
+            .until(|message| matches!(message, Message::Proposal { proposed: Some(_) }))
+            .await;
+        let Some(Message::Proposal {
+            proposed: Some(proposed),
+        }) = heard.last()
+        else {
+            unreachable!("just matched")
+        };
+        assert!(
+            proposed.rows.iter().any(|row| row.starts_with("[3] elide")),
+            "{proposed:?}"
+        );
+        // a question, not a pass already taken
+        assert!(!elided(&session.kernel));
+        // and in the projection, for a client arriving now
+        peer.send(Command::Project).await;
+        let heard = peer
+            .until(|message| matches!(message, Message::Projected(..)))
+            .await;
+        let Some(Message::Projected(projected)) = heard.last() else {
+            unreachable!("just matched")
+        };
+        assert_eq!(projected.proposed.as_ref(), Some(proposed));
+
+        peer.send(Command::Compact { take }).await;
+        peer.until(|message| matches!(message, Message::Proposal { proposed: None }))
+            .await;
+        match take {
+            false => assert!(!elided(&session.kernel), "left alone, and taken anyway"),
+            true => {
+                peer.until(|message| {
+                    matches!(message, Message::Record(record)
+                    if record.event.name() == "context.compacted")
+                })
+                .await;
+                assert!(elided(&session.kernel), "taken, and nothing taken");
+            }
+        }
+    }
 
     peer.send(Command::Submit {
         line: "/quit".to_owned(),

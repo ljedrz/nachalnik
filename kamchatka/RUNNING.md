@@ -485,7 +485,9 @@ estimate, and only a refusal from the endpoint quotes an actual count.
 whatever the endpoint advertised, which can be lower than its real context window.
 
 With no keys in a pipe, `--headless` prints the `/compact` list to stderr and goes ahead: a line the
-operator typed doesn't need confirming.
+operator typed doesn't need confirming. A `--connect` client does the same with its own `/compact`.
+The `--web` page asks, with the list and **take it** and **leave it** buttons where the question
+panel is.
 
 `/compact` is also how to recover a session too big to send. The tool that excludes and elides
 belongs to the *model* (`context`), and using it costs a request, which is exactly what's failing.

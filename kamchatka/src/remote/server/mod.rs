@@ -34,8 +34,8 @@ use tokio::{
 use crate::{
     app::{App, NOTICES, Outcome, Overlay, Search, Speaker},
     remote::protocol::{
-        self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Sandboxing,
-        Stanced, Tracing, Unjudged,
+        self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Proposal,
+        Sandboxing, Stanced, Tracing, Unjudged,
     },
 };
 
@@ -764,6 +764,8 @@ pub struct Serving {
     /// Which running commands were waiting on the network when anybody was last told; see
     /// [`Message::Reaching`].
     reaching: Vec<crate::tools::Reached>,
+    /// What compaction was waiting on an answer then; see [`Message::Proposal`].
+    proposing: Option<Proposal>,
     /// How many connections have arrived, which is what names them.
     clients: u64,
     /// The client whose session this is at the moment: the last one to attach, until it leaves.
@@ -800,6 +802,7 @@ impl Serving {
             announced: (app.working(), app.paused()),
             model: app.kernel.model_info(),
             reaching: app.policy.reaching().waiting(),
+            proposing: proposal(app),
             clients: 0,
             seated: None,
             replaced: HashMap::new(),
@@ -899,6 +902,14 @@ impl Serving {
         // the program has one voice and every client hears it, which is most of the difference
         // between a session several people are attached to and several sessions
         self.say(app);
+        // a compaction waiting on an answer, which is in no record. Ahead of `busy`, because the
+        // pass coming back is what ends the busy spell, and a client whose input has closed leaves
+        // on `busy: false` - before a proposal sent after it, which was its own to answer
+        let proposed = proposal(app);
+        if self.proposing != proposed {
+            self.proposing = proposed.clone();
+            let _ = self.voice.send(Arc::new(Message::Proposal { proposed }));
+        }
         // note: on a change and nothing else. The answer to a command closes the gap between a
         // client asking for something and being told what came of it; every command has one, and it
         // carries this same figure - see `Message::Done`. A broadcast that also fired per command
@@ -1320,8 +1331,8 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             // a program the reader is not using. The flag is a fact about whoever just asked. See
             // `App::help`
             //
-            // note: `/compact` reads it when its pass comes back, after this. A client has no keys
-            // to answer the question with, so the pass is taken and its list is said. See
+            // note: `/compact` reads `remote` when its pass comes back, after this: a client is
+            // sent the proposal as a question rather than having the pass taken for it. See
             // `App::planned`
             let keys = std::mem::replace(&mut app.keys, false);
             let remote = std::mem::replace(&mut app.remote, true);
@@ -1418,6 +1429,20 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 },
             },
         }),
+        // `y` or `n` at the panel. Busy is read after, because taking it sends the pass out
+        Command::Compact { take } => Some(match app.proposed.is_some() {
+            true => {
+                app.take_proposal(take);
+                Message::Done {
+                    about: "compact".to_owned(),
+                    busy: app.working(),
+                }
+            }
+            false => Message::Failed {
+                about: "compact".to_owned(),
+                error: "no compaction is waiting on an answer; `/compact` proposes one".to_owned(),
+            },
+        }),
         // the trace is this loop's, so a search of it is answered here
         Command::Search { query, trace: true } => Some(Message::Found {
             lines: app.trace_found(&Search::of(&query)),
@@ -1495,7 +1520,15 @@ fn standing(app: &App) -> Vec<Message> {
         Message::Reaching {
             waiting: app.policy.reaching().waiting(),
         },
+        Message::Proposal {
+            proposed: proposal(app),
+        },
     ]
+}
+
+/// The compaction waiting on an answer, as a client is told of it.
+fn proposal(app: &App) -> Option<Proposal> {
+    app.proposed.as_ref().map(Proposal::of)
 }
 
 /// Where the session stands, in the form a client can start rendering from.
@@ -1548,6 +1581,7 @@ fn project(app: &App) -> Attached {
             .collect(),
         asking,
         reaching: app.policy.reaching().waiting(),
+        proposed: proposal(app),
         trace: tracing(app),
         trace_from: app.traced - app.trace.len() as u64,
         policy: app.policy_name(),
@@ -1597,6 +1631,7 @@ fn name(command: &Command) -> &'static str {
         Command::Inspect { .. } => "inspect",
         Command::Search { .. } => "search",
         Command::Describe { .. } => "describe",
+        Command::Compact { .. } => "compact",
         Command::Project => "project",
         Command::Cycle { .. } => "cycle",
         Command::Rule { .. } => "rule",

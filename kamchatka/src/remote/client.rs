@@ -148,6 +148,17 @@ pub struct Client<'a> {
     outstanding: usize,
     /// Whether the input has closed and this is waiting for the session to come to rest.
     detaching: bool,
+    /// Whether this client typed `/compact` and has not yet been handed what it proposed.
+    ///
+    /// note: so that only its own proposal is taken. A proposal is said to every client, and one
+    /// made at the session's own screen is that person's to answer.
+    compacting: bool,
+    /// Whether a proposal of this client's is to be taken on the next pass through
+    /// [`Client::follow`].
+    ///
+    /// note: taken rather than asked, as `--headless` takes its own: nothing here asks a person,
+    /// and a line answered with a question nobody can reach has been refused what it asked for.
+    taking: bool,
     /// Whether the session has said it is finished.
     ///
     /// note: it tells a closing socket from a dropped one. Without it, `/quit` leads to a minute of
@@ -233,6 +244,8 @@ impl<'a> Client<'a> {
             busy: false,
             outstanding: 0,
             detaching: false,
+            compacting: false,
+            taking: false,
             over: false,
             failed: false,
             reached: false,
@@ -623,6 +636,11 @@ impl<'a> Client<'a> {
             }
             Message::Busy { busy, .. } => {
                 self.busy = busy;
+                // a `/compact` that found nothing to take proposes nothing, and the session going
+                // quiet is the end of it: a proposal of this client's is said before this
+                if !busy {
+                    self.compacting = false;
+                }
 
                 Ok(())
             }
@@ -686,6 +704,20 @@ impl<'a> Client<'a> {
             }
             // answers this client never asks for, since it has no filter and draws no question;
             // counted, because answers they are
+            // what this client's own `/compact` proposed, listed and then taken; see `taking`
+            Message::Proposal {
+                proposed: Some(proposed),
+            } if self.compacting => {
+                self.compacting = false;
+                self.taking = true;
+                self.prose.fresh_line()?;
+                for row in &proposed.rows {
+                    self.tell(row)?;
+                }
+
+                Ok(())
+            }
+            Message::Proposal { .. } => Ok(()),
             Message::Found { .. } | Message::Described { .. } => {
                 self.answered();
 
@@ -1009,6 +1041,9 @@ impl<'a> Client<'a> {
                 .await;
         }
 
+        if line.trim() == "/compact" {
+            self.compacting = true;
+        }
         self.say_to(
             write,
             Command::Submit {
@@ -1140,6 +1175,9 @@ impl<'a> Client<'a> {
     /// Sends what the last message heard calls for: a fetch of every turn that was not streamed,
     /// and whatever [`Client::settle`] answers.
     async fn follow<W: AsyncWrite + Unpin>(&mut self, write: &mut W) -> Result<(), String> {
+        if std::mem::take(&mut self.taking) {
+            self.say_to(write, Command::Compact { take: true }).await?;
+        }
         while let Some(id) = self.unstreamed.pop_front() {
             self.say_to(
                 write,

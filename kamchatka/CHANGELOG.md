@@ -45,6 +45,13 @@ minor bump may break you.
 
 ### added
 
+- **The `--web` page asks before `/compact` compacts.** A client's `/compact` used to be taken at
+  once, because a client had no keys to answer with. The proposal is now sent to clients as the new
+  `Message::Proposal`, and is in the new `Attached::proposed`. The new `Command::Compact` takes it
+  or leaves it, as <kbd>y</kbd> and <kbd>n</kbd> do at the terminal's panel. The page shows the
+  list in the question panel with **take it** and **leave it**. A served session with a screen
+  shows the question there too, and either place can answer it. A `--connect` client still takes
+  its own `/compact` straight away, after printing the list, as `--headless` does.
 - **A question can be answered `never`.** <kbd>v</kbd> at the terminal, a typed `v` at a
   `--connect` client, and a **never** button on the `--web` page refuse the call and, from then on, what the question asked about: the subjects
   the call is judged by that nothing had decided. A subject already allowed stays allowed. Calls

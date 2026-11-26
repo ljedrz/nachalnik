@@ -351,6 +351,10 @@
   #answers button { padding: 8px 4px; }
   /* a command that reached for the network has no tool to describe and no calls to drop */
   #question.reach #detail, #question.reach #drop { display: none; }
+  /* a compaction is answered take or leave, and nothing else */
+  #question.compaction #answers button:not(.compaction), #question:not(.compaction) .compaction {
+    display: none;
+  }
   #details {
     margin: 0 0 8px; padding: 8px; font: inherit; font-size: var(--small); white-space: pre-wrap;
     overflow-wrap: anywhere; overflow: auto; border: 1px solid var(--line); border-radius: 6px;
@@ -443,6 +447,8 @@
       <button type="button" id="drop" class="deny"
               title="drop every call waiting on an answer and tell the model, so it can try something else">drop all</button>
       <button class="deny" data-grant="stop">stop</button>
+      <button class="allow compaction" data-take="true">take it</button>
+      <button class="deny compaction" data-take="false">leave it</button>
     </div>
   </div>
 </footer>
@@ -462,6 +468,7 @@ const resume = document.getElementById("continue");
 
 let asking = [];        // the questions waiting on somebody, oldest first
 let reaching = [];      // the running commands waiting to hear whether they may reach the network
+let proposed = null;    // the compaction `/compact` proposed, waiting to be taken or left
 let open = null;        // the bubble a model is still writing into: its answer or its thinking
 let answer = null;      // the last bubble of the answer itself, which the item is put on
 let streaming = false;  // whether the fragments arriving still belong to anything
@@ -1782,11 +1789,16 @@ function showQuestion() {
   // a running command that reached for the network is the other kind, and the kernel's comes first
   // where both are waiting, as it does on the terminal's panel
   const reached = !next && reaching[0];
-  question.classList.toggle("open", !!(next || reached));
-  prompt.style.display = next || reached ? "none" : "flex";
+  // and a compaction last, as on the terminal's panel: it holds nothing up, and a tool's question
+  // holds the turn
+  const compaction = !next && !reached && proposed;
+  const any = !!(next || reached || compaction);
+  question.classList.toggle("open", any);
+  question.classList.toggle("compaction", !!compaction);
+  prompt.style.display = any ? "none" : "flex";
   // the tab strip goes red upstairs and this is the same sentence: from another view a question is
   // not what you are looking at, but it is the thing the session has stopped for
-  document.getElementById("view").classList.toggle("asked", !!(next || reached));
+  document.getElementById("view").classList.toggle("asked", any);
   indicator();
   if (next) {
     asked.textContent =
@@ -1796,10 +1808,18 @@ function showQuestion() {
     asked.textContent =
       `${reached.cmd}\nis running and has reached for the network; the answer holds for the rest ` +
       "of it, and \"always\" allows the network from now on";
+  } else if (compaction) {
+    // the list in the box the details use, which scrolls, so a long one leaves the answers in view
+    asked.textContent =
+      `compacting would take ${compaction.count} item(s), holding ` +
+      `${compaction.holding.toLocaleString()} tokens - less what the markers cost. Nothing has ` +
+      "happened yet: pinning an item on the context view keeps it out";
+    details.textContent = compaction.rows.join("\n");
+    details.hidden = false;
   }
-  question.classList.toggle("reach", !next);
+  question.classList.toggle("reach", !!reached);
   // the details belong to one question, and close when it is answered
-  if (!next || detailing !== next.id) {
+  if (!compaction && (!next || detailing !== next.id)) {
     detailing = null;
     detail.setAttribute("aria-expanded", "false");
     details.hidden = true;
@@ -1938,6 +1958,11 @@ document.getElementById("drop").onclick = () => {
 };
 
 document.getElementById("answers").onclick = (e) => {
+  // `y` and `n` at the terminal's panel, for a compaction
+  if (e.target.dataset.take !== undefined) {
+    if (proposed) send({ do: "compact", take: e.target.dataset.take === "true" });
+    return;
+  }
   const grant = e.target.dataset.grant;
   if (!grant || !(asking.length || reaching.length)) return;
   // `s` at the terminal: every call waiting is dropped and the turn ends there, or, at a running
@@ -2064,6 +2089,7 @@ function heard(m) {
       conversation(m.conversation);
       asking = m.asking;
       reaching = m.reaching ?? [];
+      proposed = m.proposed ?? null;
       showQuestion();
       paused = !!m.paused;
       working(m.busy);
@@ -2071,6 +2097,7 @@ function heard(m) {
     }
     // the whole list whenever it changes, since nothing numbers these on the stream
     case "reaching": reaching = m.waiting; showQuestion(); break;
+    case "proposal": proposed = m.proposed ?? null; showQuestion(); break;
     case "record": happened(m.event); break;
     case "progress": {
       // note: dropped unless something is actually arriving, and that is not a nicety. A fragment
