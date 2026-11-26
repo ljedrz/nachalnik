@@ -49,9 +49,10 @@ minor bump may break you.
   cycle has pinned right after active, so an item can be pinned from a phone; the step into
   pinned sends `/pin`, and the rest is the session's cycle as before. Each box in an open row has
   a **copy** button beside it, so a reply's reasoning and text are copied apart, as they stand in
-  the box. Above the rows, **filter** keeps the rows whose number, label, kind, state or start has
-  the text in it, and **sent only** keeps what the next request sends whole, as <kbd>f</kbd> does
-  at the terminal.
+  the box. Above the rows, **filter** keeps the same rows as <kbd>/</kbd> on the context tab: the
+  session matches it with the same fuzzy matcher, over the whole of each item, through the new
+  `Command::Search`, which is answered with `Message::Found`. **sent only** keeps what the next
+  request sends whole, as <kbd>f</kbd> does at the terminal.
 - **The `--web` page can stop a turn.** While a turn runs and the prompt is empty, the **send**
   button is **stop**, and <kbd>esc</kbd> stops it too, from the prompt or with no box in use, as
   at the terminal; both send
@@ -137,6 +138,10 @@ minor bump may break you.
 
 ### changed
 
+- **<kbd>/</kbd> on the context tab also matches what a reply thought and the calls it made**,
+  wherever the turn keeps them, so a reply can be found by its reasoning. `nucleo-matcher` is no
+  longer behind the `tui` feature, since a served session matches the `--web` page's filter with
+  it.
 - **The `context` tool's `undo` also needs `context:revise_reasoning`**, since it can walk back a
   `revise_reasoning`. A session that allowed `context:state`, `context:pin`, `context:note` and
   `context:revise` one by one, rather than the whole `context` domain, is now asked about `undo`

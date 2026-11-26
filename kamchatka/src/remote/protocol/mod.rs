@@ -243,6 +243,16 @@ pub enum Command {
         #[serde(default)]
         version: Option<usize>,
     },
+    /// Ask which context items a filter leaves, answered with a [`Message::Found`].
+    ///
+    /// note: asked of the session rather than worked out by the client, because a row carries what
+    /// an item is and not what it says, and a filter worth having reads the whole of it - its
+    /// reasoning and calls included. The session answers with the terminal's own matcher, so `/`
+    /// on a screen and a browser's filter box leave the same rows for the same words.
+    Search {
+        /// What was typed, as typed: fuzzy, and case-sensitive only where it has a capital in it.
+        query: String,
+    },
     /// Something this build has no name for.
     ///
     /// note: a newer client's verb, answered with a [`Message::Failed`] rather than by closing the
@@ -451,6 +461,16 @@ pub enum Message {
         /// `reasoning`.
         #[serde(default)]
         calls: Vec<String>,
+    },
+    /// The context items a [`Command::Search`] leaves.
+    Found {
+        /// The query it answers, echoed.
+        ///
+        /// note: carried back because a client sends one per keystroke and they can cross. A
+        /// client keeps the answer to what its box says now and drops the rest.
+        query: String,
+        /// The items that match, in the order the context has them; every item for an empty query.
+        ids: Vec<ContextId>,
     },
     /// The text of an item this client asked `/copy` for, to put on its own clipboard.
     ///

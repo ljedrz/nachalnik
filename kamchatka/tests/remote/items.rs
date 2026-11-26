@@ -811,3 +811,61 @@ async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
         .count();
     assert_eq!(logs, 2, "one record per session");
 }
+
+/// A client's filter is answered with what the terminal's `/` would leave, reasoning included.
+///
+/// note: the rows a client is sent say what an item is and not what it says, so a filter worked
+/// out on them missed a reply that was only findable by what it thought. The session answers
+/// with the whole item, fuzzily, wherever a reply keeps its thinking and its calls.
+#[tokio::test]
+async fn a_clients_filter_reads_the_whole_of_an_item() {
+    let session = served(vec![], |app| {
+        app.kernel.push(nachalnik::ContextItem::user("look it up"));
+        app.kernel.push(
+            nachalnik::ContextItem::assistant(
+                "",
+                vec![nachalnik::ToolCall::new(
+                    "c1",
+                    "grep",
+                    std::sync::Arc::new(serde_json::json!({ "pattern": "walrus" })),
+                )],
+            )
+            .with_reasoning(Some("the tokenizer lives in parser.rs".into())),
+        );
+        app.kernel.push(nachalnik::ContextItem::assistant(
+            nachalnik::Content::blocks([
+                nachalnik::Block::reasoning("a signed thought about lemmings"),
+                nachalnik::Block::text("an answer"),
+            ]),
+            Vec::new(),
+        ));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let ids: Vec<_> = attached.items.iter().map(|item| item.id).collect();
+
+    for (query, expected) in [
+        // a flat reply's reasoning, and an ordered one's
+        ("tokenizer", vec![ids[1]]),
+        ("lemmings", vec![ids[2]]),
+        // a call's arguments
+        ("walrus", vec![ids[1]]),
+        // fuzzy, as `/` is
+        ("tknzr", vec![ids[1]]),
+        ("nothing like it", vec![]),
+    ] {
+        peer.send(Command::Search {
+            query: query.to_owned(),
+        })
+        .await;
+        let heard = peer
+            .until(|message| matches!(message, Message::Found { .. }))
+            .await;
+        let Some(Message::Found { query: echoed, ids }) = heard.last() else {
+            unreachable!("just matched")
+        };
+        assert_eq!(echoed, query);
+        assert_eq!(ids, &expected, "{query}");
+    }
+}

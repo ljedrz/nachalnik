@@ -10,7 +10,7 @@ use tokio::{
 };
 
 use crate::{
-    app::text,
+    app::{Search, text},
     remote::protocol::{self, Command, Message},
 };
 
@@ -187,6 +187,12 @@ where
                         },
                     };
                     answer(write, &message, "inspect").await?;
+                }
+                // answered off the kernel as well, and for the same reason: it reads what the items
+                // say now and changes nothing
+                Some(Command::Search { query }) => {
+                    let ids = Search::of(&query).found(kernel.items().iter());
+                    answer(write, &Message::Found { query, ids }, "search").await?;
                 }
                 Some(command) => {
                     let about = name(&command);

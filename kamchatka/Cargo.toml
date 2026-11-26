@@ -55,7 +55,6 @@ webui = []
 # served builds don't compile the dependencies below, which nothing else uses
 tui = [
     "dep:crossterm",
-    "dep:nucleo-matcher",
     "dep:pulldown-cmark",
     "dep:ratatui",
     "dep:ratatui-textarea",
@@ -140,9 +139,10 @@ tokio-stream = { version = "0.1.1", optional = true }
 # for the local clock on trace lines, read once at startup. Screen builds already have it through
 # `ratatui-widgets`
 time = "0.3.47"
-# fuzzy matching for `/` on the context and trace panes, from Helix. Just the matcher, not
+# fuzzy matching for `/` on the context and trace panes and for the web page's filter, which a
+# served session answers, so not optional. From Helix. Just the matcher, not
 # `nucleo`, whose worker pool is built for millions of items; we filter a few hundred
-nucleo-matcher = { version = "0.3", optional = true }
+nucleo-matcher = "0.3"
 # the prompt box must be as tall as its wrapped text, but `ratatui-textarea` doesn't report how
 # many rows it wraps to. `ui::wrapped_rows` counts them by breaking at the same unicode word
 # boundaries (which include `/`, so splitting on spaces isn't enough)
